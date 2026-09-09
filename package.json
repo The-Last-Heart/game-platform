@@ -1,0 +1,34 @@
+{
+  "name": "the-last-heart",
+  "private": true,
+  "version": "0.0.0",
+  "description": "The Last Heart — آخر قلب game platform monorepo",
+  "packageManager": "pnpm@9.15.9",
+  "engines": {
+    "node": ">=24.21.0 <25",
+    "pnpm": ">=9.15.0 <10"
+  },
+  "scripts": {
+    "verify": "pnpm run verify:workspace && pnpm --filter @thelastheart/contracts build && pnpm --filter @thelastheart/backend verify && pnpm --filter @thelastheart/admin-web verify && pnpm run test:tooling",
+    "verify:workspace": "node ./scripts/verify-workspace.mjs",
+    "test:tooling": "node --test scripts/tests/**/*.test.mjs",
+    "lint": "pnpm --filter @thelastheart/backend lint && pnpm --filter @thelastheart/admin-web lint",
+    "test": "pnpm --filter @thelastheart/backend test && pnpm --filter @thelastheart/admin-web test && pnpm run test:tooling",
+    "build": "pnpm --filter @thelastheart/contracts build && pnpm --filter @thelastheart/backend build && pnpm --filter @thelastheart/admin-web build",
+    "dev:backend": "pnpm --filter @thelastheart/backend start:dev",
+    "dev:admin": "pnpm --filter @thelastheart/admin-web dev",
+    "infra:up": "node ./scripts/docker-compose.mjs up -d",
+    "infra:down": "node ./scripts/docker-compose.mjs down",
+    "infra:ps": "node ./scripts/docker-compose.mjs ps",
+    "infra:validate": "node ./scripts/docker-compose.mjs config",
+    "archive:review": "node ./scripts/create-review-archive.mjs --output ../the-last-heart-lh001d-review.zip"
+  },
+  "pnpm": {
+    "overrides": {
+      "lodash": "4.18.1",
+      "multer": "2.3.0",
+      "@angular-devkit/core>picomatch": "4.0.4",
+      "@angular-devkit/core>ajv": "8.18.0"
+    }
+  }
+}

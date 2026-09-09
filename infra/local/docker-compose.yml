@@ -1,0 +1,53 @@
+# Local infrastructure — PostgreSQL and Redis
+#
+# Safe local defaults only. Do not use these credentials in production.
+# Copy .env.example to .env if you need to override values.
+# Published ports bind to loopback by default (see BIND_HOST).
+
+name: the-last-heart-local
+
+services:
+  postgres:
+    image: postgres:16.15-alpine
+    container_name: lh-local-postgres
+    restart: unless-stopped
+    ports:
+      - "${BIND_HOST:-127.0.0.1}:${POSTGRES_PORT:-5432}:5432"
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-lh_local}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-lh_local_dev_only}
+      POSTGRES_DB: ${POSTGRES_DB:-the_last_heart}
+    volumes:
+      - lh_local_postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "pg_isready -U ${POSTGRES_USER:-lh_local} -d ${POSTGRES_DB:-the_last_heart}",
+        ]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+
+  redis:
+    image: redis:7.4.11-alpine
+    container_name: lh-local-redis
+    restart: unless-stopped
+    ports:
+      - "${BIND_HOST:-127.0.0.1}:${REDIS_PORT:-6379}:6379"
+    command: ["redis-server", "--save", "60", "1", "--loglevel", "warning"]
+    volumes:
+      - lh_local_redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 5s
+
+volumes:
+  lh_local_postgres_data:
+    name: lh_local_postgres_data
+  lh_local_redis_data:
+    name: lh_local_redis_data

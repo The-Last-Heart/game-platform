@@ -1,0 +1,98 @@
+name: CI Foundation
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  node-workspace:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9.15.9
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      - run: node --version
+      - run: pnpm --version
+      - run: pnpm install --frozen-lockfile --strict-peer-dependencies
+      - run: pnpm run verify:workspace
+      - run: pnpm run verify
+      - run: pnpm audit --prod
+      - run: pnpm audit
+
+  mobile:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/mobile
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: "3.44.0"
+          channel: stable
+          cache: true
+      - run: flutter --version
+      - run: flutter pub get
+      - run: dart format --output=none --set-exit-if-changed .
+      - run: flutter analyze
+      - run: flutter test
+
+  compose-health:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9.15.9
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile --strict-peer-dependencies
+      - run: pnpm run infra:validate
+      - run: pnpm run infra:up
+      - name: Wait for dependency health
+        run: |
+          for i in $(seq 1 30); do
+            pg=$(docker inspect --format '{{.State.Health.Status}}' lh-local-postgres)
+            rd=$(docker inspect --format '{{.State.Health.Status}}' lh-local-redis)
+            echo "attempt $i postgres=$pg redis=$rd"
+            if [ "$pg" = "healthy" ] && [ "$rd" = "healthy" ]; then
+              exit 0
+            fi
+            sleep 2
+          done
+          exit 1
+      - name: Backend live and ready against healthy dependencies
+        run: |
+          cp apps/backend/.env.example apps/backend/.env
+          pnpm --filter @thelastheart/backend build
+          # Force production readiness semantics regardless of .env.example NODE_ENV.
+          env NODE_ENV=production HEALTH_CHECK_DEPENDENCIES=true \
+            pnpm --filter @thelastheart/backend start:prod &
+          echo $! > /tmp/lh-backend.pid
+          for i in $(seq 1 30); do
+            if curl -fsS http://127.0.0.1:3001/health/live >/tmp/live.json; then
+              break
+            fi
+            sleep 1
+          done
+          curl -fsS http://127.0.0.1:3001/health/live | tee /tmp/live.json
+          curl -fsS http://127.0.0.1:3001/health/ready | tee /tmp/ready.json
+          grep -q '"status":"ok"' /tmp/live.json
+          grep -q '"status":"ok"' /tmp/ready.json
+          ! grep -Ei 'password|postgres://|redis://' /tmp/live.json /tmp/ready.json
+      - name: Stop backend and compose without deleting volumes
+        if: always()
+        run: |
+          if [ -f /tmp/lh-backend.pid ]; then kill "$(cat /tmp/lh-backend.pid)" || true; fi
+          pnpm run infra:down
