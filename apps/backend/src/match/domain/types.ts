@@ -10,6 +10,17 @@ export type MatchStatus =
   | 'resolving'
   | 'completed';
 
+export type MatchPhase =
+  | 'lobby'
+  | 'ready_countdown'
+  | 'challenge_intro'
+  | 'challenge_active'
+  | 'round_result'
+  | 'completed'
+  | 'halted';
+
+export type RoundPhase = 'waiting_signal' | 'signal_active' | 'resolved';
+
 export type PlayerStatus = 'active' | 'spectator';
 export type Presence = 'connected' | 'disconnected';
 
@@ -95,6 +106,13 @@ export type PlayerState = {
   presence: Presence;
   submittedForCurrentChallenge: boolean;
   resumeTokenHash: string;
+  isBot?: boolean;
+  /**
+   * Internal join-acceptance bookkeeping (not public).
+   * Reserved seats start false; gateway finalizeJoin sets true after live
+   * lease + credentials. Bots are accepted immediately on server fill.
+   */
+  joinAccepted: boolean;
 };
 
 export type PlayerChallengeResolution = {
@@ -119,6 +137,12 @@ export type ChallengeRound = {
   deadlineAtMs: number;
   deadlineMonoMs: number;
   status: 'active' | 'resolved';
+  roundPhase: RoundPhase;
+  /** Private until signaled; after signal becomes public. */
+  signalToken: string | null;
+  signaledAtMs: number | null;
+  /** Private monotonic schedule for signal activation. */
+  signalAtMonoMs: number | null;
   submissions: Map<
     string,
     {
@@ -133,6 +157,15 @@ export type ChallengeRound = {
 export type MatchState = {
   matchId: string;
   status: MatchStatus;
+  phase: MatchPhase;
+  phaseDeadlineAtMs: number | null;
+  phaseDeadlineMonoMs: number | null;
+  roundNumber: number;
+  lastRoundResult: {
+    challengeInstanceId: string;
+    resolutions: PlayerChallengeResolution[];
+  } | null;
+  nextPhaseAtMs: number | null;
   revision: number;
   sequence: number;
   players: Map<string, PlayerState>;
@@ -175,6 +208,16 @@ export type DomainEvent =
       serverNowMs: number;
     }
   | {
+      kind: 'challenge_signal';
+      sequence: number;
+      revision: number;
+      serverTimestampMs: number;
+      challengeInstanceId: string;
+      signalToken: string;
+      signaledAtMs: number;
+      serverNowMs: number;
+    }
+  | {
       kind: 'challenge_resolved';
       sequence: number;
       revision: number;
@@ -213,7 +256,8 @@ export class DomainError extends Error {
       | 'ROUND_ALREADY_ACTIVE'
       | 'MATCH_COMPLETED'
       | 'UNSAFE_ZERO_SURVIVORS'
-      | 'PLAYER_NOT_FOUND',
+      | 'PLAYER_NOT_FOUND'
+      | 'DEV_ONLY_FORBIDDEN',
     message: string,
   ) {
     super(message);
@@ -251,4 +295,7 @@ export type PublicChallengeView = {
   startsAtMs: number;
   deadlineAtMs: number;
   durationMs: number;
+  roundPhase: RoundPhase;
+  signalToken?: string;
+  signaledAtMs?: number;
 };

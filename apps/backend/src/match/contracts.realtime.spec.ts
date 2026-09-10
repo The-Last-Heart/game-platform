@@ -4,6 +4,7 @@ import {
   REALTIME_SCHEMA_VERSION,
   challengeDurationMsSchema,
   parseClientCommand,
+  sessionAcceptedPayloadSchema,
   submitAnswerPayloadSchema,
 } from '@thelastheart/contracts';
 
@@ -21,6 +22,15 @@ describe('realtime contracts v1', () => {
       payload: { matchId: 'match-1' },
     });
     expect(command.type).toBe(MessageTypes.MatchJoin);
+  });
+
+  it('accepts a valid fill_dev_bots command', () => {
+    const command = parseClientCommand({
+      ...base,
+      type: MessageTypes.MatchFillDevBots,
+      payload: { matchId: 'match-1' },
+    });
+    expect(command.type).toBe(MessageTypes.MatchFillDevBots);
   });
 
   it('rejects missing envelope fields', () => {
@@ -94,5 +104,42 @@ describe('realtime contracts v1', () => {
       expect(err.messageKey.startsWith('errors.')).toBe(true);
       expect(err.messageKey.includes(' ')).toBe(false);
     }
+  });
+
+  it('session.accepted payload accepts only exact creator or player shapes', () => {
+    expect(
+      sessionAcceptedPayloadSchema.safeParse({
+        matchId: 'm1',
+        role: 'creator',
+      }).success,
+    ).toBe(true);
+    expect(
+      sessionAcceptedPayloadSchema.safeParse({
+        matchId: 'm1',
+        playerId: 'p1',
+        resumeToken: 'tok',
+      }).success,
+    ).toBe(true);
+    expect(
+      sessionAcceptedPayloadSchema.safeParse({
+        matchId: 'm1',
+        role: 'creator',
+        playerId: 'p1',
+      }).success,
+    ).toBe(false);
+    expect(
+      sessionAcceptedPayloadSchema.safeParse({
+        matchId: 'm1',
+        playerId: 'p1',
+        resumeToken: 'tok',
+        role: 'creator',
+      }).success,
+    ).toBe(false);
+    expect(
+      sessionAcceptedPayloadSchema.safeParse({
+        matchId: 'm1',
+        playerId: 'p1',
+      }).success,
+    ).toBe(false);
   });
 });

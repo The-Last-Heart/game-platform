@@ -22,7 +22,8 @@
     "infra:ps": "node ./scripts/docker-compose.mjs ps",
     "infra:validate": "node ./scripts/docker-compose.mjs config",
     "archive:review": "node ./scripts/create-review-archive.mjs --output ../the-last-heart-lh001d-review.zip",
-    "simulate:match": "node ./scripts/simulate-match.cjs"
+    "simulate:playable": "node ./scripts/simulate-playable-slice.cjs",
+    "simulate:match": "node ./scripts/simulate-playable-slice.cjs"
   },
   "pnpm": {
     "overrides": {

@@ -9,11 +9,13 @@ export const MessageTypes = {
   MatchResume: 'match.resume',
   MatchSubmitAnswer: 'match.submit_answer',
   MatchRequestSnapshot: 'match.request_snapshot',
+  MatchFillDevBots: 'match.fill_dev_bots',
   // Server events
   SessionAccepted: 'session.accepted',
   MatchSnapshot: 'match.snapshot',
   PlayerPresence: 'match.player_presence',
   ChallengeStarted: 'challenge.started',
+  ChallengeSignal: 'challenge.signal',
   ChallengeSubmissionAck: 'challenge.submission_ack',
   ChallengeResolved: 'challenge.resolved',
   MatchStateChanged: 'match.state_changed',
@@ -86,6 +88,12 @@ export const requestSnapshotPayloadSchema = z
   })
   .strict();
 
+export const fillDevBotsPayloadSchema = z
+  .object({
+    matchId: uuidLike,
+  })
+  .strict();
+
 export const clientCommandSchema = envelopeBaseSchema
   .extend({
     type: z.enum([
@@ -94,6 +102,7 @@ export const clientCommandSchema = envelopeBaseSchema
       MessageTypes.MatchResume,
       MessageTypes.MatchSubmitAnswer,
       MessageTypes.MatchRequestSnapshot,
+      MessageTypes.MatchFillDevBots,
     ]),
     commandId: uuidLike,
     payload: z.unknown(),
@@ -105,6 +114,7 @@ export const clientCommandSchema = envelopeBaseSchema
       [MessageTypes.MatchResume]: resumeMatchPayloadSchema,
       [MessageTypes.MatchSubmitAnswer]: submitAnswerPayloadSchema,
       [MessageTypes.MatchRequestSnapshot]: requestSnapshotPayloadSchema,
+      [MessageTypes.MatchFillDevBots]: fillDevBotsPayloadSchema,
     } as const;
     const schema = map[value.type];
     const parsed = schema.safeParse(value.payload);
@@ -122,6 +132,26 @@ export const challengeDurationMsSchema = z
   .int()
   .min(3000, 'challenge duration must be at least 3000ms')
   .max(8000, 'challenge duration must be at most 8000ms');
+
+export const matchPhaseSchema = z.enum([
+  'lobby',
+  'ready_countdown',
+  'challenge_intro',
+  'challenge_active',
+  'round_result',
+  'completed',
+  'halted',
+]);
+
+export type MatchPhase = z.infer<typeof matchPhaseSchema>;
+
+export const roundPhaseSchema = z.enum([
+  'waiting_signal',
+  'signal_active',
+  'resolved',
+]);
+
+export type RoundPhase = z.infer<typeof roundPhaseSchema>;
 
 export const playerPublicSchema = z
   .object({
@@ -150,6 +180,9 @@ export const publicChallengeSchema = z
     startsAtMs: z.number().int().nonnegative(),
     deadlineAtMs: z.number().int().nonnegative(),
     durationMs: challengeDurationMsSchema,
+    roundPhase: roundPhaseSchema,
+    signalToken: z.string().optional(),
+    signaledAtMs: z.number().int().nonnegative().optional(),
   })
   .strict()
   .superRefine((value, ctx) => {
@@ -168,6 +201,23 @@ export const publicChallengeSchema = z
     }
   });
 
+export const lastRoundResultSchema = z
+  .object({
+    challengeInstanceId: uuidLike,
+    resolutions: z.array(
+      z.object({
+        playerId: uuidLike,
+        outcome: z.enum(['success', 'failure', 'timeout', 'skipped_spectator']),
+        heartsDelta: z.number().int(),
+        energyDelta: z.number().int(),
+        heartsAfter: z.number().int().min(0).max(3),
+        energyAfter: z.number().int().min(0),
+        statusAfter: z.enum(['active', 'spectator']),
+      }).strict(),
+    ),
+  })
+  .strict();
+
 export const matchSnapshotPayloadSchema = z
   .object({
     matchId: uuidLike,
@@ -177,6 +227,12 @@ export const matchSnapshotPayloadSchema = z
       'resolving',
       'completed',
     ]),
+    phase: matchPhaseSchema,
+    phaseDeadlineAtMs: z.number().int().nullable(),
+    roundNumber: z.number().int().nonnegative(),
+    serverNowMs: z.number().int().nonnegative(),
+    lastRoundResult: lastRoundResultSchema.nullable(),
+    nextPhaseAtMs: z.number().int().nullable(),
     revision: z.number().int().positive(),
     sequence: z.number().int().nonnegative(),
     players: z.array(playerPublicSchema),
@@ -185,14 +241,28 @@ export const matchSnapshotPayloadSchema = z
   })
   .strict();
 
-export const sessionAcceptedPayloadSchema = z
+/** Creator match.create_dev acceptance — no player credentials. */
+export const sessionAcceptedCreatorPayloadSchema = z
   .object({
     matchId: uuidLike,
-    playerId: uuidLike.optional(),
-    resumeToken: nonEmpty.optional(),
-    role: z.enum(['creator']).optional(),
+    role: z.literal('creator'),
   })
   .strict();
+
+/** Player join/resume acceptance — full credentials, no creator role. */
+export const sessionAcceptedPlayerPayloadSchema = z
+  .object({
+    matchId: uuidLike,
+    playerId: uuidLike,
+    resumeToken: nonEmpty,
+  })
+  .strict();
+
+/** Mutually exclusive session.accepted payload shapes. */
+export const sessionAcceptedPayloadSchema = z.union([
+  sessionAcceptedCreatorPayloadSchema,
+  sessionAcceptedPlayerPayloadSchema,
+]);
 
 export const playerPresencePayloadSchema = z
   .object({
@@ -203,6 +273,15 @@ export const playerPresencePayloadSchema = z
   .strict();
 
 export const challengeStartedPayloadSchema = publicChallengeSchema;
+
+export const challengeSignalPayloadSchema = z
+  .object({
+    challengeInstanceId: uuidLike,
+    signalToken: nonEmpty,
+    signaledAtMs: z.number().int().nonnegative(),
+    serverNowMs: z.number().int().nonnegative(),
+  })
+  .strict();
 
 export const challengeSubmissionAckPayloadSchema = z
   .object({
@@ -268,6 +347,8 @@ export const protocolErrorPayloadSchema = z
     ]),
     // Translation key for client display — never a product sentence.
     messageKey: nonEmpty,
+    // Echo the client's commandId when the error is in response to a specific command.
+    commandId: uuidLike.optional(),
   })
   .strict();
 
@@ -279,6 +360,8 @@ export const serverEventSchema = z.discriminatedUnion('type', [
   serverEventBase.extend({
     type: z.literal(MessageTypes.SessionAccepted),
     payload: sessionAcceptedPayloadSchema,
+    // Required for session.accepted (overrides optional from envelope base).
+    commandId: uuidLike,
   }),
   serverEventBase.extend({
     type: z.literal(MessageTypes.MatchSnapshot),
@@ -293,8 +376,14 @@ export const serverEventSchema = z.discriminatedUnion('type', [
     payload: challengeStartedPayloadSchema,
   }),
   serverEventBase.extend({
+    type: z.literal(MessageTypes.ChallengeSignal),
+    payload: challengeSignalPayloadSchema,
+  }),
+  serverEventBase.extend({
     type: z.literal(MessageTypes.ChallengeSubmissionAck),
     payload: challengeSubmissionAckPayloadSchema,
+    // Required for challenge.submission_ack (overrides optional from envelope base).
+    commandId: uuidLike,
   }),
   serverEventBase.extend({
     type: z.literal(MessageTypes.ChallengeResolved),
@@ -388,7 +477,8 @@ function isClientCommandType(type: string): type is ClientCommand['type'] {
     type === MessageTypes.MatchJoin ||
     type === MessageTypes.MatchResume ||
     type === MessageTypes.MatchSubmitAnswer ||
-    type === MessageTypes.MatchRequestSnapshot
+    type === MessageTypes.MatchRequestSnapshot ||
+    type === MessageTypes.MatchFillDevBots
   );
 }
 

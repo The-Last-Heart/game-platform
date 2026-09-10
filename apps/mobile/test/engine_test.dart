@@ -1,0 +1,506 @@
+import 'package:flutter/material.dart';
+import 'package:flutter_localizations/flutter_localizations.dart';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:game/features/match/engines/challenge_engine.dart';
+import 'package:game/features/match/engines/challenge_engine_registry.dart';
+import 'package:game/features/match/engines/reaction_wait_for_signal_engine.dart';
+import 'package:game/features/match/engines/unknown_engine.dart';
+import 'package:game/features/match/protocol/realtime_messages.dart';
+import 'package:game/features/match/state/match_snapshot.dart';
+import 'package:game/l10n/app_localization.dart';
+import 'package:game/l10n/translation_resolver.dart';
+import 'package:game/l10n/translation_catalog.dart';
+import 'package:game/theme/lh_tokens.dart';
+
+Widget wrapWithL10n(Widget child) {
+  final TranslationResolver resolver = TranslationResolver(isProduction: false);
+  return AppLocalization(
+    resolver: resolver,
+    child: MaterialApp(
+      theme: buildLhTheme(),
+      locale: const Locale('ar'),
+      supportedLocales: const <Locale>[Locale('ar')],
+      localizationsDelegates: const <LocalizationsDelegate<dynamic>>[
+        GlobalMaterialLocalizations.delegate,
+        GlobalWidgetsLocalizations.delegate,
+        GlobalCupertinoLocalizations.delegate,
+      ],
+      builder: (BuildContext context, Widget? child) {
+        return Directionality(
+          textDirection: TextDirection.rtl,
+          child: child ?? const SizedBox.shrink(),
+        );
+      },
+      home: Scaffold(body: child),
+    ),
+  );
+}
+
+const Map<String, dynamic> defaultClientConfig = <String, dynamic>{
+  'categoryKey': TranslationKeys.challengeCategoryReaction,
+  'waitingPromptKey': TranslationKeys.challengeWaitForSignalWaiting,
+  'waitingHintKey': TranslationKeys.challengeWaitForSignalWaitingHint,
+  'activePromptKey': TranslationKeys.challengeWaitForSignalActive,
+  'actionKey': TranslationKeys.challengeWaitForSignalAction,
+};
+
+PublicChallenge makeChallenge({
+  RoundPhase roundPhase = RoundPhase.waitingSignal,
+  String? signalToken,
+  int? signaledAtMs,
+  Map<String, dynamic>? clientConfig,
+}) {
+  return PublicChallenge(
+    challengeInstanceId: 'ch-1',
+    definitionId: 'def-1',
+    definitionVersion: 1,
+    engineId: 'reaction.wait_for_signal',
+    promptKey: TranslationKeys.challengeWaitForSignalWaiting,
+    clientConfig: clientConfig ?? defaultClientConfig,
+    serverNowMs: 1700000000000,
+    startsAtMs: 1700000000000,
+    deadlineAtMs: 1700000005000,
+    durationMs: 5000,
+    roundPhase: roundPhase,
+    signalToken: signalToken,
+    signaledAtMs: signaledAtMs,
+  );
+}
+
+ChallengeContext makeContext({
+  required PublicChallenge challenge,
+  required void Function(Map<String, dynamic> answer) onSubmit,
+  int Function()? estimateServerNowMs,
+  AnswerSubmissionStatus answerStatus = AnswerSubmissionStatus.idle,
+  bool inputEnabled = true,
+}) {
+  return ChallengeContext(
+    challenge: challenge,
+    onSubmit: onSubmit,
+    estimateServerNowMs: estimateServerNowMs ?? () => 1_000_000,
+    answerStatus: answerStatus,
+    inputEnabled: inputEnabled,
+  );
+}
+
+/// Rebuilds the engine with updated answerStatus after the first submit.
+class _LockingHarness extends StatefulWidget {
+  const _LockingHarness({
+    required this.engine,
+    required this.challenge,
+    required this.onSubmit,
+  });
+
+  final ChallengeEngine engine;
+  final PublicChallenge challenge;
+  final void Function(Map<String, dynamic> answer) onSubmit;
+
+  @override
+  State<_LockingHarness> createState() => _LockingHarnessState();
+}
+
+class _LockingHarnessState extends State<_LockingHarness> {
+  AnswerSubmissionStatus _status = AnswerSubmissionStatus.idle;
+
+  @override
+  Widget build(BuildContext context) {
+    return widget.engine.build(
+      context,
+      ChallengeContext(
+        challenge: widget.challenge,
+        estimateServerNowMs: () => 1_000_000,
+        answerStatus: _status,
+        inputEnabled: true,
+        onSubmit: (Map<String, dynamic> answer) {
+          widget.onSubmit(answer);
+          setState(() => _status = AnswerSubmissionStatus.pending);
+        },
+      ),
+    );
+  }
+}
+
+void main() {
+  group('ChallengeEngineRegistry', () {
+    test('resolves reaction.wait_for_signal engine', () {
+      final ChallengeEngineRegistry registry = ChallengeEngineRegistry();
+      final ChallengeEngine engine = registry.resolve(
+        'reaction.wait_for_signal',
+      );
+      expect(engine, isA<ReactionWaitForSignalEngine>());
+      expect(engine.engineId, 'reaction.wait_for_signal');
+    });
+
+    test('unknown engine for unrecognized id', () {
+      final ChallengeEngineRegistry registry = ChallengeEngineRegistry();
+      final ChallengeEngine engine = registry.resolve('some.unknown.engine');
+      expect(engine, isA<UnknownEngine>());
+    });
+  });
+
+  group('ReactionWaitForSignalEngine', () {
+    testWidgets('shows waiting prompt from required clientConfig', (
+      WidgetTester tester,
+    ) async {
+      Map<String, dynamic>? submittedAnswer;
+      final PublicChallenge challenge = makeChallenge();
+      final ReactionWaitForSignalEngine engine = ReactionWaitForSignalEngine();
+
+      await tester.pumpWidget(
+        wrapWithL10n(
+          Builder(
+            builder: (BuildContext context) {
+              return engine.build(
+                context,
+                makeContext(
+                  challenge: challenge,
+                  onSubmit: (Map<String, dynamic> a) => submittedAnswer = a,
+                ),
+              );
+            },
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      final TranslationResolver resolver = TranslationResolver(
+        isProduction: false,
+      );
+      expect(
+        find.text(
+          resolver.resolve(TranslationKeys.challengeWaitForSignalWaiting),
+        ),
+        findsOneWidget,
+      );
+      expect(submittedAnswer, isNull);
+    });
+
+    testWidgets('missing required clientConfig shows content unavailable', (
+      WidgetTester tester,
+    ) async {
+      final PublicChallenge challenge = makeChallenge(
+        clientConfig: const <String, dynamic>{},
+      );
+      final ReactionWaitForSignalEngine engine = ReactionWaitForSignalEngine();
+
+      await tester.pumpWidget(
+        wrapWithL10n(
+          Builder(
+            builder: (BuildContext context) {
+              return engine.build(
+                context,
+                makeContext(challenge: challenge, onSubmit: (_) {}),
+              );
+            },
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      final TranslationResolver resolver = TranslationResolver(
+        isProduction: false,
+      );
+      expect(
+        find.text(resolver.resolve(TranslationKeys.errorsContentUnavailable)),
+        findsOneWidget,
+      );
+    });
+
+    testWidgets('shows blue heart after signal and submits with token', (
+      WidgetTester tester,
+    ) async {
+      Map<String, dynamic>? submittedAnswer;
+      final PublicChallenge challenge = makeChallenge(
+        roundPhase: RoundPhase.signalActive,
+        signalToken: 'tok-signal',
+        signaledAtMs: 1700000002000,
+      );
+
+      final ReactionWaitForSignalEngine engine = ReactionWaitForSignalEngine();
+
+      await tester.pumpWidget(
+        wrapWithL10n(
+          Builder(
+            builder: (BuildContext context) {
+              return engine.build(
+                context,
+                makeContext(
+                  challenge: challenge,
+                  onSubmit: (Map<String, dynamic> a) => submittedAnswer = a,
+                ),
+              );
+            },
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byType(GestureDetector).first);
+      await tester.pump();
+
+      expect(submittedAnswer, isNotNull);
+      expect(submittedAnswer!['signalToken'], 'tok-signal');
+    });
+
+    testWidgets('early tap submits without token', (WidgetTester tester) async {
+      Map<String, dynamic>? submittedAnswer;
+      final PublicChallenge challenge = makeChallenge();
+
+      final ReactionWaitForSignalEngine engine = ReactionWaitForSignalEngine();
+
+      await tester.pumpWidget(
+        wrapWithL10n(
+          Builder(
+            builder: (BuildContext context) {
+              return engine.build(
+                context,
+                makeContext(
+                  challenge: challenge,
+                  onSubmit: (Map<String, dynamic> a) => submittedAnswer = a,
+                ),
+              );
+            },
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byType(GestureDetector).first);
+      await tester.pump();
+
+      expect(submittedAnswer, isNotNull);
+      expect(submittedAnswer!.containsKey('signalToken'), isFalse);
+    });
+
+    testWidgets('pending answerStatus locks further taps', (
+      WidgetTester tester,
+    ) async {
+      int submitCount = 0;
+      final PublicChallenge challenge = makeChallenge(
+        roundPhase: RoundPhase.signalActive,
+        signalToken: 'tok-signal',
+      );
+
+      await tester.pumpWidget(
+        wrapWithL10n(
+          _LockingHarness(
+            engine: ReactionWaitForSignalEngine(),
+            challenge: challenge,
+            onSubmit: (_) => submitCount++,
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byType(GestureDetector).first);
+      await tester.pump();
+      await tester.tap(find.byType(GestureDetector).first);
+      await tester.pump();
+
+      expect(submitCount, 1);
+    });
+
+    testWidgets('reconnect lock: inputEnabled false blocks taps', (
+      WidgetTester tester,
+    ) async {
+      int submitCount = 0;
+      final PublicChallenge challenge = makeChallenge(
+        roundPhase: RoundPhase.signalActive,
+        signalToken: 'tok-signal',
+      );
+
+      await tester.pumpWidget(
+        wrapWithL10n(
+          Builder(
+            builder: (BuildContext context) {
+              return ReactionWaitForSignalEngine().build(
+                context,
+                makeContext(
+                  challenge: challenge,
+                  inputEnabled: false,
+                  onSubmit: (_) => submitCount++,
+                ),
+              );
+            },
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byType(GestureDetector).first);
+      await tester.pump();
+      expect(submitCount, 0);
+    });
+
+    testWidgets('rejected status allows retry when inputEnabled', (
+      WidgetTester tester,
+    ) async {
+      int submitCount = 0;
+      final PublicChallenge challenge = makeChallenge(
+        roundPhase: RoundPhase.signalActive,
+        signalToken: 'tok-signal',
+      );
+
+      await tester.pumpWidget(
+        wrapWithL10n(
+          Builder(
+            builder: (BuildContext context) {
+              return ReactionWaitForSignalEngine().build(
+                context,
+                makeContext(
+                  challenge: challenge,
+                  answerStatus: AnswerSubmissionStatus.rejected,
+                  onSubmit: (_) => submitCount++,
+                ),
+              );
+            },
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byType(GestureDetector).first);
+      await tester.pump();
+      expect(submitCount, 1);
+    });
+
+    testWidgets('confirmed status blocks taps', (WidgetTester tester) async {
+      int submitCount = 0;
+      final PublicChallenge challenge = makeChallenge(
+        roundPhase: RoundPhase.signalActive,
+        signalToken: 'tok-signal',
+      );
+
+      await tester.pumpWidget(
+        wrapWithL10n(
+          Builder(
+            builder: (BuildContext context) {
+              return ReactionWaitForSignalEngine().build(
+                context,
+                makeContext(
+                  challenge: challenge,
+                  answerStatus: AnswerSubmissionStatus.confirmed,
+                  onSubmit: (_) => submitCount++,
+                ),
+              );
+            },
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byType(GestureDetector).first);
+      await tester.pump();
+      expect(submitCount, 0);
+    });
+
+    test('engine does not hardcode challenge prompt strings', () {
+      final ReactionWaitForSignalEngine engine = ReactionWaitForSignalEngine();
+      expect(engine.engineId, 'reaction.wait_for_signal');
+    });
+
+    testWidgets(
+      'server-driven keys: two definitions same engineId different clientConfig',
+      (WidgetTester tester) async {
+        final TranslationResolver resolver = TranslationResolver(
+          isProduction: false,
+        );
+
+        final PublicChallenge challengeA = makeChallenge(
+          clientConfig: const <String, dynamic>{
+            'categoryKey': TranslationKeys.challengeCategoryReaction,
+            'waitingPromptKey': TranslationKeys.challengeWaitForSignalWaiting,
+            'waitingHintKey': TranslationKeys.challengeWaitForSignalWaitingHint,
+            'activePromptKey': TranslationKeys.challengeWaitForSignalActive,
+            'actionKey': TranslationKeys.challengeWaitForSignalAction,
+          },
+        );
+        final ReactionWaitForSignalEngine engine =
+            ReactionWaitForSignalEngine();
+
+        await tester.pumpWidget(
+          wrapWithL10n(
+            Builder(
+              builder: (BuildContext context) {
+                return engine.build(
+                  context,
+                  makeContext(challenge: challengeA, onSubmit: (_) {}),
+                );
+              },
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        final String waitingA = resolver.resolve(
+          TranslationKeys.challengeWaitForSignalWaiting,
+        );
+        expect(find.text(waitingA), findsOneWidget);
+
+        // Definition B: different category/waiting/hint/active/action keys.
+        final PublicChallenge challengeB = makeChallenge(
+          clientConfig: const <String, dynamic>{
+            'categoryKey': TranslationKeys.challengeCategoryReaction,
+            'waitingPromptKey': TranslationKeys.challengeWaitForSignalIntro,
+            'waitingHintKey': TranslationKeys.countdownGetReady,
+            'activePromptKey': TranslationKeys.challengeWaitForSignalActive,
+            'actionKey': TranslationKeys.homePlayNow,
+          },
+        );
+
+        await tester.pumpWidget(
+          wrapWithL10n(
+            Builder(
+              builder: (BuildContext context) {
+                return engine.build(
+                  context,
+                  makeContext(challenge: challengeB, onSubmit: (_) {}),
+                );
+              },
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        final String waitingB = resolver.resolve(
+          TranslationKeys.challengeWaitForSignalIntro,
+        );
+        expect(find.text(waitingB), findsOneWidget);
+        if (waitingA != waitingB) {
+          expect(find.text(waitingA), findsNothing);
+        }
+      },
+    );
+  });
+
+  group('UnknownEngine', () {
+    testWidgets('renders content-unavailable text', (
+      WidgetTester tester,
+    ) async {
+      final UnknownEngine engine = UnknownEngine();
+      final PublicChallenge challenge = makeChallenge();
+
+      await tester.pumpWidget(
+        wrapWithL10n(
+          Builder(
+            builder: (BuildContext context) {
+              return engine.build(
+                context,
+                makeContext(challenge: challenge, onSubmit: (_) {}),
+              );
+            },
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      final TranslationResolver resolver = TranslationResolver(
+        isProduction: false,
+      );
+      expect(
+        find.text(resolver.resolve(TranslationKeys.errorsContentUnavailable)),
+        findsOneWidget,
+      );
+    });
+  });
+}

@@ -4,6 +4,9 @@ import 'package:game/l10n/bootstrap_catalog.dart';
 import 'package:game/l10n/locale_metadata.dart';
 import 'package:game/l10n/translation_catalog.dart';
 import 'package:game/l10n/translation_resolver.dart';
+import 'package:game/features/match/session/session_store.dart';
+import 'package:game/features/match/transport/fake_transport.dart';
+import 'package:game/features/match/ui/home_dev_screen.dart';
 import 'package:game/main.dart';
 
 TranslationCatalog catalog({
@@ -146,6 +149,45 @@ void main() {
       final TranslationCatalog bootstrap = createBootstrapCatalog();
       for (final String locale in <String>['ar', 'en']) {
         for (final String key in requiredBootstrapKeys) {
+          final String? value = bootstrap.lookup(locale, key);
+          expect(value, isNotNull, reason: '$locale:$key');
+          expect(value!.trim(), isNotEmpty, reason: '$locale:$key blank');
+        }
+      }
+    });
+
+    test('LH-003 challenge keys exist in bootstrap catalog', () {
+      final TranslationCatalog bootstrap = createBootstrapCatalog();
+      const List<String> challengeKeys = <String>[
+        TranslationKeys.challengeWaitForSignalIntro,
+        TranslationKeys.challengeCategoryReaction,
+        TranslationKeys.challengeWaitForSignalWaiting,
+        TranslationKeys.challengeWaitForSignalWaitingHint,
+        TranslationKeys.challengeWaitForSignalActive,
+        TranslationKeys.challengeWaitForSignalAction,
+      ];
+      for (final String locale in <String>['ar', 'en']) {
+        for (final String key in challengeKeys) {
+          final String? value = bootstrap.lookup(locale, key);
+          expect(value, isNotNull, reason: '$locale:$key');
+          expect(value!.trim(), isNotEmpty, reason: '$locale:$key blank');
+        }
+      }
+    });
+
+    test('LH-003 chrome keys exist in bootstrap catalog', () {
+      final TranslationCatalog bootstrap = createBootstrapCatalog();
+      const List<String> chromeKeys = <String>[
+        TranslationKeys.homePlayNow,
+        TranslationKeys.lobbyPrivateRoom,
+        TranslationKeys.countdownAllReady,
+        TranslationKeys.resultSurvived,
+        TranslationKeys.spectatorMatchOngoing,
+        TranslationKeys.winnerYouLastHeart,
+        TranslationKeys.winnerPlayAgain,
+      ];
+      for (final String locale in <String>['ar', 'en']) {
+        for (final String key in chromeKeys) {
           final String? value = bootstrap.lookup(locale, key);
           expect(value, isNotNull, reason: '$locale:$key');
           expect(value!.trim(), isNotEmpty, reason: '$locale:$key blank');
@@ -365,24 +407,24 @@ void main() {
       },
     );
 
-    test('terminal content-unavailable fallback is finite and nonrecursive', () {
-      final TranslationCatalog emptyish = catalog(
-        version: 'v1',
-        locales: const <String, LocaleMetadata>{'ar': defaultMobileLocale},
-        entries: const <String, Map<String, String>>{
-          'ar': <String, String>{
-            // Deliberately omit content-unavailable so resolver must terminate.
-            TranslationKeys.appTitle: 'عنوان',
+    test(
+      'terminal content-unavailable fallback is finite and nonrecursive',
+      () {
+        final TranslationCatalog emptyish = catalog(
+          version: 'v1',
+          locales: const <String, LocaleMetadata>{'ar': defaultMobileLocale},
+          entries: const <String, Map<String, String>>{
+            'ar': <String, String>{TranslationKeys.appTitle: 'عنوان'},
           },
-        },
-      );
-      final String release = TranslationResolver(
-        publishedCatalog: emptyish,
-        isProduction: true,
-      ).resolve('totally.missing');
-      expect(release, isNot(contains('totally.missing')));
-      expect(release.trim(), isNotEmpty);
-    });
+        );
+        final String release = TranslationResolver(
+          publishedCatalog: emptyish,
+          isProduction: true,
+        ).resolve('totally.missing');
+        expect(release, isNot(contains('totally.missing')));
+        expect(release.trim(), isNotEmpty);
+      },
+    );
 
     test('interpolation requires all named parameters', () {
       final TranslationCatalog published = catalog(
@@ -502,30 +544,55 @@ void main() {
     });
   });
 
-  group('FoundationScreen', () {
+  group('HomeDevScreen', () {
     testWidgets('startup labels resolve through translation keys', (
       WidgetTester tester,
     ) async {
       final TranslationResolver resolver = TranslationResolver(
         isProduction: false,
       );
-      await tester.pumpWidget(TheLastHeartApp(translationResolver: resolver));
+      final FakeTransport transport = FakeTransport();
+      final MemorySessionStore store = MemorySessionStore();
+      await tester.pumpWidget(
+        TheLastHeartApp(
+          translationResolver: resolver,
+          transport: transport,
+          sessionStore: store,
+        ),
+      );
       await tester.pumpAndSettle();
 
       expect(
         find.text(resolver.resolve(TranslationKeys.appTitle)),
         findsOneWidget,
       );
-      expect(
-        find.text(resolver.resolve(TranslationKeys.foundationReady)),
-        findsOneWidget,
-      );
       expect(find.text('app.title'), findsNothing);
 
-      final BuildContext context = tester.element(
-        find.byType(FoundationScreen),
-      );
+      final BuildContext context = tester.element(find.byType(HomeDevScreen));
       expect(Directionality.of(context), TextDirection.rtl);
+    });
+
+    testWidgets('dev play button visible in debug mode', (
+      WidgetTester tester,
+    ) async {
+      final TranslationResolver resolver = TranslationResolver(
+        isProduction: false,
+      );
+      final FakeTransport transport = FakeTransport();
+      final MemorySessionStore store = MemorySessionStore();
+      await tester.pumpWidget(
+        TheLastHeartApp(
+          translationResolver: resolver,
+          transport: transport,
+          sessionStore: store,
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(
+        find.text(resolver.resolve(TranslationKeys.homePlayNow)),
+        findsOneWidget,
+      );
     });
   });
 }

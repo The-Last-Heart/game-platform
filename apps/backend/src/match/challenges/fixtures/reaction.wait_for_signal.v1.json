@@ -1,0 +1,20 @@
+{
+  "definitionId": "reaction.wait_for_signal.dev",
+  "definitionVersion": 1,
+  "engineId": "reaction.wait_for_signal",
+  "durationMs": 5000,
+  "heartPenaltyOnFailure": 1,
+  "energyRewardOnSuccess": 1,
+  "promptKey": "challenge.wait_for_signal.intro",
+  "choiceKeys": [],
+  "clientConfig": {
+    "categoryKey": "challenge.category.reaction",
+    "waitingPromptKey": "challenge.wait_for_signal.waiting",
+    "waitingHintKey": "challenge.wait_for_signal.waiting_hint",
+    "activePromptKey": "challenge.wait_for_signal.active",
+    "actionKey": "challenge.wait_for_signal.action"
+  },
+  "serverConfig": {
+    "signalDelayMs": 1500
+  }
+}

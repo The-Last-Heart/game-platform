@@ -24,6 +24,8 @@ import { MatchService, type MatchBroadcast } from '../services/match.service';
 type SocketState = {
   playerId?: string;
   matchId?: string;
+  /** Set synchronously on disconnect so pending binds cannot race. */
+  disconnected?: boolean;
 };
 
 const MAX_MESSAGE_BYTES = 16_384;
@@ -49,6 +51,14 @@ export class MatchGateway
   private unsubscribe: (() => void) | undefined;
   /** `${matchId}:${playerId}` -> current owning socket id */
   private readonly connectionLeases = new Map<string, string>();
+  /**
+   * Per-socket serialization for identity-changing commands
+   * (create_dev / join / resume). Errors must not poison the chain.
+   */
+  private readonly socketIdentityQueues = new Map<string, Promise<unknown>>();
+  private disconnectHookForTests: ((socketId: string) => void) | undefined;
+  /** Test-only: pause clearClientBinding after ownership check, before disconnect. */
+  private clearBindingBarrierForTests: (() => Promise<void>) | undefined;
 
   constructor(private readonly matches: MatchService) {}
 
@@ -68,14 +78,35 @@ export class MatchGateway
 
   async handleDisconnect(client: Socket): Promise<void> {
     const state = client.data as SocketState;
-    if (state.matchId && state.playerId) {
-      const leaseKey = this.leaseKey(state.matchId, state.playerId);
-      // Only the socket that currently owns the lease may mark disconnected.
-      if (this.connectionLeases.get(leaseKey) === client.id) {
-        this.connectionLeases.delete(leaseKey);
-        await this.matches.markDisconnected(state.matchId, state.playerId);
+    // Mark before any await so in-flight identity handlers cannot bind afterward.
+    state.disconnected = true;
+    this.disconnectHookForTests?.(client.id);
+
+    const matchId = state.matchId;
+    const playerId = state.playerId;
+    if (matchId && playerId) {
+      const key = this.leaseKey(matchId, playerId);
+      // Lease-owner-aware: only disconnect while this socket still owns the lease.
+      // Holding the lease until after the presence write prevents a concurrent
+      // resume from being overwritten by a stale disconnect.
+      if (this.connectionLeases.get(key) === client.id) {
+        await this.matches.markDisconnected(matchId, playerId, {
+          stillOwnsLease: () => this.connectionLeases.get(key) === client.id,
+        });
+        if (this.connectionLeases.get(key) === client.id) {
+          this.connectionLeases.delete(key);
+        }
       }
     }
+
+    // Drop any residual leases for this socket (never leave ghost owners).
+    for (const [key, socketId] of this.connectionLeases) {
+      if (socketId === client.id) {
+        this.connectionLeases.delete(key);
+      }
+    }
+
+    this.socketIdentityQueues.delete(client.id);
     this.logger.log({
       event: 'socket_disconnected',
       socketId: client.id,
@@ -86,6 +117,7 @@ export class MatchGateway
     this.unsubscribe?.();
     this.unsubscribe = undefined;
     this.connectionLeases.clear();
+    this.socketIdentityQueues.clear();
     if (this.server) {
       await new Promise<void>((resolve) => {
         void this.server.close(() => resolve());
@@ -98,6 +130,7 @@ export class MatchGateway
     @ConnectedSocket() client: Socket,
     @MessageBody() body: unknown,
   ): Promise<void> {
+    let commandId: string | undefined;
     try {
       const size = Buffer.byteLength(JSON.stringify(body ?? {}), 'utf8');
       if (size > MAX_MESSAGE_BYTES) {
@@ -118,25 +151,31 @@ export class MatchGateway
         );
         return;
       }
-      const commandId = command.commandId;
+      commandId = command.commandId;
       switch (command.type) {
         case MessageTypes.MatchCreateDev:
-          await this.handleCreateDev(client, commandId, command.messageId);
+          await this.enqueueIdentity(client, () =>
+            this.handleCreateDev(client, commandId!, command.messageId),
+          );
           break;
         case MessageTypes.MatchJoin:
-          await this.handleJoin(
-            client,
-            commandId,
-            command.messageId,
-            (command.payload as { matchId: string }).matchId,
+          await this.enqueueIdentity(client, () =>
+            this.handleJoin(
+              client,
+              commandId!,
+              command.messageId,
+              (command.payload as { matchId: string }).matchId,
+            ),
           );
           break;
         case MessageTypes.MatchResume:
-          await this.handleResume(
-            client,
-            commandId,
-            command.messageId,
-            command.payload as { matchId: string; resumeToken: string },
+          await this.enqueueIdentity(client, () =>
+            this.handleResume(
+              client,
+              commandId!,
+              command.messageId,
+              command.payload as { matchId: string; resumeToken: string },
+            ),
           );
           break;
         case MessageTypes.MatchSubmitAnswer:
@@ -158,6 +197,14 @@ export class MatchGateway
             (command.payload as { matchId: string }).matchId,
           );
           break;
+        case MessageTypes.MatchFillDevBots:
+          await this.handleFillDevBots(
+            client,
+            commandId,
+            command.messageId,
+            (command.payload as { matchId: string }).matchId,
+          );
+          break;
         default:
           this.emitError(
             client,
@@ -167,18 +214,20 @@ export class MatchGateway
       }
     } catch (error) {
       if (error instanceof ProtocolValidationError) {
-        this.emitError(client, error.code, error.messageKey);
+        this.emitError(client, error.code, error.messageKey, { commandId });
         return;
       }
       if (error instanceof DomainError) {
-        this.emitDomainError(client, error);
+        this.emitDomainError(client, error, commandId);
         return;
       }
       this.logger.error({
         event: 'command_failed',
         category: error instanceof Error ? error.name : 'UnknownError',
       });
-      this.emitError(client, 'INTERNAL_ERROR', 'errors.protocol.internal');
+      this.emitError(client, 'INTERNAL_ERROR', 'errors.protocol.internal', {
+        commandId,
+      });
     }
   }
 
@@ -187,7 +236,18 @@ export class MatchGateway
     commandId: string,
     correlationId: string,
   ): Promise<void> {
+    if (this.isSocketGone(client)) {
+      return;
+    }
+    await this.clearClientBinding(client);
+    // Disconnect during previous-binding cleanup must not create a new match.
+    if (this.isSocketGone(client)) {
+      return;
+    }
     const created = await this.matches.createDevMatch();
+    if (this.isSocketGone(client)) {
+      return;
+    }
     this.emitToClient(
       client,
       MessageTypes.SessionAccepted,
@@ -211,16 +271,26 @@ export class MatchGateway
     correlationId: string,
     matchId: string,
   ): Promise<void> {
-    if (!this.ensureUnboundOrSameMatch(client, matchId)) {
-      this.emitError(client, 'UNAUTHORIZED', 'errors.protocol.unauthorized');
+    if (this.isSocketGone(client)) {
+      return;
+    }
+    // Bound sockets may not join as an additional/new player (same or other match).
+    if (!this.ensureUnbound(client)) {
+      this.emitError(client, 'UNAUTHORIZED', 'errors.protocol.unauthorized', {
+        commandId,
+      });
       return;
     }
 
-    // Domain join first so lobby-fill broadcasts go only to already-bound
-    // room members. Joiner receives session.accepted then an authoritative
-    // snapshot (may miss earlier room events).
     const joined = await this.matches.joinMatch(matchId);
-    this.bindSession(client, matchId, joined.playerId);
+    if (this.isSocketGone(client)) {
+      await this.matches.abandonOrphanedJoin(matchId, joined.playerId);
+      return;
+    }
+    if (!this.tryBindSession(client, matchId, joined.playerId)) {
+      await this.matches.abandonOrphanedJoin(matchId, joined.playerId);
+      return;
+    }
     await client.join(this.room(matchId));
 
     this.emitToClient(
@@ -229,7 +299,6 @@ export class MatchGateway
       {
         matchId,
         playerId: joined.playerId,
-        // Resume token only to the owning socket — never broadcast.
         resumeToken: joined.resumeToken,
       },
       { commandId, correlationId, matchId },
@@ -240,6 +309,24 @@ export class MatchGateway
       matchId,
       sequence: joined.snapshot.sequence,
     });
+
+    // Countdown starts only after live socket has lease, room, and credentials,
+    // and only once every seated player has been individually finalized.
+    if (this.isSocketGone(client)) {
+      this.releaseLeaseIfOwned(client, matchId, joined.playerId);
+      await this.matches.abandonOrphanedJoin(matchId, joined.playerId);
+      return;
+    }
+    const leaseKey = this.leaseKey(matchId, joined.playerId);
+    await this.matches.finalizeJoin(matchId, joined.playerId, {
+      stillOwnsLease: () => this.connectionLeases.get(leaseKey) === client.id,
+    });
+    // Only abandon when no live lease owner remains. If another socket took
+    // the lease (e.g. resume), leave the reserved player for that owner.
+    const owner = this.connectionLeases.get(leaseKey);
+    if (owner == null) {
+      await this.matches.abandonOrphanedJoin(matchId, joined.playerId);
+    }
   }
 
   private async handleResume(
@@ -248,16 +335,39 @@ export class MatchGateway
     correlationId: string,
     payload: { matchId: string; resumeToken: string },
   ): Promise<void> {
-    if (!this.ensureUnboundOrSameMatch(client, payload.matchId)) {
-      this.emitError(client, 'UNAUTHORIZED', 'errors.protocol.unauthorized');
+    if (this.isSocketGone(client)) {
+      return;
+    }
+    const state = client.data as SocketState;
+    // Bound socket may only resume within its current match; expectedPlayerId
+    // prevents resuming as a different player (no token rotate for the other).
+    if (state.matchId && state.matchId !== payload.matchId) {
+      this.emitError(client, 'UNAUTHORIZED', 'errors.protocol.unauthorized', {
+        commandId,
+      });
+      return;
+    }
+    if (state.playerId && !state.matchId) {
+      this.emitError(client, 'UNAUTHORIZED', 'errors.protocol.unauthorized', {
+        commandId,
+      });
       return;
     }
 
-    const resumed = await this.matches.resumeMatch(
-      payload.matchId,
-      payload.resumeToken,
-    );
-    this.bindSession(client, payload.matchId, resumed.playerId);
+    const resumed = await this.matches.resumeMatch({
+      matchId: payload.matchId,
+      resumeToken: payload.resumeToken,
+      commandId,
+      expectedPlayerId: state.playerId,
+    });
+    if (this.isSocketGone(client)) {
+      await this.matches.markDisconnected(payload.matchId, resumed.playerId);
+      return;
+    }
+    if (!this.tryBindSession(client, payload.matchId, resumed.playerId)) {
+      await this.matches.markDisconnected(payload.matchId, resumed.playerId);
+      return;
+    }
     await client.join(this.room(payload.matchId));
 
     this.emitToClient(
@@ -266,7 +376,6 @@ export class MatchGateway
       {
         matchId: payload.matchId,
         playerId: resumed.playerId,
-        // Rotated token — private to this socket only.
         resumeToken: resumed.resumeToken,
       },
       { commandId, correlationId, matchId: payload.matchId },
@@ -276,6 +385,23 @@ export class MatchGateway
       correlationId,
       matchId: payload.matchId,
       sequence: resumed.snapshot.sequence,
+    });
+
+    // Resume of an unaccepted reserved seat must finalize after live bind +
+    // credentials (idempotent when already accepted).
+    if (this.isSocketGone(client)) {
+      await this.matches.markDisconnected(payload.matchId, resumed.playerId, {
+        stillOwnsLease: () =>
+          this.connectionLeases.get(
+            this.leaseKey(payload.matchId, resumed.playerId),
+          ) === client.id,
+      });
+      return;
+    }
+    const resumeLeaseKey = this.leaseKey(payload.matchId, resumed.playerId);
+    await this.matches.finalizeJoin(payload.matchId, resumed.playerId, {
+      stillOwnsLease: () =>
+        this.connectionLeases.get(resumeLeaseKey) === client.id,
     });
   }
 
@@ -287,14 +413,17 @@ export class MatchGateway
   ): Promise<void> {
     const state = client.data as SocketState;
     if (!state.matchId || !state.playerId) {
-      this.emitError(client, 'UNAUTHORIZED', 'errors.protocol.unauthorized');
+      this.emitError(client, 'UNAUTHORIZED', 'errors.protocol.unauthorized', {
+        commandId,
+      });
       return;
     }
     if (!this.ownsLease(client, state.matchId, state.playerId)) {
-      this.emitError(client, 'UNAUTHORIZED', 'errors.protocol.unauthorized');
+      this.emitError(client, 'UNAUTHORIZED', 'errors.protocol.unauthorized', {
+        commandId,
+      });
       return;
     }
-    // Never log answer payloads.
     const result = await this.matches.submitAnswer({
       matchId: state.matchId,
       playerId: state.playerId,
@@ -303,8 +432,6 @@ export class MatchGateway
       answer: payload.answer,
     });
 
-    // Command-only ACK: omit serverSequence so it cannot regress after
-    // resolution / auto-continue state events already delivered.
     this.emitToClient(
       client,
       MessageTypes.ChallengeSubmissionAck,
@@ -331,18 +458,52 @@ export class MatchGateway
   ): Promise<void> {
     const state = client.data as SocketState;
     if (!state.matchId || !state.playerId) {
-      this.emitError(client, 'UNAUTHORIZED', 'errors.protocol.unauthorized');
+      this.emitError(client, 'UNAUTHORIZED', 'errors.protocol.unauthorized', {
+        commandId,
+      });
       return;
     }
     if (state.matchId !== matchId) {
-      this.emitError(client, 'UNAUTHORIZED', 'errors.protocol.unauthorized');
+      this.emitError(client, 'UNAUTHORIZED', 'errors.protocol.unauthorized', {
+        commandId,
+      });
       return;
     }
     if (!this.ownsLease(client, state.matchId, state.playerId)) {
-      this.emitError(client, 'UNAUTHORIZED', 'errors.protocol.unauthorized');
+      this.emitError(client, 'UNAUTHORIZED', 'errors.protocol.unauthorized', {
+        commandId,
+      });
       return;
     }
     const result = await this.matches.requestSnapshot(matchId);
+    this.emitToClient(client, MessageTypes.MatchSnapshot, result.snapshot, {
+      commandId,
+      correlationId,
+      matchId,
+      sequence: result.snapshot.sequence,
+    });
+  }
+
+  private async handleFillDevBots(
+    client: Socket,
+    commandId: string,
+    correlationId: string,
+    matchId: string,
+  ): Promise<void> {
+    const state = client.data as SocketState;
+    if (!state.matchId) {
+      this.emitError(client, 'UNAUTHORIZED', 'errors.protocol.unauthorized', {
+        commandId,
+      });
+      return;
+    }
+    if (state.matchId !== matchId) {
+      this.emitError(client, 'UNAUTHORIZED', 'errors.protocol.unauthorized', {
+        commandId,
+      });
+      return;
+    }
+    const result = await this.matches.fillDevBots(matchId);
     this.emitToClient(client, MessageTypes.MatchSnapshot, result.snapshot, {
       commandId,
       correlationId,
@@ -365,6 +526,21 @@ export class MatchGateway
           serverSequence: event.sequence,
           serverTimestampMs: event.serverTimestampMs,
           payload: toPublicChallengeView(event.challenge, event.serverNowMs),
+        });
+      } else if (event.kind === 'challenge_signal') {
+        this.server.to(this.room(broadcast.matchId)).emit('event', {
+          schemaVersion: REALTIME_SCHEMA_VERSION,
+          type: MessageTypes.ChallengeSignal,
+          messageId: randomUUID(),
+          matchId: broadcast.matchId,
+          serverSequence: event.sequence,
+          serverTimestampMs: event.serverTimestampMs,
+          payload: {
+            challengeInstanceId: event.challengeInstanceId,
+            signalToken: event.signalToken,
+            signaledAtMs: event.signaledAtMs,
+            serverNowMs: event.serverNowMs,
+          },
         });
       } else if (event.kind === 'challenge_resolved') {
         this.server.to(this.room(broadcast.matchId)).emit('event', {
@@ -464,7 +640,11 @@ export class MatchGateway
     });
   }
 
-  private emitDomainError(client: Socket, error: DomainError): void {
+  private emitDomainError(
+    client: Socket,
+    error: DomainError,
+    commandId?: string,
+  ): void {
     const map: Record<string, { code: string; key: string }> = {
       MATCH_FULL: { code: 'MATCH_FULL', key: 'errors.match.full' },
       MATCH_NOT_JOINABLE: {
@@ -495,47 +675,178 @@ export class MatchGateway
         code: 'DEV_ONLY_FORBIDDEN',
         key: 'errors.protocol.dev_only_forbidden',
       },
+      DEV_ONLY_FORBIDDEN: {
+        code: 'DEV_ONLY_FORBIDDEN',
+        key: 'errors.protocol.dev_only_forbidden',
+      },
     };
     const mapped = map[error.code] ?? {
       code: 'INTERNAL_ERROR',
       key: 'errors.protocol.internal',
     };
-    this.emitError(client, mapped.code, mapped.key);
+    this.emitError(client, mapped.code, mapped.key, { commandId });
   }
 
-  private emitError(client: Socket, code: string, messageKey: string): void {
+  private emitError(
+    client: Socket,
+    code: string,
+    messageKey: string,
+    options?: { commandId?: string },
+  ): void {
     client.emit('event', {
       schemaVersion: REALTIME_SCHEMA_VERSION,
       type: MessageTypes.ProtocolError,
       messageId: randomUUID(),
       serverTimestampMs: Date.now(),
-      payload: { code, messageKey },
+      payload: {
+        code,
+        messageKey,
+        ...(options?.commandId ? { commandId: options.commandId } : {}),
+      },
     });
   }
 
-  private ensureUnboundOrSameMatch(client: Socket, matchId: string): boolean {
-    const state = client.data as SocketState;
-    if (!state.matchId) {
-      return true;
-    }
-    return state.matchId === matchId;
+  /**
+   * Serialize identity-changing commands per socket. Prior failures must not
+   * block subsequent commands (catch-through).
+   */
+  private enqueueIdentity<T>(
+    client: Socket,
+    task: () => Promise<T>,
+  ): Promise<T> {
+    const previous =
+      this.socketIdentityQueues.get(client.id) ?? Promise.resolve();
+    const run = previous.then(
+      () => task(),
+      () => task(),
+    );
+    this.socketIdentityQueues.set(
+      client.id,
+      run.then(
+        () => undefined,
+        () => undefined,
+      ),
+    );
+    return run;
   }
 
-  private bindSession(client: Socket, matchId: string, playerId: string): void {
+  /** Join requires a fully unbound socket (one identity per socket). */
+  private ensureUnbound(client: Socket): boolean {
+    const state = client.data as SocketState;
+    return !state.matchId && !state.playerId;
+  }
+
+  private isSocketGone(client: Socket): boolean {
+    const state = client.data as SocketState;
+    return Boolean(state.disconnected) || !client.connected;
+  }
+
+  /**
+   * Tear down a prior player binding before create_dev (Play Again).
+   * Marks the previous player disconnected only while this socket remains the
+   * lease owner, then releases lease/room and clears socket identity.
+   */
+  private async clearClientBinding(client: Socket): Promise<void> {
+    const state = client.data as SocketState;
+    const matchId = state.matchId;
+    const playerId = state.playerId;
+    if (!matchId) {
+      return;
+    }
+
+    if (playerId) {
+      const key = this.leaseKey(matchId, playerId);
+      if (this.connectionLeases.get(key) === client.id) {
+        // Pause for race tests: another socket may resume before we disconnect.
+        if (this.clearBindingBarrierForTests) {
+          await this.clearBindingBarrierForTests();
+        }
+        // Re-check after barrier: resume may have taken the lease.
+        if (this.connectionLeases.get(key) === client.id) {
+          await this.matches.markDisconnected(matchId, playerId, {
+            stillOwnsLease: () => this.connectionLeases.get(key) === client.id,
+          });
+          if (this.connectionLeases.get(key) === client.id) {
+            this.connectionLeases.delete(key);
+          }
+        }
+      }
+    }
+
+    await client.leave(this.room(matchId));
+    const disconnected = state.disconnected;
+    (client.data as SocketState) = disconnected ? { disconnected: true } : {};
+  }
+
+  private releaseLeaseIfOwned(
+    client: Socket,
+    matchId: string,
+    playerId: string,
+  ): void {
     const key = this.leaseKey(matchId, playerId);
-    const previousSocketId = this.connectionLeases.get(key);
+    if (this.connectionLeases.get(key) === client.id) {
+      this.connectionLeases.delete(key);
+    }
+  }
+
+  /**
+   * Bind identity only while the socket is still live. Returns false if the
+   * socket disconnected (no lease left behind).
+   */
+  private tryBindSession(
+    client: Socket,
+    matchId: string,
+    playerId: string,
+  ): boolean {
+    if (this.isSocketGone(client)) {
+      return false;
+    }
+
+    const targetKey = this.leaseKey(matchId, playerId);
+    const state = client.data as SocketState;
+
+    // Release any prior lease this socket owned (never leave a ghost lease).
+    for (const [key, socketId] of this.connectionLeases) {
+      if (socketId === client.id && key !== targetKey) {
+        this.connectionLeases.delete(key);
+      }
+    }
+    if (
+      state.matchId &&
+      state.playerId &&
+      (state.matchId !== matchId || state.playerId !== playerId)
+    ) {
+      const prevKey = this.leaseKey(state.matchId, state.playerId);
+      if (this.connectionLeases.get(prevKey) === client.id) {
+        this.connectionLeases.delete(prevKey);
+      }
+      void client.leave(this.room(state.matchId));
+    }
+
+    const previousSocketId = this.connectionLeases.get(targetKey);
     if (previousSocketId && previousSocketId !== client.id) {
       const previous = this.server.sockets.sockets.get(previousSocketId);
       if (previous) {
-        // Clear binding so a delayed disconnect cannot override the new lease.
         (previous.data as SocketState) = {};
         void previous.leave(this.room(matchId));
       }
     }
-    this.connectionLeases.set(key, client.id);
-    const state = client.data as SocketState;
+
+    // Write client.data before lease so disconnect cleanup always sees identity.
     state.matchId = matchId;
     state.playerId = playerId;
+    this.connectionLeases.set(targetKey, client.id);
+
+    // Final race check: disconnect may have landed during the bind writes.
+    if (this.isSocketGone(client)) {
+      if (this.connectionLeases.get(targetKey) === client.id) {
+        this.connectionLeases.delete(targetKey);
+      }
+      state.matchId = undefined;
+      state.playerId = undefined;
+      return false;
+    }
+    return true;
   }
 
   private ownsLease(
@@ -554,5 +865,48 @@ export class MatchGateway
 
   private room(matchId: string): string {
     return `match:${matchId}`;
+  }
+
+  /** Test helper: inspect lease ownership without exposing the map. */
+  getLeaseOwnerForTests(matchId: string, playerId: string): string | undefined {
+    return this.connectionLeases.get(this.leaseKey(matchId, playerId));
+  }
+
+  /** Test helper: drop a lease without disconnect (stale-finalize races). */
+  forceReleaseLeaseForTests(matchId: string, playerId: string): void {
+    this.connectionLeases.delete(this.leaseKey(matchId, playerId));
+  }
+
+  /** Test helper: true when any lease still points at this socket id. */
+  hasLeaseForSocketForTests(socketId: string): boolean {
+    for (const owner of this.connectionLeases.values()) {
+      if (owner === socketId) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  /** Test helper: observe server-side disconnect without sleeps. */
+  setDisconnectHookForTests(
+    hook: ((socketId: string) => void) | undefined,
+  ): void {
+    this.disconnectHookForTests = hook;
+  }
+
+  /**
+   * Test helper: pause clearClientBinding after confirming lease ownership and
+   * before markDisconnected (deterministic create_dev vs resume races).
+   */
+  setClearBindingBarrierForTests(
+    hook: (() => Promise<void>) | undefined,
+  ): void {
+    this.clearBindingBarrierForTests = hook;
+  }
+
+  /** Test helper: whether a socket is currently in a match room. */
+  isSocketInMatchRoomForTests(socketId: string, matchId: string): boolean {
+    const socket = this.server?.sockets?.sockets?.get(socketId);
+    return socket?.rooms.has(this.room(matchId)) ?? false;
   }
 }

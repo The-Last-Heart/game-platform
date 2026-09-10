@@ -21,3 +21,4 @@ linter:
     prefer_single_quotes: true
     unawaited_futures: true
     unnecessary_null_checks: true
+    use_null_aware_elements: false

@@ -1,0 +1,112 @@
+import 'package:flutter/material.dart';
+
+import '../engines/challenge_engine.dart';
+import '../engines/challenge_engine_registry.dart';
+import '../protocol/realtime_messages.dart';
+import '../session/match_session_controller.dart';
+import '../state/match_snapshot.dart';
+import 'challenge_intro_view.dart';
+import 'challenge_play_view.dart';
+import 'halted_view.dart';
+import 'lobby_view.dart';
+import 'ready_countdown_view.dart';
+import 'round_result_view.dart';
+import 'spectator_view.dart';
+import 'widgets/lh_background.dart';
+import 'winner_view.dart';
+
+/// Top-level match container that switches on [MatchPhase].
+class MatchShell extends StatefulWidget {
+  const MatchShell({
+    required this.controller,
+    required this.onBackHome,
+    this.registry,
+    super.key,
+  });
+
+  final MatchSessionController controller;
+  final VoidCallback onBackHome;
+  final ChallengeEngineRegistry? registry;
+
+  @override
+  State<MatchShell> createState() => _MatchShellState();
+}
+
+class _MatchShellState extends State<MatchShell> {
+  late final ChallengeEngineRegistry _registry;
+
+  @override
+  void initState() {
+    super.initState();
+    _registry = widget.registry ?? ChallengeEngineRegistry();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return LhBackground(
+      child: SafeArea(
+        child: ValueListenableBuilder<MatchViewState>(
+          valueListenable: widget.controller.state,
+          builder: (BuildContext context, MatchViewState state, Widget? child) {
+            return _buildPhase(context, state);
+          },
+        ),
+      ),
+    );
+  }
+
+  Widget _buildPhase(BuildContext context, MatchViewState state) {
+    // If spectator and match not yet completed, show spectator view.
+    if (state.isSpectator &&
+        state.phase != MatchPhase.completed &&
+        state.phase != MatchPhase.halted) {
+      return SpectatorView(state: state);
+    }
+
+    switch (state.phase) {
+      case MatchPhase.lobby:
+        return LobbyView(state: state);
+      case MatchPhase.readyCountdown:
+        return ReadyCountdownView(
+          state: state,
+          estimateServerNowMs:
+              widget.controller.serverClock.estimateServerNowMs,
+        );
+      case MatchPhase.challengeIntro:
+        return ChallengeIntroView(
+          state: state,
+          estimateServerNowMs:
+              widget.controller.serverClock.estimateServerNowMs,
+        );
+      case MatchPhase.challengeActive:
+        if (state.currentChallenge != null) {
+          final ChallengeEngine engine = _registry.resolve(
+            state.currentChallenge!.engineId,
+          );
+          return ChallengePlayView(
+            state: state,
+            engine: engine,
+            estimateServerNowMs:
+                widget.controller.serverClock.estimateServerNowMs,
+            onSubmit: (Map<String, dynamic> answer) {
+              widget.controller.submitAnswer(
+                state.currentChallenge!.challengeInstanceId,
+                answer,
+              );
+            },
+          );
+        }
+        return LobbyView(state: state);
+      case MatchPhase.roundResult:
+        return RoundResultView(
+          state: state,
+          estimateServerNowMs:
+              widget.controller.serverClock.estimateServerNowMs,
+        );
+      case MatchPhase.completed:
+        return WinnerView(state: state, onBackHome: widget.onBackHome);
+      case MatchPhase.halted:
+        return HaltedView(state: state, onBackHome: widget.onBackHome);
+    }
+  }
+}

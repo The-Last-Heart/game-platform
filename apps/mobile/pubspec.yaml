@@ -12,10 +12,22 @@ dependencies:
   flutter_localizations:
     sdk: flutter
 
+  # Socket.IO client for realtime match transport (compatible with Socket.IO 4 backend).
+  socket_io_client: 3.1.2
+
+  # Secure storage for resume token persistence across app restarts.
+  flutter_secure_storage: 9.2.4
+
+  # Noto Sans Arabic via Google Fonts for consistent Arabic typography.
+  google_fonts: 6.2.1
+
 dev_dependencies:
   flutter_test:
     sdk: flutter
   flutter_lints: ^6.0.0
+  fake_async: ^1.3.3
 
 flutter:
   uses-material-design: true
+  assets:
+    - assets/backgrounds/app-background.png

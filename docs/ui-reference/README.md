@@ -1,17 +1,11 @@
-# UI reference assets
+# UI reference
 
-Supplied screen images and design references in this directory are **binding**.
+Binding visual reference for The Last Heart mobile client.
 
-Engineers must:
+Source pack: `Last-Heart-Cursor-Reference-Pack.zip` (local developer copy).
 
-- Treat these assets as the visual source of truth
-- Not recreate screens from imagination when a reference exists
-- Not redesign layout, typography, or interaction patterns shown in the references
+- `design-tokens.json` — colors, typography, spacing, radii (checked in).
+- Screen PNGs are not stored in git; extract from the reference pack when needed.
+- Mobile uses `apps/mobile/assets/backgrounds/app-background.png` from the pack.
 
-## Current status
-
-**No reference image assets are present yet.**
-
-They still need to be copied into this directory by the Product Owner or design handoff process.
-
-Do not fabricate or download replacement mockups.
+LH-003 screens: 03, 06, 07, 08, 09, 10, 22, 23, 29, 30.

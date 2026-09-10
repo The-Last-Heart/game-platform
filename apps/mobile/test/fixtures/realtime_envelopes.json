@@ -1,0 +1,349 @@
+{
+  "session_accepted": {
+    "schemaVersion": "1",
+    "type": "session.accepted",
+    "messageId": "msg-001",
+    "matchId": "match-abc",
+    "commandId": "cmd-001",
+    "correlationId": "corr-001",
+    "serverTimestampMs": 1700000001000,
+    "payload": {
+      "matchId": "match-abc",
+      "playerId": "player-1",
+      "resumeToken": "tok-abc-123"
+    }
+  },
+  "session_accepted_creator": {
+    "schemaVersion": "1",
+    "type": "session.accepted",
+    "messageId": "msg-001b",
+    "matchId": "match-abc",
+    "commandId": "cmd-001b",
+    "correlationId": "corr-001b",
+    "serverTimestampMs": 1700000001000,
+    "payload": {
+      "matchId": "match-abc",
+      "role": "creator"
+    }
+  },
+  "match_snapshot_lobby": {
+    "schemaVersion": "1",
+    "type": "match.snapshot",
+    "messageId": "msg-002",
+    "matchId": "match-abc",
+    "serverSequence": 3,
+    "serverTimestampMs": 1700000002000,
+    "payload": {
+      "matchId": "match-abc",
+      "status": "waiting",
+      "phase": "lobby",
+      "phaseDeadlineAtMs": null,
+      "roundNumber": 0,
+      "serverNowMs": 1700000002000,
+      "lastRoundResult": null,
+      "nextPhaseAtMs": null,
+      "revision": 3,
+      "sequence": 3,
+      "players": [
+        {
+          "playerId": "player-1",
+          "hearts": 3,
+          "energy": 0,
+          "status": "active",
+          "presence": "connected",
+          "submittedForCurrentChallenge": false
+        },
+        {
+          "playerId": "player-2",
+          "hearts": 3,
+          "energy": 0,
+          "status": "active",
+          "presence": "connected",
+          "submittedForCurrentChallenge": false
+        }
+      ],
+      "winnerId": null,
+      "currentChallenge": null
+    }
+  },
+  "match_snapshot_challenge_active": {
+    "schemaVersion": "1",
+    "type": "match.snapshot",
+    "messageId": "msg-003",
+    "matchId": "match-abc",
+    "serverSequence": 10,
+    "serverTimestampMs": 1700000010000,
+    "payload": {
+      "matchId": "match-abc",
+      "status": "challenge_active",
+      "phase": "challenge_active",
+      "phaseDeadlineAtMs": 1700000015000,
+      "roundNumber": 1,
+      "serverNowMs": 1700000010000,
+      "lastRoundResult": null,
+      "nextPhaseAtMs": 1700000015000,
+      "revision": 10,
+      "sequence": 10,
+      "players": [
+        {
+          "playerId": "player-1",
+          "hearts": 3,
+          "energy": 0,
+          "status": "active",
+          "presence": "connected",
+          "submittedForCurrentChallenge": false
+        }
+      ],
+      "winnerId": null,
+      "currentChallenge": {
+        "challengeInstanceId": "ch-inst-1",
+        "definitionId": "def-reaction-1",
+        "definitionVersion": 1,
+        "engineId": "reaction.wait_for_signal",
+        "promptKey": "challenge.wait_for_signal.waiting",
+        "choiceKeys": [],
+        "clientConfig": {},
+        "serverNowMs": 1700000010000,
+        "startsAtMs": 1700000010000,
+        "deadlineAtMs": 1700000015000,
+        "durationMs": 5000,
+        "roundPhase": "waiting_signal",
+        "signalToken": null,
+        "signaledAtMs": null
+      }
+    }
+  },
+  "challenge_started": {
+    "schemaVersion": "1",
+    "type": "challenge.started",
+    "messageId": "msg-004",
+    "matchId": "match-abc",
+    "serverSequence": 8,
+    "serverTimestampMs": 1700000008000,
+    "payload": {
+      "challengeInstanceId": "ch-inst-1",
+      "definitionId": "def-reaction-1",
+      "definitionVersion": 1,
+      "engineId": "reaction.wait_for_signal",
+      "promptKey": "challenge.wait_for_signal.waiting",
+      "choiceKeys": [],
+      "clientConfig": {},
+      "serverNowMs": 1700000008000,
+      "startsAtMs": 1700000008000,
+      "deadlineAtMs": 1700000013000,
+      "durationMs": 5000,
+      "roundPhase": "waiting_signal",
+      "signalToken": null,
+      "signaledAtMs": null
+    }
+  },
+  "challenge_signal": {
+    "schemaVersion": "1",
+    "type": "challenge.signal",
+    "messageId": "msg-005",
+    "matchId": "match-abc",
+    "serverSequence": 9,
+    "serverTimestampMs": 1700000011000,
+    "payload": {
+      "challengeInstanceId": "ch-inst-1",
+      "signalToken": "signal-tok-xyz",
+      "signaledAtMs": 1700000011000,
+      "serverNowMs": 1700000011000
+    }
+  },
+  "challenge_submission_ack": {
+    "schemaVersion": "1",
+    "type": "challenge.submission_ack",
+    "messageId": "msg-006",
+    "matchId": "match-abc",
+    "commandId": "cmd-submit-1",
+    "serverTimestampMs": 1700000012000,
+    "payload": {
+      "accepted": true,
+      "duplicate": false
+    }
+  },
+  "challenge_resolved": {
+    "schemaVersion": "1",
+    "type": "challenge.resolved",
+    "messageId": "msg-007",
+    "matchId": "match-abc",
+    "serverSequence": 11,
+    "serverTimestampMs": 1700000013000,
+    "payload": {
+      "challengeInstanceId": "ch-inst-1",
+      "resolutions": [
+        {
+          "playerId": "player-1",
+          "outcome": "success",
+          "heartsDelta": 0,
+          "energyDelta": 10,
+          "heartsAfter": 3,
+          "energyAfter": 10,
+          "statusAfter": "active"
+        },
+        {
+          "playerId": "player-2",
+          "outcome": "failure",
+          "heartsDelta": -1,
+          "energyDelta": 0,
+          "heartsAfter": 2,
+          "energyAfter": 0,
+          "statusAfter": "active"
+        }
+      ]
+    }
+  },
+  "match_state_changed": {
+    "schemaVersion": "1",
+    "type": "match.state_changed",
+    "messageId": "msg-008",
+    "matchId": "match-abc",
+    "serverSequence": 12,
+    "serverTimestampMs": 1700000014000,
+    "payload": {
+      "status": "completed",
+      "reasonKey": "errors.match.unsafe_zero_survivors"
+    }
+  },
+  "match_finished": {
+    "schemaVersion": "1",
+    "type": "match.finished",
+    "messageId": "msg-009",
+    "matchId": "match-abc",
+    "serverSequence": 13,
+    "serverTimestampMs": 1700000015000,
+    "payload": {
+      "winnerId": "player-1"
+    }
+  },
+  "protocol_error": {
+    "schemaVersion": "1",
+    "type": "protocol.error",
+    "messageId": "msg-010",
+    "serverTimestampMs": 1700000016000,
+    "payload": {
+      "code": "MATCH_NOT_FOUND",
+      "messageKey": "errors.match.not_found"
+    }
+  },
+  "protocol_error_with_command_id": {
+    "schemaVersion": "1",
+    "type": "protocol.error",
+    "messageId": "msg-010b",
+    "serverTimestampMs": 1700000016500,
+    "payload": {
+      "code": "CHALLENGE_NOT_ACTIVE",
+      "messageKey": "errors.match.challenge_not_active",
+      "commandId": "cmd-pending-1"
+    }
+  },
+  "player_presence": {
+    "schemaVersion": "1",
+    "type": "match.player_presence",
+    "messageId": "msg-011",
+    "matchId": "match-abc",
+    "serverSequence": 4,
+    "serverTimestampMs": 1700000003000,
+    "payload": {
+      "playerId": "player-3",
+      "presence": "connected",
+      "joined": true
+    }
+  },
+  "match_snapshot_halted": {
+    "schemaVersion": "1",
+    "type": "match.snapshot",
+    "messageId": "msg-012",
+    "matchId": "match-abc",
+    "serverSequence": 15,
+    "serverTimestampMs": 1700000020000,
+    "payload": {
+      "matchId": "match-abc",
+      "status": "completed",
+      "phase": "halted",
+      "phaseDeadlineAtMs": null,
+      "roundNumber": 3,
+      "serverNowMs": 1700000020000,
+      "lastRoundResult": null,
+      "nextPhaseAtMs": null,
+      "revision": 15,
+      "sequence": 15,
+      "players": [
+        {
+          "playerId": "player-1",
+          "hearts": 1,
+          "energy": 20,
+          "status": "active",
+          "presence": "connected",
+          "submittedForCurrentChallenge": false
+        }
+      ],
+      "winnerId": null,
+      "currentChallenge": null
+    }
+  },
+  "match_snapshot_completed_same_seq": {
+    "schemaVersion": "1",
+    "type": "match.snapshot",
+    "messageId": "msg-013",
+    "matchId": "match-abc",
+    "serverSequence": 10,
+    "serverTimestampMs": 1700000025000,
+    "payload": {
+      "matchId": "match-abc",
+      "status": "completed",
+      "phase": "completed",
+      "phaseDeadlineAtMs": null,
+      "roundNumber": 5,
+      "serverNowMs": 1700000025000,
+      "lastRoundResult": null,
+      "nextPhaseAtMs": null,
+      "revision": 10,
+      "sequence": 10,
+      "players": [
+        {
+          "playerId": "player-1",
+          "hearts": 2,
+          "energy": 30,
+          "status": "active",
+          "presence": "connected",
+          "submittedForCurrentChallenge": false
+        },
+        {
+          "playerId": "player-2",
+          "hearts": 0,
+          "energy": 5,
+          "status": "spectator",
+          "presence": "connected",
+          "submittedForCurrentChallenge": false
+        }
+      ],
+      "winnerId": "player-1",
+      "currentChallenge": null
+    }
+  },
+  "match_snapshot_cross_match": {
+    "schemaVersion": "1",
+    "type": "match.snapshot",
+    "messageId": "msg-014",
+    "matchId": "match-OTHER",
+    "serverSequence": 5,
+    "serverTimestampMs": 1700000030000,
+    "payload": {
+      "matchId": "match-OTHER",
+      "status": "waiting",
+      "phase": "lobby",
+      "phaseDeadlineAtMs": null,
+      "roundNumber": 0,
+      "serverNowMs": 1700000030000,
+      "lastRoundResult": null,
+      "nextPhaseAtMs": null,
+      "revision": 5,
+      "sequence": 5,
+      "players": [],
+      "winnerId": null,
+      "currentChallenge": null
+    }
+  }
+}

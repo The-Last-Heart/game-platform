@@ -1,0 +1,36 @@
+{
+  "product": "آخر قلب",
+  "direction": "rtl",
+  "referenceViewport": { "width": 390, "height": 844 },
+  "colors": {
+    "background": "#030914",
+    "surface": "#071522",
+    "surfaceElevated": "#0B1D2D",
+    "primary": "#FF3045",
+    "primaryBright": "#FF5365",
+    "success": "#22E7F2",
+    "warning": "#FFC247",
+    "text": "#F7FAFC",
+    "textMuted": "#93A4B5",
+    "border": "#1D3A50",
+    "disabled": "#41505D"
+  },
+  "typography": {
+    "fontFamily": "Noto Sans Arabic Variable",
+    "display": 38,
+    "title": 26,
+    "section": 20,
+    "body": 16,
+    "caption": 13
+  },
+  "spacing": [4, 8, 12, 16, 20, 24, 32],
+  "radii": { "small": 12, "medium": 18, "large": 26, "pill": 999 },
+  "rules": [
+    "Use true RTL layout for all screens.",
+    "Reserve red for danger and primary action, cyan for success, and amber for rewards.",
+    "One primary action per screen.",
+    "Challenge instructions must be readable in under one second.",
+    "Do not implement pay-to-win powers.",
+    "All timing decisions must be server-authoritative and latency-tolerant."
+  ]
+}

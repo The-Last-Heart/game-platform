@@ -14,6 +14,7 @@ Authoritative rules implemented by the server-side match core.
 - Challenges are data-driven and evaluated by reusable engines.
 - Challenge duration must be between **3 and 8 seconds** inclusive.
 - Timing is controlled exclusively by the server (`startsAtMs`, `deadlineAtMs`, `serverNowMs`).
+- Deadline comparisons use an **inclusive deadline boundary** on monotonic time: a submission at exact `deadlineMonoMs` is accepted (`receivedMonoMs > deadline` is late); timeout resolution runs only when `monoMs > deadlineMonoMs`.
 - Clients must not supply authoritative `success`, `correct`, hearts, energy, winner or elapsed time.
 
 ## Outcomes

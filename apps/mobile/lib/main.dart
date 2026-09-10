@@ -2,10 +2,23 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 
+import 'features/match/session/match_session_controller.dart';
+import 'features/match/session/session_store.dart';
+import 'features/match/transport/realtime_transport.dart';
+import 'features/match/transport/socket_io_transport.dart';
+import 'features/match/ui/home_dev_screen.dart';
 import 'l10n/app_localization.dart';
 import 'l10n/locale_metadata.dart';
 import 'l10n/translation_catalog.dart';
 import 'l10n/translation_resolver.dart';
+import 'theme/lh_tokens.dart';
+
+/// Backend URL configured at build time:
+/// `flutter run --dart-define=LH_BACKEND_URL=http://10.0.2.2:3000`
+const String _backendUrl = String.fromEnvironment(
+  'LH_BACKEND_URL',
+  defaultValue: 'http://127.0.0.1:3000',
+);
 
 /// Provisional application identity.
 ///
@@ -15,31 +28,71 @@ void main() {
   runApp(const TheLastHeartApp());
 }
 
-class TheLastHeartApp extends StatelessWidget {
-  const TheLastHeartApp({super.key, this.translationResolver});
+class TheLastHeartApp extends StatefulWidget {
+  const TheLastHeartApp({
+    super.key,
+    this.translationResolver,
+    this.transport,
+    this.sessionStore,
+  });
 
   /// Optional override for tests.
   final TranslationResolver? translationResolver;
 
+  /// Optional transport override for tests.
+  final RealtimeTransport? transport;
+
+  /// Optional session store override for tests.
+  final SessionStore? sessionStore;
+
   @override
-  Widget build(BuildContext context) {
-    final TranslationResolver resolver =
-        translationResolver ??
+  State<TheLastHeartApp> createState() => _TheLastHeartAppState();
+}
+
+class _TheLastHeartAppState extends State<TheLastHeartApp> {
+  late final TranslationResolver _resolver;
+  late final RealtimeTransport _transport;
+  late final SessionStore _store;
+  late final MatchSessionController _controller;
+
+  @override
+  void initState() {
+    super.initState();
+    _resolver =
+        widget.translationResolver ??
         TranslationResolver(
           selectedLocaleCode: defaultMobileLocale.localeCode,
-          // Debug/profile surface missing keys; release never shows raw keys.
           isProduction: kReleaseMode,
         );
-    final LocaleMetadata localeMeta = resolver.resolveLocaleMetadata();
+    _transport = widget.transport ?? SocketIoTransport(url: _backendUrl);
+    _store = widget.sessionStore ?? SecureSessionStore();
+    _controller = MatchSessionController(
+      transport: _transport,
+      sessionStore: _store,
+    );
+    _controller.init();
+    _controller.bootstrap();
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final LocaleMetadata localeMeta = _resolver.resolveLocaleMetadata();
     final TextDirection textDirection = localeMeta.isRtl
         ? TextDirection.rtl
         : TextDirection.ltr;
 
     return AppLocalization(
-      resolver: resolver,
+      resolver: _resolver,
       child: MaterialApp(
-        title: resolver.resolve(TranslationKeys.appTitle),
+        title: _resolver.resolve(TranslationKeys.appTitle),
         debugShowCheckedModeBanner: false,
+        theme: buildLhTheme(),
         locale: Locale(localeMeta.localeCode),
         supportedLocales: <Locale>[Locale(localeMeta.localeCode)],
         localizationsDelegates: const <LocalizationsDelegate<dynamic>>[
@@ -53,40 +106,7 @@ class TheLastHeartApp extends StatelessWidget {
             child: child ?? const SizedBox.shrink(),
           );
         },
-        home: const FoundationScreen(),
-      ),
-    );
-  }
-}
-
-/// Minimal neutral startup screen for LH-001.
-class FoundationScreen extends StatelessWidget {
-  const FoundationScreen({super.key});
-
-  @override
-  Widget build(BuildContext context) {
-    final TextTheme textTheme = Theme.of(context).textTheme;
-    final AppLocalization l10n = context
-        .dependOnInheritedWidgetOfExactType<AppLocalization>()!;
-
-    return Scaffold(
-      body: SafeArea(
-        child: Center(
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: <Widget>[
-              Text(
-                l10n.t(TranslationKeys.appTitle),
-                style: textTheme.headlineMedium,
-              ),
-              const SizedBox(height: 12),
-              Text(
-                l10n.t(TranslationKeys.foundationReady),
-                style: textTheme.titleMedium,
-              ),
-            ],
-          ),
-        ),
+        home: HomeDevScreen(controller: _controller),
       ),
     );
   }

@@ -1,10 +1,11 @@
-import { randomUUID } from 'node:crypto';
+import { randomBytes, randomUUID } from 'node:crypto';
 import type {
   ChallengeDefinition,
   ChallengeEvaluatorRegistry,
   ChallengeRound,
   Clock,
   DomainEvent,
+  MatchPhase,
   MatchState,
   PlayerChallengeResolution,
   PlayerState,
@@ -18,6 +19,22 @@ import {
   MAX_CHALLENGE_DURATION_MS,
   MIN_CHALLENGE_DURATION_MS,
 } from './types';
+import { WAIT_FOR_SIGNAL_ENGINE_ID } from './wait-for-signal.evaluator';
+
+/**
+ * Inclusive deadline boundary (LH-003B / LH-003C):
+ * - Submission is late iff `receivedMonoMs > deadlineMonoMs` (accepted at equality).
+ * - Timeout resolves iff `monoMs > deadlineMonoMs` (does not resolve at equality).
+ * This prevents a race where a submit and a timeout at the exact same mono instant
+ * both try to apply hearts/energy.
+ */
+const WAIT_FOR_SIGNAL_CLIENT_CONFIG_KEYS = [
+  'categoryKey',
+  'waitingPromptKey',
+  'waitingHintKey',
+  'activePromptKey',
+  'actionKey',
+] as const;
 
 function clonePlayers(
   players: Map<string, PlayerState>,
@@ -27,12 +44,40 @@ function clonePlayers(
   );
 }
 
+function deepCloneJsonRecord(
+  value: Record<string, unknown>,
+): Record<string, unknown> {
+  return JSON.parse(JSON.stringify(value)) as Record<string, unknown>;
+}
+
+function assertJsonCompatible(
+  value: unknown,
+  path: string,
+): asserts value is Record<string, unknown> {
+  if (value === null || typeof value !== 'object' || Array.isArray(value)) {
+    throw new DomainError(
+      'INVALID_DEFINITION',
+      `${path} must be a JSON object`,
+    );
+  }
+  try {
+    JSON.stringify(value);
+  } catch {
+    throw new DomainError(
+      'INVALID_DEFINITION',
+      `${path} must be JSON-compatible`,
+    );
+  }
+}
+
 function pinDefinition(definition: ChallengeDefinition): ChallengeDefinition {
+  assertJsonCompatible(definition.clientConfig, 'clientConfig');
+  assertJsonCompatible(definition.serverConfig, 'serverConfig');
   return {
     ...definition,
     choiceKeys: definition.choiceKeys ? [...definition.choiceKeys] : [],
-    clientConfig: { ...definition.clientConfig },
-    serverConfig: { ...definition.serverConfig },
+    clientConfig: deepCloneJsonRecord(definition.clientConfig),
+    serverConfig: deepCloneJsonRecord(definition.serverConfig),
   };
 }
 
@@ -40,6 +85,8 @@ export function validateChallengeDefinition(
   definition: ChallengeDefinition,
 ): void {
   if (
+    !Number.isInteger(definition.durationMs) ||
+    !Number.isFinite(definition.durationMs) ||
     definition.durationMs < MIN_CHALLENGE_DURATION_MS ||
     definition.durationMs > MAX_CHALLENGE_DURATION_MS
   ) {
@@ -64,7 +111,8 @@ export function validateChallengeDefinition(
     );
   }
   if (
-    !definition.definitionId ||
+    typeof definition.definitionId !== 'string' ||
+    definition.definitionId.trim().length === 0 ||
     !Number.isInteger(definition.definitionVersion) ||
     definition.definitionVersion < 1
   ) {
@@ -73,17 +121,60 @@ export function validateChallengeDefinition(
       'definition identity/version incomplete',
     );
   }
-  if (!definition.engineId || !definition.promptKey) {
+  if (
+    typeof definition.engineId !== 'string' ||
+    definition.engineId.trim().length === 0 ||
+    typeof definition.promptKey !== 'string' ||
+    definition.promptKey.trim().length === 0
+  ) {
     throw new DomainError(
       'INVALID_DEFINITION',
       'challenge definition incomplete',
     );
   }
-  if (
-    definition.choiceKeys !== undefined &&
-    !Array.isArray(definition.choiceKeys)
-  ) {
-    throw new DomainError('INVALID_DEFINITION', 'choiceKeys must be an array');
+  if (definition.choiceKeys !== undefined) {
+    if (!Array.isArray(definition.choiceKeys)) {
+      throw new DomainError(
+        'INVALID_DEFINITION',
+        'choiceKeys must be an array',
+      );
+    }
+    for (const key of definition.choiceKeys) {
+      if (typeof key !== 'string' || key.trim().length === 0) {
+        throw new DomainError(
+          'INVALID_DEFINITION',
+          'choiceKeys entries must be non-empty strings',
+        );
+      }
+    }
+  }
+  assertJsonCompatible(definition.clientConfig, 'clientConfig');
+  assertJsonCompatible(definition.serverConfig, 'serverConfig');
+
+  if (definition.engineId === WAIT_FOR_SIGNAL_ENGINE_ID) {
+    const delay = definition.serverConfig['signalDelayMs'];
+    if (
+      typeof delay !== 'number' ||
+      !Number.isFinite(delay) ||
+      delay < 0 ||
+      delay >= definition.durationMs
+    ) {
+      throw new DomainError(
+        'INVALID_DEFINITION',
+        'signalDelayMs must satisfy 0 <= signalDelayMs < durationMs',
+      );
+    }
+    // Required translation keys — reject before the challenge starts so clients
+    // never enter a stuck/unavailable round from blank or non-string config.
+    for (const key of WAIT_FOR_SIGNAL_CLIENT_CONFIG_KEYS) {
+      const value = definition.clientConfig[key];
+      if (typeof value !== 'string' || value.trim().length === 0) {
+        throw new DomainError(
+          'INVALID_DEFINITION',
+          `clientConfig.${key} must be a non-empty string`,
+        );
+      }
+    }
   }
 }
 
@@ -91,19 +182,35 @@ export function toPublicChallengeView(
   challenge: ChallengeRound,
   serverNowMs: number,
 ): PublicChallengeView {
-  return {
+  const view: PublicChallengeView = {
     challengeInstanceId: challenge.challengeInstanceId,
     definitionId: challenge.definitionId,
     definitionVersion: challenge.definitionVersion,
     engineId: challenge.engineId,
     promptKey: challenge.definition.promptKey,
     choiceKeys: [...(challenge.definition.choiceKeys ?? [])],
-    clientConfig: { ...challenge.definition.clientConfig },
+    clientConfig: deepCloneJsonRecord(challenge.definition.clientConfig),
     serverNowMs,
     startsAtMs: challenge.startsAtMs,
     deadlineAtMs: challenge.deadlineAtMs,
     durationMs: challenge.definition.durationMs,
+    roundPhase: challenge.roundPhase,
   };
+
+  // Only expose signal data after signal has fired
+  if (
+    challenge.roundPhase === 'signal_active' ||
+    challenge.roundPhase === 'resolved'
+  ) {
+    if (challenge.signalToken) {
+      view.signalToken = challenge.signalToken;
+    }
+    if (challenge.signaledAtMs != null) {
+      view.signaledAtMs = challenge.signaledAtMs;
+    }
+  }
+
+  return view;
 }
 
 export class MatchEngine {
@@ -117,6 +224,12 @@ export class MatchEngine {
     return {
       matchId,
       status: 'waiting',
+      phase: 'lobby',
+      phaseDeadlineAtMs: null,
+      phaseDeadlineMonoMs: null,
+      roundNumber: 0,
+      lastRoundResult: null,
+      nextPhaseAtMs: null,
       revision: 1,
       sequence: 0,
       players: new Map(),
@@ -130,7 +243,7 @@ export class MatchEngine {
 
   joinPlayer(
     match: MatchState,
-    input: { playerId: string; resumeTokenHash: string },
+    input: { playerId: string; resumeTokenHash: string; isBot?: boolean },
   ): { match: MatchState; events: DomainEvent[] } {
     if (match.status !== 'waiting') {
       throw new DomainError('MATCH_NOT_JOINABLE', 'match is not joinable');
@@ -151,6 +264,10 @@ export class MatchEngine {
       presence: 'connected',
       submittedForCurrentChallenge: false,
       resumeTokenHash: input.resumeTokenHash,
+      isBot: input.isBot,
+      // Bots are server-controlled fills — accepted immediately. Humans require
+      // gateway finalizeJoin after live lease + credentials.
+      joinAccepted: input.isBot === true,
     });
     const bump = this.bump(next);
     return {
@@ -166,6 +283,34 @@ export class MatchEngine {
         },
       ],
     };
+  }
+
+  /**
+   * Mark a reserved join as gateway-accepted. Idempotent; does not bump
+   * sequence or emit public events (acceptance is internal bookkeeping).
+   */
+  acceptJoin(
+    match: MatchState,
+    playerId: string,
+  ): { match: MatchState; changed: boolean } {
+    const player = match.players.get(playerId);
+    if (!player) {
+      return { match, changed: false };
+    }
+    if (player.joinAccepted) {
+      return { match, changed: false };
+    }
+    const next = this.cloneMatch(match);
+    next.players.get(playerId)!.joinAccepted = true;
+    return { match: next, changed: true };
+  }
+
+  /** True when every seated player has completed join acceptance. */
+  allJoinsAccepted(match: MatchState): boolean {
+    if (match.players.size === 0) {
+      return false;
+    }
+    return [...match.players.values()].every((p) => p.joinAccepted);
   }
 
   setPresence(
@@ -201,6 +346,35 @@ export class MatchEngine {
   }
 
   /**
+   * Remove a lobby player who never received credentials (orphaned join).
+   * Safe only while the match is still waiting in lobby / ready_countdown.
+   * ready_countdown is rolled back to lobby when a seat is vacated.
+   */
+  removeLobbyPlayer(
+    match: MatchState,
+    playerId: string,
+  ): { match: MatchState; events: DomainEvent[]; removed: boolean } {
+    if (match.status !== 'waiting') {
+      return { match, events: [], removed: false };
+    }
+    if (match.phase !== 'lobby' && match.phase !== 'ready_countdown') {
+      return { match, events: [], removed: false };
+    }
+    if (!match.players.has(playerId)) {
+      return { match, events: [], removed: false };
+    }
+    const next = this.cloneMatch(match);
+    next.players.delete(playerId);
+    if (next.phase === 'ready_countdown') {
+      next.phase = 'lobby';
+      next.phaseDeadlineAtMs = null;
+      next.phaseDeadlineMonoMs = null;
+    }
+    const bump = this.bump(next);
+    return { match: next, events: [bump], removed: true };
+  }
+
+  /**
    * Replace resume token hash without bumping sequence (private credential rotation).
    */
   replaceResumeTokenHash(
@@ -217,11 +391,142 @@ export class MatchEngine {
     return next;
   }
 
+  beginReadyCountdown(
+    match: MatchState,
+    durationMs: number,
+  ): { match: MatchState; events: DomainEvent[] } {
+    if (match.players.size !== MATCH_PLAYER_CAPACITY) {
+      throw new DomainError('NOT_ENOUGH_PLAYERS', 'match requires six players');
+    }
+    const next = this.cloneMatch(match);
+    const nowWall = this.clock.nowMs();
+    const nowMono = this.clock.monoMs();
+    next.phase = 'ready_countdown';
+    next.phaseDeadlineAtMs = nowWall + durationMs;
+    next.phaseDeadlineMonoMs = nowMono + durationMs;
+    const bump = this.bump(next);
+    return { match: next, events: [bump] };
+  }
+
+  beginChallengeIntro(
+    match: MatchState,
+    durationMs: number,
+    definition: ChallengeDefinition,
+  ): { match: MatchState; events: DomainEvent[] } {
+    validateChallengeDefinition(definition);
+    if (!this.evaluators.get(definition.engineId)) {
+      throw new DomainError('INVALID_DEFINITION', 'unknown challenge engine');
+    }
+    const next = this.cloneMatch(match);
+    const nowWall = this.clock.nowMs();
+    const nowMono = this.clock.monoMs();
+    next.phase = 'challenge_intro';
+    next.phaseDeadlineAtMs = nowWall + durationMs;
+    next.phaseDeadlineMonoMs = nowMono + durationMs;
+    next.roundNumber += 1;
+
+    // Store definition in a pending round for reference but don't start the timer
+    const pinned = pinDefinition(definition);
+    const activePlayers = [...next.players.values()].filter(
+      (p) => p.status === 'active',
+    );
+    const challengeInstanceId = randomUUID();
+    const round: ChallengeRound = {
+      challengeInstanceId,
+      engineId: pinned.engineId,
+      definitionId: pinned.definitionId,
+      definitionVersion: pinned.definitionVersion,
+      definition: pinned,
+      participatingPlayerIds: activePlayers.map((p) => p.playerId),
+      startsAtMs: 0, // set on startChallenge
+      deadlineAtMs: 0,
+      deadlineMonoMs: 0,
+      status: 'active',
+      roundPhase: 'waiting_signal',
+      signalToken: null,
+      signaledAtMs: null,
+      signalAtMonoMs: null,
+      submissions: new Map(),
+      resolutions: [],
+    };
+    next.currentChallenge = round;
+    for (const player of next.players.values()) {
+      player.submittedForCurrentChallenge = false;
+    }
+    const bump = this.bump(next);
+    return { match: next, events: [bump] };
+  }
+
   startChallenge(
     match: MatchState,
-    definition: ChallengeDefinition,
-    challengeInstanceId = randomUUID(),
+    definition?: ChallengeDefinition,
+    challengeInstanceId?: string,
   ): { match: MatchState; events: DomainEvent[] } {
+    // If coming from intro phase, we already have a round set up
+    if (match.currentChallenge && match.phase === 'challenge_intro') {
+      return this.activateChallengeFromIntro(match);
+    }
+
+    // Legacy direct start path (for backward compat with LH-002 tests)
+    return this.startChallengeDirect(match, definition!, challengeInstanceId);
+  }
+
+  private activateChallengeFromIntro(match: MatchState): {
+    match: MatchState;
+    events: DomainEvent[];
+  } {
+    const next = this.cloneMatch(match);
+    const challenge = next.currentChallenge!;
+    if (!this.evaluators.get(challenge.engineId)) {
+      throw new DomainError('INVALID_DEFINITION', 'unknown challenge engine');
+    }
+    validateChallengeDefinition(challenge.definition);
+    const nowWall = this.clock.nowMs();
+    const nowMono = this.clock.monoMs();
+
+    challenge.startsAtMs = nowWall;
+    challenge.deadlineAtMs = nowWall + challenge.definition.durationMs;
+    challenge.deadlineMonoMs = nowMono + challenge.definition.durationMs;
+
+    if (challenge.engineId === WAIT_FOR_SIGNAL_ENGINE_ID) {
+      challenge.roundPhase = 'waiting_signal';
+      const signalDelay =
+        (challenge.definition.serverConfig['signalDelayMs'] as number) ?? 1500;
+      challenge.signalAtMonoMs = nowMono + signalDelay;
+      challenge.signalToken = randomBytes(16).toString('base64url');
+    } else {
+      challenge.roundPhase = 'signal_active';
+    }
+
+    next.status = 'challenge_active';
+    next.phase = 'challenge_active';
+    next.phaseDeadlineAtMs = challenge.deadlineAtMs;
+    next.phaseDeadlineMonoMs = challenge.deadlineMonoMs;
+    next.lastRoundResult = null;
+
+    const bump = this.bump(next);
+    return {
+      match: next,
+      events: [
+        bump,
+        {
+          kind: 'challenge_started',
+          sequence: next.sequence,
+          revision: next.revision,
+          serverTimestampMs: bump.serverTimestampMs,
+          challenge,
+          serverNowMs: nowWall,
+        },
+      ],
+    };
+  }
+
+  private startChallengeDirect(
+    match: MatchState,
+    definition: ChallengeDefinition,
+    challengeInstanceId?: string,
+  ): { match: MatchState; events: DomainEvent[] } {
+    const instanceId = challengeInstanceId ?? randomUUID();
     validateChallengeDefinition(definition);
     if (match.status === 'completed') {
       throw new DomainError('MATCH_COMPLETED', 'match already completed');
@@ -269,8 +574,9 @@ export class MatchEngine {
     const next = this.cloneMatch(match);
     const nowWall = this.clock.nowMs();
     const nowMono = this.clock.monoMs();
+
     const round: ChallengeRound = {
-      challengeInstanceId,
+      challengeInstanceId: instanceId,
       engineId: pinned.engineId,
       definitionId: pinned.definitionId,
       definitionVersion: pinned.definitionVersion,
@@ -280,14 +586,36 @@ export class MatchEngine {
       deadlineAtMs: nowWall + pinned.durationMs,
       deadlineMonoMs: nowMono + pinned.durationMs,
       status: 'active',
+      roundPhase: 'waiting_signal',
+      signalToken: null,
+      signaledAtMs: null,
+      signalAtMonoMs: null,
       submissions: new Map(),
       resolutions: [],
     };
+
+    if (pinned.engineId === WAIT_FOR_SIGNAL_ENGINE_ID) {
+      round.roundPhase = 'waiting_signal';
+      const signalDelay =
+        (pinned.serverConfig['signalDelayMs'] as number) ?? 1500;
+      round.signalAtMonoMs = nowMono + signalDelay;
+      round.signalToken = randomBytes(16).toString('base64url');
+    } else {
+      // Non-signal engines start in signal_active immediately
+      round.roundPhase = 'signal_active';
+    }
+
     for (const player of next.players.values()) {
       player.submittedForCurrentChallenge = false;
     }
     next.currentChallenge = round;
     next.status = 'challenge_active';
+    next.phase = 'challenge_active';
+    next.phaseDeadlineAtMs = round.deadlineAtMs;
+    next.phaseDeadlineMonoMs = round.deadlineMonoMs;
+    next.roundNumber += 1;
+    next.lastRoundResult = null;
+
     const bump = this.bump(next);
     return {
       match: next,
@@ -305,6 +633,71 @@ export class MatchEngine {
     };
   }
 
+  activateSignal(match: MatchState): {
+    match: MatchState;
+    events: DomainEvent[];
+  } {
+    if (
+      !match.currentChallenge ||
+      match.currentChallenge.status !== 'active' ||
+      match.currentChallenge.roundPhase !== 'waiting_signal'
+    ) {
+      return { match, events: [] };
+    }
+
+    const signalAtMono = match.currentChallenge.signalAtMonoMs;
+    if (signalAtMono == null || this.clock.monoMs() < signalAtMono) {
+      return { match, events: [] };
+    }
+
+    const next = this.cloneMatch(match);
+    const challenge = next.currentChallenge!;
+    const nowWall = this.clock.nowMs();
+    challenge.roundPhase = 'signal_active';
+    challenge.signaledAtMs = nowWall;
+
+    const bump = this.bump(next);
+    return {
+      match: next,
+      events: [
+        bump,
+        {
+          kind: 'challenge_signal',
+          sequence: next.sequence,
+          revision: next.revision,
+          serverTimestampMs: bump.serverTimestampMs,
+          challengeInstanceId: challenge.challengeInstanceId,
+          signalToken: challenge.signalToken!,
+          signaledAtMs: nowWall,
+          serverNowMs: nowWall,
+        },
+      ],
+    };
+  }
+
+  beginRoundResult(
+    match: MatchState,
+    resolutions: PlayerChallengeResolution[],
+    challengeInstanceId: string,
+    holdMs: number,
+  ): { match: MatchState; events: DomainEvent[] } {
+    const next = this.cloneMatch(match);
+    const nowWall = this.clock.nowMs();
+    const nowMono = this.clock.monoMs();
+    next.status = 'waiting';
+    next.phase = 'round_result';
+    next.phaseDeadlineAtMs = nowWall + holdMs;
+    next.phaseDeadlineMonoMs = nowMono + holdMs;
+    next.nextPhaseAtMs = nowWall + holdMs;
+    next.lastRoundResult = {
+      challengeInstanceId,
+      resolutions: [...resolutions],
+    };
+    next.currentChallenge = null;
+    const bump = this.bump(next);
+    return { match: next, events: [bump] };
+  }
+
   submitAnswer(
     match: MatchState,
     input: {
@@ -312,6 +705,8 @@ export class MatchEngine {
       challengeInstanceId: string;
       commandId: string;
       answer: Record<string, unknown>;
+      /** Optional stamp from enqueue time; defaults to clock.monoMs(). */
+      receivedMonoMs?: number;
     },
   ): {
     match: MatchState;
@@ -354,7 +749,9 @@ export class MatchEngine {
       );
     }
 
-    const receivedMonoMs = this.clock.monoMs();
+    // Inclusive deadline boundary: late only when strictly after deadline
+    // (accepted at equality).
+    const receivedMonoMs = input.receivedMonoMs ?? this.clock.monoMs();
     if (receivedMonoMs > challenge.deadlineMonoMs) {
       const ack = { accepted: false, reason: 'late' };
       const next = this.cloneMatch(match);
@@ -375,9 +772,11 @@ export class MatchEngine {
 
     const next = this.cloneMatch(match);
     const nextChallenge = next.currentChallenge!;
+
+    // Store only the client-provided answer — never persist evaluator secrets.
     nextChallenge.submissions.set(input.playerId, {
       commandId: input.commandId,
-      answer: input.answer,
+      answer: { ...input.answer },
       receivedMonoMs,
     });
     next.players.get(input.playerId)!.submittedForCurrentChallenge = true;
@@ -413,7 +812,9 @@ export class MatchEngine {
     ) {
       return { match, events: [] };
     }
-    if (this.clock.monoMs() < match.currentChallenge.deadlineMonoMs) {
+    // Inclusive deadline boundary: timeout due only when strictly after
+    // deadline (not at equality).
+    if (this.clock.monoMs() <= match.currentChallenge.deadlineMonoMs) {
       return { match, events: [] };
     }
     return this.resolveChallenge(this.cloneMatch(match));
@@ -462,9 +863,19 @@ export class MatchEngine {
       } else if (submission.receivedMonoMs > challenge.deadlineMonoMs) {
         outcome = 'timeout';
       } else {
+        const answerForEval = { ...submission.answer };
+        if (
+          challenge.engineId === WAIT_FOR_SIGNAL_ENGINE_ID &&
+          challenge.signalToken &&
+          challenge.signalAtMonoMs != null &&
+          submission.receivedMonoMs >= challenge.signalAtMonoMs
+        ) {
+          // Inject expected token only for evaluation — never stored on the submission.
+          answerForEval['_expectedSignalToken'] = challenge.signalToken;
+        }
         const evaluation = evaluator.evaluate({
           definition: challenge.definition,
-          answer: submission.answer,
+          answer: answerForEval,
           receivedMonoMs: submission.receivedMonoMs,
           deadlineMonoMs: challenge.deadlineMonoMs,
         });
@@ -496,6 +907,7 @@ export class MatchEngine {
 
     challenge.resolutions = resolutions;
     challenge.status = 'resolved';
+    challenge.roundPhase = 'resolved';
     match.currentChallenge = challenge;
 
     const survivors = [...match.players.values()].filter(
@@ -517,6 +929,7 @@ export class MatchEngine {
 
     if (survivors.length === 1) {
       match.status = 'completed';
+      match.phase = 'completed';
       match.winnerId = survivors[0]!.playerId;
       match.currentChallenge = challenge;
       const finishBump = this.bump(match);
@@ -530,6 +943,7 @@ export class MatchEngine {
     } else if (survivors.length === 0) {
       // Do not invent a winner. Halt safely after resolution broadcast.
       match.status = 'resolving';
+      match.phase = 'halted';
       const haltBump = this.bump(match);
       events.push(haltBump, {
         kind: 'unsafe_zero_survivors',
@@ -538,8 +952,11 @@ export class MatchEngine {
         serverTimestampMs: haltBump.serverTimestampMs,
       });
     } else {
+      // Keep the resolved challenge until the service enters round_result
+      // (needed so resolutions can be copied into lastRoundResult).
       match.status = 'waiting';
-      match.currentChallenge = null;
+      match.phase = 'challenge_active';
+      match.currentChallenge = challenge;
     }
 
     return { match, events };
@@ -548,6 +965,12 @@ export class MatchEngine {
   toPublicSnapshot(match: MatchState): {
     matchId: string;
     status: MatchState['status'];
+    phase: MatchPhase;
+    phaseDeadlineAtMs: number | null;
+    roundNumber: number;
+    serverNowMs: number;
+    lastRoundResult: MatchState['lastRoundResult'];
+    nextPhaseAtMs: number | null;
     revision: number;
     sequence: number;
     winnerId: string | null;
@@ -565,6 +988,12 @@ export class MatchEngine {
     return {
       matchId: match.matchId,
       status: match.status,
+      phase: match.phase,
+      phaseDeadlineAtMs: match.phaseDeadlineAtMs,
+      roundNumber: match.roundNumber,
+      serverNowMs: now,
+      lastRoundResult: match.lastRoundResult,
+      nextPhaseAtMs: match.nextPhaseAtMs,
       revision: match.revision,
       sequence: match.sequence,
       winnerId: match.winnerId,
@@ -588,6 +1017,12 @@ export class MatchEngine {
       ...match,
       players: clonePlayers(match.players),
       commandAcks: new Map(match.commandAcks),
+      lastRoundResult: match.lastRoundResult
+        ? {
+            ...match.lastRoundResult,
+            resolutions: [...match.lastRoundResult.resolutions],
+          }
+        : null,
       currentChallenge: match.currentChallenge
         ? {
             ...match.currentChallenge,
