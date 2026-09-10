@@ -1,0 +1,19 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://thelastheart.local/contracts/realtime/v1/envelope.schema.json",
+  "title": "RealtimeEnvelopeV1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "type", "messageId"],
+  "properties": {
+    "schemaVersion": { "const": "1" },
+    "type": { "type": "string", "minLength": 1, "maxLength": 64 },
+    "messageId": { "type": "string", "minLength": 1, "maxLength": 128 },
+    "matchId": { "type": "string", "minLength": 1, "maxLength": 128 },
+    "commandId": { "type": "string", "minLength": 1, "maxLength": 128 },
+    "correlationId": { "type": "string", "minLength": 1, "maxLength": 128 },
+    "serverSequence": { "type": "integer", "minimum": 0 },
+    "serverTimestampMs": { "type": "integer", "minimum": 0 },
+    "payload": { "type": "object" }
+  }
+}

@@ -21,7 +21,8 @@
     "infra:down": "node ./scripts/docker-compose.mjs down",
     "infra:ps": "node ./scripts/docker-compose.mjs ps",
     "infra:validate": "node ./scripts/docker-compose.mjs config",
-    "archive:review": "node ./scripts/create-review-archive.mjs --output ../the-last-heart-lh001d-review.zip"
+    "archive:review": "node ./scripts/create-review-archive.mjs --output ../the-last-heart-lh001d-review.zip",
+    "simulate:match": "node ./scripts/simulate-match.cjs"
   },
   "pnpm": {
     "overrides": {

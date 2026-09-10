@@ -2,6 +2,7 @@ import { existsSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { ConfigService } from '@nestjs/config';
 import { NestFactory } from '@nestjs/core';
+import { IoAdapter } from '@nestjs/platform-socket.io';
 import { AppModule } from './app.module';
 import type { AppConfig } from './config/env.validation';
 import { validateEnv } from './config/env.validation';
@@ -49,6 +50,7 @@ async function bootstrap(): Promise<void> {
     bufferLogs: true,
     logger: createStructuredLogger(earlyConfig.LOG_LEVEL, 'Bootstrap'),
   });
+  app.useWebSocketAdapter(new IoAdapter(app));
 
   const config = app.get(ConfigService<AppConfig, true>);
   const logLevel = config.get('LOG_LEVEL', { infer: true });

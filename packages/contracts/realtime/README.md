@@ -1,11 +1,13 @@
-# Real-time event schemas
+# Real-time contracts (v1)
 
-Future home for versioned real-time event schemas (for example WebSocket payloads).
+Language-neutral schemas for the LH-002 match core live in `realtime/v1/`.
 
-Rules:
+Authoritative TypeScript validators are exported from `@thelastheart/contracts`.
+JSON Schema files document the same envelopes for future generators.
 
-- Every event schema must include a schema version
-- Backend validates incoming events
-- Do not invent speculative gameplay events in early milestones
+## Code generation boundary
 
-No realtime schemas are defined in LH-001.
+- Backend and future mobile clients must consume the same versioned schemas.
+- Do not hand-write divergent Flutter DTOs for this protocol.
+- A later milestone may generate Dart/TypeScript bindings into `packages/contracts/generated/`.
+- Product copy is never embedded in events; use translation keys only.
