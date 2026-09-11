@@ -47,6 +47,11 @@ describe('AdminHttpExceptionFilter', () => {
       error: {
         code: 'VALIDATION_ERROR',
         message: 'Request validation failed',
+        details: {
+          message: 'Validation failed (uuid is expected)',
+          error: 'Bad Request',
+          statusCode: 400,
+        },
       },
     });
   });
