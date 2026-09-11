@@ -42,15 +42,25 @@ class _ChallengePlayViewState extends State<ChallengePlayView> {
         ? categoryValue.trim()
         : null;
 
+    final bool recovering = widget.state.needsSnapshot;
     final bool reconnecting =
         widget.state.lifecycle == SessionLifecycle.resuming ||
         widget.state.lifecycle == SessionLifecycle.connecting ||
         !widget.state.isConnected;
+    final bool showRecoveryOverlay =
+        recovering || reconnecting || widget.state.blocksGameplayInput;
 
     final bool inputEnabled =
+        !widget.state.blocksGameplayInput &&
         widget.state.lifecycle == SessionLifecycle.bound &&
         widget.state.isConnected &&
         !widget.state.isSpectator;
+
+    final String overlayMessage = recovering
+        ? resolver.resolve(TranslationKeys.sessionRecoveringState)
+        : reconnecting
+        ? resolver.resolve(TranslationKeys.sessionReconnecting)
+        : resolver.resolve(TranslationKeys.sessionRecoveringState);
 
     return Stack(
       children: <Widget>[
@@ -62,7 +72,7 @@ class _ChallengePlayViewState extends State<ChallengePlayView> {
               Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: <Widget>[
-                  HeartsDisplay(hearts: local?.hearts ?? 3),
+                  HeartsDisplay(hearts: local?.hearts ?? 0),
                   const Spacer(),
                   Column(
                     crossAxisAlignment: CrossAxisAlignment.end,
@@ -101,15 +111,18 @@ class _ChallengePlayViewState extends State<ChallengePlayView> {
             ],
           ),
         ),
-        if (reconnecting)
+        if (showRecoveryOverlay)
           Positioned.fill(
             child: ColoredBox(
               color: LhColors.bg.withValues(alpha: 0.72),
               child: Center(
-                child: Text(
-                  resolver.resolve(TranslationKeys.errorsConnectionFailed),
-                  style: Theme.of(context).textTheme.titleMedium,
-                  textAlign: TextAlign.center,
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 24),
+                  child: Text(
+                    overlayMessage,
+                    style: Theme.of(context).textTheme.titleMedium,
+                    textAlign: TextAlign.center,
+                  ),
                 ),
               ),
             ),

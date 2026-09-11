@@ -114,6 +114,12 @@ abstract final class TranslationKeys {
   static const String resultNextChallengeIn = 'result.next_challenge_in';
   static const String resultTooEarlyTitle = 'result.too_early_title';
   static const String resultPressedEarlyReason = 'result.pressed_early_reason';
+  static const String resultTimeoutReason = 'result.timeout_reason';
+  static const String resultFailureReason = 'result.failure_reason';
+  static const String resultOutcomeSuccess = 'result.outcome.success';
+  static const String resultOutcomeFailure = 'result.outcome.failure';
+  static const String resultOutcomeTimeout = 'result.outcome.timeout';
+  static const String resultOutcomeSkipped = 'result.outcome.skipped_spectator';
   static const String resultLostHeartLabel = 'result.lost_heart_label';
   static const String resultHeartsRemaining = 'result.hearts_remaining';
   static const String resultAutoContinue = 'result.auto_continue';
@@ -126,19 +132,18 @@ abstract final class TranslationKeys {
   static const String spectatorCurrentStandings = 'spectator.current_standings';
   static const String spectatorRemainingPlayers = 'spectator.remaining_players';
   static const String spectatorEliminatedBadge = 'spectator.eliminated_badge';
-  static const String spectatorWatchMatch = 'spectator.watch_match';
 
   // ── LH-003 Winner Chrome ──
   static const String winnerMatchEnded = 'winner.match_ended';
   static const String winnerFirstPlace = 'winner.first_place';
   static const String winnerYouLastHeart = 'winner.you_last_heart';
   static const String winnerPlayerWins = 'winner.player_wins';
-  static const String winnerChallengesWon = 'winner.challenges_won';
   static const String winnerHeartsLeft = 'winner.hearts_left';
   static const String winnerPlayAgain = 'winner.play_again';
-  static const String winnerShareResult = 'winner.share_result';
-  static const String winnerRewardTitle = 'winner.reward_title';
-  static const String winnerRewardDesc = 'winner.reward_desc';
+
+  // ── Connection / recovery ──
+  static const String sessionReconnecting = 'session.reconnecting';
+  static const String sessionRecoveringState = 'session.recovering_state';
 }
 
 /// Shared normalization for catalog create/lookup/resolve.

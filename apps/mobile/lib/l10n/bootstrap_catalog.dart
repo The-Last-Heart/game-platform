@@ -131,6 +131,12 @@ TranslationCatalog createBootstrapCatalog() {
         TranslationKeys.resultTooEarlyTitle: 'تسرّعت!',
         TranslationKeys.resultPressedEarlyReason:
             'ضغطت قبل أن يتحول القلب إلى الأزرق',
+        TranslationKeys.resultTimeoutReason: 'انتهى الوقت قبل أن تُكمل الإجراء',
+        TranslationKeys.resultFailureReason: 'لم يُقبل الإجراء في هذا التحدي',
+        TranslationKeys.resultOutcomeSuccess: 'نجاح',
+        TranslationKeys.resultOutcomeFailure: 'فشل',
+        TranslationKeys.resultOutcomeTimeout: 'انتهى الوقت',
+        TranslationKeys.resultOutcomeSkipped: 'متفرج',
         TranslationKeys.resultLostHeartLabel: 'خسرت قلبًا',
         TranslationKeys.resultHeartsRemaining: 'بقي لك {count}',
         TranslationKeys.resultAutoContinue:
@@ -145,19 +151,17 @@ TranslationCatalog createBootstrapCatalog() {
         TranslationKeys.spectatorCurrentStandings: 'الترتيب الحالي',
         TranslationKeys.spectatorRemainingPlayers: 'بقي {count} لاعبين',
         TranslationKeys.spectatorEliminatedBadge: 'خرج',
-        TranslationKeys.spectatorWatchMatch: 'تابع المباراة',
 
         // ── LH-003 Winner Chrome ──
         TranslationKeys.winnerMatchEnded: 'انتهت المباراة',
         TranslationKeys.winnerFirstPlace: 'المركز الأول',
         TranslationKeys.winnerYouLastHeart: 'أنت آخر قلب!',
         TranslationKeys.winnerPlayerWins: '{name} يفوز بالمباراة',
-        TranslationKeys.winnerChallengesWon: 'تحديات ناجحة',
-        TranslationKeys.winnerHeartsLeft: 'متبقيان',
+        TranslationKeys.winnerHeartsLeft: 'قلوب متبقية',
         TranslationKeys.winnerPlayAgain: 'العب مجددًا',
-        TranslationKeys.winnerShareResult: 'مشاركة النتيجة',
-        TranslationKeys.winnerRewardTitle: 'مكافأة الفوز',
-        TranslationKeys.winnerRewardDesc: 'النقاط والخبرة',
+
+        TranslationKeys.sessionReconnecting: 'جارٍ إعادة الاتصال…',
+        TranslationKeys.sessionRecoveringState: 'جارٍ استعادة حالة المباراة…',
       },
       'en': <String, String>{
         // ── Foundation ──
@@ -274,6 +278,14 @@ TranslationCatalog createBootstrapCatalog() {
         TranslationKeys.resultTooEarlyTitle: 'Too early!',
         TranslationKeys.resultPressedEarlyReason:
             'Pressed before the heart turned blue',
+        TranslationKeys.resultTimeoutReason:
+            'Time ran out before you completed the action',
+        TranslationKeys.resultFailureReason:
+            'Your action was not accepted for this challenge',
+        TranslationKeys.resultOutcomeSuccess: 'Success',
+        TranslationKeys.resultOutcomeFailure: 'Failed',
+        TranslationKeys.resultOutcomeTimeout: 'Timed out',
+        TranslationKeys.resultOutcomeSkipped: 'Spectating',
         TranslationKeys.resultLostHeartLabel: 'Lost a heart',
         TranslationKeys.resultHeartsRemaining: '{count} remaining',
         TranslationKeys.resultAutoContinue:
@@ -288,19 +300,17 @@ TranslationCatalog createBootstrapCatalog() {
         TranslationKeys.spectatorCurrentStandings: 'Current Standings',
         TranslationKeys.spectatorRemainingPlayers: '{count} players left',
         TranslationKeys.spectatorEliminatedBadge: 'Out',
-        TranslationKeys.spectatorWatchMatch: 'Watch Match',
 
         // ── LH-003 Winner Chrome ──
         TranslationKeys.winnerMatchEnded: 'Match Over',
         TranslationKeys.winnerFirstPlace: 'First Place',
         TranslationKeys.winnerYouLastHeart: 'You are the Last Heart!',
         TranslationKeys.winnerPlayerWins: '{name} wins the match',
-        TranslationKeys.winnerChallengesWon: 'Challenges won',
-        TranslationKeys.winnerHeartsLeft: 'Remaining',
+        TranslationKeys.winnerHeartsLeft: 'Hearts left',
         TranslationKeys.winnerPlayAgain: 'Play Again',
-        TranslationKeys.winnerShareResult: 'Share Result',
-        TranslationKeys.winnerRewardTitle: 'Victory Reward',
-        TranslationKeys.winnerRewardDesc: 'Points and XP',
+
+        TranslationKeys.sessionReconnecting: 'Reconnecting…',
+        TranslationKeys.sessionRecoveringState: 'Recovering match state…',
       },
     },
   );

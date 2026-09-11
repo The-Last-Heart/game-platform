@@ -227,33 +227,7 @@ class SpectatorView extends StatelessWidget {
             },
           ),
         ),
-
-        // Watch match button
-        Padding(
-          padding: const EdgeInsets.fromLTRB(20, 8, 20, 12),
-          child: SizedBox(
-            width: double.infinity,
-            child: FilledButton.icon(
-              onPressed: () {},
-              icon: const Icon(Icons.visibility, size: 20),
-              label: Text(
-                resolver.resolve(TranslationKeys.spectatorWatchMatch),
-                style: const TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-              style: FilledButton.styleFrom(
-                backgroundColor: LhColors.elevated,
-                foregroundColor: LhColors.text,
-                shape: const RoundedRectangleBorder(
-                  borderRadius: LhRadii.mdAll,
-                ),
-                padding: const EdgeInsets.symmetric(vertical: 14),
-              ),
-            ),
-          ),
-        ),
+        const SizedBox(height: 12),
       ],
     );
   }

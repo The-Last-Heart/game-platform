@@ -110,7 +110,13 @@ class _RoundResultViewState extends State<RoundResultView> {
           ),
           const SizedBox(height: 8),
 
-          if (survived) ..._buildSurvivedContent(context, resolver, result),
+          if (survived)
+            ..._buildSurvivedContent(
+              context,
+              resolver,
+              result,
+              localResolution,
+            ),
           if (!survived && localResolution != null)
             ..._buildFailedContent(context, resolver, localResolution),
 
@@ -209,19 +215,23 @@ class _RoundResultViewState extends State<RoundResultView> {
     BuildContext context,
     TranslationResolver resolver,
     LastRoundResult result,
+    PlayerChallengeResolution? localResolution,
   ) {
     return <Widget>[
       const SizedBox(height: 20),
-      // Player ranking cards
       for (int i = 0; i < result.resolutions.length; i++)
         _PlayerResultRow(
           resolution: result.resolutions[i],
           index: i,
           isLocal: result.resolutions[i].playerId == widget.state.playerId,
+          outcomeLabel: _outcomeLabel(resolver, result.resolutions[i].outcome),
         ),
       const SizedBox(height: 16),
-      // Energy bar
-      _buildEnergyBar(context, resolver),
+      _buildEnergyBar(
+        context,
+        resolver,
+        localResolution?.energyAfter ?? widget.state.localPlayer?.energy ?? 0,
+      ),
     ];
   }
 
@@ -231,14 +241,12 @@ class _RoundResultViewState extends State<RoundResultView> {
     PlayerChallengeResolution resolution,
   ) {
     return <Widget>[
-      // Reason text
       Text(
-        resolver.resolve(TranslationKeys.resultPressedEarlyReason),
+        _failureReason(resolver, resolution.outcome),
         style: Theme.of(context).textTheme.titleMedium,
         textAlign: TextAlign.center,
       ),
       const SizedBox(height: 24),
-      // Hearts panel
       Container(
         width: double.infinity,
         padding: const EdgeInsets.all(20),
@@ -274,8 +282,11 @@ class _RoundResultViewState extends State<RoundResultView> {
     ];
   }
 
-  Widget _buildEnergyBar(BuildContext context, TranslationResolver resolver) {
-    final int energy = widget.state.localPlayer?.energy ?? 0;
+  Widget _buildEnergyBar(
+    BuildContext context,
+    TranslationResolver resolver,
+    int energy,
+  ) {
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
@@ -322,6 +333,26 @@ class _RoundResultViewState extends State<RoundResultView> {
       _ => resolver.resolve(TranslationKeys.resultFailure),
     };
   }
+
+  String _failureReason(TranslationResolver resolver, String? outcome) {
+    return switch (outcome) {
+      'timeout' => resolver.resolve(TranslationKeys.resultTimeoutReason),
+      'failure' => resolver.resolve(TranslationKeys.resultPressedEarlyReason),
+      _ => resolver.resolve(TranslationKeys.resultFailureReason),
+    };
+  }
+
+  String _outcomeLabel(TranslationResolver resolver, String outcome) {
+    return switch (outcome) {
+      'success' => resolver.resolve(TranslationKeys.resultOutcomeSuccess),
+      'failure' => resolver.resolve(TranslationKeys.resultOutcomeFailure),
+      'timeout' => resolver.resolve(TranslationKeys.resultOutcomeTimeout),
+      'skipped_spectator' => resolver.resolve(
+        TranslationKeys.resultOutcomeSkipped,
+      ),
+      _ => resolver.resolve(TranslationKeys.resultFailure),
+    };
+  }
 }
 
 class _PlayerResultRow extends StatelessWidget {
@@ -329,11 +360,13 @@ class _PlayerResultRow extends StatelessWidget {
     required this.resolution,
     required this.index,
     required this.isLocal,
+    required this.outcomeLabel,
   });
 
   final PlayerChallengeResolution resolution;
   final int index;
   final bool isLocal;
+  final String outcomeLabel;
 
   @override
   Widget build(BuildContext context) {
@@ -385,7 +418,7 @@ class _PlayerResultRow extends StatelessWidget {
             ),
           ),
           Text(
-            resolution.outcome == 'success' ? '✓' : resolution.outcome,
+            resolution.outcome == 'success' ? '✓ $outcomeLabel' : outcomeLabel,
             style: Theme.of(context).textTheme.bodyMedium?.copyWith(
               color: resolution.outcome == 'success'
                   ? LhColors.success

@@ -138,6 +138,8 @@ void main() {
         findsOneWidget,
       );
       expect(find.textContaining('12'), findsNothing);
+      expect(find.text('Watch Match'), findsNothing);
+      expect(find.text('تابع المباراة'), findsNothing);
     });
   });
 
@@ -189,6 +191,17 @@ void main() {
         find.text(resolver.resolve(TranslationKeys.winnerOther)),
         findsOneWidget,
       );
+      expect(
+        find.text(
+          resolver.resolve(
+            TranslationKeys.winnerPlayerWins,
+            params: const <String, String>{'name': 'p1'},
+          ),
+        ),
+        findsOneWidget,
+      );
+      expect(find.textContaining('٨٥٠'), findsNothing);
+      expect(find.textContaining('850'), findsNothing);
     });
   });
 

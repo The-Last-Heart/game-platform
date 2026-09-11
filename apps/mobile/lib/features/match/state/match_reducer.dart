@@ -302,15 +302,10 @@ class MatchReducer {
             !updatedPlayers.any(
               (PlayerPublic p) => p.playerId == presence.playerId,
             )) {
-          updatedPlayers.add(
-            PlayerPublic(
-              playerId: presence.playerId,
-              hearts: 3,
-              energy: 0,
-              status: PlayerStatus.active,
-              presence: presence.presence,
-              submittedForCurrentChallenge: false,
-            ),
+          // Presence is not an authoritative roster snapshot. Do not invent
+          // hearts/energy/status — wait for match snapshot / state sync.
+          return state.copyWith(
+            serverSequence: envelope.serverSequence ?? state.serverSequence,
           );
         }
         return state.copyWith(

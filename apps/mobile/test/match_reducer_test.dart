@@ -307,27 +307,61 @@ void main() {
       expect(result.state.connectionError, 'errors.match.challenge_not_active');
     });
 
-    test('player presence adds new player', () {
+    test(
+      'player presence does not invent competitive state for unknown players',
+      () {
+        final Map<String, dynamic> lobbyRaw = clone(
+          fixtures['match_snapshot_lobby'] as Map<String, dynamic>,
+        );
+        final ReducerResult lobbyResult = reducer.reduce(
+          initialState(),
+          lobbyRaw,
+        );
+        expect(lobbyResult.disposition, ReducerDisposition.applied);
+        expect(lobbyResult.state.players.length, 2);
+
+        final Map<String, dynamic> presenceRaw = clone(
+          fixtures['player_presence'] as Map<String, dynamic>,
+        );
+        final ReducerResult presenceResult = reducer.reduce(
+          lobbyResult.state,
+          presenceRaw,
+        );
+        expect(presenceResult.disposition, ReducerDisposition.applied);
+        expect(presenceResult.state.players.length, 2);
+        expect(
+          presenceResult.state.players.any(
+            (PlayerPublic p) => p.playerId == 'player-3',
+          ),
+          isFalse,
+        );
+      },
+    );
+
+    test('player presence updates existing player connectivity only', () {
       final Map<String, dynamic> lobbyRaw = clone(
         fixtures['match_snapshot_lobby'] as Map<String, dynamic>,
       );
-      final ReducerResult lobbyResult = reducer.reduce(
-        initialState(),
-        lobbyRaw,
-      );
-      expect(lobbyResult.disposition, ReducerDisposition.applied);
-      expect(lobbyResult.state.players.length, 2);
-
+      final MatchViewState lobby = reducer
+          .reduce(initialState(), lobbyRaw)
+          .state;
       final Map<String, dynamic> presenceRaw = clone(
         fixtures['player_presence'] as Map<String, dynamic>,
       );
-      final ReducerResult presenceResult = reducer.reduce(
-        lobbyResult.state,
-        presenceRaw,
-      );
+      (presenceRaw['payload'] as Map<String, dynamic>)['playerId'] = 'player-2';
+      (presenceRaw['payload'] as Map<String, dynamic>)['presence'] =
+          'disconnected';
+      (presenceRaw['payload'] as Map<String, dynamic>)['joined'] = false;
+
+      final ReducerResult presenceResult = reducer.reduce(lobby, presenceRaw);
       expect(presenceResult.disposition, ReducerDisposition.applied);
-      expect(presenceResult.state.players.length, 3);
-      expect(presenceResult.state.players.last.playerId, 'player-3');
+      final PlayerPublic updated = presenceResult.state.players.firstWhere(
+        (PlayerPublic p) => p.playerId == 'player-2',
+      );
+      expect(updated.presence, Presence.disconnected);
+      expect(updated.hearts, 3);
+      expect(updated.energy, 0);
+      expect(updated.status, PlayerStatus.active);
     });
 
     test('never rolls back sequence on older event', () {
