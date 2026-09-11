@@ -8,6 +8,7 @@ import {
   LoadingState,
 } from '@/components/ui/confirm-dialog';
 import { t } from '@/i18n/get-dictionary';
+import { localizeAdminError } from '@/i18n/localize-admin-error';
 import type { Locale } from '@/i18n/locale';
 import type { MessageKey } from '@/i18n/messages/en';
 import { adminApiFetch } from '@/lib/api/client';
@@ -24,7 +25,9 @@ export function SystemStatusPanel({ locale }: { locale: Locale }) {
     const result = await adminApiFetch<AdminSystemStatus>('/system/status');
     if (!result.ok) {
       setForbidden(result.status === 403 || result.error.code === 'FORBIDDEN');
-      setError(result.error.message);
+      setError(
+        localizeAdminError(locale, result.error.code, result.error.message),
+      );
       setData(null);
       setLoading(false);
       return;
@@ -33,7 +36,7 @@ export function SystemStatusPanel({ locale }: { locale: Locale }) {
     setError(null);
     setData(result.data);
     setLoading(false);
-  }, []);
+  }, [locale]);
 
   useEffect(() => scheduleEffectTask(() => void load()), [load]);
 
@@ -80,7 +83,9 @@ export function SystemStatusPanel({ locale }: { locale: Locale }) {
               </div>
               <div>
                 <dt>{t(locale, 'system.live')}</dt>
-                <dd>{data.health.live}</dd>
+                <dd>
+                  {t(locale, `system.live.${data.health.live}` as MessageKey)}
+                </dd>
               </div>
               <div>
                 <dt>{t(locale, 'system.ready')}</dt>
@@ -101,7 +106,7 @@ export function SystemStatusPanel({ locale }: { locale: Locale }) {
               <table className="data-table">
                 <thead>
                   <tr>
-                    <th>Name</th>
+                    <th>{t(locale, 'system.col.name')}</th>
                     <th>{t(locale, 'common.status')}</th>
                     <th>{t(locale, 'system.latency')}</th>
                   </tr>
@@ -109,7 +114,9 @@ export function SystemStatusPanel({ locale }: { locale: Locale }) {
                 <tbody>
                   {data.health.checks.map((check) => (
                     <tr key={check.name}>
-                      <td>{check.name}</td>
+                      <td>
+                        {t(locale, `system.check.${check.name}` as MessageKey)}
+                      </td>
                       <td>
                         {t(
                           locale,

@@ -7,8 +7,6 @@ import {
   LayoutDashboard,
   LogOut,
   Menu,
-  PanelLeftClose,
-  PanelLeftOpen,
   Server,
   Shield,
   User,
@@ -16,27 +14,24 @@ import {
   X,
 } from 'lucide-react';
 import { useMemo, useState, type ReactNode } from 'react';
-import { LanguageSwitcher, ThemeToggle } from '@/components/language-switcher';
+import {
+  LanguageSwitcher,
+  SidebarToggle,
+  ThemeToggle,
+} from '@/components/language-switcher';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { ToastProvider, useToast } from '@/components/ui/toast';
 import { t } from '@/i18n/get-dictionary';
+import { localizeAdminError } from '@/i18n/localize-admin-error';
 import type { Locale } from '@/i18n/locale';
 import { adminApiFetch } from '@/lib/api/client';
 import type { AdminSessionSnapshot } from '@/lib/auth/session';
-import {
-  SIDEBAR_COOKIE_NAME,
-  type SidebarPreference,
-  type ThemePreference,
-} from '@/lib/bff/constants';
+import type { SidebarPreference, ThemePreference } from '@/lib/bff/constants';
 import {
   filterNavItems,
   navItemIsActive,
   type NavItemId,
 } from '@/lib/nav/items';
-import {
-  PREFERENCE_COOKIE_MAX_AGE,
-  setClientCookie,
-} from '@/lib/preferences/cookies';
 
 const ICONS: Record<NavItemId, ReactNode> = {
   dashboard: <LayoutDashboard size={18} aria-hidden />,
@@ -124,19 +119,14 @@ function ShellInner({
     setLoggingOut(false);
     setLogoutConfirm(false);
     if (!result.ok) {
-      pushToast(result.error.message, 'error');
+      pushToast(
+        localizeAdminError(locale, result.error.code, result.error.message),
+        'error',
+      );
       return;
     }
     router.replace(`/${locale}/login`);
     router.refresh();
-  }
-
-  function toggleSidebar() {
-    const root = document.documentElement;
-    const next: SidebarPreference =
-      root.dataset.sidebar === 'collapsed' ? 'expanded' : 'collapsed';
-    root.dataset.sidebar = next;
-    setClientCookie(SIDEBAR_COOKIE_NAME, next, PREFERENCE_COOKIE_MAX_AGE);
   }
 
   return (
@@ -202,28 +192,7 @@ function ShellInner({
           ))}
         </div>
 
-        <button
-          type="button"
-          className="btn btn-ghost"
-          style={{ color: 'inherit', marginTop: '0.75rem' }}
-          onClick={toggleSidebar}
-          aria-label={
-            initialSidebar === 'collapsed'
-              ? t(locale, 'nav.expand')
-              : t(locale, 'nav.collapse')
-          }
-        >
-          {initialSidebar === 'collapsed' ? (
-            <PanelLeftOpen size={18} />
-          ) : (
-            <PanelLeftClose size={18} />
-          )}
-          <span className="nav-label">
-            {initialSidebar === 'collapsed'
-              ? t(locale, 'nav.expand')
-              : t(locale, 'nav.collapse')}
-          </span>
-        </button>
+        <SidebarToggle locale={locale} initialSidebar={initialSidebar} />
       </aside>
 
       <div className="shell-main">

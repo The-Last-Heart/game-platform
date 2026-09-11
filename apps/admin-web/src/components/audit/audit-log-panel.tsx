@@ -14,6 +14,7 @@ import {
   LoadingState,
 } from '@/components/ui/confirm-dialog';
 import { t } from '@/i18n/get-dictionary';
+import { localizeAdminError } from '@/i18n/localize-admin-error';
 import type { Locale } from '@/i18n/locale';
 import type { MessageKey } from '@/i18n/messages/en';
 import { adminApiFetch } from '@/lib/api/client';
@@ -84,7 +85,9 @@ export function AuditLogPanel({ locale }: { locale: Locale }) {
     );
     if (!result.ok) {
       setForbidden(result.status === 403 || result.error.code === 'FORBIDDEN');
-      setError(result.error.message);
+      setError(
+        localizeAdminError(locale, result.error.code, result.error.message),
+      );
       setData(null);
       setLoading(false);
       return;
@@ -93,7 +96,17 @@ export function AuditLogPanel({ locale }: { locale: Locale }) {
     setError(null);
     setData(result.data);
     setLoading(false);
-  }, [page, action, entityType, entityId, outcome, actorAdminId, from, to]);
+  }, [
+    page,
+    action,
+    entityType,
+    entityId,
+    outcome,
+    actorAdminId,
+    from,
+    to,
+    locale,
+  ]);
 
   useEffect(() => scheduleEffectTask(() => void load()), [load]);
 
@@ -137,11 +150,7 @@ export function AuditLogPanel({ locale }: { locale: Locale }) {
         </div>
         <div className="field">
           <label htmlFor="audit-entity-id">{t(locale, 'audit.entityId')}</label>
-          <input
-            id="audit-entity-id"
-            name="entityId"
-            defaultValue={entityId}
-          />
+          <input id="audit-entity-id" name="entityId" defaultValue={entityId} />
         </div>
         <div className="field">
           <label htmlFor="audit-actor">{t(locale, 'audit.actor')}</label>

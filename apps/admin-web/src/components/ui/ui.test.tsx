@@ -2,9 +2,14 @@ import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 import { LoginForm } from '@/components/auth/login-form';
-import { LanguageSwitcher } from '@/components/language-switcher';
+import {
+  LanguageSwitcher,
+  SidebarToggle,
+  ThemeToggle,
+} from '@/components/language-switcher';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { documentDirection } from '@/i18n/locale';
+import { localizeAdminError } from '@/i18n/localize-admin-error';
 import ar from '@/i18n/messages/ar';
 import en from '@/i18n/messages/en';
 import { filterNavItems } from '@/lib/nav/items';
@@ -76,7 +81,7 @@ describe('admin-web UI behaviors', () => {
     expect(script).toContain("s='expanded'");
   });
 
-  it('keeps en/ar message catalogs in sync for batch-2 keys', () => {
+  it('keeps en/ar message catalogs in sync for batch keys', () => {
     const enKeys = Object.keys(en).sort();
     const arKeys = Object.keys(ar).sort();
     expect(arKeys).toEqual(enKeys);
@@ -84,9 +89,64 @@ describe('admin-web UI behaviors', () => {
     expect(ar['admins.revokeSessions']).toBeTruthy();
     expect(en['profile.updateDisplayName']).toBeTruthy();
     expect(ar['profile.updateDisplayName']).toBeTruthy();
+    expect(en['dashboard.col.phase']).toBe('Phase');
+    expect(ar['dashboard.col.phase']).toBe('المرحلة');
+    expect(en['dashboard.col.presence']).toBe('Presence');
+    expect(ar['dashboard.col.presence']).toBe('الحضور');
+    expect(en['dashboard.phase.lobby']).toBeTruthy();
+    expect(ar['dashboard.phase.lobby']).not.toBe(en['dashboard.phase.lobby']);
+    expect(en['dashboard.presence.connected']).toBeTruthy();
+    expect(ar['dashboard.presence.connected']).not.toBe(
+      en['dashboard.presence.connected'],
+    );
+    expect(en['system.col.name']).toBe('Name');
+    expect(ar['system.col.name']).toBe('الاسم');
+    expect(localizeAdminError('ar', 'FORBIDDEN')).toBe(ar['errors.FORBIDDEN']);
+    expect(localizeAdminError('ar', 'FORBIDDEN')).not.toBe(
+      en['errors.FORBIDDEN'],
+    );
   });
 
-  it('disables confirm actions while busy', async () => {
+  it('updates theme icon, text, and aria-label across two consecutive toggles', async () => {
+    const user = userEvent.setup();
+    document.documentElement.dataset.theme = 'light';
+    render(<ThemeToggle locale="en" initialTheme="light" />);
+
+    const first = screen.getByRole('button', { name: en['theme.dark'] });
+    expect(first).toHaveAccessibleName(en['theme.dark']);
+    expect(first.querySelector('svg')).toBeTruthy();
+    await user.click(first);
+
+    const second = screen.getByRole('button', { name: en['theme.light'] });
+    expect(second).toHaveAccessibleName(en['theme.light']);
+    expect(document.documentElement.dataset.theme).toBe('dark');
+    await user.click(second);
+
+    const third = screen.getByRole('button', { name: en['theme.dark'] });
+    expect(third).toHaveAccessibleName(en['theme.dark']);
+    expect(document.documentElement.dataset.theme).toBe('light');
+  });
+
+  it('updates sidebar icon, text, and aria-label across two consecutive toggles', async () => {
+    const user = userEvent.setup();
+    document.documentElement.dataset.sidebar = 'expanded';
+    render(<SidebarToggle locale="en" initialSidebar="expanded" />);
+
+    const first = screen.getByRole('button', { name: en['nav.collapse'] });
+    expect(first).toHaveAccessibleName(en['nav.collapse']);
+    await user.click(first);
+
+    const second = screen.getByRole('button', { name: en['nav.expand'] });
+    expect(second).toHaveAccessibleName(en['nav.expand']);
+    expect(document.documentElement.dataset.sidebar).toBe('collapsed');
+    await user.click(second);
+
+    const third = screen.getByRole('button', { name: en['nav.collapse'] });
+    expect(third).toHaveAccessibleName(en['nav.collapse']);
+    expect(document.documentElement.dataset.sidebar).toBe('expanded');
+  });
+
+  it('disables confirm actions while busy and ignores duplicate confirms', async () => {
     const user = userEvent.setup();
     const onConfirm = vi.fn();
     const onCancel = vi.fn();
@@ -105,5 +165,59 @@ describe('admin-web UI behaviors', () => {
     expect(confirm).toBeDisabled();
     await user.click(confirm);
     expect(onConfirm).not.toHaveBeenCalled();
+  });
+
+  it('traps focus, supports Escape cancel, and restores opener focus', async () => {
+    const user = userEvent.setup();
+    const onConfirm = vi.fn();
+    const onCancel = vi.fn();
+
+    function Harness({ open }: { open: boolean }) {
+      return (
+        <>
+          <button type="button">Opener</button>
+          <ConfirmDialog
+            locale="en"
+            open={open}
+            title="Confirm logout"
+            message="Sign out of the administration console?"
+            onConfirm={onConfirm}
+            onCancel={onCancel}
+          />
+        </>
+      );
+    }
+
+    const { rerender } = render(<Harness open={false} />);
+    const opener = screen.getByRole('button', { name: 'Opener' });
+    opener.focus();
+    expect(opener).toHaveFocus();
+
+    rerender(<Harness open />);
+
+    const dialog = await screen.findByRole('alertdialog');
+    expect(dialog).toHaveAttribute('aria-labelledby');
+    expect(dialog).toHaveAttribute('aria-describedby');
+    expect(screen.getByText('Confirm logout')).toBeInTheDocument();
+    expect(
+      screen.getByText('Sign out of the administration console?'),
+    ).toBeInTheDocument();
+
+    const confirm = screen.getByRole('button', { name: en['common.confirm'] });
+    const cancel = screen.getByRole('button', { name: en['common.cancel'] });
+    expect(confirm).toHaveFocus();
+
+    await user.tab();
+    expect(cancel).toHaveFocus();
+    await user.tab();
+    expect(confirm).toHaveFocus();
+    await user.tab({ shift: true });
+    expect(cancel).toHaveFocus();
+
+    await user.keyboard('{Escape}');
+    expect(onCancel).toHaveBeenCalledTimes(1);
+
+    rerender(<Harness open={false} />);
+    expect(opener).toHaveFocus();
   });
 });

@@ -25,6 +25,7 @@ import {
 } from '@/components/ui/confirm-dialog';
 import { useToast } from '@/components/ui/toast';
 import { t } from '@/i18n/get-dictionary';
+import { localizeAdminError } from '@/i18n/localize-admin-error';
 import type { Locale } from '@/i18n/locale';
 import type { MessageKey } from '@/i18n/messages/en';
 import { adminApiFetch } from '@/lib/api/client';
@@ -86,7 +87,9 @@ export function AdministratorsList({
     );
     if (!result.ok) {
       setForbidden(result.status === 403 || result.error.code === 'FORBIDDEN');
-      setError(result.error.message);
+      setError(
+        localizeAdminError(locale, result.error.code, result.error.message),
+      );
       setData(null);
       setLoading(false);
       return;
@@ -95,7 +98,7 @@ export function AdministratorsList({
     setError(null);
     setData(result.data);
     setLoading(false);
-  }, [page, q, role, status, sortBy, sortOrder]);
+  }, [page, q, role, status, sortBy, sortOrder, locale]);
 
   useEffect(() => scheduleEffectTask(() => void load()), [load]);
 
@@ -299,7 +302,9 @@ export function AdministratorCreateForm({ locale }: { locale: Locale }) {
     );
     setSubmitting(false);
     if (!result.ok) {
-      setError(result.error.message);
+      setError(
+        localizeAdminError(locale, result.error.code, result.error.message),
+      );
       return;
     }
     pushToast(t(locale, 'admins.createSuccess'), 'success');
@@ -394,7 +399,9 @@ export function AdministratorDetailForm({
     );
     if (!result.ok) {
       setForbidden(result.status === 403 || result.error.code === 'FORBIDDEN');
-      setError(result.error.message);
+      setError(
+        localizeAdminError(locale, result.error.code, result.error.message),
+      );
       setAdmin(null);
       setLoading(false);
       return;
@@ -403,7 +410,7 @@ export function AdministratorDetailForm({
     setError(null);
     setForbidden(false);
     setLoading(false);
-  }, [id]);
+  }, [id, locale]);
 
   useEffect(() => scheduleEffectTask(() => void load()), [load]);
 
@@ -420,7 +427,9 @@ export function AdministratorDetailForm({
     setConfirmKind(null);
     setPendingBody(null);
     if (!result.ok) {
-      setFormError(result.error.message);
+      setFormError(
+        localizeAdminError(locale, result.error.code, result.error.message),
+      );
       return;
     }
     setAdmin(result.data.administrator);
@@ -480,7 +489,10 @@ export function AdministratorDetailForm({
     setRevoking(false);
     setRevokeConfirmOpen(false);
     if (!result.ok) {
-      pushToast(result.error.message, 'error');
+      pushToast(
+        localizeAdminError(locale, result.error.code, result.error.message),
+        'error',
+      );
       return;
     }
     pushToast(
@@ -531,7 +543,9 @@ export function AdministratorDetailForm({
           {t(locale, 'common.back')}
         </Link>
       </div>
-      {readOnly ? <p className="panel">{t(locale, 'admins.readOnly')}</p> : null}
+      {readOnly ? (
+        <p className="panel">{t(locale, 'admins.readOnly')}</p>
+      ) : null}
       <form className="panel stack" onSubmit={onSubmit}>
         {formError ? <p className="form-error">{formError}</p> : null}
         <div className="field">

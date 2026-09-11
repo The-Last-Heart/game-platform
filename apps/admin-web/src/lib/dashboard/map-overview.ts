@@ -1,5 +1,16 @@
 import type { AdminDashboardOverview } from '@thelastheart/contracts';
 
+export type MatchPhaseKey =
+  | 'lobby'
+  | 'ready_countdown'
+  | 'challenge_intro'
+  | 'challenge_active'
+  | 'round_result'
+  | 'completed'
+  | 'halted';
+
+export type PlayerPresenceKey = 'connected' | 'disconnected' | 'spectator';
+
 export type DashboardViewModel = {
   generatedAt: string;
   activeMatchCount: number;
@@ -10,7 +21,8 @@ export type DashboardViewModel = {
   connectedPlayers: number;
   disconnectedPlayers: number;
   spectators: number;
-  matchesByPhase: Array<{ phase: string; count: number }>;
+  matchesByPhase: Array<{ phase: MatchPhaseKey; count: number }>;
+  playersByPresence: Array<{ presence: PlayerPresenceKey; count: number }>;
 };
 
 export function mapDashboardOverview(
@@ -35,6 +47,17 @@ export function mapDashboardOverview(
       { phase: 'round_result', count: phases.round_result },
       { phase: 'completed', count: phases.completed },
       { phase: 'halted', count: phases.halted },
+    ],
+    playersByPresence: [
+      {
+        presence: 'connected',
+        count: overview.aggregates.connectedPlayers,
+      },
+      {
+        presence: 'disconnected',
+        count: overview.aggregates.disconnectedPlayers,
+      },
+      { presence: 'spectator', count: overview.aggregates.spectators },
     ],
   };
 }

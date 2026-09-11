@@ -4,6 +4,7 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import { FormEvent, useState } from 'react';
 import { LanguageSwitcher } from '@/components/language-switcher';
 import { t } from '@/i18n/get-dictionary';
+import { localizeAdminError } from '@/i18n/localize-admin-error';
 import type { Locale } from '@/i18n/locale';
 import { adminApiFetch } from '@/lib/api/client';
 import {
@@ -40,7 +41,13 @@ export function LoginForm({ locale }: { locale: Locale }) {
     setSubmitting(false);
 
     if (!result.ok) {
-      setFormError(result.error.message || t(locale, 'auth.genericError'));
+      setFormError(
+        localizeAdminError(
+          locale,
+          result.error.code,
+          result.error.message || t(locale, 'auth.genericError'),
+        ),
+      );
       return;
     }
 

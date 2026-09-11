@@ -8,15 +8,27 @@ import {
   LoadingState,
 } from '@/components/ui/confirm-dialog';
 import { t } from '@/i18n/get-dictionary';
+import { localizeAdminError } from '@/i18n/localize-admin-error';
 import type { Locale } from '@/i18n/locale';
+import type { MessageKey } from '@/i18n/messages/en';
 import { adminApiFetch } from '@/lib/api/client';
 import {
   mapDashboardOverview,
   type DashboardViewModel,
+  type MatchPhaseKey,
+  type PlayerPresenceKey,
 } from '@/lib/dashboard/map-overview';
 import { scheduleEffectTask } from '@/lib/react/schedule-effect-task';
 
 const POLL_MS = 15_000;
+
+function phaseLabel(locale: Locale, phase: MatchPhaseKey): string {
+  return t(locale, `dashboard.phase.${phase}` as MessageKey);
+}
+
+function presenceLabel(locale: Locale, presence: PlayerPresenceKey): string {
+  return t(locale, `dashboard.presence.${presence}` as MessageKey);
+}
 
 export function DashboardPanel({ locale }: { locale: Locale }) {
   const [view, setView] = useState<DashboardViewModel | null>(null);
@@ -44,7 +56,9 @@ export function DashboardPanel({ locale }: { locale: Locale }) {
         return;
       }
       if (!result.ok) {
-        setError(result.error.message);
+        setError(
+          localizeAdminError(locale, result.error.code, result.error.message),
+        );
         if (view) {
           setStale(true);
         }
@@ -58,7 +72,7 @@ export function DashboardPanel({ locale }: { locale: Locale }) {
       setLoading(false);
       inFlight.current = false;
     },
-    [view],
+    [view, locale],
   );
 
   useEffect(() => {
@@ -173,24 +187,6 @@ export function DashboardPanel({ locale }: { locale: Locale }) {
               </p>
               <p className="metric-value">{view.activeSessions}</p>
             </div>
-            <div className="metric">
-              <p className="metric-label">
-                {t(locale, 'dashboard.connectedPlayers')}
-              </p>
-              <p className="metric-value">{view.connectedPlayers}</p>
-            </div>
-            <div className="metric">
-              <p className="metric-label">
-                {t(locale, 'dashboard.disconnectedPlayers')}
-              </p>
-              <p className="metric-value">{view.disconnectedPlayers}</p>
-            </div>
-            <div className="metric">
-              <p className="metric-label">
-                {t(locale, 'dashboard.spectators')}
-              </p>
-              <p className="metric-value">{view.spectators}</p>
-            </div>
           </div>
 
           <div className="stack">
@@ -203,14 +199,14 @@ export function DashboardPanel({ locale }: { locale: Locale }) {
                   <table className="data-table">
                     <thead>
                       <tr>
-                        <th>Phase</th>
-                        <th>Count</th>
+                        <th>{t(locale, 'dashboard.col.phase')}</th>
+                        <th>{t(locale, 'dashboard.col.count')}</th>
                       </tr>
                     </thead>
                     <tbody>
                       {view.matchesByPhase.map((row) => (
                         <tr key={row.phase}>
-                          <td>{row.phase}</td>
+                          <td>{phaseLabel(locale, row.phase)}</td>
                           <td>{row.count}</td>
                         </tr>
                       ))}
@@ -218,6 +214,28 @@ export function DashboardPanel({ locale }: { locale: Locale }) {
                   </table>
                 </div>
               )}
+            </section>
+
+            <section className="panel">
+              <h2>{t(locale, 'dashboard.playersByPresence')}</h2>
+              <div className="table-wrap">
+                <table className="data-table">
+                  <thead>
+                    <tr>
+                      <th>{t(locale, 'dashboard.col.presence')}</th>
+                      <th>{t(locale, 'dashboard.col.count')}</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {view.playersByPresence.map((row) => (
+                      <tr key={row.presence}>
+                        <td>{presenceLabel(locale, row.presence)}</td>
+                        <td>{row.count}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             </section>
           </div>
         </>

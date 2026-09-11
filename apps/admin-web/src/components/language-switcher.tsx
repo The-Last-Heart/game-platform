@@ -2,7 +2,8 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { Moon, Sun } from 'lucide-react';
+import { Moon, PanelLeftClose, PanelLeftOpen, Sun } from 'lucide-react';
+import { useState } from 'react';
 import { t } from '@/i18n/get-dictionary';
 import {
   documentDirection,
@@ -14,7 +15,12 @@ import {
   PREFERENCE_COOKIE_MAX_AGE,
   setClientCookie,
 } from '@/lib/preferences/cookies';
-import { THEME_COOKIE_NAME, type ThemePreference } from '@/lib/bff/constants';
+import {
+  SIDEBAR_COOKIE_NAME,
+  THEME_COOKIE_NAME,
+  type SidebarPreference,
+  type ThemePreference,
+} from '@/lib/bff/constants';
 
 type LanguageSwitcherProps = {
   locale: Locale;
@@ -66,27 +72,59 @@ export function ThemeToggle({
   locale: Locale;
   initialTheme: ThemePreference;
 }) {
+  const [theme, setTheme] = useState<ThemePreference>(initialTheme);
+  const nextTheme: ThemePreference = theme === 'dark' ? 'light' : 'dark';
+  const label = t(locale, nextTheme === 'dark' ? 'theme.dark' : 'theme.light');
+
   return (
     <button
       type="button"
       className="btn btn-secondary"
-      aria-label={t(locale, 'theme.toggle')}
+      aria-label={label}
       onClick={() => {
         const root = document.documentElement;
-        const current =
-          root.dataset.theme === 'dark' ? 'dark' : (initialTheme ?? 'light');
-        const next: ThemePreference = current === 'dark' ? 'light' : 'dark';
-        root.dataset.theme = next;
-        root.style.colorScheme = next;
-        setClientCookie(THEME_COOKIE_NAME, next, PREFERENCE_COOKIE_MAX_AGE);
+        root.dataset.theme = nextTheme;
+        root.style.colorScheme = nextTheme;
+        setClientCookie(
+          THEME_COOKIE_NAME,
+          nextTheme,
+          PREFERENCE_COOKIE_MAX_AGE,
+        );
+        setTheme(nextTheme);
       }}
     >
-      {initialTheme === 'dark' ? <Sun size={16} /> : <Moon size={16} />}
-      <span className="nav-label">
-        {initialTheme === 'dark'
-          ? t(locale, 'theme.light')
-          : t(locale, 'theme.dark')}
-      </span>
+      {theme === 'dark' ? <Sun size={16} /> : <Moon size={16} />}
+      <span className="nav-label">{label}</span>
+    </button>
+  );
+}
+
+export function SidebarToggle({
+  locale,
+  initialSidebar,
+}: {
+  locale: Locale;
+  initialSidebar: SidebarPreference;
+}) {
+  const [sidebar, setSidebar] = useState<SidebarPreference>(initialSidebar);
+  const collapsed = sidebar === 'collapsed';
+  const label = t(locale, collapsed ? 'nav.expand' : 'nav.collapse');
+
+  return (
+    <button
+      type="button"
+      className="btn btn-ghost"
+      style={{ color: 'inherit', marginTop: '0.75rem' }}
+      onClick={() => {
+        const next: SidebarPreference = collapsed ? 'expanded' : 'collapsed';
+        document.documentElement.dataset.sidebar = next;
+        setClientCookie(SIDEBAR_COOKIE_NAME, next, PREFERENCE_COOKIE_MAX_AGE);
+        setSidebar(next);
+      }}
+      aria-label={label}
+    >
+      {collapsed ? <PanelLeftOpen size={18} /> : <PanelLeftClose size={18} />}
+      <span className="nav-label">{label}</span>
     </button>
   );
 }

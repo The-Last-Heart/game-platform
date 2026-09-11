@@ -93,11 +93,25 @@ const ar: Record<MessageKey, string> = {
   'dashboard.deactivatedAdmins': 'مسؤولون معطلون',
   'dashboard.activeSessions': 'جلسات الإدارة النشطة',
   'dashboard.matchesByPhase': 'المباريات حسب المرحلة',
+  'dashboard.playersByPresence': 'اللاعبون حسب الحضور',
   'dashboard.connectedPlayers': 'لاعبون متصلون',
   'dashboard.disconnectedPlayers': 'لاعبون غير متصلين',
   'dashboard.spectators': 'متفرجون',
   'dashboard.polling': 'تحديث تلقائي أثناء ظهور علامة التبويب',
   'dashboard.paused': 'التحديث التلقائي متوقف (التبويب مخفي)',
+  'dashboard.col.phase': 'المرحلة',
+  'dashboard.col.count': 'العدد',
+  'dashboard.col.presence': 'الحضور',
+  'dashboard.phase.lobby': 'الردهة',
+  'dashboard.phase.ready_countdown': 'العد التنازلي للاستعداد',
+  'dashboard.phase.challenge_intro': 'مقدمة التحدي',
+  'dashboard.phase.challenge_active': 'التحدي نشط',
+  'dashboard.phase.round_result': 'نتيجة الجولة',
+  'dashboard.phase.completed': 'مكتملة',
+  'dashboard.phase.halted': 'متوقفة',
+  'dashboard.presence.connected': 'متصل',
+  'dashboard.presence.disconnected': 'غير متصل',
+  'dashboard.presence.spectator': 'متفرج',
 
   'admins.title': 'المسؤولون',
   'admins.subtitle': 'إدارة حسابات المسؤولين',
@@ -139,12 +153,10 @@ const ar: Record<MessageKey, string> = {
   'admins.revokeSessionsConfirm':
     'إلغاء الجلسات النشطة لهذا المسؤول؟ سيحتاجون إلى تسجيل الدخول مجدداً.',
   'admins.revokeSessionsSuccess': 'تم إلغاء الجلسات',
-  'admins.confirmDeactivate':
-    'تعطيل هذا المسؤول؟ سيتم إلغاء كل جلساته.',
+  'admins.confirmDeactivate': 'تعطيل هذا المسؤول؟ سيتم إلغاء كل جلساته.',
   'admins.confirmPasswordReset':
     'إعادة تعيين كلمة مرور هذا المسؤول؟ سيتم إلغاء كل جلساته.',
-  'admins.confirmRoleReduction':
-    'تخفيض دور هذا المسؤول؟ أكّد قبل المتابعة.',
+  'admins.confirmRoleReduction': 'تخفيض دور هذا المسؤول؟ أكّد قبل المتابعة.',
   'admins.readOnly': 'لديك صلاحية قراءة فقط للمسؤولين.',
 
   'audit.title': 'سجل التدقيق',
@@ -175,11 +187,15 @@ const ar: Record<MessageKey, string> = {
   'system.sessions': 'الجلسات النشطة',
   'system.aggregates': 'المجاميع التشغيلية',
   'system.generatedAt': 'تم الإنشاء في',
+  'system.col.name': 'الاسم',
   'system.status.up': 'يعمل',
   'system.status.down': 'متوقف',
   'system.status.skipped': 'تم التخطي',
+  'system.live.ok': 'سليم',
   'system.ready.ok': 'سليم',
   'system.ready.degraded': 'متدهور',
+  'system.check.postgres': 'PostgreSQL',
+  'system.check.redis': 'Redis',
 
   'profile.title': 'الملف الشخصي',
   'profile.subtitle': 'حساب المسؤول الخاص بك',
@@ -220,6 +236,23 @@ const ar: Record<MessageKey, string> = {
     'إلغاء كل الجلسات الأخرى لهذا الحساب؟ ستحتاج الأجهزة التي تستخدم تلك الجلسات إلى تسجيل الدخول مجدداً.',
   'security.revokeSuccess': 'تم إلغاء الجلسات الأخرى',
   'security.revokedCount': 'الجلسات الملغاة',
+
+  'errors.VALIDATION_ERROR': 'فشل التحقق من الطلب',
+  'errors.UNAUTHORIZED': 'المصادقة مطلوبة',
+  'errors.FORBIDDEN': 'ليست لديك صلاحية لتنفيذ هذا الإجراء',
+  'errors.NOT_FOUND': 'المورد غير موجود',
+  'errors.CONFLICT': 'يتعارض الطلب مع الحالة الحالية',
+  'errors.INVALID_CREDENTIALS': 'البريد الإلكتروني أو كلمة المرور غير صحيحة',
+  'errors.RATE_LIMITED': 'محاولات كثيرة جداً. حاول لاحقاً',
+  'errors.CSRF_REJECTED': 'تم رفض رمز الأمان. حدّث الصفحة وحاول مجدداً',
+  'errors.ORIGIN_REJECTED': 'تم رفض مصدر الطلب',
+  'errors.SESSION_EXPIRED': 'انتهت جلستك. يرجى تسجيل الدخول مجدداً',
+  'errors.ACCOUNT_DEACTIVATED': 'تم تعطيل هذا الحساب',
+  'errors.LAST_SUPER_ADMIN': 'لا يمكن تعديل آخر مسؤول أعلى نشط',
+  'errors.SELF_DEMOTION_FORBIDDEN':
+    'لا يمكنك تخفيض دور المسؤول الأعلى الخاص بك',
+  'errors.SELF_DEACTIVATION_FORBIDDEN': 'لا يمكنك تعطيل حسابك',
+  'errors.INTERNAL_ERROR': 'حدث خطأ غير متوقع',
 };
 
 export default ar;

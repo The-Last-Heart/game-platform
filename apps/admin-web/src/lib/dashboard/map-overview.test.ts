@@ -39,5 +39,10 @@ describe('mapDashboardOverview', () => {
     expect(
       view.matchesByPhase.find((row) => row.phase === 'halted')?.count,
     ).toBe(1);
+    expect(view.playersByPresence).toEqual([
+      { presence: 'connected', count: 4 },
+      { presence: 'disconnected', count: 1 },
+      { presence: 'spectator', count: 2 },
+    ]);
   });
 });

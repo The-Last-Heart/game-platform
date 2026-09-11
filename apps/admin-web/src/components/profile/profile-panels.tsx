@@ -15,6 +15,7 @@ import {
 } from '@/components/ui/confirm-dialog';
 import { useToast } from '@/components/ui/toast';
 import { t } from '@/i18n/get-dictionary';
+import { localizeAdminError } from '@/i18n/localize-admin-error';
 import type { Locale } from '@/i18n/locale';
 import type { MessageKey } from '@/i18n/messages/en';
 import { adminApiFetch } from '@/lib/api/client';
@@ -54,7 +55,9 @@ export function ProfilePanel({
     );
     setSubmitting(false);
     if (!result.ok) {
-      setError(result.error.message);
+      setError(
+        localizeAdminError(locale, result.error.code, result.error.message),
+      );
       return;
     }
     setUser(result.data.user);
@@ -161,7 +164,11 @@ export function SecurityPanel({ locale }: { locale: Locale }) {
     if (!result.ok) {
       setSessions(null);
       setSessionsError(
-        result.error.message || t(locale, 'security.sessionsLoadError'),
+        localizeAdminError(
+          locale,
+          result.error.code,
+          result.error.message || t(locale, 'security.sessionsLoadError'),
+        ),
       );
       setSessionsLoading(false);
       return;
@@ -200,7 +207,9 @@ export function SecurityPanel({ locale }: { locale: Locale }) {
     });
     setSubmitting(false);
     if (!result.ok) {
-      setPasswordError(result.error.message);
+      setPasswordError(
+        localizeAdminError(locale, result.error.code, result.error.message),
+      );
       return;
     }
     event.currentTarget.reset();
@@ -218,7 +227,10 @@ export function SecurityPanel({ locale }: { locale: Locale }) {
     setRevoking(false);
     setConfirmOpen(false);
     if (!result.ok) {
-      pushToast(result.error.message, 'error');
+      pushToast(
+        localizeAdminError(locale, result.error.code, result.error.message),
+        'error',
+      );
       return;
     }
     pushToast(

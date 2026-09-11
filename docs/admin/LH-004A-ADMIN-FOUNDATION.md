@@ -12,7 +12,8 @@ admin-web BFF and UI shell.
   parameterized `query` / `tx` helpers, SQL migration runner with
   `schema_migrations` + `pg_advisory_lock`.
 - **Admin API** (`/api/admin/v1`): Nest module with session auth, RBAC guards,
-  CSRF + Origin checks, Redis login throttle, and append-only audit logs.
+  CSRF + Origin checks, Redis login throttle, and append-only audit logs with a
+  monotonic `sequence_id` for stable pagination ordering.
 - **Admin web BFF** (`apps/admin-web`): same-origin App Router routes under
   `/api/admin/v1/*` that proxy to the backend. The browser never talks to the
   backend directly and never receives `BACKEND_INTERNAL_URL`.
@@ -74,12 +75,14 @@ Browser  →  admin-web /api/admin/v1/...  →  BACKEND_INTERNAL_URL/api/admin/v
   Login / change-password responses strip `sessionToken` before returning JSON.
 - CSRF uses double-submit: readable `lh_admin_csrf` cookie + `X-CSRF-Token`
   header on mutating requests. The BFF forwards both to the backend.
-- Mutating BFF requests validate the browser `Origin` (or Referer origin) against
-  `ADMIN_PUBLIC_ORIGIN`, then forward a trusted `Origin: <ADMIN_PUBLIC_ORIGIN>`
-  header to the backend (never the client Origin blindly). Backend
-  `ADMIN_ALLOWED_ORIGIN` should match the same value.
+- Mutating BFF requests **always** validate the browser `Origin` (or Referer
+  origin) against `ADMIN_PUBLIC_ORIGIN`, then forward a trusted
+  `Origin: <ADMIN_PUBLIC_ORIGIN>` header to the backend (never the client Origin
+  blindly). Backend `ADMIN_ALLOWED_ORIGIN` must match the same value. Do **not**
+  disable Origin validation when using the BFF.
 - Backend errors are remapped to safe envelopes (stable codes + generic messages;
-  no stacks or internal details).
+  no stacks or internal details). Admin-web maps those codes to localized UI
+  messages via `localizeAdminError`.
 - Proxy (`src/proxy.ts`) gates protected routes on session-cookie presence to
   avoid flashing protected chrome; `/login` is always allowed through so stale
   cookies do not redirect-loop. Layouts still validate `/auth/me` server-side.
@@ -94,13 +97,17 @@ Browser  →  admin-web /api/admin/v1/...  →  BACKEND_INTERNAL_URL/api/admin/v
 - Absolute session TTL: `ADMIN_SESSION_TTL_SECONDS` (default 12h).
 - Login creates a new independent session (prior sessions stay active until
   revoke / password change / deactivation).
+- `GET /api/admin/v1/auth/sessions` lists active sessions for the current
+  administrator (safe fields only: id, current flag, timestamps, sanitized
+  device description — never tokens or hashes).
 - Logout is idempotent: CSRF + Origin required; valid session is optional.
   Always clears cookies and returns `{ revoked: true }`.
 - Redis throttle keyed by normalized email; success clears the counter.
 - Invalid credentials always return a generic error.
 - CSRF: double-submit (`lh_admin_csrf` cookie + `X-CSRF-Token` header) on
-  mutating requests. Origin/Referer must match `ADMIN_ALLOWED_ORIGIN` when set
-  (required in production).
+  mutating requests. Origin/Referer must match `ADMIN_ALLOWED_ORIGIN`
+  (required in production; configure the same value as `ADMIN_PUBLIC_ORIGIN`).
+
 ## Roles / permissions
 
 | Role | Permissions |
@@ -131,12 +138,12 @@ Invariants:
 | GET | `/api/admin/v1/auth/sessions` | Auth; active sessions (no secrets) |
 | POST | `/api/admin/v1/auth/change-password` | Auth + CSRF; rotates session |
 | POST | `/api/admin/v1/auth/revoke-other-sessions` | Auth + CSRF |
+| PATCH | `/api/admin/v1/auth/profile` | Auth; `{ displayName }` only |
 | GET/POST/GET/PATCH | `/api/admin/v1/administrators` | RBAC; list supports allowlisted `sortBy`/`sortOrder` |
 | POST | `/api/admin/v1/administrators/:id/revoke-sessions` | `administrators:write`; self keeps current session |
-| PATCH | `/api/admin/v1/auth/profile` | Auth; `{ displayName }` only |
-| GET | `/api/admin/v1/dashboard/overview` | Safe aggregates only |
+| GET | `/api/admin/v1/dashboard/overview` | Safe aggregates only (`activeMatchCount` excludes completed/halted) |
 | GET | `/api/admin/v1/system/status` | Health + sessions + aggregates |
-| GET | `/api/admin/v1/audit-logs` | Redacted metadata |
+| GET | `/api/admin/v1/audit-logs` | Redacted metadata; ordered by `sequenceId` DESC |
 
 Browser clients call the **same paths on admin-web** (port 3001); the BFF
 forwards them to the backend.
@@ -170,8 +177,9 @@ pnpm db:migrate
 pnpm db:migrate:status
 ```
 
-Tables: `admin_users`, `admin_sessions`, `admin_audit_logs`, plus
-`schema_migrations`. Re-running migrate is idempotent.
+Tables: `admin_users`, `admin_sessions`, `admin_audit_logs` (with monotonic
+`sequence_id` and append-only triggers), plus `schema_migrations`. Re-running
+migrate is idempotent.
 
 ## Bootstrap first super_admin
 
@@ -189,7 +197,9 @@ Idempotent by email. Never prints password or hash.
 Metadata keys matching `password|secret|token|authorization|cookie|hash|credential|session`
 are replaced with `[REDACTED]` before persistence and again on read. Long strings
 are truncated. Dashboard/system aggregates never include resume tokens, challenge
-answers, or `serverConfig`.
+answers, or `serverConfig`. Audit rows expose public UUID `id` plus string
+`sequenceId` for deterministic pagination (`ORDER BY sequence_id DESC, id DESC`).
+PostgreSQL rejects `UPDATE`/`DELETE` on `admin_audit_logs`.
 
 ## Environment
 
@@ -198,12 +208,13 @@ See `apps/backend/.env.example` for:
 - `ADMIN_SESSION_TTL_SECONDS`
 - `ADMIN_LOGIN_MAX_FAILURES` / `ADMIN_LOGIN_THROTTLE_TTL_SECONDS`
 - `ADMIN_CSRF_SECRET`
-- `ADMIN_ALLOWED_ORIGIN` (required in production; admin-web / BFF origin)
+- `ADMIN_ALLOWED_ORIGIN` (required in production; must match admin-web public origin)
 - `COOKIE_SECURE`
 - `ADMIN_BOOTSTRAP_*`
 
 See `apps/admin-web/.env.example` for:
 
 - `BACKEND_INTERNAL_URL` (server-only, e.g. `http://127.0.0.1:3000`)
-- `ADMIN_PUBLIC_ORIGIN` (server-only; BFF Origin validation + trusted forward)
+- `ADMIN_PUBLIC_ORIGIN` (server-only; BFF Origin validation + trusted forward; required in production)
 - `NEXT_PUBLIC_ADMIN_ENV` (environment badge label)
+- `COOKIE_SECURE` (optional; set `true` behind HTTPS)
