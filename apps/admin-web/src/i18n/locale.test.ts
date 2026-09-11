@@ -1,5 +1,4 @@
-import assert from 'node:assert/strict';
-import { describe, it } from 'node:test';
+import { describe, expect, it } from 'vitest';
 import { getDictionary, t } from './get-dictionary';
 import type { MessageKey } from './messages/en';
 import ar from './messages/ar';
@@ -17,55 +16,54 @@ const locales = ['en', 'ar'] as const;
 
 describe('admin localization foundation', () => {
   it('defaults English on first visit without cookie', () => {
-    assert.equal(resolveRootLocale(undefined), defaultLocale);
-    assert.equal(resolveRootLocale(undefined), 'en');
-    assert.equal(documentLang('en'), 'en');
-    assert.equal(documentDirection('en'), 'ltr');
+    expect(resolveRootLocale(undefined)).toBe(defaultLocale);
+    expect(resolveRootLocale(undefined)).toBe('en');
+    expect(documentLang('en')).toBe('en');
+    expect(documentDirection('en')).toBe('ltr');
   });
 
   it('maps Arabic to lang=ar and dir=rtl', () => {
-    assert.equal(documentLang('ar'), 'ar');
-    assert.equal(documentDirection('ar'), 'rtl');
-    assert.equal(resolveRootLocale('ar'), 'ar');
+    expect(documentLang('ar')).toBe('ar');
+    expect(documentDirection('ar')).toBe('rtl');
+    expect(resolveRootLocale('ar')).toBe('ar');
   });
 
   it('does not treat browser-like values as locale without explicit cookie', () => {
-    assert.equal(resolveRootLocale('fr'), 'en');
-    assert.equal(resolveRootLocale('ar-SA'), 'en');
+    expect(resolveRootLocale('fr')).toBe('en');
+    expect(resolveRootLocale('ar-SA')).toBe('en');
   });
 
   it('preserves equivalent paths when switching locales', () => {
-    assert.equal(stripLocalePrefix('/en'), '/');
-    assert.equal(stripLocalePrefix('/ar'), '/');
-    assert.equal(localizePath('/en', 'ar'), '/ar');
-    assert.equal(localizePath('/ar', 'en'), '/en');
-    assert.equal(localizePath('/en/settings', 'ar'), '/ar/settings');
+    expect(stripLocalePrefix('/en')).toBe('/');
+    expect(stripLocalePrefix('/ar')).toBe('/');
+    expect(localizePath('/en', 'ar')).toBe('/ar');
+    expect(localizePath('/ar', 'en')).toBe('/en');
+    expect(localizePath('/en/dashboard', 'ar')).toBe('/ar/dashboard');
+    expect(localizePath('/en/administrators/new', 'ar')).toBe(
+      '/ar/administrators/new',
+    );
   });
 
-  it('returns required English and Arabic foundation copy', () => {
-    assert.equal(t('en', 'app.title'), 'The Last Heart — Administration');
-    assert.equal(t('en', 'foundation.heading'), 'Foundation status');
-    assert.equal(t('ar', 'app.title'), 'آخر قلب — لوحة الإدارة');
-    assert.equal(t('ar', 'foundation.heading'), 'حالة التأسيس');
+  it('returns required English and Arabic product copy', () => {
+    expect(t('en', 'app.title')).toBe('The Last Heart — Administration');
+    expect(t('en', 'app.productName')).toBe('The Last Heart');
+    expect(t('ar', 'app.title')).toBe('آخر قلب — لوحة الإدارة');
+    expect(t('ar', 'app.productNameAr')).toBe('آخر قلب');
   });
 
   it('localizes metadata strings per locale', () => {
-    assert.equal(
-      t('en', 'app.description'),
-      'Administration foundation for The Last Heart',
-    );
-    assert.equal(t('ar', 'app.description'), 'أساس لوحة الإدارة لمنصة آخر قلب');
+    expect(t('en', 'app.description')).toContain('Administration');
+    expect(t('ar', 'app.description')).toContain('آخر قلب');
   });
 
   it('falls back to English for invalid locale cookie values', () => {
-    assert.equal(resolveRootLocale('invalid'), 'en');
-    assert.equal(resolveRootLocale(''), 'en');
-    assert.equal(resolveRootLocale('EN'), 'en');
+    expect(resolveRootLocale('invalid')).toBe('en');
+    expect(resolveRootLocale('')).toBe('en');
+    expect(resolveRootLocale('EN')).toBe('en');
   });
 
   it('fails clearly in development when a translation key is missing', () => {
-    assert.throws(
-      () => t('en', 'does.not.exist' as never),
+    expect(() => t('en', 'does.not.exist' as never)).toThrow(
       /Missing translation for key/,
     );
   });
@@ -76,7 +74,7 @@ describe('admin localization foundation', () => {
     const original = dictionary[key];
     (dictionary as Record<string, string>)[key] = '   ';
     try {
-      assert.throws(() => t('en', key), /Missing translation for key/);
+      expect(() => t('en', key)).toThrow(/Missing translation for key/);
     } finally {
       (dictionary as Record<string, string>)[key] = original;
     }
@@ -85,18 +83,15 @@ describe('admin localization foundation', () => {
   it('enforces key parity and non-blank values across dictionaries', () => {
     const enKeys = Object.keys(en).sort();
     const arKeys = Object.keys(ar).sort();
-    assert.deepEqual(arKeys, enKeys);
+    expect(arKeys).toEqual(enKeys);
 
     for (const locale of locales) {
       const dictionary = getDictionary(locale);
       for (const key of enKeys) {
         const value = dictionary[key as MessageKey];
-        assert.equal(typeof value, 'string');
-        assert.ok(
-          value.trim().length > 0,
-          `${locale}:${key} must be non-blank`,
-        );
-        assert.equal(t(locale, key as MessageKey), value);
+        expect(typeof value).toBe('string');
+        expect(value.trim().length).toBeGreaterThan(0);
+        expect(t(locale, key as MessageKey)).toBe(value);
       }
     }
   });

@@ -1,6 +1,8 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
+import { AdminModule } from './admin/admin.module';
 import { validateEnv } from './config/env.validation';
+import { DatabaseModule } from './database/database.module';
 import { HealthModule } from './health/health.module';
 import { MatchModule } from './match/match.module';
 
@@ -11,8 +13,10 @@ import { MatchModule } from './match/match.module';
       cache: true,
       validate: validateEnv,
     }),
+    DatabaseModule,
     HealthModule,
     MatchModule,
+    AdminModule,
   ],
 })
 export class AppModule {}

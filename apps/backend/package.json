@@ -18,6 +18,9 @@
     "test": "jest",
     "test:watch": "jest --watch",
     "test:cov": "jest --coverage",
+    "db:migrate": "ts-node -r tsconfig-paths/register src/database/migrate.ts",
+    "db:migrate:status": "ts-node -r tsconfig-paths/register src/database/migrate-status.ts",
+    "admin:bootstrap": "ts-node -r tsconfig-paths/register src/admin/cli/bootstrap.ts",
     "verify": "pnpm run format:check && pnpm run lint && pnpm run test && pnpm run build"
   },
   "dependencies": {
@@ -76,6 +79,7 @@
       "src/**/*.(t|j)s"
     ],
     "coverageDirectory": "./coverage",
-    "testEnvironment": "node"
+    "testEnvironment": "node",
+    "forceExit": true
   }
 }

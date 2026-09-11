@@ -5,18 +5,43 @@ import { validateEnv } from './env.validation';
 describe('validateEnv', () => {
   const base = {
     NODE_ENV: 'test',
-    PORT: '3001',
+    PORT: '3000',
     LOG_LEVEL: 'error',
     DATABASE_URL:
       'postgres://lh_local:lh_local_dev_only@127.0.0.1:5432/the_last_heart',
     REDIS_URL: 'redis://127.0.0.1:6379',
     HEALTH_CHECK_DEPENDENCIES: 'false',
+    ADMIN_CSRF_SECRET: 'test-csrf-secret-16',
+    COOKIE_SECURE: 'false',
   };
 
   it('accepts valid configuration', () => {
     const config = validateEnv(base);
-    expect(config.PORT).toBe(3001);
+    expect(config.PORT).toBe(3000);
     expect(config.HEALTH_CHECK_DEPENDENCIES).toBe(false);
+    expect(config.ADMIN_SESSION_TTL_SECONDS).toBe(43_200);
+  });
+
+  it('requires non-default CSRF secret and secure cookies in production', () => {
+    expect(() =>
+      validateEnv({
+        ...base,
+        NODE_ENV: 'production',
+        HEALTH_CHECK_DEPENDENCIES: 'true',
+        COOKIE_SECURE: 'true',
+        ADMIN_CSRF_SECRET: 'lh-dev-csrf-secret-change-me',
+      }),
+    ).toThrow(/ADMIN_CSRF_SECRET/);
+
+    expect(() =>
+      validateEnv({
+        ...base,
+        NODE_ENV: 'production',
+        HEALTH_CHECK_DEPENDENCIES: 'true',
+        COOKIE_SECURE: 'false',
+        ADMIN_CSRF_SECRET: 'production-csrf-secret!!',
+      }),
+    ).toThrow(/COOKIE_SECURE/);
   });
 
   it('accepts postgresql:// and rediss:// with credentials and query', () => {
@@ -151,6 +176,8 @@ describe('validateEnv', () => {
         ...base,
         NODE_ENV: 'production',
         HEALTH_CHECK_DEPENDENCIES: 'false',
+        COOKIE_SECURE: 'true',
+        ADMIN_CSRF_SECRET: 'production-csrf-secret!!',
       }),
     ).toThrow(/HEALTH_CHECK_DEPENDENCIES/);
   });

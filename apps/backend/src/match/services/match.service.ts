@@ -651,6 +651,76 @@ export class MatchService implements OnModuleDestroy {
     }
   }
 
+  /**
+   * Safe read-only operational aggregates for admin dashboard/system status.
+   * Never includes resume tokens, answers, submissions, or serverConfig.
+   */
+  async getOperationalAggregates(): Promise<{
+    matchCount: number;
+    matchesByPhase: {
+      lobby: number;
+      ready_countdown: number;
+      challenge_intro: number;
+      challenge_active: number;
+      round_result: number;
+      completed: number;
+      halted: number;
+    };
+    playersByPresence: {
+      connected: number;
+      disconnected: number;
+      spectator: number;
+    };
+    lobbyWaitingPlayers: number;
+  }> {
+    const matchesByPhase = {
+      lobby: 0,
+      ready_countdown: 0,
+      challenge_intro: 0,
+      challenge_active: 0,
+      round_result: 0,
+      completed: 0,
+      halted: 0,
+    };
+    const playersByPresence = {
+      connected: 0,
+      disconnected: 0,
+      spectator: 0,
+    };
+    let lobbyWaitingPlayers = 0;
+
+    const ids = await this.store.listIds();
+    for (const matchId of ids) {
+      const match = await this.store.get(matchId);
+      if (!match) {
+        continue;
+      }
+      if (match.phase in matchesByPhase) {
+        matchesByPhase[match.phase] += 1;
+      }
+      for (const player of match.players.values()) {
+        if (player.status === 'spectator') {
+          playersByPresence.spectator += 1;
+        }
+        if (player.presence === 'connected') {
+          playersByPresence.connected += 1;
+        } else {
+          playersByPresence.disconnected += 1;
+        }
+        if (match.phase === 'lobby' && player.status === 'active') {
+          lobbyWaitingPlayers += 1;
+        }
+      }
+    }
+
+    return {
+      matchCount: ids.length,
+      matchesByPhase,
+      playersByPresence,
+      lobbyWaitingPlayers,
+    };
+  }
+
   getEngineForTests(): MatchEngine {
     return this.engine;
   }

@@ -1,4 +1,5 @@
 import { notFound } from 'next/navigation';
+import { DocumentLocaleAttributes } from '@/components/i18n/document-locale';
 import { isLocale, type Locale } from '@/i18n/locale';
 
 type LocaleLayoutProps = {
@@ -15,7 +16,12 @@ export default async function LocaleLayout({
     notFound();
   }
 
-  // Document lang/dir are owned by the root layout (server-rendered from middleware header).
-  void (rawLocale as Locale);
-  return <>{children}</>;
+  const locale = rawLocale as Locale;
+  // Root <html> is server-rendered once; sync lang/dir on client locale switches.
+  return (
+    <>
+      <DocumentLocaleAttributes locale={locale} />
+      {children}
+    </>
+  );
 }

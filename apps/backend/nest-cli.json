@@ -9,6 +9,11 @@
         "include": "**/*.json",
         "outDir": "dist",
         "watchAssets": true
+      },
+      {
+        "include": "database/migrations/**/*.sql",
+        "outDir": "dist",
+        "watchAssets": true
       }
     ]
   }

@@ -69,17 +69,25 @@ export function isHierarchicalServiceUrl(
   return true;
 }
 
+const optionalNonEmptyString = z.preprocess((value) => {
+  if (value === undefined || value === null || value === '') {
+    return undefined;
+  }
+  return value;
+}, z.string().min(1).optional());
+
 const envSchema = z
   .object({
     NODE_ENV: z
       .enum(['development', 'test', 'production'])
       .default('development'),
+    /** Backend HTTP/WebSocket port. Milestone default is 3000 (admin-web uses 3001). */
     PORT: z.coerce
       .number({ invalid_type_error: 'PORT must be an integer' })
       .int('PORT must be an integer')
       .min(1, 'PORT must be between 1 and 65535')
       .max(65535, 'PORT must be between 1 and 65535')
-      .default(3001),
+      .default(3000),
     LOG_LEVEL: z
       .enum(['fatal', 'error', 'warn', 'log', 'debug', 'verbose'])
       .default('log'),
@@ -98,6 +106,40 @@ const envSchema = z
           'REDIS_URL must be a hierarchical redis/rediss URL with a hostname',
       }),
     HEALTH_CHECK_DEPENDENCIES: booleanFromEnv.default(true),
+    ADMIN_SESSION_TTL_SECONDS: z.coerce
+      .number({
+        invalid_type_error: 'ADMIN_SESSION_TTL_SECONDS must be an integer',
+      })
+      .int('ADMIN_SESSION_TTL_SECONDS must be an integer')
+      .min(60, 'ADMIN_SESSION_TTL_SECONDS must be at least 60')
+      .max(604_800, 'ADMIN_SESSION_TTL_SECONDS must be at most 604800 (7d)')
+      .default(43_200),
+    ADMIN_LOGIN_MAX_FAILURES: z.coerce
+      .number({
+        invalid_type_error: 'ADMIN_LOGIN_MAX_FAILURES must be an integer',
+      })
+      .int('ADMIN_LOGIN_MAX_FAILURES must be an integer')
+      .min(1)
+      .max(50)
+      .default(5),
+    ADMIN_LOGIN_THROTTLE_TTL_SECONDS: z.coerce
+      .number({
+        invalid_type_error:
+          'ADMIN_LOGIN_THROTTLE_TTL_SECONDS must be an integer',
+      })
+      .int('ADMIN_LOGIN_THROTTLE_TTL_SECONDS must be an integer')
+      .min(30)
+      .max(86_400)
+      .default(900),
+    ADMIN_CSRF_SECRET: z
+      .string()
+      .min(16, 'ADMIN_CSRF_SECRET must be at least 16 characters')
+      .default('lh-dev-csrf-secret-change-me'),
+    ADMIN_ALLOWED_ORIGIN: optionalNonEmptyString,
+    COOKIE_SECURE: booleanFromEnv.default(false),
+    ADMIN_BOOTSTRAP_EMAIL: optionalNonEmptyString,
+    ADMIN_BOOTSTRAP_PASSWORD: optionalNonEmptyString,
+    ADMIN_BOOTSTRAP_DISPLAY_NAME: optionalNonEmptyString,
   })
   .superRefine((data, ctx) => {
     if (
@@ -109,6 +151,24 @@ const envSchema = z
         path: ['HEALTH_CHECK_DEPENDENCIES'],
         message:
           'HEALTH_CHECK_DEPENDENCIES cannot be disabled when NODE_ENV is production',
+      });
+    }
+    if (
+      data.NODE_ENV === 'production' &&
+      data.ADMIN_CSRF_SECRET === 'lh-dev-csrf-secret-change-me'
+    ) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['ADMIN_CSRF_SECRET'],
+        message:
+          'ADMIN_CSRF_SECRET must be set to a non-default value in production',
+      });
+    }
+    if (data.NODE_ENV === 'production' && data.COOKIE_SECURE !== true) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['COOKIE_SECURE'],
+        message: 'COOKIE_SECURE must be true when NODE_ENV is production',
       });
     }
   });
