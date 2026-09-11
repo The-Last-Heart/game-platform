@@ -24,6 +24,10 @@
     "infra:down": "node ./scripts/docker-compose.mjs down",
     "infra:ps": "node ./scripts/docker-compose.mjs ps",
     "infra:validate": "node ./scripts/docker-compose.mjs config",
+    "apps:up": "node ./scripts/docker-compose.mjs --profile apps up -d --build",
+    "apps:down": "node ./scripts/docker-compose.mjs --profile apps down",
+    "apps:ps": "node ./scripts/docker-compose.mjs --profile apps ps",
+    "apps:build": "node ./scripts/docker-compose.mjs --profile apps build",
     "archive:review": "node ./scripts/create-review-archive.mjs --output ../the-last-heart-lh001d-review.zip",
     "simulate:playable": "node ./scripts/simulate-playable-slice.cjs",
     "simulate:match": "node ./scripts/simulate-playable-slice.cjs"

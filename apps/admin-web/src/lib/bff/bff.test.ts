@@ -9,6 +9,7 @@ import { toSafeAdminError } from './errors';
 import {
   assertBffOriginAllowed,
   normalizePublicOrigin,
+  originsMatch,
   readAdminPublicOrigin,
 } from './origin';
 
@@ -110,6 +111,17 @@ describe('BFF origin validation', () => {
     expect(readAdminPublicOrigin()).toBe('http://127.0.0.1:3001');
     expect(
       assertBffOriginAllowed(mutatingRequest('http://127.0.0.1:3001')),
+    ).toBeNull();
+  });
+
+  it('treats localhost and 127.0.0.1 as equivalent loopback origins', () => {
+    process.env.NODE_ENV = 'development';
+    process.env.ADMIN_PUBLIC_ORIGIN = 'http://127.0.0.1:3001';
+    expect(originsMatch('http://localhost:3001', 'http://127.0.0.1:3001')).toBe(
+      true,
+    );
+    expect(
+      assertBffOriginAllowed(mutatingRequest('http://localhost:3001')),
     ).toBeNull();
   });
 

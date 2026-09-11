@@ -73,6 +73,10 @@ pnpm run dev:backend
 # Admin web
 pnpm run dev:admin
 
+# Or run API + Admin web in Docker (Compose profile `apps`)
+pnpm run apps:up
+# Admin UI: http://127.0.0.1:3001  ·  API: http://127.0.0.1:3000
+
 # Mobile
 cd apps/mobile
 flutter pub get
@@ -161,12 +165,14 @@ Android release signing is intentionally **unconfigured** in this foundation. Do
 ## Documentation
 
 - Product baseline: [`docs/product/PRODUCT_BASELINE.md`](./docs/product/PRODUCT_BASELINE.md)
+- Milestone roadmap: [`docs/product/milestones/README.md`](./docs/product/milestones/README.md)
 - Architecture foundation: [`docs/architecture/FOUNDATION.md`](./docs/architecture/FOUNDATION.md)
 - Decisions: [`docs/decisions/`](./docs/decisions/)
-- UI references: [`docs/ui-reference/`](./docs/ui-reference/) (assets still outstanding)
+- UI references: [`docs/ui-reference/`](./docs/ui-reference/)
+- Admin foundation: [`docs/admin/LH-004A-ADMIN-FOUNDATION.md`](./docs/admin/LH-004A-ADMIN-FOUNDATION.md)
 
 ## Scope note
 
-This repository foundation intentionally excludes authentication, matchmaking, gameplay, WebSockets, challenges, powers, audio processing, translation APIs/admin Translation Management, and production deployment until a later milestone authorizes them.
+Implement only the **active** milestone from [`docs/product/milestones/`](./docs/product/milestones/). Features such as store, seasons, voice challenges, and production cloud deployment remain deferred until a dedicated milestone authorizes them.
 
 Mobile product copy uses a localization abstraction with a minimal bootstrap fallback. Long-term mobile/gameplay translations are server-managed (see ADR-004). Backend logs are structured JSON with effective `LOG_LEVEL` control.

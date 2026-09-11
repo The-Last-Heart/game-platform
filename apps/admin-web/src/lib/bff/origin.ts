@@ -3,6 +3,8 @@ import { safeInternalError, type SafeAdminError } from './errors';
 
 const MUTATING = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
 
+const LOOPBACK_HOSTS = new Set(['localhost', '127.0.0.1', '[::1]', '::1']);
+
 /**
  * Normalize a configured public origin (scheme + host[:port], no trailing slash).
  */
@@ -54,14 +56,41 @@ function extractBrowserOrigin(request: NextRequest): string | undefined {
   }
 }
 
+function isLoopbackHostname(hostname: string): boolean {
+  return LOOPBACK_HOSTS.has(hostname.toLowerCase());
+}
+
 function isLocalhostOrigin(origin: string): boolean {
   try {
-    const url = new URL(origin);
-    return (
-      url.hostname === 'localhost' ||
-      url.hostname === '127.0.0.1' ||
-      url.hostname === '[::1]'
-    );
+    return isLoopbackHostname(new URL(origin).hostname);
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * True when origins are identical, or same scheme/port on equivalent loopback hosts.
+ * Browsers use `localhost` while local config often uses `127.0.0.1` — both are loopback.
+ */
+export function originsMatch(left: string, right: string): boolean {
+  if (left === right) {
+    return true;
+  }
+  try {
+    const a = new URL(left);
+    const b = new URL(right);
+    if (a.protocol !== b.protocol) {
+      return false;
+    }
+    const portA = a.port || (a.protocol === 'https:' ? '443' : '80');
+    const portB = b.port || (b.protocol === 'https:' ? '443' : '80');
+    if (portA !== portB) {
+      return false;
+    }
+    if (a.hostname === b.hostname) {
+      return true;
+    }
+    return isLoopbackHostname(a.hostname) && isLoopbackHostname(b.hostname);
   } catch {
     return false;
   }
@@ -99,7 +128,7 @@ export function assertBffOriginAllowed(
   const browserOrigin = extractBrowserOrigin(request);
 
   if (configured) {
-    if (!browserOrigin || browserOrigin !== configured) {
+    if (!browserOrigin || !originsMatch(browserOrigin, configured)) {
       return originRejectedError();
     }
     return null;
@@ -113,7 +142,7 @@ export function assertBffOriginAllowed(
   if (
     isLocalhostOrigin(browserOrigin) &&
     isLocalhostOrigin(requestOrigin) &&
-    browserOrigin === requestOrigin
+    originsMatch(browserOrigin, requestOrigin)
   ) {
     return null;
   }

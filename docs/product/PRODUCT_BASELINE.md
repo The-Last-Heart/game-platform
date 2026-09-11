@@ -50,6 +50,15 @@ These two applications have different default languages and directions. Do not a
 - Selecting paid external services without approval
 - Premature microservices or cloud infrastructure
 
+## Milestone roadmap
+
+Deliverable milestones (done, next, planned, deferred) are specified as individual Markdown files:
+
+- Index: [`milestones/README.md`](./milestones/README.md)
+- Next recommended implementation target: [`milestones/LH-005.md`](./milestones/LH-005.md)
+
+Cite the specific milestone file when opening implementation work. Do not implement ahead of the active milestone.
+
 ## Open product decisions
 
 Any missing decision must be raised as a question to the Product Owner. Engineers must not silently invent product behavior.

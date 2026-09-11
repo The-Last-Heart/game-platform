@@ -1,0 +1,35 @@
+# Local/dev-oriented image build context ignores.
+# Keep secrets, caches, and large artifacts out of Docker build context.
+
+.git
+.gitignore
+**/.env
+**/.env.*
+!**/.env.example
+
+**/node_modules
+**/.next
+**/dist
+**/coverage
+**/.turbo
+**/.cache
+**/*.tsbuildinfo
+
+apps/mobile
+apps/mobile/**
+
+# Flutter / IDE noise
+**/.dart_tool
+**/.idea
+**/.vscode
+**/*.iml
+
+# Review archives and OS junk
+**/*.zip
+**/.DS_Store
+**/Thumbs.db
+
+# Docs and tests not required inside runtime images
+docs
+scripts/tests
+agent-transcripts
