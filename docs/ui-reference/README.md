@@ -8,7 +8,7 @@ Source pack: `Last-Heart-Cursor-Reference-Pack.zip` (local developer copy).
 - Screen PNGs are not stored in git; extract from the reference pack when needed.
 - Mobile uses `apps/mobile/assets/backgrounds/app-background.png` from the pack.
 
-LH-003 screens: 03, 06, 07, 08, 09, 10, 22, 23, 29, 30.
-
-Screen-to-milestone ownership for the full pack (01–30) is listed in
-[`../product/milestones/README.md`](../product/milestones/README.md).
+LH-003 baseline screens: 03, 06, 07, 08, 09, 10, 22, 23, 29, 30.
+Full screen-to-milestone ownership is in
+[`../product/milestones/COVERAGE-MATRIX.md`](../product/milestones/COVERAGE-MATRIX.md)
+and the five-day roadmap [`../product/milestones/README.md`](../product/milestones/README.md).

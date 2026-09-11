@@ -52,10 +52,12 @@ These two applications have different default languages and directions. Do not a
 
 ## Milestone roadmap
 
-Deliverable milestones (done, next, planned, deferred) are specified as individual Markdown files:
+Deliverable milestones for the five-day RC1 window are specified under [`milestones/`](./milestones/README.md):
 
 - Index: [`milestones/README.md`](./milestones/README.md)
-- Next recommended implementation target: [`milestones/LH-005.md`](./milestones/LH-005.md)
+- Completed baseline: LH-001 through LH-004A
+- First incomplete RC1 target: [`milestones/LH-005.md`](./milestones/LH-005.md)
+- Locked exclusions: [`milestones/RELEASE-BOUNDARY.md`](./milestones/RELEASE-BOUNDARY.md)
 
 Cite the specific milestone file when opening implementation work. Do not implement ahead of the active milestone.
 
