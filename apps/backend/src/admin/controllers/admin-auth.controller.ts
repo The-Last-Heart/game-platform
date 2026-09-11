@@ -19,6 +19,7 @@ import {
   adminMeResponseSchema,
   adminChangePasswordResponseSchema,
   adminRevokeOtherSessionsResponseSchema,
+  adminSessionsResponseSchema,
 } from '@thelastheart/contracts';
 import type { Request, Response } from 'express';
 import { CurrentAdmin } from '../decorators/current-admin.decorator';
@@ -91,20 +92,20 @@ export class AdminAuthController {
     );
   }
 
+  /**
+   * Idempotent logout: CSRF + Origin required; valid session is NOT required.
+   * Always clears cookies and returns `{ revoked: true }` without leaking token state.
+   */
   @Post('logout')
   @HttpCode(200)
-  @UseGuards(AdminAuthGuard)
-  async logout(
-    @Req() req: Request,
-    @Res({ passthrough: true }) res: Response,
-    @CurrentAdmin() admin: AdminAuthContext,
-  ) {
+  async logout(@Req() req: Request, @Res({ passthrough: true }) res: Response) {
+    this.requestSecurity.assertMutatingRequestAllowed(req);
     const token = extractSessionToken({
       authorization: req.header('authorization') ?? undefined,
       cookieHeader: req.header('cookie') ?? undefined,
     });
     if (token) {
-      await this.auth.logout(token, admin.user.id);
+      await this.auth.logout(token, null);
     }
     this.clearAuthCookies(res);
     return adminSuccessEnvelopeSchema(adminLogoutResponseSchema).parse(
@@ -134,6 +135,15 @@ export class AdminAuthController {
       },
     };
     return adminSuccessEnvelopeSchema(adminMeResponseSchema).parse(ok(data));
+  }
+
+  @Get('sessions')
+  @UseGuards(AdminAuthGuard)
+  async sessions(@CurrentAdmin() admin: AdminAuthContext) {
+    const data = await this.auth.listSessions(admin);
+    return adminSuccessEnvelopeSchema(adminSessionsResponseSchema).parse(
+      ok(data),
+    );
   }
 
   @Post('change-password')

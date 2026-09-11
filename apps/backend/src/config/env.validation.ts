@@ -76,6 +76,16 @@ const optionalNonEmptyString = z.preprocess((value) => {
   return value;
 }, z.string().min(1).optional());
 
+/** True when value is exactly a WHATWG origin (no path/query/auth). */
+export function isUrlOrigin(value: string): boolean {
+  try {
+    const url = new URL(value);
+    return url.origin === value;
+  } catch {
+    return false;
+  }
+}
+
 const envSchema = z
   .object({
     NODE_ENV: z
@@ -169,6 +179,33 @@ const envSchema = z
         code: z.ZodIssueCode.custom,
         path: ['COOKIE_SECURE'],
         message: 'COOKIE_SECURE must be true when NODE_ENV is production',
+      });
+    }
+    if (data.NODE_ENV === 'production') {
+      if (!data.ADMIN_ALLOWED_ORIGIN) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['ADMIN_ALLOWED_ORIGIN'],
+          message:
+            'ADMIN_ALLOWED_ORIGIN is required when NODE_ENV is production',
+        });
+      } else if (!isUrlOrigin(data.ADMIN_ALLOWED_ORIGIN)) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['ADMIN_ALLOWED_ORIGIN'],
+          message:
+            'ADMIN_ALLOWED_ORIGIN must be a URL origin (scheme + host[:port], no path)',
+        });
+      }
+    } else if (
+      data.ADMIN_ALLOWED_ORIGIN !== undefined &&
+      !isUrlOrigin(data.ADMIN_ALLOWED_ORIGIN)
+    ) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['ADMIN_ALLOWED_ORIGIN'],
+        message:
+          'ADMIN_ALLOWED_ORIGIN must be a URL origin (scheme + host[:port], no path)',
       });
     }
   });

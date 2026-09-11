@@ -180,7 +180,14 @@ const ar: Record<MessageKey, string> = {
   'security.passwordSuccess': 'تم تغيير كلمة المرور. تم تدوير جلستك.',
   'security.sessionsTitle': 'الجلسات',
   'security.sessionsBody':
-    'إلغاء كل الجلسات النشطة الأخرى. تبقى جلستك الحالية مسجّلة الدخول.',
+    'الجلسات النشطة لهذا الحساب. ألغِ كل الجلسات الأخرى لتسجيل الخروج من الأجهزة الأخرى.',
+  'security.sessionCurrent': 'الحالية',
+  'security.sessionDevice': 'الجهاز',
+  'security.sessionCreated': 'أُنشئت',
+  'security.sessionLastSeen': 'آخر ظهور',
+  'security.sessionExpires': 'تنتهي',
+  'security.sessionsEmpty': 'لا توجد جلسات نشطة.',
+  'security.sessionsLoadError': 'تعذّر تحميل الجلسات.',
   'security.revokeOthers': 'إلغاء الجلسات الأخرى',
   'security.revokeConfirm':
     'إلغاء كل الجلسات الأخرى لهذا الحساب؟ ستحتاج الأجهزة التي تستخدم تلك الجلسات إلى تسجيل الدخول مجدداً.',

@@ -177,7 +177,14 @@ const en = {
   'security.passwordSuccess': 'Password changed. Your session was rotated.',
   'security.sessionsTitle': 'Sessions',
   'security.sessionsBody':
-    'Revoke every other active session. Your current session stays signed in.',
+    'Active sessions for this account. Revoke every other session to sign out other devices.',
+  'security.sessionCurrent': 'Current',
+  'security.sessionDevice': 'Device',
+  'security.sessionCreated': 'Created',
+  'security.sessionLastSeen': 'Last seen',
+  'security.sessionExpires': 'Expires',
+  'security.sessionsEmpty': 'No active sessions found.',
+  'security.sessionsLoadError': 'Could not load sessions.',
   'security.revokeOthers': 'Revoke other sessions',
   'security.revokeConfirm':
     'Revoke all other sessions for this account? Devices using those sessions will need to sign in again.',

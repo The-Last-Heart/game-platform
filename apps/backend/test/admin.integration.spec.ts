@@ -413,4 +413,149 @@ describe('admin API integration', () => {
     expect(payload).not.toMatch(/serverConfig/i);
     expect(payload).not.toMatch(/signalToken/i);
   });
+
+  it('allows multiple independent sessions until revoke-other', async () => {
+    if (!enabled) return;
+    const email = uniqueEmail('multi-session');
+    const password = 'valid-password-12';
+    await insertAdmin({ email, password });
+
+    const first = await login(email, password);
+    const second = await login(email, password);
+    expect(first.sessionToken).toBeDefined();
+    expect(second.sessionToken).toBeDefined();
+    expect(first.sessionToken).not.toBe(second.sessionToken);
+
+    const meFirst = await http(app)
+      .get('/api/admin/v1/auth/me')
+      .set(authHeaders(first.sessionToken!, first.csrfToken!));
+    const meSecond = await http(app)
+      .get('/api/admin/v1/auth/me')
+      .set(authHeaders(second.sessionToken!, second.csrfToken!));
+    expect(meFirst.status).toBe(200);
+    expect(meSecond.status).toBe(200);
+
+    const listed = await http(app)
+      .get('/api/admin/v1/auth/sessions')
+      .set(authHeaders(second.sessionToken!, second.csrfToken!));
+    expect(listed.status).toBe(200);
+    const listedBody = listed.body as {
+      ok?: boolean;
+      data?: {
+        sessions?: Array<{
+          sessionId: string;
+          current: boolean;
+          deviceDescription: string;
+        }>;
+      };
+    };
+    expect(listedBody.ok).toBe(true);
+    expect(listedBody.data?.sessions?.length).toBe(2);
+    expect(listedBody.data?.sessions?.filter((s) => s.current)).toHaveLength(1);
+    const listedPayload = JSON.stringify(listed.body);
+    expect(listedPayload).not.toMatch(/token_hash|sessionToken|ip_hash/i);
+    expect(listedPayload).not.toContain(second.sessionToken!);
+
+    const revoke = await http(app)
+      .post('/api/admin/v1/auth/revoke-other-sessions')
+      .set(authHeaders(second.sessionToken!, second.csrfToken!));
+    expect(revoke.status).toBe(200);
+    expect(
+      (revoke.body as { data?: { revokedCount?: number } }).data?.revokedCount,
+    ).toBe(1);
+
+    const afterFirst = await http(app)
+      .get('/api/admin/v1/auth/me')
+      .set(authHeaders(first.sessionToken!, first.csrfToken!));
+    const afterSecond = await http(app)
+      .get('/api/admin/v1/auth/me')
+      .set(authHeaders(second.sessionToken!, second.csrfToken!));
+    expect(afterFirst.status).toBe(401);
+    expect(afterSecond.status).toBe(200);
+  });
+
+  it('supports idempotent logout with CSRF and rejects missing CSRF', async () => {
+    if (!enabled) return;
+    const email = uniqueEmail('logout');
+    const password = 'valid-password-12';
+    await insertAdmin({ email, password });
+    const okLogin = await login(email, password);
+
+    const logoutOnce = await http(app)
+      .post('/api/admin/v1/auth/logout')
+      .set(authHeaders(okLogin.sessionToken!, okLogin.csrfToken!));
+    expect(logoutOnce.status).toBe(200);
+    expect(
+      (logoutOnce.body as { data?: { revoked?: boolean } }).data?.revoked,
+    ).toBe(true);
+
+    const logoutStale = await http(app)
+      .post('/api/admin/v1/auth/logout')
+      .set(authHeaders(okLogin.sessionToken!, okLogin.csrfToken!));
+    expect(logoutStale.status).toBe(200);
+    expect(
+      (logoutStale.body as { data?: { revoked?: boolean } }).data?.revoked,
+    ).toBe(true);
+
+    const csrfResponse = await http(app).get('/api/admin/v1/auth/csrf');
+    const csrfToken = (csrfResponse.body as { data?: { csrfToken?: string } })
+      .data?.csrfToken;
+    expect(csrfToken).toBeDefined();
+
+    const logoutMissingSession = await http(app)
+      .post('/api/admin/v1/auth/logout')
+      .set(
+        'Cookie',
+        `${ADMIN_CSRF_COOKIE_NAME}=${encodeURIComponent(csrfToken!)}`,
+      )
+      .set('X-CSRF-Token', csrfToken!);
+    expect(logoutMissingSession.status).toBe(200);
+    expect(
+      (logoutMissingSession.body as { data?: { revoked?: boolean } }).data
+        ?.revoked,
+    ).toBe(true);
+
+    const logoutNoCsrf = await http(app).post('/api/admin/v1/auth/logout');
+    expect(logoutNoCsrf.status).toBe(403);
+    expect(JSON.stringify(logoutNoCsrf.body)).toContain('CSRF_REJECTED');
+  });
+
+  it('rejects wrong Origin when ADMIN_ALLOWED_ORIGIN is configured', async () => {
+    if (!enabled) return;
+    const config = app.get(ConfigService<AppConfig, true>);
+    const originalGet = config.get.bind(config);
+    const spy = jest.spyOn(config, 'get').mockImplementation(((
+      key: keyof AppConfig,
+      options?: unknown,
+    ) => {
+      if (key === 'ADMIN_ALLOWED_ORIGIN') {
+        return 'http://127.0.0.1:3001';
+      }
+      return originalGet(key, options as never);
+    }) as typeof config.get);
+
+    try {
+      const csrfResponse = await http(app).get('/api/admin/v1/auth/csrf');
+      const csrfToken = (csrfResponse.body as { data?: { csrfToken?: string } })
+        .data?.csrfToken;
+      expect(csrfToken).toBeDefined();
+
+      const rejected = await http(app)
+        .post('/api/admin/v1/auth/login')
+        .set('Origin', 'http://evil.example')
+        .set(
+          'Cookie',
+          `${ADMIN_CSRF_COOKIE_NAME}=${encodeURIComponent(csrfToken!)}`,
+        )
+        .set('X-CSRF-Token', csrfToken!)
+        .send({
+          email: uniqueEmail('origin'),
+          password: 'valid-password-12',
+        });
+      expect(rejected.status).toBe(403);
+      expect(JSON.stringify(rejected.body)).toContain('ORIGIN_REJECTED');
+    } finally {
+      spy.mockRestore();
+    }
+  });
 });

@@ -178,8 +178,41 @@ describe('validateEnv', () => {
         HEALTH_CHECK_DEPENDENCIES: 'false',
         COOKIE_SECURE: 'true',
         ADMIN_CSRF_SECRET: 'production-csrf-secret!!',
+        ADMIN_ALLOWED_ORIGIN: 'http://127.0.0.1:3001',
       }),
     ).toThrow(/HEALTH_CHECK_DEPENDENCIES/);
+  });
+
+  it('requires ADMIN_ALLOWED_ORIGIN in production', () => {
+    expect(() =>
+      validateEnv({
+        ...base,
+        NODE_ENV: 'production',
+        COOKIE_SECURE: 'true',
+        ADMIN_CSRF_SECRET: 'production-csrf-secret!!',
+      }),
+    ).toThrow(/ADMIN_ALLOWED_ORIGIN/);
+  });
+
+  it('accepts production when ADMIN_ALLOWED_ORIGIN is a URL origin', () => {
+    const config = validateEnv({
+      ...base,
+      NODE_ENV: 'production',
+      HEALTH_CHECK_DEPENDENCIES: 'true',
+      COOKIE_SECURE: 'true',
+      ADMIN_CSRF_SECRET: 'production-csrf-secret!!',
+      ADMIN_ALLOWED_ORIGIN: 'http://127.0.0.1:3001',
+    });
+    expect(config.ADMIN_ALLOWED_ORIGIN).toBe('http://127.0.0.1:3001');
+  });
+
+  it('rejects ADMIN_ALLOWED_ORIGIN values that are not origins', () => {
+    expect(() =>
+      validateEnv({
+        ...base,
+        ADMIN_ALLOWED_ORIGIN: 'http://127.0.0.1:3001/admin',
+      }),
+    ).toThrow(/ADMIN_ALLOWED_ORIGIN/);
   });
 
   it('does not echo secret values from invalid DATABASE_URL in thrown messages', () => {

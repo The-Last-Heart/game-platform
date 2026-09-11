@@ -91,6 +91,26 @@ export type AdminRevokeOtherSessionsResponse = z.infer<
   typeof adminRevokeOtherSessionsResponseSchema
 >;
 
+export const adminSessionListItemSchema = z
+  .object({
+    sessionId: z.string().uuid(),
+    current: z.boolean(),
+    createdAt: z.string().datetime(),
+    lastSeenAt: z.string().datetime(),
+    expiresAt: z.string().datetime(),
+    /** Sanitized user-agent summary; never a raw secret. */
+    deviceDescription: z.string().min(1).max(120),
+  })
+  .strict();
+export type AdminSessionListItem = z.infer<typeof adminSessionListItemSchema>;
+
+export const adminSessionsResponseSchema = z
+  .object({
+    sessions: z.array(adminSessionListItemSchema),
+  })
+  .strict();
+export type AdminSessionsResponse = z.infer<typeof adminSessionsResponseSchema>;
+
 export const adminCsrfResponseSchema = z
   .object({
     csrfToken: z.string().min(16).max(512),

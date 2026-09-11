@@ -119,16 +119,31 @@ describe('admin locale proxy', () => {
     expect(location.searchParams.get('next')).toBe('/en/dashboard');
   });
 
-  it('redirects authenticated users away from login to dashboard', () => {
+  it('does not redirect stale session cookie on /en/login', () => {
+    const response = applyAuthGate(
+      requestFor('/en/login', {
+        cookie: `${ADMIN_SESSION_COOKIE_NAME}=stale-or-unknown-session-token!!`,
+      }),
+      'en',
+    );
+    expect(response).toBeNull();
+  });
+
+  it('allows login through middleware when a session cookie is present', () => {
     const response = applyAuthGate(
       requestFor('/en/login', {
         cookie: `${ADMIN_SESSION_COOKIE_NAME}=session-token-value-32bytes!!`,
       }),
       'en',
     );
+    expect(response).toBeNull();
+  });
+
+  it('redirects protected routes without a session cookie to login', () => {
+    const response = applyAuthGate(requestFor('/en/administrators'), 'en');
     expect(response?.status).toBe(307);
-    expect(new URL(response!.headers.get('location')!).pathname).toBe(
-      '/en/dashboard',
-    );
+    const location = new URL(response!.headers.get('location')!);
+    expect(location.pathname).toBe('/en/login');
+    expect(location.searchParams.get('next')).toBe('/en/administrators');
   });
 });

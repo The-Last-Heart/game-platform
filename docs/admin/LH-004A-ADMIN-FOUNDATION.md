@@ -12,7 +12,7 @@ admin-web BFF and UI shell.
   parameterized `query` / `tx` helpers, SQL migration runner with
   `schema_migrations` + `pg_advisory_lock`.
 - **Admin API** (`/api/admin/v1`): Nest module with session auth, RBAC guards,
-  CSRF + optional Origin checks, Redis login throttle, and append-only audit logs.
+  CSRF + Origin checks, Redis login throttle, and append-only audit logs.
 - **Admin web BFF** (`apps/admin-web`): same-origin App Router routes under
   `/api/admin/v1/*` that proxy to the backend. The browser never talks to the
   backend directly and never receives `BACKEND_INTERNAL_URL`.
@@ -45,18 +45,18 @@ ADMIN_BOOTSTRAP_DISPLAY_NAME='Bootstrap Admin' \
 pnpm admin:bootstrap
 ```
 
-3. Backend on port 3000 (leave `ADMIN_ALLOWED_ORIGIN` unset when using the BFF;
-   Origin checks are for direct browser→backend access):
+3. Backend on port 3000 with `ADMIN_ALLOWED_ORIGIN` pointing at admin-web:
 
 ```bash
 pnpm dev:backend
 ```
 
-4. Admin web on port 3001 with server-only backend URL:
+4. Admin web on port 3001 with server-only backend URL and public origin:
 
 ```bash
 # apps/admin-web/.env.local
 BACKEND_INTERNAL_URL=http://127.0.0.1:3000
+ADMIN_PUBLIC_ORIGIN=http://127.0.0.1:3001
 NEXT_PUBLIC_ADMIN_ENV=development
 
 pnpm dev:admin
@@ -74,10 +74,15 @@ Browser  →  admin-web /api/admin/v1/...  →  BACKEND_INTERNAL_URL/api/admin/v
   Login / change-password responses strip `sessionToken` before returning JSON.
 - CSRF uses double-submit: readable `lh_admin_csrf` cookie + `X-CSRF-Token`
   header on mutating requests. The BFF forwards both to the backend.
+- Mutating BFF requests validate the browser `Origin` (or Referer origin) against
+  `ADMIN_PUBLIC_ORIGIN`, then forward a trusted `Origin: <ADMIN_PUBLIC_ORIGIN>`
+  header to the backend (never the client Origin blindly). Backend
+  `ADMIN_ALLOWED_ORIGIN` should match the same value.
 - Backend errors are remapped to safe envelopes (stable codes + generic messages;
   no stacks or internal details).
 - Proxy (`src/proxy.ts`) gates protected routes on session-cookie presence to
-  avoid flashing protected chrome; layouts still validate `/auth/me` server-side.
+  avoid flashing protected chrome; `/login` is always allowed through so stale
+  cookies do not redirect-loop. Layouts still validate `/auth/me` server-side.
 
 ## Auth model
 
@@ -87,13 +92,15 @@ Browser  →  admin-web /api/admin/v1/...  →  BACKEND_INTERNAL_URL/api/admin/v
 - Cookie name (BFF): `lh_admin_session`. Backend also accepts
   `Authorization: Bearer`.
 - Absolute session TTL: `ADMIN_SESSION_TTL_SECONDS` (default 12h).
-- Login rotates sessions (revokes prior active sessions for that user).
-- Logout revokes the current session.
+- Login creates a new independent session (prior sessions stay active until
+  revoke / password change / deactivation).
+- Logout is idempotent: CSRF + Origin required; valid session is optional.
+  Always clears cookies and returns `{ revoked: true }`.
 - Redis throttle keyed by normalized email; success clears the counter.
 - Invalid credentials always return a generic error.
 - CSRF: double-submit (`lh_admin_csrf` cookie + `X-CSRF-Token` header) on
-  mutating requests. When `ADMIN_ALLOWED_ORIGIN` is set, Origin/Referer must match.
-
+  mutating requests. Origin/Referer must match `ADMIN_ALLOWED_ORIGIN` when set
+  (required in production).
 ## Roles / permissions
 
 | Role | Permissions |
@@ -118,9 +125,10 @@ Invariants:
 | Method | Path | Notes |
 | --- | --- | --- |
 | GET | `/api/admin/v1/auth/csrf` | Issue CSRF token |
-| POST | `/api/admin/v1/auth/login` | CSRF required |
-| POST | `/api/admin/v1/auth/logout` | Auth + CSRF |
+| POST | `/api/admin/v1/auth/login` | CSRF + Origin |
+| POST | `/api/admin/v1/auth/logout` | CSRF + Origin; session optional (idempotent) |
 | GET | `/api/admin/v1/auth/me` | Auth |
+| GET | `/api/admin/v1/auth/sessions` | Auth; active sessions (no secrets) |
 | POST | `/api/admin/v1/auth/change-password` | Auth + CSRF; rotates session |
 | POST | `/api/admin/v1/auth/revoke-other-sessions` | Auth + CSRF |
 | GET/POST/GET/PATCH | `/api/admin/v1/administrators` | RBAC |
@@ -188,11 +196,12 @@ See `apps/backend/.env.example` for:
 - `ADMIN_SESSION_TTL_SECONDS`
 - `ADMIN_LOGIN_MAX_FAILURES` / `ADMIN_LOGIN_THROTTLE_TTL_SECONDS`
 - `ADMIN_CSRF_SECRET`
-- `ADMIN_ALLOWED_ORIGIN` (optional; leave unset when browsers only use the BFF)
+- `ADMIN_ALLOWED_ORIGIN` (required in production; admin-web / BFF origin)
 - `COOKIE_SECURE`
 - `ADMIN_BOOTSTRAP_*`
 
 See `apps/admin-web/.env.example` for:
 
 - `BACKEND_INTERNAL_URL` (server-only, e.g. `http://127.0.0.1:3000`)
+- `ADMIN_PUBLIC_ORIGIN` (server-only; BFF Origin validation + trusted forward)
 - `NEXT_PUBLIC_ADMIN_ENV` (environment badge label)

@@ -110,14 +110,8 @@ export class AdminAuthService {
     const ipHash = hashIpOptional(input.ip);
 
     const session = await this.db.tx(async (client) => {
-      // Rotate: revoke any existing active sessions for this user on login.
-      await client.query(
-        `UPDATE admin_sessions
-         SET revoked_at = now()
-         WHERE admin_user_id = $1 AND revoked_at IS NULL`,
-        [user.id],
-      );
-
+      // Insert a fresh session only (anti-fixation). Existing sessions stay active
+      // until explicit revoke, password change, or deactivation.
       const inserted = await client.query<AdminSessionRow>(
         `INSERT INTO admin_sessions (
            admin_user_id, token_hash, expires_at, user_agent, ip_hash
@@ -169,6 +163,11 @@ export class AdminAuthService {
     };
   }
 
+  /**
+   * Revoke the session for `token` if it is still active.
+   * Always succeeds from the caller's perspective — never reveals whether the
+   * token existed. Skips audit when nothing was revoked.
+   */
   async logout(token: string, actorAdminId: string | null): Promise<void> {
     const tokenHash = sha256Hex(token);
     const result = await this.db.query<AdminSessionRow>(
@@ -179,13 +178,52 @@ export class AdminAuthService {
       [tokenHash],
     );
     const session = result.rows[0];
+    if (!session) {
+      return;
+    }
     await this.audit.write({
-      actorAdminId: actorAdminId ?? session?.admin_user_id ?? null,
+      actorAdminId: actorAdminId ?? session.admin_user_id,
       action: 'auth.logout',
       entityType: 'admin_session',
-      entityId: session?.id ?? null,
+      entityId: session.id,
       outcome: 'success',
     });
+  }
+
+  /**
+   * List active, non-expired sessions for the authenticated admin.
+   * Never exposes token hashes, raw tokens, or ip_hash.
+   */
+  async listSessions(auth: AdminAuthContext): Promise<{
+    sessions: Array<{
+      sessionId: string;
+      current: boolean;
+      createdAt: string;
+      lastSeenAt: string;
+      expiresAt: string;
+      deviceDescription: string;
+    }>;
+  }> {
+    const result = await this.db.query<AdminSessionRow>(
+      `SELECT *
+       FROM admin_sessions
+       WHERE admin_user_id = $1
+         AND revoked_at IS NULL
+         AND expires_at > now()
+       ORDER BY created_at DESC`,
+      [auth.user.id],
+    );
+
+    return {
+      sessions: result.rows.map((row) => ({
+        sessionId: row.id,
+        current: row.id === auth.session.id,
+        createdAt: toIso(row.created_at),
+        lastSeenAt: toIso(row.last_seen_at),
+        expiresAt: toIso(row.expires_at),
+        deviceDescription: sanitizeDeviceDescription(row.user_agent),
+      })),
+    };
   }
 
   async resolveSession(token: string): Promise<AdminAuthContext> {
@@ -433,4 +471,30 @@ export class AdminAuthService {
     );
     return Number(result.rows[0]?.count ?? 0);
   }
+}
+
+const DEVICE_DESCRIPTION_MAX = 120;
+
+/** Short, control-char-free device label derived from User-Agent. */
+export function sanitizeDeviceDescription(
+  userAgent: string | null | undefined,
+): string {
+  if (!userAgent) {
+    return 'Unknown device';
+  }
+  const cleaned = Array.from(userAgent)
+    .filter((ch) => {
+      const code = ch.charCodeAt(0);
+      return code >= 32 && code !== 127;
+    })
+    .join('')
+    .replace(/\s+/g, ' ')
+    .trim();
+  if (!cleaned) {
+    return 'Unknown device';
+  }
+  if (cleaned.length <= DEVICE_DESCRIPTION_MAX) {
+    return cleaned;
+  }
+  return cleaned.slice(0, DEVICE_DESCRIPTION_MAX);
 }

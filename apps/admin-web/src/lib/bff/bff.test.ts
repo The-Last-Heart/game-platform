@@ -1,11 +1,16 @@
-import { describe, expect, it } from 'vitest';
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
+import { afterEach, describe, expect, it } from 'vitest';
 import {
   applySessionCookie,
   clearAuthCookies,
   stripSecretsFromAuthPayload,
 } from './cookies';
 import { toSafeAdminError } from './errors';
+import {
+  assertBffOriginAllowed,
+  normalizePublicOrigin,
+  readAdminPublicOrigin,
+} from './origin';
 
 describe('BFF cookie helpers', () => {
   it('strips sessionToken from auth payloads', () => {
@@ -65,5 +70,81 @@ describe('BFF error mapping', () => {
   it('falls back safely for unknown bodies', () => {
     const safe = toSafeAdminError(500, { weird: true });
     expect(safe.error.code).toBe('INTERNAL_ERROR');
+  });
+});
+
+describe('BFF origin validation', () => {
+  const originalOrigin = process.env.ADMIN_PUBLIC_ORIGIN;
+  const originalNodeEnv = process.env.NODE_ENV;
+
+  afterEach(() => {
+    if (originalOrigin === undefined) {
+      delete process.env.ADMIN_PUBLIC_ORIGIN;
+    } else {
+      process.env.ADMIN_PUBLIC_ORIGIN = originalOrigin;
+    }
+    process.env.NODE_ENV = originalNodeEnv;
+  });
+
+  function mutatingRequest(
+    origin: string | undefined,
+    url = 'http://127.0.0.1:3001/api/admin/v1/auth/logout',
+  ): NextRequest {
+    const headers = new Headers();
+    if (origin) {
+      headers.set('origin', origin);
+    }
+    return new NextRequest(url, { method: 'POST', headers });
+  }
+
+  it('normalizes configured public origins', () => {
+    expect(normalizePublicOrigin('http://127.0.0.1:3001/')).toBe(
+      'http://127.0.0.1:3001',
+    );
+    expect(normalizePublicOrigin('http://evil.example/admin')).toBeNull();
+  });
+
+  it('accepts matching Origin when ADMIN_PUBLIC_ORIGIN is set', () => {
+    process.env.NODE_ENV = 'development';
+    process.env.ADMIN_PUBLIC_ORIGIN = 'http://127.0.0.1:3001';
+    expect(readAdminPublicOrigin()).toBe('http://127.0.0.1:3001');
+    expect(
+      assertBffOriginAllowed(mutatingRequest('http://127.0.0.1:3001')),
+    ).toBeNull();
+  });
+
+  it('rejects mismatched Origin', () => {
+    process.env.NODE_ENV = 'development';
+    process.env.ADMIN_PUBLIC_ORIGIN = 'http://127.0.0.1:3001';
+    const rejected = assertBffOriginAllowed(
+      mutatingRequest('http://evil.example'),
+    );
+    expect(rejected?.error.code).toBe('ORIGIN_REJECTED');
+  });
+
+  it('rejects missing Origin when ADMIN_PUBLIC_ORIGIN is set', () => {
+    process.env.NODE_ENV = 'development';
+    process.env.ADMIN_PUBLIC_ORIGIN = 'http://127.0.0.1:3001';
+    const rejected = assertBffOriginAllowed(mutatingRequest(undefined));
+    expect(rejected?.error.code).toBe('ORIGIN_REJECTED');
+  });
+
+  it('rejects production requests when ADMIN_PUBLIC_ORIGIN is missing', () => {
+    process.env.NODE_ENV = 'production';
+    delete process.env.ADMIN_PUBLIC_ORIGIN;
+    const rejected = assertBffOriginAllowed(
+      mutatingRequest('http://127.0.0.1:3001'),
+    );
+    expect(rejected?.error.code).toBe('INTERNAL_ERROR');
+  });
+
+  it('skips Origin checks for GET', () => {
+    process.env.NODE_ENV = 'production';
+    delete process.env.ADMIN_PUBLIC_ORIGIN;
+    const request = new NextRequest(
+      'http://127.0.0.1:3001/api/admin/v1/auth/me',
+      { method: 'GET' },
+    );
+    expect(assertBffOriginAllowed(request)).toBeNull();
   });
 });

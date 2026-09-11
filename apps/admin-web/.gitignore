@@ -34,6 +34,9 @@ yarn-error.log*
 .env*
 !.env.example
 
+# Local agent instruction stubs (worktree noise)
+AGENTS.md
+CLAUDE.md
 
 # vercel
 .vercel

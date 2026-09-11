@@ -107,13 +107,9 @@ export function applyAuthGate(
     return NextResponse.redirect(redirectUrl);
   }
 
+  // Allow /login through even when a session cookie is present.
+  // Stale cookies must not bounce login↔dashboard; login page validates via /auth/me.
   if (PUBLIC_PATHS.has(bare)) {
-    if (authed) {
-      const redirectUrl = request.nextUrl.clone();
-      redirectUrl.pathname = `/${locale}/dashboard`;
-      redirectUrl.search = '';
-      return NextResponse.redirect(redirectUrl);
-    }
     return null;
   }
 

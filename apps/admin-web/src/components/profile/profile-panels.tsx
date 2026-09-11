@@ -1,14 +1,21 @@
 'use client';
 
 import Link from 'next/link';
-import { FormEvent, useState } from 'react';
-import { ConfirmDialog } from '@/components/ui/confirm-dialog';
+import { FormEvent, useCallback, useEffect, useState } from 'react';
+import type { AdminSessionsResponse } from '@thelastheart/contracts';
+import {
+  ConfirmDialog,
+  EmptyState,
+  ErrorState,
+  LoadingState,
+} from '@/components/ui/confirm-dialog';
 import { useToast } from '@/components/ui/toast';
 import { t } from '@/i18n/get-dictionary';
 import type { Locale } from '@/i18n/locale';
 import type { MessageKey } from '@/i18n/messages/en';
 import { adminApiFetch } from '@/lib/api/client';
 import type { AdminSessionSnapshot } from '@/lib/auth/session';
+import { scheduleEffectTask } from '@/lib/react/schedule-effect-task';
 
 export function ProfilePanel({
   locale,
@@ -80,6 +87,30 @@ export function SecurityPanel({ locale }: { locale: Locale }) {
   const [submitting, setSubmitting] = useState(false);
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [revoking, setRevoking] = useState(false);
+  const [sessions, setSessions] = useState<AdminSessionsResponse | null>(null);
+  const [sessionsLoading, setSessionsLoading] = useState(true);
+  const [sessionsError, setSessionsError] = useState<string | null>(null);
+
+  const loadSessions = useCallback(async () => {
+    setSessionsLoading(true);
+    const result = await adminApiFetch<AdminSessionsResponse>('/auth/sessions');
+    if (!result.ok) {
+      setSessions(null);
+      setSessionsError(
+        result.error.message || t(locale, 'security.sessionsLoadError'),
+      );
+      setSessionsLoading(false);
+      return;
+    }
+    setSessionsError(null);
+    setSessions(result.data);
+    setSessionsLoading(false);
+  }, [locale]);
+
+  useEffect(
+    () => scheduleEffectTask(() => void loadSessions()),
+    [loadSessions],
+  );
 
   async function onChangePassword(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -110,6 +141,7 @@ export function SecurityPanel({ locale }: { locale: Locale }) {
     }
     event.currentTarget.reset();
     pushToast(t(locale, 'security.passwordSuccess'), 'success');
+    void loadSessions();
   }
 
   async function revokeOthers() {
@@ -128,6 +160,7 @@ export function SecurityPanel({ locale }: { locale: Locale }) {
       `${t(locale, 'security.revokeSuccess')} (${t(locale, 'security.revokedCount')}: ${result.data.revokedCount})`,
       'success',
     );
+    void loadSessions();
   }
 
   return (
@@ -199,6 +232,58 @@ export function SecurityPanel({ locale }: { locale: Locale }) {
         <section className="panel">
           <h2>{t(locale, 'security.sessionsTitle')}</h2>
           <p>{t(locale, 'security.sessionsBody')}</p>
+
+          {sessionsLoading ? (
+            <LoadingState label={t(locale, 'common.loading')} />
+          ) : null}
+          {!sessionsLoading && sessionsError ? (
+            <ErrorState
+              label={sessionsError}
+              retryLabel={t(locale, 'common.retry')}
+              onRetry={() => void loadSessions()}
+            />
+          ) : null}
+          {!sessionsLoading &&
+          !sessionsError &&
+          sessions &&
+          sessions.sessions.length === 0 ? (
+            <EmptyState label={t(locale, 'security.sessionsEmpty')} />
+          ) : null}
+          {!sessionsLoading &&
+          !sessionsError &&
+          sessions &&
+          sessions.sessions.length > 0 ? (
+            <div className="table-wrap">
+              <table className="data-table">
+                <thead>
+                  <tr>
+                    <th>{t(locale, 'security.sessionDevice')}</th>
+                    <th>{t(locale, 'security.sessionCreated')}</th>
+                    <th>{t(locale, 'security.sessionLastSeen')}</th>
+                    <th>{t(locale, 'security.sessionExpires')}</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {sessions.sessions.map((row) => (
+                    <tr key={row.sessionId}>
+                      <td>
+                        {row.current ? (
+                          <span className="env-badge">
+                            {t(locale, 'security.sessionCurrent')}
+                          </span>
+                        ) : null}{' '}
+                        {row.deviceDescription}
+                      </td>
+                      <td>{new Date(row.createdAt).toLocaleString(locale)}</td>
+                      <td>{new Date(row.lastSeenAt).toLocaleString(locale)}</td>
+                      <td>{new Date(row.expiresAt).toLocaleString(locale)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          ) : null}
+
           <button
             type="button"
             className="btn btn-danger"

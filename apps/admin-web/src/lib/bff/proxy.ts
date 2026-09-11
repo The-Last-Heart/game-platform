@@ -13,6 +13,7 @@ import {
   stripSecretsFromAuthPayload,
 } from './cookies';
 import { safeInternalError, toSafeAdminError } from './errors';
+import { assertBffOriginAllowed, trustedOriginForBackend } from './origin';
 
 const MUTATING = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
 
@@ -39,6 +40,15 @@ function readJsonSafe(text: string): unknown {
   }
 }
 
+function logoutSuccessResponse(request: NextRequest): NextResponse {
+  const response = NextResponse.json(
+    { ok: true, data: { revoked: true as const } },
+    { status: 200 },
+  );
+  clearAuthCookies(response, request);
+  return response;
+}
+
 /**
  * Proxy a browser request to the backend admin API.
  * Forwards session + CSRF; never exposes BACKEND_INTERNAL_URL or session tokens to JS.
@@ -49,6 +59,17 @@ export async function proxyAdminRequest(
 ): Promise<NextResponse> {
   const method = request.method.toUpperCase();
   const incomingUrl = new URL(request.url);
+  const pathKey = pathSegments.join('/');
+
+  if (MUTATING.has(method)) {
+    const originError = assertBffOriginAllowed(request);
+    if (originError) {
+      return NextResponse.json(originError, {
+        status: originError.error.code === 'ORIGIN_REJECTED' ? 403 : 500,
+      });
+    }
+  }
+
   let backendUrl: string;
   try {
     backendUrl = buildBackendAdminUrl(pathSegments);
@@ -66,6 +87,11 @@ export async function proxyAdminRequest(
   const contentType = request.headers.get('content-type');
   if (contentType) {
     headers.set('content-type', contentType);
+  }
+
+  const trustedOrigin = trustedOriginForBackend();
+  if (trustedOrigin) {
+    headers.set('origin', trustedOrigin);
   }
 
   const sessionToken = request.cookies.get(ADMIN_SESSION_COOKIE_NAME)?.value;
@@ -117,9 +143,24 @@ export async function proxyAdminRequest(
 
   const rawText = await upstream.text();
   const parsed = readJsonSafe(rawText);
-  const pathKey = pathSegments.join('/');
 
   if (!upstream.ok) {
+    // Prefer backend always-200 logout; if session is already gone, still clear.
+    if (
+      pathKey === 'auth/logout' &&
+      (upstream.status === 401 ||
+        (parsed &&
+          typeof parsed === 'object' &&
+          (parsed as { error?: { code?: string } }).error?.code ===
+            'UNAUTHORIZED') ||
+        (parsed &&
+          typeof parsed === 'object' &&
+          (parsed as { error?: { code?: string } }).error?.code ===
+            'SESSION_EXPIRED'))
+    ) {
+      return logoutSuccessResponse(request);
+    }
+
     const safe = toSafeAdminError(upstream.status, parsed);
     const response = NextResponse.json(safe, { status: upstream.status });
     if (
