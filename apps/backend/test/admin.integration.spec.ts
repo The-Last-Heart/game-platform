@@ -456,12 +456,12 @@ describe('admin API integration', () => {
         };
       };
     };
-    expect(overviewBody.data.aggregates.activeMatchCount).toBeGreaterThanOrEqual(
-      1,
-    );
-    expect(overviewBody.data.aggregates.matchesByPhase.completed).toBeGreaterThanOrEqual(
-      1,
-    );
+    expect(
+      overviewBody.data.aggregates.activeMatchCount,
+    ).toBeGreaterThanOrEqual(1);
+    expect(
+      overviewBody.data.aggregates.matchesByPhase.completed,
+    ).toBeGreaterThanOrEqual(1);
     expect(payload).not.toMatch(/resumeToken/i);
     expect(payload).not.toMatch(/serverConfig/i);
     expect(payload).not.toMatch(/signalToken/i);

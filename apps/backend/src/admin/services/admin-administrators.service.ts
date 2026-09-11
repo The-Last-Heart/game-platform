@@ -398,7 +398,11 @@ export class AdminAdministratorsService {
       return null;
     }
     const response = error.getResponse();
-    if (typeof response === 'object' && response !== null && 'error' in response) {
+    if (
+      typeof response === 'object' &&
+      response !== null &&
+      'error' in response
+    ) {
       const nested = (response as { error?: { code?: unknown } }).error;
       if (nested && typeof nested.code === 'string') {
         return nested.code;

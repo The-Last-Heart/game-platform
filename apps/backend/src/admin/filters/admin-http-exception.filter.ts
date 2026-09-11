@@ -103,9 +103,9 @@ export class AdminHttpExceptionFilter implements ExceptionFilter {
               (typeof (raw as { message: unknown }).message === 'string' ||
                 Array.isArray((raw as { message: unknown }).message))
             ? Array.isArray((raw as { message: unknown }).message)
-              ? ((raw as { message: string[] }).message.join('; ') ||
-                defaultMessage(code))
-              : ((raw as { message: string }).message || defaultMessage(code))
+              ? (raw as { message: string[] }).message.join('; ') ||
+                defaultMessage(code)
+              : (raw as { message: string }).message || defaultMessage(code)
             : defaultMessage(code);
 
       const envelope: AdminErrorEnvelope = {

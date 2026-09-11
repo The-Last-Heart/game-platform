@@ -69,9 +69,10 @@ describeDb('admin audit hardening migration (integration)', () => {
     );
 
     await expect(
-      pool.query(`UPDATE admin_audit_logs SET action = 'mutated' WHERE id = $1`, [
-        firstRow.id,
-      ]),
+      pool.query(
+        `UPDATE admin_audit_logs SET action = 'mutated' WHERE id = $1`,
+        [firstRow.id],
+      ),
     ).rejects.toThrow(/append-only/i);
 
     await expect(

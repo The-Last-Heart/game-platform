@@ -3,7 +3,7 @@ import type { ArgumentsHost } from '@nestjs/common';
 import { AdminHttpExceptionFilter } from './admin-http-exception.filter';
 
 function mockHost(path: string) {
-  const json = jest.fn();
+  const json = jest.fn<(body: unknown) => void>();
   const status = jest.fn().mockReturnValue({ json });
   const host = {
     switchToHttp: () => ({
@@ -42,15 +42,13 @@ describe('AdminHttpExceptionFilter', () => {
       host,
     );
     expect(status).toHaveBeenCalledWith(400);
-    expect(json).toHaveBeenCalledWith(
-      expect.objectContaining({
-        ok: false,
-        error: expect.objectContaining({
-          code: 'VALIDATION_ERROR',
-          message: 'Request validation failed',
-        }),
-      }),
-    );
+    expect(json).toHaveBeenCalledWith({
+      ok: false,
+      error: {
+        code: 'VALIDATION_ERROR',
+        message: 'Request validation failed',
+      },
+    });
   });
 
   it('does not rewrite non-admin routes to admin envelopes', () => {
