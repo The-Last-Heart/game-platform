@@ -2,11 +2,11 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 
+import 'features/entry/ui/app_entry_screen.dart';
 import 'features/match/session/match_session_controller.dart';
 import 'features/match/session/session_store.dart';
 import 'features/match/transport/realtime_transport.dart';
 import 'features/match/transport/socket_io_transport.dart';
-import 'features/match/ui/home_dev_screen.dart';
 import 'l10n/app_localization.dart';
 import 'l10n/locale_metadata.dart';
 import 'l10n/translation_catalog.dart';
@@ -106,7 +106,7 @@ class _TheLastHeartAppState extends State<TheLastHeartApp> {
             child: child ?? const SizedBox.shrink(),
           );
         },
-        home: HomeDevScreen(controller: _controller),
+        home: AppEntryScreen(controller: _controller),
       ),
     );
   }

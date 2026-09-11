@@ -20,10 +20,15 @@ import {
 import { DomainError } from '../domain/types';
 import { toPublicChallengeView } from '../domain/match.engine';
 import { MatchService, type MatchBroadcast } from '../services/match.service';
+import {
+  MatchmakingService,
+  type MatchmakingStatusEvent,
+} from '../services/matchmaking.service';
 
 type SocketState = {
   playerId?: string;
   matchId?: string;
+  ticketId?: string;
   /** Set synchronously on disconnect so pending binds cannot race. */
   disconnected?: boolean;
 };
@@ -49,8 +54,11 @@ export class MatchGateway
   server!: Server;
 
   private unsubscribe: (() => void) | undefined;
+  private unsubscribeMatchmaking: (() => void) | undefined;
   /** `${matchId}:${playerId}` -> current owning socket id */
   private readonly connectionLeases = new Map<string, string>();
+  /** ticketId -> socket id waiting in matchmaking */
+  private readonly queueSockets = new Map<string, string>();
   /**
    * Per-socket serialization for identity-changing commands
    * (create_dev / join / resume). Errors must not poison the chain.
@@ -60,11 +68,17 @@ export class MatchGateway
   /** Test-only: pause clearClientBinding after ownership check, before disconnect. */
   private clearBindingBarrierForTests: (() => Promise<void>) | undefined;
 
-  constructor(private readonly matches: MatchService) {}
+  constructor(
+    private readonly matches: MatchService,
+    private readonly matchmaking: MatchmakingService,
+  ) {}
 
   afterInit(): void {
     this.unsubscribe = this.matches.onBroadcast((broadcast) => {
       this.publishBroadcast(broadcast);
+    });
+    this.unsubscribeMatchmaking = this.matchmaking.onStatus((event) => {
+      void this.handleMatchmakingStatus(event);
     });
   }
 
@@ -81,6 +95,19 @@ export class MatchGateway
     // Mark before any await so in-flight identity handlers cannot bind afterward.
     state.disconnected = true;
     this.disconnectHookForTests?.(client.id);
+
+    if (state.ticketId) {
+      const ticketId = state.ticketId;
+      if (this.queueSockets.get(ticketId) === client.id) {
+        this.queueSockets.delete(ticketId);
+        try {
+          await this.matchmaking.cancel(ticketId);
+        } catch {
+          // Ticket may already be assigned/cancelled.
+        }
+      }
+      state.ticketId = undefined;
+    }
 
     const matchId = state.matchId;
     const playerId = state.playerId;
@@ -116,7 +143,10 @@ export class MatchGateway
   async onModuleDestroy(): Promise<void> {
     this.unsubscribe?.();
     this.unsubscribe = undefined;
+    this.unsubscribeMatchmaking?.();
+    this.unsubscribeMatchmaking = undefined;
     this.connectionLeases.clear();
+    this.queueSockets.clear();
     this.socketIdentityQueues.clear();
     if (this.server) {
       await new Promise<void>((resolve) => {
@@ -203,6 +233,94 @@ export class MatchGateway
             commandId,
             command.messageId,
             (command.payload as { matchId: string }).matchId,
+          );
+          break;
+        case MessageTypes.MatchmakingEnqueue:
+          await this.enqueueIdentity(client, () =>
+            this.handleMatchmakingEnqueue(
+              client,
+              commandId!,
+              command.messageId,
+              command.payload as { displayName: string; avatarColor: string },
+            ),
+          );
+          break;
+        case MessageTypes.MatchmakingCancel:
+          await this.handleMatchmakingCancel(
+            client,
+            commandId!,
+            command.messageId,
+            command.payload as { ticketId?: string },
+          );
+          break;
+        case MessageTypes.PrivateRoomCreate:
+          await this.enqueueIdentity(client, () =>
+            this.handlePrivateCreate(
+              client,
+              commandId!,
+              command.messageId,
+              command.payload as { displayName: string; avatarColor: string },
+            ),
+          );
+          break;
+        case MessageTypes.PrivateRoomJoin:
+          await this.enqueueIdentity(client, () =>
+            this.handlePrivateJoin(
+              client,
+              commandId!,
+              command.messageId,
+              command.payload as {
+                displayName: string;
+                avatarColor: string;
+                roomCode: string;
+              },
+            ),
+          );
+          break;
+        case MessageTypes.MatchReady:
+          await this.handleReady(
+            client,
+            commandId!,
+            command.messageId,
+            (command.payload as { matchId: string }).matchId,
+          );
+          break;
+        case MessageTypes.MatchLeave:
+          await this.handleLeave(
+            client,
+            commandId!,
+            command.messageId,
+            (command.payload as { matchId: string }).matchId,
+          );
+          break;
+        case MessageTypes.TrainingStart:
+          await this.enqueueIdentity(client, () =>
+            this.handleTrainingStart(
+              client,
+              commandId!,
+              command.messageId,
+              command.payload as { displayName: string; avatarColor: string },
+            ),
+          );
+          break;
+        case MessageTypes.TrainingRetry:
+          await this.enqueueIdentity(client, () =>
+            this.handleTrainingRetry(
+              client,
+              commandId!,
+              command.messageId,
+              (command.payload as { matchId: string }).matchId,
+            ),
+          );
+          break;
+        case MessageTypes.MatchRematch:
+          await this.enqueueIdentity(client, () =>
+            this.handleRematch(
+              client,
+              commandId!,
+              command.messageId,
+              (command.payload as { matchId: string }).matchId,
+            ),
           );
           break;
         default:
@@ -512,6 +630,439 @@ export class MatchGateway
     });
   }
 
+  private async handleMatchmakingEnqueue(
+    client: Socket,
+    commandId: string,
+    correlationId: string,
+    payload: { displayName: string; avatarColor: string },
+  ): Promise<void> {
+    if (this.isSocketGone(client)) {
+      return;
+    }
+    const prior = client.data as SocketState;
+    if (prior.ticketId) {
+      try {
+        await this.matchmaking.cancel(prior.ticketId);
+      } catch {
+        // Already gone.
+      }
+      this.queueSockets.delete(prior.ticketId);
+      prior.ticketId = undefined;
+    }
+    if (!this.ensureUnbound(client)) {
+      this.emitError(client, 'UNAUTHORIZED', 'errors.protocol.unauthorized', {
+        commandId,
+      });
+      return;
+    }
+    const status = await this.matchmaking.enqueue(payload);
+    if (this.isSocketGone(client)) {
+      if (status.state === 'queued') {
+        try {
+          await this.matchmaking.cancel(status.ticketId);
+        } catch {
+          // ignore
+        }
+      }
+      return;
+    }
+    const state = client.data as SocketState;
+    state.ticketId = status.ticketId;
+    this.queueSockets.set(status.ticketId, client.id);
+    this.emitMatchmakingStatus(client, status, { commandId, correlationId });
+    if (status.state === 'assigned' && status.matchId && status.assignment) {
+      await this.bindAssignedMatchmaking(
+        client,
+        commandId,
+        correlationId,
+        status,
+      );
+    }
+  }
+
+  private async handleMatchmakingCancel(
+    client: Socket,
+    commandId: string,
+    correlationId: string,
+    payload: { ticketId?: string },
+  ): Promise<void> {
+    const state = client.data as SocketState;
+    const ticketId = payload.ticketId ?? state.ticketId;
+    if (!ticketId) {
+      this.emitError(client, 'QUEUE_NOT_FOUND', 'errors.queue.not_found', {
+        commandId,
+      });
+      return;
+    }
+    const status = await this.matchmaking.cancel(ticketId);
+    if (this.queueSockets.get(ticketId) === client.id) {
+      this.queueSockets.delete(ticketId);
+    }
+    state.ticketId = undefined;
+    if (status) {
+      this.emitMatchmakingStatus(client, status, { commandId, correlationId });
+    }
+  }
+
+  private async handlePrivateCreate(
+    client: Socket,
+    commandId: string,
+    correlationId: string,
+    payload: { displayName: string; avatarColor: string },
+  ): Promise<void> {
+    if (this.isSocketGone(client)) {
+      return;
+    }
+    if (!this.ensureUnbound(client)) {
+      this.emitError(client, 'UNAUTHORIZED', 'errors.protocol.unauthorized', {
+        commandId,
+      });
+      return;
+    }
+    const created = await this.matches.createPrivateRoom(payload);
+    await this.finalizeSeatBind(
+      client,
+      commandId,
+      correlationId,
+      created.matchId,
+      created.playerId,
+      created.resumeToken,
+      created.snapshot,
+    );
+  }
+
+  private async handlePrivateJoin(
+    client: Socket,
+    commandId: string,
+    correlationId: string,
+    payload: { displayName: string; avatarColor: string; roomCode: string },
+  ): Promise<void> {
+    if (this.isSocketGone(client)) {
+      return;
+    }
+    if (!this.ensureUnbound(client)) {
+      this.emitError(client, 'UNAUTHORIZED', 'errors.protocol.unauthorized', {
+        commandId,
+      });
+      return;
+    }
+    const joined = await this.matches.joinPrivateRoom(payload);
+    await this.finalizeSeatBind(
+      client,
+      commandId,
+      correlationId,
+      joined.matchId,
+      joined.playerId,
+      joined.resumeToken,
+      joined.snapshot,
+    );
+  }
+
+  private async handleReady(
+    client: Socket,
+    commandId: string,
+    correlationId: string,
+    matchId: string,
+  ): Promise<void> {
+    const state = client.data as SocketState;
+    if (!state.matchId || !state.playerId || state.matchId !== matchId) {
+      this.emitError(client, 'UNAUTHORIZED', 'errors.protocol.unauthorized', {
+        commandId,
+      });
+      return;
+    }
+    if (!this.ownsLease(client, state.matchId, state.playerId)) {
+      this.emitError(client, 'UNAUTHORIZED', 'errors.protocol.unauthorized', {
+        commandId,
+      });
+      return;
+    }
+    const result = await this.matches.setReady(matchId, state.playerId);
+    this.emitToClient(client, MessageTypes.MatchSnapshot, result.snapshot, {
+      commandId,
+      correlationId,
+      matchId,
+      sequence: result.snapshot.sequence,
+    });
+  }
+
+  private async handleLeave(
+    client: Socket,
+    commandId: string,
+    correlationId: string,
+    matchId: string,
+  ): Promise<void> {
+    const state = client.data as SocketState;
+    if (!state.matchId || !state.playerId || state.matchId !== matchId) {
+      this.emitError(client, 'UNAUTHORIZED', 'errors.protocol.unauthorized', {
+        commandId,
+      });
+      return;
+    }
+    if (!this.ownsLease(client, state.matchId, state.playerId)) {
+      this.emitError(client, 'UNAUTHORIZED', 'errors.protocol.unauthorized', {
+        commandId,
+      });
+      return;
+    }
+    const playerId = state.playerId;
+    const result = await this.matches.leaveMatch(matchId, playerId);
+    this.releaseLeaseIfOwned(client, matchId, playerId);
+    await client.leave(this.room(matchId));
+    (client.data as SocketState) = {};
+    if (result.snapshot) {
+      this.emitToClient(client, MessageTypes.MatchSnapshot, result.snapshot, {
+        commandId,
+        correlationId,
+        matchId,
+        sequence: result.snapshot.sequence,
+      });
+    }
+  }
+
+  private async handleTrainingStart(
+    client: Socket,
+    commandId: string,
+    correlationId: string,
+    payload: { displayName: string; avatarColor: string },
+  ): Promise<void> {
+    if (this.isSocketGone(client)) {
+      return;
+    }
+    if (!this.ensureUnbound(client)) {
+      this.emitError(client, 'UNAUTHORIZED', 'errors.protocol.unauthorized', {
+        commandId,
+      });
+      return;
+    }
+    const started = await this.matches.startTraining(payload);
+    await this.finalizeSeatBind(
+      client,
+      commandId,
+      correlationId,
+      started.matchId,
+      started.playerId,
+      started.resumeToken,
+      started.snapshot,
+    );
+  }
+
+  private async handleTrainingRetry(
+    client: Socket,
+    commandId: string,
+    correlationId: string,
+    matchId: string,
+  ): Promise<void> {
+    const state = client.data as SocketState;
+    if (!state.matchId || !state.playerId || state.matchId !== matchId) {
+      this.emitError(client, 'UNAUTHORIZED', 'errors.protocol.unauthorized', {
+        commandId,
+      });
+      return;
+    }
+    if (!this.ownsLease(client, state.matchId, state.playerId)) {
+      this.emitError(client, 'UNAUTHORIZED', 'errors.protocol.unauthorized', {
+        commandId,
+      });
+      return;
+    }
+    const retried = await this.matches.retryTraining(matchId, state.playerId);
+    await this.clearClientBinding(client);
+    await this.finalizeSeatBind(
+      client,
+      commandId,
+      correlationId,
+      retried.matchId,
+      retried.playerId,
+      retried.resumeToken,
+      retried.snapshot,
+    );
+  }
+
+  private async handleRematch(
+    client: Socket,
+    commandId: string,
+    correlationId: string,
+    matchId: string,
+  ): Promise<void> {
+    const state = client.data as SocketState;
+    if (!state.matchId || !state.playerId || state.matchId !== matchId) {
+      this.emitError(client, 'UNAUTHORIZED', 'errors.protocol.unauthorized', {
+        commandId,
+      });
+      return;
+    }
+    if (!this.ownsLease(client, state.matchId, state.playerId)) {
+      this.emitError(client, 'UNAUTHORIZED', 'errors.protocol.unauthorized', {
+        commandId,
+      });
+      return;
+    }
+    const rematched = await this.matches.rematch(matchId, state.playerId);
+    await this.clearClientBinding(client);
+    await this.finalizeSeatBind(
+      client,
+      commandId,
+      correlationId,
+      rematched.matchId,
+      rematched.playerId,
+      rematched.resumeToken,
+      rematched.snapshot,
+    );
+  }
+
+  private async handleMatchmakingStatus(
+    event: MatchmakingStatusEvent,
+  ): Promise<void> {
+    const socketId = this.queueSockets.get(event.ticketId);
+    if (!socketId) {
+      return;
+    }
+    const client = this.server?.sockets?.sockets?.get(socketId);
+    if (!client) {
+      this.queueSockets.delete(event.ticketId);
+      return;
+    }
+    if (event.state === 'assigned' && event.matchId && event.assignment) {
+      const state = client.data as SocketState;
+      if (
+        state.matchId === event.matchId &&
+        state.playerId === event.assignment.playerId
+      ) {
+        return;
+      }
+      this.emitMatchmakingStatus(client, event);
+      await this.bindAssignedMatchmaking(client, undefined, undefined, event);
+      return;
+    }
+    this.emitMatchmakingStatus(client, event);
+    if (
+      event.state === 'cancelled' ||
+      event.state === 'timed_out' ||
+      event.state === 'failed'
+    ) {
+      const state = client.data as SocketState;
+      if (state.ticketId === event.ticketId) {
+        state.ticketId = undefined;
+      }
+      this.queueSockets.delete(event.ticketId);
+    }
+  }
+
+  private async bindAssignedMatchmaking(
+    client: Socket,
+    commandId: string | undefined,
+    correlationId: string | undefined,
+    status: MatchmakingStatusEvent,
+  ): Promise<void> {
+    if (!status.matchId || !status.assignment) {
+      return;
+    }
+    const matchId = status.matchId;
+    const { playerId, resumeToken } = status.assignment;
+    const state = client.data as SocketState;
+    if (state.matchId === matchId && state.playerId === playerId) {
+      this.queueSockets.delete(status.ticketId);
+      if (state.ticketId === status.ticketId) {
+        state.ticketId = undefined;
+      }
+      return;
+    }
+    if (state.ticketId === status.ticketId) {
+      state.ticketId = undefined;
+    }
+    this.queueSockets.delete(status.ticketId);
+    if (this.isSocketGone(client)) {
+      await this.matches.abandonOrphanedJoin(matchId, playerId);
+      return;
+    }
+    const snap = await this.matches.requestSnapshot(matchId);
+    await this.finalizeSeatBind(
+      client,
+      commandId,
+      correlationId,
+      matchId,
+      playerId,
+      resumeToken,
+      snap.snapshot,
+    );
+  }
+
+  private async finalizeSeatBind(
+    client: Socket,
+    commandId: string | undefined,
+    correlationId: string | undefined,
+    matchId: string,
+    playerId: string,
+    resumeToken: string,
+    snapshot: ReturnType<MatchService['requestSnapshot']> extends Promise<
+      infer R
+    >
+      ? R extends { snapshot: infer S }
+        ? S
+        : never
+      : never,
+  ): Promise<void> {
+    if (this.isSocketGone(client)) {
+      await this.matches.abandonOrphanedJoin(matchId, playerId);
+      return;
+    }
+    if (!this.tryBindSession(client, matchId, playerId)) {
+      await this.matches.abandonOrphanedJoin(matchId, playerId);
+      return;
+    }
+    await client.join(this.room(matchId));
+    this.emitToClient(
+      client,
+      MessageTypes.SessionAccepted,
+      { matchId, playerId, resumeToken },
+      { commandId, correlationId, matchId },
+    );
+    this.emitToClient(client, MessageTypes.MatchSnapshot, snapshot, {
+      commandId,
+      correlationId,
+      matchId,
+      sequence: snapshot.sequence,
+    });
+    if (this.isSocketGone(client)) {
+      this.releaseLeaseIfOwned(client, matchId, playerId);
+      await this.matches.abandonOrphanedJoin(matchId, playerId);
+      return;
+    }
+    const leaseKey = this.leaseKey(matchId, playerId);
+    await this.matches.finalizeJoin(matchId, playerId, {
+      stillOwnsLease: () => this.connectionLeases.get(leaseKey) === client.id,
+    });
+    if (this.connectionLeases.get(leaseKey) == null) {
+      await this.matches.abandonOrphanedJoin(matchId, playerId);
+    }
+  }
+
+  private emitMatchmakingStatus(
+    client: Socket,
+    status: MatchmakingStatusEvent,
+    meta?: { commandId?: string; correlationId?: string },
+  ): void {
+    this.emitToClient(
+      client,
+      MessageTypes.MatchmakingStatus,
+      {
+        ticketId: status.ticketId,
+        state: status.state,
+        acceptedSeats: status.acceptedSeats,
+        capacity: status.capacity,
+        timeoutAtMs: status.timeoutAtMs,
+        matchId: status.matchId,
+        serverNowMs: status.serverNowMs,
+      },
+      {
+        commandId: meta?.commandId,
+        correlationId: meta?.correlationId,
+        matchId: status.matchId ?? undefined,
+      },
+    );
+  }
+
   private publishBroadcast(broadcast: MatchBroadcast): void {
     for (const event of broadcast.events) {
       if (event.kind === 'sequence') {
@@ -679,6 +1230,47 @@ export class MatchGateway
         code: 'DEV_ONLY_FORBIDDEN',
         key: 'errors.protocol.dev_only_forbidden',
       },
+      ROOM_CODE_INVALID: {
+        code: 'ROOM_CODE_INVALID',
+        key: 'errors.room.code_invalid',
+      },
+      ROOM_CODE_EXPIRED: {
+        code: 'ROOM_CODE_EXPIRED',
+        key: 'errors.room.code_expired',
+      },
+      ROOM_FULL: { code: 'ROOM_FULL', key: 'errors.room.full' },
+      QUEUE_CANCELLED: {
+        code: 'QUEUE_CANCELLED',
+        key: 'errors.queue.cancelled',
+      },
+      QUEUE_TIMEOUT: { code: 'QUEUE_TIMEOUT', key: 'errors.queue.timeout' },
+      QUEUE_NOT_FOUND: {
+        code: 'QUEUE_NOT_FOUND',
+        key: 'errors.queue.not_found',
+      },
+      ALREADY_IN_QUEUE: {
+        code: 'ALREADY_IN_QUEUE',
+        key: 'errors.queue.already_in_queue',
+      },
+      ALREADY_IN_MATCH: {
+        code: 'ALREADY_IN_MATCH',
+        key: 'errors.match.already_in_match',
+      },
+      NOT_IN_MATCH: { code: 'NOT_IN_MATCH', key: 'errors.match.not_in_match' },
+      NOT_HOST: { code: 'NOT_HOST', key: 'errors.match.not_host' },
+      REMATCH_UNAVAILABLE: {
+        code: 'REMATCH_UNAVAILABLE',
+        key: 'errors.match.rematch_unavailable',
+      },
+      MATCHMAKING_PAUSED: {
+        code: 'MATCHMAKING_PAUSED',
+        key: 'errors.queue.paused',
+      },
+      TRAINING_UNAVAILABLE: {
+        code: 'TRAINING_UNAVAILABLE',
+        key: 'errors.training.unavailable',
+      },
+      NOT_LOBBY: { code: 'MATCH_NOT_JOINABLE', key: 'errors.match.not_lobby' },
     };
     const mapped = map[error.code] ?? {
       code: 'INTERNAL_ERROR',
@@ -733,7 +1325,7 @@ export class MatchGateway
   /** Join requires a fully unbound socket (one identity per socket). */
   private ensureUnbound(client: Socket): boolean {
     const state = client.data as SocketState;
-    return !state.matchId && !state.playerId;
+    return !state.matchId && !state.playerId && !state.ticketId;
   }
 
   private isSocketGone(client: Socket): boolean {

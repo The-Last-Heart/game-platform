@@ -35,6 +35,7 @@ function fillSix(engine: MatchEngine) {
       resumeTokenHash: `h${i}`,
     });
     match = result.match;
+    match = engine.acceptJoin(match, `p${i}`).match;
   }
   return match;
 }

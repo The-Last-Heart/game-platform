@@ -162,6 +162,47 @@ TranslationCatalog createBootstrapCatalog() {
 
         TranslationKeys.sessionReconnecting: 'جارٍ إعادة الاتصال…',
         TranslationKeys.sessionRecoveringState: 'جارٍ استعادة حالة المباراة…',
+
+        TranslationKeys.commonBack: 'رجوع',
+        TranslationKeys.commonNext: 'التالي',
+        TranslationKeys.onboardingHeartsTitle: 'ثلاثة قلوب',
+        TranslationKeys.onboardingHeartsBody:
+            'كل لاعب يبدأ بثلاثة قلوب. خسارة القلب الأخيرة تحوّلك إلى متفرج.',
+        TranslationKeys.onboardingTimingTitle: 'تحدٍّ موقوت',
+        TranslationKeys.onboardingTimingBody:
+            'نفّذ الإجراء في الوقت الصحيح. الموعد النهائي دقيق ويُحسب من الخادم.',
+        TranslationKeys.onboardingEnergyTitle: 'الطاقة والقوى',
+        TranslationKeys.onboardingEnergyBody:
+            'النجاح يملأ الطاقة. عند اكتمالها تحصل على قوة تكتيكية',
+        TranslationKeys.onboardingDone: 'ابدأ',
+        TranslationKeys.identityTitle: 'هويتك في اللعبة',
+        TranslationKeys.identitySubtitle:
+            'اختر اسم العرض ولونًا مجردًا. لا حاجة لحساب.',
+        TranslationKeys.identityNameLabel: 'اسم العرض',
+        TranslationKeys.identityNameInvalid: 'الاسم يجب أن يكون بين حرفين و٢٤ حرفًا',
+        TranslationKeys.identityColorLabel: 'اللون',
+        TranslationKeys.identitySave: 'حفظ والمتابعة',
+        TranslationKeys.homeHelpOnboarding: 'كيف تُلعب؟',
+        TranslationKeys.homeEditIdentity: 'تعديل الهوية',
+        TranslationKeys.homeTraining: 'تدريب',
+        TranslationKeys.homeTrainingDesc: 'تمرّن على التحديات دون تأثير تنافسي',
+        TranslationKeys.matchmakingTitle: 'البحث عن مباراة',
+        TranslationKeys.matchmakingSearching: 'جارٍ البحث عن لاعبين…',
+        TranslationKeys.matchmakingSeats: '{count} من ٦ مقاعد',
+        TranslationKeys.matchmakingCancel: 'إلغاء البحث',
+        TranslationKeys.privateCreate: 'إنشاء غرفة',
+        TranslationKeys.privateJoin: 'انضم برمز',
+        TranslationKeys.privateCodeLabel: 'رمز الغرفة',
+        TranslationKeys.privateCodeCopied: 'تم نسخ الرمز',
+        TranslationKeys.privateShare: 'مشاركة الرمز',
+        TranslationKeys.privateReady: 'جاهز',
+        TranslationKeys.privateLeave: 'مغادرة',
+        TranslationKeys.privateInvalidCode: 'الرمز غير صالح أو منتهٍ',
+        TranslationKeys.trainingTitle: 'وضع التدريب',
+        TranslationKeys.trainingRetry: 'أعد المحاولة',
+        TranslationKeys.trainingExplain: 'انتظر الأزرق ثم اضغط. لا مكافآت تنافسية.',
+        TranslationKeys.rematchRequest: 'إعادة المباراة',
+        TranslationKeys.errorsServiceUnavailable: 'الخدمة غير متاحة الآن',
       },
       'en': <String, String>{
         // ── Foundation ──
@@ -311,6 +352,50 @@ TranslationCatalog createBootstrapCatalog() {
 
         TranslationKeys.sessionReconnecting: 'Reconnecting…',
         TranslationKeys.sessionRecoveringState: 'Recovering match state…',
+
+        TranslationKeys.commonBack: 'Back',
+        TranslationKeys.commonNext: 'Next',
+        TranslationKeys.onboardingHeartsTitle: 'Three hearts',
+        TranslationKeys.onboardingHeartsBody:
+            'Every player starts with three hearts. Losing the last heart makes you a spectator.',
+        TranslationKeys.onboardingTimingTitle: 'Timed action',
+        TranslationKeys.onboardingTimingBody:
+            'Act at the right moment. The exact deadline is authoritative on the server.',
+        TranslationKeys.onboardingEnergyTitle: 'Energy and powers',
+        TranslationKeys.onboardingEnergyBody:
+            'Success fills energy. A full meter grants one tactical power.',
+        TranslationKeys.onboardingDone: 'Start',
+        TranslationKeys.identityTitle: 'Your in-game identity',
+        TranslationKeys.identitySubtitle:
+            'Choose a display name and abstract color. No account required.',
+        TranslationKeys.identityNameLabel: 'Display name',
+        TranslationKeys.identityNameInvalid:
+            'Name must be between 2 and 24 characters',
+        TranslationKeys.identityColorLabel: 'Color',
+        TranslationKeys.identitySave: 'Save and continue',
+        TranslationKeys.homeHelpOnboarding: 'How to play?',
+        TranslationKeys.homeEditIdentity: 'Edit identity',
+        TranslationKeys.homeTraining: 'Training',
+        TranslationKeys.homeTrainingDesc:
+            'Practice challenges with no competitive impact',
+        TranslationKeys.matchmakingTitle: 'Finding a match',
+        TranslationKeys.matchmakingSearching: 'Searching for players…',
+        TranslationKeys.matchmakingSeats: '{count} of 6 seats',
+        TranslationKeys.matchmakingCancel: 'Cancel search',
+        TranslationKeys.privateCreate: 'Create room',
+        TranslationKeys.privateJoin: 'Join with code',
+        TranslationKeys.privateCodeLabel: 'Room code',
+        TranslationKeys.privateCodeCopied: 'Code copied',
+        TranslationKeys.privateShare: 'Share code',
+        TranslationKeys.privateReady: 'Ready',
+        TranslationKeys.privateLeave: 'Leave',
+        TranslationKeys.privateInvalidCode: 'Code is invalid or expired',
+        TranslationKeys.trainingTitle: 'Training mode',
+        TranslationKeys.trainingRetry: 'Try again',
+        TranslationKeys.trainingExplain:
+            'Wait for blue, then tap. No competitive rewards.',
+        TranslationKeys.rematchRequest: 'Rematch',
+        TranslationKeys.errorsServiceUnavailable: 'Service unavailable',
       },
     },
   );

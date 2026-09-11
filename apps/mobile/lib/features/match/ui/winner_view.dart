@@ -12,10 +12,16 @@ import 'widgets/lh_heart_logo.dart';
 /// Must not invent challenge counts, rewards, XP, or other progression values
 /// that the server has not supplied.
 class WinnerView extends StatelessWidget {
-  const WinnerView({required this.state, required this.onBackHome, super.key});
+  const WinnerView({
+    required this.state,
+    required this.onBackHome,
+    this.onRematch,
+    super.key,
+  });
 
   final MatchViewState state;
   final VoidCallback onBackHome;
+  final VoidCallback? onRematch;
 
   @override
   Widget build(BuildContext context) {
@@ -116,10 +122,14 @@ class WinnerView extends StatelessWidget {
             width: double.infinity,
             height: 56,
             child: ElevatedButton.icon(
-              onPressed: onBackHome,
+              onPressed: onRematch ?? onBackHome,
               icon: const Icon(Icons.play_arrow, size: 24),
               label: Text(
-                resolver.resolve(TranslationKeys.winnerPlayAgain),
+                resolver.resolve(
+                  onRematch != null
+                      ? TranslationKeys.rematchRequest
+                      : TranslationKeys.winnerPlayAgain,
+                ),
                 style: const TextStyle(
                   fontSize: 20,
                   fontWeight: FontWeight.w700,
@@ -127,6 +137,16 @@ class WinnerView extends StatelessWidget {
               ),
             ),
           ),
+          if (onRematch != null) ...<Widget>[
+            const SizedBox(height: 10),
+            SizedBox(
+              width: double.infinity,
+              child: OutlinedButton(
+                onPressed: onBackHome,
+                child: Text(resolver.resolve(TranslationKeys.winnerBackHome)),
+              ),
+            ),
+          ],
           const SizedBox(height: 20),
         ],
       ),

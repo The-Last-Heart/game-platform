@@ -6,6 +6,7 @@ import { AdminAdministratorsController } from './controllers/admin-administrator
 import { AdminAuditLogsController } from './controllers/admin-audit-logs.controller';
 import { AdminAuthController } from './controllers/admin-auth.controller';
 import { AdminDashboardController } from './controllers/admin-dashboard.controller';
+import { AdminMatchmakingController } from './controllers/admin-matchmaking.controller';
 import { AdminHttpExceptionFilter } from './filters/admin-http-exception.filter';
 import { AdminAuthGuard } from './guards/admin-auth.guard';
 import { PermissionsGuard } from './guards/permissions.guard';
@@ -23,6 +24,7 @@ import { AdminDashboardService } from './services/admin-dashboard.service';
     AdminAuthController,
     AdminAdministratorsController,
     AdminDashboardController,
+    AdminMatchmakingController,
     AdminAuditLogsController,
   ],
   providers: [

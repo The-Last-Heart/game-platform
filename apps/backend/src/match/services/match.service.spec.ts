@@ -1,6 +1,7 @@
 import { createDevChallengeDefinition } from '../domain/dev-challenge.evaluator';
 import { DomainError, FakeClock } from '../domain/types';
 import { MatchService } from './match.service';
+import { MatchmakingService } from './matchmaking.service';
 
 describe('MatchService', () => {
   it('reschedules timeout when forceTimeout runs at inclusive deadline equality', async () => {
@@ -360,6 +361,176 @@ describe('MatchService', () => {
     expect(match!.phaseDeadlineMonoMs).toBeNull();
     expect(service.hasPhaseTimerForTests(matchId)).toBe(false);
 
+    service.onModuleDestroy();
+  });
+
+  it('leaveMatch frees a lobby seat and cancels countdown', async () => {
+    const clock = new FakeClock(5_000_000);
+    const service = MatchService.forTests({ clock, nodeEnv: 'test' });
+    const room = await service.createPrivateRoom({
+      displayName: 'Host',
+      avatarColor: '#112233',
+    });
+    await service.finalizeJoin(room.matchId, room.playerId);
+    const guest = await service.joinPrivateRoom({
+      roomCode: room.roomCode,
+      displayName: 'Guest',
+      avatarColor: '#445566',
+    });
+    await service.finalizeJoin(room.matchId, guest.playerId);
+
+    const left = await service.leaveMatch(room.matchId, guest.playerId);
+    expect(left.left).toBe(true);
+    expect(left.snapshot?.players).toHaveLength(1);
+    expect(
+      left.snapshot?.players.some((p) => p.playerId === guest.playerId),
+    ).toBe(false);
+
+    service.onModuleDestroy();
+  });
+
+  it('private room rejects invalid room codes', async () => {
+    const clock = new FakeClock(5_000_000);
+    const service = MatchService.forTests({ clock, nodeEnv: 'test' });
+    await expect(
+      service.joinPrivateRoom({
+        roomCode: 'ZZZZZZ',
+        displayName: 'Guest',
+        avatarColor: '#445566',
+      }),
+    ).rejects.toMatchObject({ code: 'ROOM_CODE_INVALID' });
+    service.onModuleDestroy();
+  });
+
+  it('private six accepted+ready starts one countdown', async () => {
+    const clock = new FakeClock(5_000_000);
+    const service = MatchService.forTests({ clock, nodeEnv: 'development' });
+    const host = await service.createPrivateRoom({
+      displayName: 'Host',
+      avatarColor: '#111111',
+    });
+    await service.finalizeJoin(host.matchId, host.playerId);
+
+    const seats = [host];
+    for (let i = 1; i < 6; i += 1) {
+      const joined = await service.joinPrivateRoom({
+        roomCode: host.roomCode,
+        displayName: `P${i}`,
+        avatarColor: '#222222',
+      });
+      await service.finalizeJoin(host.matchId, joined.playerId);
+      seats.push(joined);
+    }
+
+    const store = service.getStoreForTests();
+    let match = await store.get(host.matchId);
+    expect(match!.phase).toBe('lobby');
+
+    for (let i = 0; i < 5; i += 1) {
+      await service.setReady(host.matchId, seats[i]!.playerId);
+      match = await store.get(host.matchId);
+      expect(match!.phase).toBe('lobby');
+    }
+    const ready = await service.setReady(host.matchId, seats[5]!.playerId);
+    expect(ready.countdownStarted).toBe(true);
+    match = await store.get(host.matchId);
+    expect(match!.phase).toBe('ready_countdown');
+
+    // Second ready wave must not restart countdown.
+    const deadline = match!.phaseDeadlineMonoMs;
+    await service.setReady(host.matchId, seats[0]!.playerId);
+    match = await store.get(host.matchId);
+    expect(match!.phaseDeadlineMonoMs).toBe(deadline);
+
+    service.onModuleDestroy();
+  });
+
+  it('training starts with capacity 1', async () => {
+    const clock = new FakeClock(5_000_000);
+    const service = MatchService.forTests({ clock, nodeEnv: 'development' });
+    const started = await service.startTraining({
+      displayName: 'Trainee',
+      avatarColor: '#ABCDEF',
+    });
+    expect(started.snapshot.mode).toBe('training');
+    expect(started.snapshot.players).toHaveLength(1);
+
+    const finalized = await service.finalizeJoin(
+      started.matchId,
+      started.playerId,
+    );
+    expect(finalized.countdownStarted).toBe(true);
+    const store = service.getStoreForTests();
+    const match = await store.get(started.matchId);
+    expect(match!.playerCapacity).toBe(1);
+    expect(match!.phase).toBe('ready_countdown');
+
+    service.onModuleDestroy();
+  });
+
+  it('rematch returns a new matchId', async () => {
+    const clock = new FakeClock(5_000_000);
+    const service = MatchService.forTests({ clock, nodeEnv: 'test' });
+    const started = await service.startTraining({
+      displayName: 'Trainee',
+      avatarColor: '#ABCDEF',
+    });
+    await service.finalizeJoin(started.matchId, started.playerId);
+    const store = service.getStoreForTests();
+    let match = await store.get(started.matchId);
+    match!.phase = 'completed';
+    match!.status = 'completed';
+    match!.winnerId = started.playerId;
+    await store.save(match!);
+
+    const rematched = await service.rematch(started.matchId, started.playerId);
+    expect(rematched.matchId).not.toBe(started.matchId);
+    expect(rematched.snapshot.mode).toBe('training');
+    expect(rematched.snapshot.players).toHaveLength(1);
+
+    service.onModuleDestroy();
+  });
+
+  it('bot fill exposes isBot true in snapshot', async () => {
+    const clock = new FakeClock(5_000_000);
+    const service = MatchService.forTests({ clock, nodeEnv: 'development' });
+    const { matchId } = await service.createDevMatch();
+    const human = await service.joinMatch(matchId, {
+      displayName: 'Human',
+      avatarColor: '#010101',
+    });
+    await service.finalizeJoin(matchId, human.playerId);
+    const filled = await service.fillDevBots(matchId);
+    const bots = filled.snapshot.players.filter((p) => p.isBot === true);
+    expect(bots.length).toBe(5);
+    expect(filled.botIds).toHaveLength(5);
+
+    service.onModuleDestroy();
+  });
+
+  it('matchmaking cancel frees the ticket', async () => {
+    const clock = new FakeClock(5_000_000);
+    const service = MatchService.forTests({ clock, nodeEnv: 'test' });
+    const mm = MatchmakingService.forTests(service);
+    const queued = await mm.enqueue({
+      displayName: 'Queued',
+      avatarColor: '#123456',
+    });
+    expect(queued.state).toBe('queued');
+    expect(mm.getTicket(queued.ticketId)).toBeTruthy();
+
+    const cancelled = await mm.cancel(queued.ticketId);
+    expect(cancelled?.state).toBe('cancelled');
+    expect(mm.getTicket(queued.ticketId)).toBeUndefined();
+
+    // Same identity can enqueue again after cancel.
+    const again = await mm.enqueue({
+      displayName: 'Queued',
+      avatarColor: '#123456',
+    });
+    expect(again.state).toBe('queued');
+
+    mm.onModuleDestroy();
     service.onModuleDestroy();
   });
 });

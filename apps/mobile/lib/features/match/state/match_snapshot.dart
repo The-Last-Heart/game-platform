@@ -31,6 +31,10 @@ class MatchViewState {
     this.answerStatus = AnswerSubmissionStatus.idle,
     this.answerChallengeInstanceId,
     this.inMatch = false,
+    this.mode,
+    this.hostPlayerId,
+    this.roomCode,
+    this.matchmakingAcceptedSeats = 0,
   });
 
   final String? matchId;
@@ -55,6 +59,11 @@ class MatchViewState {
 
   /// Whether UI should show the active-match shell (authoritative navigation).
   final bool inMatch;
+
+  final MatchMode? mode;
+  final String? hostPlayerId;
+  final String? roomCode;
+  final int matchmakingAcceptedSeats;
 
   /// Whether the session is gameplay-ready.
   bool get isBound => lifecycle == SessionLifecycle.bound;
@@ -103,6 +112,10 @@ class MatchViewState {
     AnswerSubmissionStatus? answerStatus,
     String? Function()? answerChallengeInstanceId,
     bool? inMatch,
+    MatchMode? Function()? mode,
+    String? Function()? hostPlayerId,
+    String? Function()? roomCode,
+    int? matchmakingAcceptedSeats,
   }) {
     return MatchViewState(
       // Explicit nullable setters: omit = unchanged; () => null = clear.
@@ -138,6 +151,11 @@ class MatchViewState {
           ? answerChallengeInstanceId()
           : this.answerChallengeInstanceId,
       inMatch: inMatch ?? this.inMatch,
+      mode: mode != null ? mode() : this.mode,
+      hostPlayerId: hostPlayerId != null ? hostPlayerId() : this.hostPlayerId,
+      roomCode: roomCode != null ? roomCode() : this.roomCode,
+      matchmakingAcceptedSeats:
+          matchmakingAcceptedSeats ?? this.matchmakingAcceptedSeats,
     );
   }
 }

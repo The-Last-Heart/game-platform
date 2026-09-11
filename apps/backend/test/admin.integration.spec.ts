@@ -11,6 +11,7 @@ import { hashPassword, sha256Hex } from '../src/admin/security/password';
 import { ADMIN_CSRF_COOKIE_NAME } from '../src/admin/security/tokens';
 import { FakeClock } from '../src/match/domain/types';
 import { MatchService } from '../src/match/services/match.service';
+import { MatchmakingService } from '../src/match/services/matchmaking.service';
 import type { AppConfig } from '../src/config/env.validation';
 
 const databaseUrl = process.env.DATABASE_URL;
@@ -44,6 +45,7 @@ describe('admin API integration', () => {
   let app: INestApplication;
   let pool: Pool;
   let matchService: MatchService;
+  let matchmakingService: MatchmakingService;
 
   beforeAll(async () => {
     if (!databaseUrl) {
@@ -84,6 +86,7 @@ describe('admin API integration', () => {
     app = moduleRef.createNestApplication();
     await app.init();
     matchService = app.get(MatchService);
+    matchmakingService = app.get(MatchmakingService);
   }, 60_000);
 
   afterAll(async () => {
@@ -138,6 +141,7 @@ describe('admin API integration', () => {
 
     const response = await http(app)
       .post('/api/admin/v1/auth/login')
+      .set('Origin', process.env.ADMIN_ALLOWED_ORIGIN || 'http://127.0.0.1:3001')
       .set(
         'Cookie',
         `${ADMIN_CSRF_COOKIE_NAME}=${encodeURIComponent(csrfToken!)}`,
@@ -165,11 +169,13 @@ describe('admin API integration', () => {
     Authorization: string;
     Cookie: string;
     'X-CSRF-Token': string;
+    Origin: string;
   } {
     return {
       Authorization: `Bearer ${sessionToken}`,
       Cookie: `${ADMIN_CSRF_COOKIE_NAME}=${encodeURIComponent(csrfToken)}`,
       'X-CSRF-Token': csrfToken,
+      Origin: process.env.ADMIN_ALLOWED_ORIGIN || 'http://127.0.0.1:3001',
     };
   }
 
@@ -764,6 +770,83 @@ describe('admin API integration', () => {
       .send({ displayName: 'X', role: 'viewer' });
     expect(rejected.status).toBe(400);
     expect(JSON.stringify(rejected.body)).toContain('VALIDATION_ERROR');
+  });
+
+  it('reads and updates matchmaking bot-fill policy for live_ops', async () => {
+    if (!enabled) return;
+
+    const viewerEmail = uniqueEmail('botfill-viewer');
+    const liveOpsEmail = uniqueEmail('botfill-liveops');
+    const password = 'valid-password-12';
+    await insertAdmin({
+      email: viewerEmail,
+      password,
+      role: 'viewer',
+    });
+    await insertAdmin({
+      email: liveOpsEmail,
+      password,
+      role: 'live_ops',
+    });
+
+    const viewerLogin = await login(viewerEmail, password);
+    const liveOpsLogin = await login(liveOpsEmail, password);
+    expect(viewerLogin.status).toBe(200);
+    expect(liveOpsLogin.status).toBe(200);
+    expect(viewerLogin.sessionToken).toBeTruthy();
+    expect(liveOpsLogin.sessionToken).toBeTruthy();
+
+    const unauthorized = await http(app).get(
+      '/api/admin/v1/matchmaking/bot-fill-policy',
+    );
+    expect(unauthorized.status).toBe(401);
+
+    const forbiddenRead = await http(app)
+      .get('/api/admin/v1/matchmaking/bot-fill-policy')
+      .set(authHeaders(viewerLogin.sessionToken!, viewerLogin.csrfToken!));
+    expect(forbiddenRead.status).toBe(403);
+
+    const initial = await http(app)
+      .get('/api/admin/v1/matchmaking/bot-fill-policy')
+      .set(authHeaders(liveOpsLogin.sessionToken!, liveOpsLogin.csrfToken!));
+    expect(initial.status).toBe(200);
+    expect(initial.body).toMatchObject({
+      ok: true,
+      data: {
+        enabled: expect.any(Boolean),
+        waitMs: expect.any(Number),
+      },
+    });
+
+    const forbiddenWrite = await http(app)
+      .patch('/api/admin/v1/matchmaking/bot-fill-policy')
+      .set(authHeaders(viewerLogin.sessionToken!, viewerLogin.csrfToken!))
+      .send({ enabled: true, waitMs: 20_000 });
+    expect(forbiddenWrite.status).toBe(403);
+
+    const updated = await http(app)
+      .patch('/api/admin/v1/matchmaking/bot-fill-policy')
+      .set(authHeaders(liveOpsLogin.sessionToken!, liveOpsLogin.csrfToken!))
+      .send({ enabled: true, waitMs: 20_000 });
+    expect(updated.status).toBe(200);
+    expect(updated.body).toMatchObject({
+      ok: true,
+      data: { enabled: true, waitMs: 20_000 },
+    });
+    expect(matchmakingService.getBotFillPolicy()).toEqual({
+      enabled: true,
+      waitMs: 20_000,
+    });
+
+    const invalid = await http(app)
+      .patch('/api/admin/v1/matchmaking/bot-fill-policy')
+      .set(authHeaders(liveOpsLogin.sessionToken!, liveOpsLogin.csrfToken!))
+      .send({});
+    expect(invalid.status).toBe(400);
+    expect(invalid.body).toMatchObject({
+      ok: false,
+      error: { code: 'VALIDATION_ERROR' },
+    });
   });
 
   it('sorts administrators with allowlisted fields and rejects injection', async () => {

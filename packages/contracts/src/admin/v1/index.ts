@@ -7,3 +7,4 @@ export * from './administrators';
 export * from './dashboard';
 export * from './system';
 export * from './audit';
+export * from './matchmaking';

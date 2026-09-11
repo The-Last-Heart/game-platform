@@ -144,6 +144,44 @@ abstract final class TranslationKeys {
   // ── Connection / recovery ──
   static const String sessionReconnecting = 'session.reconnecting';
   static const String sessionRecoveringState = 'session.recovering_state';
+
+  // ── LH-005 entry ──
+  static const String commonBack = 'common.back';
+  static const String commonNext = 'common.next';
+  static const String onboardingHeartsTitle = 'onboarding.hearts_title';
+  static const String onboardingHeartsBody = 'onboarding.hearts_body';
+  static const String onboardingTimingTitle = 'onboarding.timing_title';
+  static const String onboardingTimingBody = 'onboarding.timing_body';
+  static const String onboardingEnergyTitle = 'onboarding.energy_title';
+  static const String onboardingEnergyBody = 'onboarding.energy_body';
+  static const String onboardingDone = 'onboarding.done';
+  static const String identityTitle = 'identity.title';
+  static const String identitySubtitle = 'identity.subtitle';
+  static const String identityNameLabel = 'identity.name_label';
+  static const String identityNameInvalid = 'identity.name_invalid';
+  static const String identityColorLabel = 'identity.color_label';
+  static const String identitySave = 'identity.save';
+  static const String homeHelpOnboarding = 'home.help_onboarding';
+  static const String homeEditIdentity = 'home.edit_identity';
+  static const String homeTraining = 'home.training';
+  static const String homeTrainingDesc = 'home.training_desc';
+  static const String matchmakingTitle = 'matchmaking.title';
+  static const String matchmakingSearching = 'matchmaking.searching';
+  static const String matchmakingSeats = 'matchmaking.seats';
+  static const String matchmakingCancel = 'matchmaking.cancel';
+  static const String privateCreate = 'private.create';
+  static const String privateJoin = 'private.join';
+  static const String privateCodeLabel = 'private.code_label';
+  static const String privateCodeCopied = 'private.code_copied';
+  static const String privateShare = 'private.share';
+  static const String privateReady = 'private.ready';
+  static const String privateLeave = 'private.leave';
+  static const String privateInvalidCode = 'private.invalid_code';
+  static const String trainingTitle = 'training.title';
+  static const String trainingRetry = 'training.retry';
+  static const String trainingExplain = 'training.explain';
+  static const String rematchRequest = 'rematch.request';
+  static const String errorsServiceUnavailable = 'errors.service_unavailable';
 }
 
 /// Shared normalization for catalog create/lookup/resolve.

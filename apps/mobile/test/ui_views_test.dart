@@ -46,6 +46,9 @@ void main() {
     ) async {
       const MatchViewState state = MatchViewState(
         matchId: 'match-abcdef12',
+        mode: MatchMode.privateRoom,
+        roomCode: 'AB12CD',
+        hostPlayerId: 'p1',
         players: <PlayerPublic>[
           PlayerPublic(
             playerId: 'p1',
@@ -54,6 +57,9 @@ void main() {
             status: PlayerStatus.active,
             presence: Presence.connected,
             submittedForCurrentChallenge: false,
+            displayName: 'Host',
+            ready: false,
+            isHost: true,
           ),
           PlayerPublic(
             playerId: 'p2',
@@ -62,22 +68,30 @@ void main() {
             status: PlayerStatus.active,
             presence: Presence.connected,
             submittedForCurrentChallenge: false,
+            displayName: 'Guest',
+            ready: true,
           ),
         ],
       );
 
-      await tester.pumpWidget(wrapWithL10n(const LobbyView(state: state)));
+      await tester.pumpWidget(
+        wrapWithL10n(
+          LobbyView(
+            state: state,
+            onReady: () {},
+            onLeave: () {},
+          ),
+        ),
+      );
       await tester.pumpAndSettle();
 
-      // Lobby shows the private room title and room code label.
+      // Lobby shows the private room title and room code.
       expect(
         find.text(resolver.resolve(TranslationKeys.lobbyPrivateRoom)),
         findsOneWidget,
       );
-      expect(
-        find.text(resolver.resolve(TranslationKeys.lobbyRoomCode)),
-        findsOneWidget,
-      );
+      expect(find.text('AB12CD'), findsOneWidget);
+      expect(find.text('Host'), findsOneWidget);
     });
   });
 
@@ -336,7 +350,7 @@ void main() {
         matchId: 'match-1',
         players: <PlayerPublic>[],
       );
-      await tester.pumpWidget(wrapWithL10n(const LobbyView(state: state)));
+      await tester.pumpWidget(wrapWithL10n(LobbyView(state: state)));
       await tester.pumpAndSettle();
 
       final BuildContext context = tester.element(find.byType(LobbyView));

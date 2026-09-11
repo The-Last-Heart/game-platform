@@ -13,6 +13,15 @@ abstract final class MessageTypes {
   static const String matchSubmitAnswer = 'match.submit_answer';
   static const String matchRequestSnapshot = 'match.request_snapshot';
   static const String matchFillDevBots = 'match.fill_dev_bots';
+  static const String matchmakingEnqueue = 'matchmaking.enqueue';
+  static const String matchmakingCancel = 'matchmaking.cancel';
+  static const String privateRoomCreate = 'private_room.create';
+  static const String privateRoomJoin = 'private_room.join';
+  static const String matchReady = 'match.ready';
+  static const String matchLeave = 'match.leave';
+  static const String trainingStart = 'training.start';
+  static const String trainingRetry = 'training.retry';
+  static const String matchRematch = 'match.rematch';
   // Server events
   static const String sessionAccepted = 'session.accepted';
   static const String matchSnapshot = 'match.snapshot';
@@ -23,6 +32,7 @@ abstract final class MessageTypes {
   static const String challengeResolved = 'challenge.resolved';
   static const String matchStateChanged = 'match.state_changed';
   static const String matchFinished = 'match.finished';
+  static const String matchmakingStatus = 'matchmaking.status';
   static const String protocolError = 'protocol.error';
 }
 
@@ -161,6 +171,34 @@ enum Presence {
   }
 }
 
+/// Match mode values matching protocol.ts matchModeSchema.
+enum MatchMode {
+  quickSurvival,
+  privateRoom,
+  training,
+  dev;
+
+  static MatchMode? tryParse(String? value) {
+    return switch (value) {
+      'quick_survival' => MatchMode.quickSurvival,
+      'private' => MatchMode.privateRoom,
+      'training' => MatchMode.training,
+      'dev' => MatchMode.dev,
+      null => null,
+      _ => null,
+    };
+  }
+
+  String toWire() {
+    return switch (this) {
+      MatchMode.quickSurvival => 'quick_survival',
+      MatchMode.privateRoom => 'private',
+      MatchMode.training => 'training',
+      MatchMode.dev => 'dev',
+    };
+  }
+}
+
 /// Public player data from server snapshot.
 class PlayerPublic {
   const PlayerPublic({
@@ -170,6 +208,11 @@ class PlayerPublic {
     required this.status,
     required this.presence,
     required this.submittedForCurrentChallenge,
+    this.displayName,
+    this.avatarColor,
+    this.ready,
+    this.isBot,
+    this.isHost,
   });
 
   final String playerId;
@@ -178,6 +221,11 @@ class PlayerPublic {
   final PlayerStatus status;
   final Presence presence;
   final bool submittedForCurrentChallenge;
+  final String? displayName;
+  final String? avatarColor;
+  final bool? ready;
+  final bool? isBot;
+  final bool? isHost;
 
   factory PlayerPublic.fromJson(Map<String, dynamic> json) {
     return PlayerPublic(
@@ -188,6 +236,11 @@ class PlayerPublic {
       presence: Presence.fromString(json['presence'] as String),
       submittedForCurrentChallenge:
           json['submittedForCurrentChallenge'] as bool,
+      displayName: json['displayName'] as String?,
+      avatarColor: json['avatarColor'] as String?,
+      ready: json['ready'] as bool?,
+      isBot: json['isBot'] as bool?,
+      isHost: json['isHost'] as bool?,
     );
   }
 }
@@ -325,6 +378,9 @@ class MatchSnapshotPayload {
     this.nextPhaseAtMs,
     this.winnerId,
     this.currentChallenge,
+    this.mode,
+    this.hostPlayerId,
+    this.roomCode,
   });
 
   final String matchId;
@@ -340,6 +396,9 @@ class MatchSnapshotPayload {
   final List<PlayerPublic> players;
   final String? winnerId;
   final PublicChallenge? currentChallenge;
+  final MatchMode? mode;
+  final String? hostPlayerId;
+  final String? roomCode;
 
   factory MatchSnapshotPayload.fromJson(Map<String, dynamic> json) {
     final dynamic lastRound = json['lastRoundResult'];
@@ -372,6 +431,42 @@ class MatchSnapshotPayload {
               Map<String, dynamic>.from(challenge as Map<dynamic, dynamic>),
             )
           : null,
+      mode: MatchMode.tryParse(json['mode'] as String?),
+      hostPlayerId: json['hostPlayerId'] as String?,
+      roomCode: json['roomCode'] as String?,
+    );
+  }
+}
+
+/// Queue status payload from matchmaking.status.
+class MatchmakingStatusPayload {
+  const MatchmakingStatusPayload({
+    required this.ticketId,
+    required this.state,
+    required this.acceptedSeats,
+    required this.capacity,
+    required this.serverNowMs,
+    this.timeoutAtMs,
+    this.matchId,
+  });
+
+  final String ticketId;
+  final String state;
+  final int acceptedSeats;
+  final int capacity;
+  final int? timeoutAtMs;
+  final String? matchId;
+  final int serverNowMs;
+
+  factory MatchmakingStatusPayload.fromJson(Map<String, dynamic> json) {
+    return MatchmakingStatusPayload(
+      ticketId: json['ticketId'] as String,
+      state: json['state'] as String,
+      acceptedSeats: json['acceptedSeats'] as int,
+      capacity: json['capacity'] as int,
+      timeoutAtMs: json['timeoutAtMs'] as int?,
+      matchId: json['matchId'] as String?,
+      serverNowMs: json['serverNowMs'] as int,
     );
   }
 }

@@ -4,7 +4,9 @@ import type {
   ChallengeEvaluatorRegistry,
   ChallengeRound,
   Clock,
+  CreateMatchOptions,
   DomainEvent,
+  MatchMode,
   MatchPhase,
   MatchState,
   PlayerChallengeResolution,
@@ -219,12 +221,23 @@ export class MatchEngine {
     private readonly evaluators: ChallengeEvaluatorRegistry,
   ) {}
 
-  createMatch(matchId = randomUUID()): MatchState {
+  createMatch(
+    matchId?: string,
+    options?: CreateMatchOptions,
+  ): MatchState {
     const now = this.clock.nowMs();
+    const mode: MatchMode = options?.mode ?? 'dev';
+    const playerCapacity =
+      options?.playerCapacity ??
+      (mode === 'training' ? 1 : MATCH_PLAYER_CAPACITY);
     return {
-      matchId,
+      matchId: matchId ?? randomUUID(),
       status: 'waiting',
       phase: 'lobby',
+      mode,
+      hostPlayerId: options?.hostPlayerId ?? null,
+      roomCode: options?.roomCode ?? null,
+      playerCapacity,
       phaseDeadlineAtMs: null,
       phaseDeadlineMonoMs: null,
       roundNumber: 0,
@@ -243,12 +256,18 @@ export class MatchEngine {
 
   joinPlayer(
     match: MatchState,
-    input: { playerId: string; resumeTokenHash: string; isBot?: boolean },
+    input: {
+      playerId: string;
+      resumeTokenHash: string;
+      isBot?: boolean;
+      displayName?: string;
+      avatarColor?: string;
+    },
   ): { match: MatchState; events: DomainEvent[] } {
     if (match.status !== 'waiting') {
       throw new DomainError('MATCH_NOT_JOINABLE', 'match is not joinable');
     }
-    if (match.players.size >= MATCH_PLAYER_CAPACITY) {
+    if (match.players.size >= match.playerCapacity) {
       throw new DomainError('MATCH_FULL', 'match is full');
     }
     if (match.players.has(input.playerId)) {
@@ -256,6 +275,9 @@ export class MatchEngine {
     }
 
     const next = this.cloneMatch(match);
+    const isBot = input.isBot === true;
+    // Non-private modes auto-ready; private requires explicit match.ready.
+    const autoReady = isBot || match.mode !== 'private';
     next.players.set(input.playerId, {
       playerId: input.playerId,
       hearts: INITIAL_HEARTS,
@@ -265,9 +287,12 @@ export class MatchEngine {
       submittedForCurrentChallenge: false,
       resumeTokenHash: input.resumeTokenHash,
       isBot: input.isBot,
+      displayName: input.displayName,
+      avatarColor: input.avatarColor,
+      ready: autoReady,
       // Bots are server-controlled fills — accepted immediately. Humans require
       // gateway finalizeJoin after live lease + credentials.
-      joinAccepted: input.isBot === true,
+      joinAccepted: isBot,
     });
     const bump = this.bump(next);
     return {
@@ -288,6 +313,7 @@ export class MatchEngine {
   /**
    * Mark a reserved join as gateway-accepted. Idempotent; does not bump
    * sequence or emit public events (acceptance is internal bookkeeping).
+   * Non-private modes treat acceptance as ready.
    */
   acceptJoin(
     match: MatchState,
@@ -301,7 +327,11 @@ export class MatchEngine {
       return { match, changed: false };
     }
     const next = this.cloneMatch(match);
-    next.players.get(playerId)!.joinAccepted = true;
+    const updated = next.players.get(playerId)!;
+    updated.joinAccepted = true;
+    if (next.mode !== 'private') {
+      updated.ready = true;
+    }
     return { match: next, changed: true };
   }
 
@@ -311,6 +341,50 @@ export class MatchEngine {
       return false;
     }
     return [...match.players.values()].every((p) => p.joinAccepted);
+  }
+
+  /**
+   * Whether the lobby may begin ready countdown:
+   * - seated count === playerCapacity
+   * - every seat joinAccepted
+   * - private: every seat ready === true
+   * - other modes: ready is auto-satisfied on accept
+   */
+  canStartReadyCountdown(match: MatchState): boolean {
+    if (match.status !== 'waiting' || match.phase !== 'lobby') {
+      return false;
+    }
+    if (match.players.size !== match.playerCapacity) {
+      return false;
+    }
+    if (!this.allJoinsAccepted(match)) {
+      return false;
+    }
+    if (match.mode === 'private') {
+      return [...match.players.values()].every((p) => p.ready);
+    }
+    return true;
+  }
+
+  /**
+   * Set player ready=true. Idempotent. Private lobbies only need this;
+   * other modes are already ready after accept.
+   */
+  setPlayerReady(
+    match: MatchState,
+    playerId: string,
+  ): { match: MatchState; events: DomainEvent[]; changed: boolean } {
+    const player = match.players.get(playerId);
+    if (!player) {
+      throw new DomainError('PLAYER_NOT_FOUND', 'player not found');
+    }
+    if (player.ready) {
+      return { match, events: [], changed: false };
+    }
+    const next = this.cloneMatch(match);
+    next.players.get(playerId)!.ready = true;
+    const bump = this.bump(next);
+    return { match: next, events: [bump], changed: true };
   }
 
   setPresence(
@@ -346,19 +420,19 @@ export class MatchEngine {
   }
 
   /**
-   * Remove a lobby player who never received credentials (orphaned join).
-   * Safe only while the match is still waiting in lobby / ready_countdown.
-   * ready_countdown is rolled back to lobby when a seat is vacated.
+   * Remove a lobby player (voluntary leave or orphaned join).
+   * Allowed only while waiting in lobby or ready_countdown; throws otherwise.
+   * ready_countdown rolls back to lobby when a seat is vacated.
    */
   removeLobbyPlayer(
     match: MatchState,
     playerId: string,
   ): { match: MatchState; events: DomainEvent[]; removed: boolean } {
     if (match.status !== 'waiting') {
-      return { match, events: [], removed: false };
+      throw new DomainError('NOT_LOBBY', 'leave only allowed in lobby');
     }
     if (match.phase !== 'lobby' && match.phase !== 'ready_countdown') {
-      return { match, events: [], removed: false };
+      throw new DomainError('NOT_LOBBY', 'leave only allowed in lobby');
     }
     if (!match.players.has(playerId)) {
       return { match, events: [], removed: false };
@@ -391,12 +465,25 @@ export class MatchEngine {
     return next;
   }
 
+  /**
+   * Assign host without bumping sequence (private-room bookkeeping).
+   */
+  setHostPlayerId(match: MatchState, hostPlayerId: string): MatchState {
+    const next = this.cloneMatch(match);
+    next.hostPlayerId = hostPlayerId;
+    next.updatedAtMs = this.clock.nowMs();
+    return next;
+  }
+
   beginReadyCountdown(
     match: MatchState,
     durationMs: number,
   ): { match: MatchState; events: DomainEvent[] } {
-    if (match.players.size !== MATCH_PLAYER_CAPACITY) {
-      throw new DomainError('NOT_ENOUGH_PLAYERS', 'match requires six players');
+    if (!this.canStartReadyCountdown(match)) {
+      throw new DomainError(
+        'NOT_ENOUGH_PLAYERS',
+        `match requires ${match.playerCapacity} ready accepted players`,
+      );
     }
     const next = this.cloneMatch(match);
     const nowWall = this.clock.nowMs();
@@ -540,16 +627,19 @@ export class MatchEngine {
     const activePlayers = [...match.players.values()].filter(
       (p) => p.status === 'active',
     );
-    if (match.players.size !== MATCH_PLAYER_CAPACITY) {
-      throw new DomainError('NOT_ENOUGH_PLAYERS', 'match requires six players');
+    if (match.players.size !== match.playerCapacity) {
+      throw new DomainError(
+        'NOT_ENOUGH_PLAYERS',
+        `match requires ${match.playerCapacity} players`,
+      );
     }
     const isInitialStart = [...match.players.values()].every(
       (p) => p.hearts === INITIAL_HEARTS && p.energy === INITIAL_ENERGY,
     );
-    if (isInitialStart && activePlayers.length !== MATCH_PLAYER_CAPACITY) {
+    if (isInitialStart && activePlayers.length !== match.playerCapacity) {
       throw new DomainError(
         'NOT_ENOUGH_PLAYERS',
-        'initial start requires six active players',
+        `initial start requires ${match.playerCapacity} active players`,
       );
     }
     if (activePlayers.length === 0) {
@@ -558,7 +648,12 @@ export class MatchEngine {
         'no active players remain',
       );
     }
-    if (!isInitialStart && activePlayers.length < 2) {
+    // Training (capacity 1) may continue/finish with a single active player.
+    if (
+      !isInitialStart &&
+      activePlayers.length < 2 &&
+      match.playerCapacity > 1
+    ) {
       throw new DomainError(
         'NOT_ENOUGH_PLAYERS',
         'need at least two active players for another round',
@@ -974,6 +1069,9 @@ export class MatchEngine {
     revision: number;
     sequence: number;
     winnerId: string | null;
+    mode: MatchMode;
+    hostPlayerId: string | null;
+    roomCode: string | null;
     players: Array<{
       playerId: string;
       hearts: number;
@@ -981,6 +1079,11 @@ export class MatchEngine {
       status: PlayerState['status'];
       presence: PlayerState['presence'];
       submittedForCurrentChallenge: boolean;
+      displayName?: string;
+      avatarColor?: string;
+      ready: boolean;
+      isBot?: boolean;
+      isHost: boolean;
     }>;
     currentChallenge: PublicChallengeView | null;
   } {
@@ -997,6 +1100,9 @@ export class MatchEngine {
       revision: match.revision,
       sequence: match.sequence,
       winnerId: match.winnerId,
+      mode: match.mode,
+      hostPlayerId: match.hostPlayerId,
+      roomCode: match.roomCode,
       players: [...match.players.values()].map((p) => ({
         playerId: p.playerId,
         hearts: p.hearts,
@@ -1004,6 +1110,15 @@ export class MatchEngine {
         status: p.status,
         presence: p.presence,
         submittedForCurrentChallenge: p.submittedForCurrentChallenge,
+        ...(p.displayName !== undefined
+          ? { displayName: p.displayName }
+          : {}),
+        ...(p.avatarColor !== undefined
+          ? { avatarColor: p.avatarColor }
+          : {}),
+        ready: p.ready,
+        ...(p.isBot === true ? { isBot: true } : {}),
+        isHost: match.hostPlayerId != null && p.playerId === match.hostPlayerId,
       })),
       currentChallenge:
         match.currentChallenge && match.currentChallenge.status === 'active'

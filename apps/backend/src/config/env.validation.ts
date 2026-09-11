@@ -150,6 +150,17 @@ const envSchema = z
     ADMIN_BOOTSTRAP_EMAIL: optionalNonEmptyString,
     ADMIN_BOOTSTRAP_PASSWORD: optionalNonEmptyString,
     ADMIN_BOOTSTRAP_DISPLAY_NAME: optionalNonEmptyString,
+    /** When true, quick_survival queues may fill remaining seats with bots after wait. */
+    MATCHMAKING_BOT_FILL_ENABLED: booleanFromEnv.default(false),
+    /** Wait before bot-fill kicks in for the oldest ticket in a partial queue. */
+    MATCHMAKING_BOT_FILL_WAIT_MS: z.coerce
+      .number({
+        invalid_type_error: 'MATCHMAKING_BOT_FILL_WAIT_MS must be an integer',
+      })
+      .int('MATCHMAKING_BOT_FILL_WAIT_MS must be an integer')
+      .min(0)
+      .max(600_000)
+      .default(15_000),
   })
   .superRefine((data, ctx) => {
     if (

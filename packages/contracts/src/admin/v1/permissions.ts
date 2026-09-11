@@ -12,6 +12,8 @@ export const ADMIN_PERMISSIONS = [
   'dashboard:read',
   'system:read',
   'audit:read',
+  'matchmaking:read',
+  'matchmaking:write',
 ] as const;
 
 export const adminPermissionSchema = z.enum(ADMIN_PERMISSIONS);
@@ -30,6 +32,8 @@ export const ADMIN_ROLE_PERMISSIONS = {
     'dashboard:read',
     'system:read',
     'audit:read',
+    'matchmaking:read',
+    'matchmaking:write',
   ] as const satisfies readonly AdminPermission[],
   translator: ['dashboard:read'] as const satisfies readonly AdminPermission[],
   viewer: [

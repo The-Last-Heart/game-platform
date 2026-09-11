@@ -4,6 +4,8 @@ export const INITIAL_ENERGY = 0;
 export const MIN_CHALLENGE_DURATION_MS = 3000;
 export const MAX_CHALLENGE_DURATION_MS = 8000;
 
+export type MatchMode = 'quick_survival' | 'private' | 'training' | 'dev';
+
 export type MatchStatus =
   | 'waiting'
   | 'challenge_active'
@@ -23,6 +25,18 @@ export type RoundPhase = 'waiting_signal' | 'signal_active' | 'resolved';
 
 export type PlayerStatus = 'active' | 'spectator';
 export type Presence = 'connected' | 'disconnected';
+
+export type PlayerIdentity = {
+  displayName?: string;
+  avatarColor?: string;
+};
+
+export type CreateMatchOptions = {
+  mode: MatchMode;
+  hostPlayerId?: string | null;
+  roomCode?: string | null;
+  playerCapacity?: number;
+};
 
 export type Clock = {
   /** Wall-clock epoch ms for protocol timestamps. */
@@ -107,6 +121,10 @@ export type PlayerState = {
   submittedForCurrentChallenge: boolean;
   resumeTokenHash: string;
   isBot?: boolean;
+  displayName?: string;
+  avatarColor?: string;
+  /** Explicit ready for private lobbies; other modes may auto-ready on accept. */
+  ready: boolean;
   /**
    * Internal join-acceptance bookkeeping (not public).
    * Reserved seats start false; gateway finalizeJoin sets true after live
@@ -158,6 +176,11 @@ export type MatchState = {
   matchId: string;
   status: MatchStatus;
   phase: MatchPhase;
+  mode: MatchMode;
+  hostPlayerId: string | null;
+  roomCode: string | null;
+  /** Seat capacity for this match (default 6; training = 1). */
+  playerCapacity: number;
   phaseDeadlineAtMs: number | null;
   phaseDeadlineMonoMs: number | null;
   roundNumber: number;
@@ -257,7 +280,21 @@ export class DomainError extends Error {
       | 'MATCH_COMPLETED'
       | 'UNSAFE_ZERO_SURVIVORS'
       | 'PLAYER_NOT_FOUND'
-      | 'DEV_ONLY_FORBIDDEN',
+      | 'DEV_ONLY_FORBIDDEN'
+      | 'ROOM_CODE_INVALID'
+      | 'ROOM_CODE_EXPIRED'
+      | 'ROOM_FULL'
+      | 'QUEUE_CANCELLED'
+      | 'QUEUE_TIMEOUT'
+      | 'QUEUE_NOT_FOUND'
+      | 'ALREADY_IN_QUEUE'
+      | 'ALREADY_IN_MATCH'
+      | 'NOT_IN_MATCH'
+      | 'NOT_HOST'
+      | 'REMATCH_UNAVAILABLE'
+      | 'MATCHMAKING_PAUSED'
+      | 'TRAINING_UNAVAILABLE'
+      | 'NOT_LOBBY',
     message: string,
   ) {
     super(message);

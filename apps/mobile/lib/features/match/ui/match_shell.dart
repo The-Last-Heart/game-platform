@@ -20,12 +20,14 @@ class MatchShell extends StatefulWidget {
   const MatchShell({
     required this.controller,
     required this.onBackHome,
+    this.onRematch,
     this.registry,
     super.key,
   });
 
   final MatchSessionController controller;
   final VoidCallback onBackHome;
+  final VoidCallback? onRematch;
   final ChallengeEngineRegistry? registry;
 
   @override
@@ -65,7 +67,13 @@ class _MatchShellState extends State<MatchShell> {
 
     switch (state.phase) {
       case MatchPhase.lobby:
-        return LobbyView(state: state);
+        return LobbyView(
+          state: state,
+          onReady: () {
+            widget.controller.setReady();
+          },
+          onLeave: widget.onBackHome,
+        );
       case MatchPhase.readyCountdown:
         return ReadyCountdownView(
           state: state,
@@ -96,7 +104,13 @@ class _MatchShellState extends State<MatchShell> {
             },
           );
         }
-        return LobbyView(state: state);
+        return LobbyView(
+          state: state,
+          onReady: () {
+            widget.controller.setReady();
+          },
+          onLeave: widget.onBackHome,
+        );
       case MatchPhase.roundResult:
         return RoundResultView(
           state: state,
@@ -104,7 +118,11 @@ class _MatchShellState extends State<MatchShell> {
               widget.controller.serverClock.estimateServerNowMs,
         );
       case MatchPhase.completed:
-        return WinnerView(state: state, onBackHome: widget.onBackHome);
+        return WinnerView(
+          state: state,
+          onBackHome: widget.onBackHome,
+          onRematch: widget.onRematch,
+        );
       case MatchPhase.halted:
         return HaltedView(state: state, onBackHome: widget.onBackHome);
     }

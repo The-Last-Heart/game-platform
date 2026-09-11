@@ -10,6 +10,15 @@ export const MessageTypes = {
   MatchSubmitAnswer: 'match.submit_answer',
   MatchRequestSnapshot: 'match.request_snapshot',
   MatchFillDevBots: 'match.fill_dev_bots',
+  MatchmakingEnqueue: 'matchmaking.enqueue',
+  MatchmakingCancel: 'matchmaking.cancel',
+  PrivateRoomCreate: 'private_room.create',
+  PrivateRoomJoin: 'private_room.join',
+  MatchReady: 'match.ready',
+  MatchLeave: 'match.leave',
+  TrainingStart: 'training.start',
+  TrainingRetry: 'training.retry',
+  MatchRematch: 'match.rematch',
   // Server events
   SessionAccepted: 'session.accepted',
   MatchSnapshot: 'match.snapshot',
@@ -20,6 +29,7 @@ export const MessageTypes = {
   ChallengeResolved: 'challenge.resolved',
   MatchStateChanged: 'match.state_changed',
   MatchFinished: 'match.finished',
+  MatchmakingStatus: 'matchmaking.status',
   ProtocolError: 'protocol.error',
 } as const;
 
@@ -94,6 +104,80 @@ export const fillDevBotsPayloadSchema = z
   })
   .strict();
 
+export const matchModeSchema = z.enum([
+  'quick_survival',
+  'private',
+  'training',
+  'dev',
+]);
+
+export type MatchMode = z.infer<typeof matchModeSchema>;
+
+const displayNameSchema = z
+  .string()
+  .trim()
+  .min(2)
+  .max(24)
+  .regex(/^[\p{L}\p{N} _.-]+$/u, 'displayName contains unsupported characters');
+
+const avatarColorSchema = z
+  .string()
+  .regex(/^#[0-9A-Fa-f]{6}$/, 'avatarColor must be a hex color');
+
+export const playerIdentityPayloadSchema = z
+  .object({
+    displayName: displayNameSchema,
+    avatarColor: avatarColorSchema,
+  })
+  .strict();
+
+export const matchmakingEnqueuePayloadSchema = playerIdentityPayloadSchema;
+
+export const matchmakingCancelPayloadSchema = z
+  .object({
+    ticketId: uuidLike.optional(),
+  })
+  .strict();
+
+export const privateRoomCreatePayloadSchema = playerIdentityPayloadSchema;
+
+export const privateRoomJoinPayloadSchema = playerIdentityPayloadSchema
+  .extend({
+    roomCode: z
+      .string()
+      .trim()
+      .min(4)
+      .max(8)
+      .regex(/^[A-Za-z0-9]+$/, 'roomCode must be alphanumeric'),
+  })
+  .strict();
+
+export const matchReadyPayloadSchema = z
+  .object({
+    matchId: uuidLike,
+  })
+  .strict();
+
+export const matchLeavePayloadSchema = z
+  .object({
+    matchId: uuidLike,
+  })
+  .strict();
+
+export const trainingStartPayloadSchema = playerIdentityPayloadSchema;
+
+export const trainingRetryPayloadSchema = z
+  .object({
+    matchId: uuidLike,
+  })
+  .strict();
+
+export const matchRematchPayloadSchema = z
+  .object({
+    matchId: uuidLike,
+  })
+  .strict();
+
 export const clientCommandSchema = envelopeBaseSchema
   .extend({
     type: z.enum([
@@ -103,6 +187,15 @@ export const clientCommandSchema = envelopeBaseSchema
       MessageTypes.MatchSubmitAnswer,
       MessageTypes.MatchRequestSnapshot,
       MessageTypes.MatchFillDevBots,
+      MessageTypes.MatchmakingEnqueue,
+      MessageTypes.MatchmakingCancel,
+      MessageTypes.PrivateRoomCreate,
+      MessageTypes.PrivateRoomJoin,
+      MessageTypes.MatchReady,
+      MessageTypes.MatchLeave,
+      MessageTypes.TrainingStart,
+      MessageTypes.TrainingRetry,
+      MessageTypes.MatchRematch,
     ]),
     commandId: uuidLike,
     payload: z.unknown(),
@@ -115,6 +208,15 @@ export const clientCommandSchema = envelopeBaseSchema
       [MessageTypes.MatchSubmitAnswer]: submitAnswerPayloadSchema,
       [MessageTypes.MatchRequestSnapshot]: requestSnapshotPayloadSchema,
       [MessageTypes.MatchFillDevBots]: fillDevBotsPayloadSchema,
+      [MessageTypes.MatchmakingEnqueue]: matchmakingEnqueuePayloadSchema,
+      [MessageTypes.MatchmakingCancel]: matchmakingCancelPayloadSchema,
+      [MessageTypes.PrivateRoomCreate]: privateRoomCreatePayloadSchema,
+      [MessageTypes.PrivateRoomJoin]: privateRoomJoinPayloadSchema,
+      [MessageTypes.MatchReady]: matchReadyPayloadSchema,
+      [MessageTypes.MatchLeave]: matchLeavePayloadSchema,
+      [MessageTypes.TrainingStart]: trainingStartPayloadSchema,
+      [MessageTypes.TrainingRetry]: trainingRetryPayloadSchema,
+      [MessageTypes.MatchRematch]: matchRematchPayloadSchema,
     } as const;
     const schema = map[value.type];
     const parsed = schema.safeParse(value.payload);
@@ -161,6 +263,11 @@ export const playerPublicSchema = z
     status: z.enum(['active', 'spectator']),
     presence: z.enum(['connected', 'disconnected']),
     submittedForCurrentChallenge: z.boolean(),
+    displayName: displayNameSchema.optional(),
+    avatarColor: avatarColorSchema.optional(),
+    ready: z.boolean().optional(),
+    isBot: z.boolean().optional(),
+    isHost: z.boolean().optional(),
   })
   .strict();
 
@@ -238,6 +345,27 @@ export const matchSnapshotPayloadSchema = z
     players: z.array(playerPublicSchema),
     winnerId: uuidLike.nullable(),
     currentChallenge: publicChallengeSchema.nullable(),
+    mode: matchModeSchema.optional(),
+    hostPlayerId: uuidLike.nullable().optional(),
+    roomCode: z.string().min(4).max(8).nullable().optional(),
+  })
+  .strict();
+
+export const matchmakingStatusPayloadSchema = z
+  .object({
+    ticketId: uuidLike,
+    state: z.enum([
+      'queued',
+      'assigned',
+      'cancelled',
+      'timed_out',
+      'failed',
+    ]),
+    acceptedSeats: z.number().int().min(0).max(6),
+    capacity: z.literal(6),
+    timeoutAtMs: z.number().int().nonnegative().nullable(),
+    matchId: uuidLike.nullable(),
+    serverNowMs: z.number().int().nonnegative(),
   })
   .strict();
 
@@ -344,6 +472,19 @@ export const protocolErrorPayloadSchema = z
       'DUPLICATE_COMMAND',
       'INTERNAL_ERROR',
       'DEV_ONLY_FORBIDDEN',
+      'ROOM_CODE_INVALID',
+      'ROOM_CODE_EXPIRED',
+      'ROOM_FULL',
+      'QUEUE_CANCELLED',
+      'QUEUE_TIMEOUT',
+      'QUEUE_NOT_FOUND',
+      'ALREADY_IN_QUEUE',
+      'ALREADY_IN_MATCH',
+      'NOT_IN_MATCH',
+      'NOT_HOST',
+      'REMATCH_UNAVAILABLE',
+      'MATCHMAKING_PAUSED',
+      'TRAINING_UNAVAILABLE',
     ]),
     // Translation key for client display — never a product sentence.
     messageKey: nonEmpty,
@@ -396,6 +537,10 @@ export const serverEventSchema = z.discriminatedUnion('type', [
   serverEventBase.extend({
     type: z.literal(MessageTypes.MatchFinished),
     payload: matchFinishedPayloadSchema,
+  }),
+  serverEventBase.extend({
+    type: z.literal(MessageTypes.MatchmakingStatus),
+    payload: matchmakingStatusPayloadSchema,
   }),
   serverEventBase.extend({
     type: z.literal(MessageTypes.ProtocolError),
@@ -478,7 +623,16 @@ function isClientCommandType(type: string): type is ClientCommand['type'] {
     type === MessageTypes.MatchResume ||
     type === MessageTypes.MatchSubmitAnswer ||
     type === MessageTypes.MatchRequestSnapshot ||
-    type === MessageTypes.MatchFillDevBots
+    type === MessageTypes.MatchFillDevBots ||
+    type === MessageTypes.MatchmakingEnqueue ||
+    type === MessageTypes.MatchmakingCancel ||
+    type === MessageTypes.PrivateRoomCreate ||
+    type === MessageTypes.PrivateRoomJoin ||
+    type === MessageTypes.MatchReady ||
+    type === MessageTypes.MatchLeave ||
+    type === MessageTypes.TrainingStart ||
+    type === MessageTypes.TrainingRetry ||
+    type === MessageTypes.MatchRematch
   );
 }
 

@@ -17,6 +17,7 @@ import type {
   ChallengeDefinition,
   Clock,
   DomainEvent,
+  MatchMode,
   MatchState,
 } from '../domain/types';
 import {
@@ -28,12 +29,34 @@ import { InMemoryMatchStore, type MatchStore } from '../store/match.store';
 import { ResumeTokenService } from './resume-token.service';
 import { DevFixtureProvider } from '../challenges/dev-fixture.provider';
 import type { ChallengeDefinitionProvider } from '../challenges/challenge-definition.provider';
+import { RoomCodeRegistry } from './room-code.registry';
 
 const READY_COUNTDOWN_MS = 3000;
 const CHALLENGE_INTRO_MS = 2000;
 const ROUND_RESULT_MS = 2500;
 const RESUME_ACK_PREFIX = 'match.resume:';
+const REMATCH_WINDOW_MS = 60_000;
 
+export type PlayerIdentityInput = {
+  displayName: string;
+  avatarColor: string;
+};
+
+export type SeatCredentials = {
+  matchId: string;
+  playerId: string;
+  resumeToken: string;
+  snapshot: ReturnType<MatchEngine['toPublicSnapshot']>;
+  roomCode?: string | null;
+};
+
+type RematchParty = {
+  newMatchId: string;
+  mode: MatchMode;
+  roomCode: string | null;
+  hostPlayerId: string | null;
+  expiresAtMs: number;
+};
 type ResumeReceipt = {
   type: 'match.resume';
   requestTokenHash: string;
@@ -102,6 +125,11 @@ export class MatchService implements OnModuleDestroy {
   private readonly clock: Clock;
   private readonly nodeEnv: AppConfig['NODE_ENV'];
   private readonly challengeProvider: ChallengeDefinitionProvider;
+  private readonly roomCodes: RoomCodeRegistry;
+  /** Source matchId → rematch party (party join window). */
+  private readonly rematchParties = new Map<string, RematchParty>();
+  private botFillEnabled: boolean;
+  private botFillWaitMs: number;
   /** Test-only barriers after match mutation, before identity ops return. */
   private identityBarrierHooks: {
     afterJoinMutated?: () => Promise<void>;
@@ -123,11 +151,20 @@ export class MatchService implements OnModuleDestroy {
     this.clock = new SystemClock();
     this.engine = new MatchEngine(this.clock, this.registry);
     this.challengeProvider = new DevFixtureProvider();
+    this.roomCodes = new RoomCodeRegistry();
+    this.botFillEnabled = config.get('MATCHMAKING_BOT_FILL_ENABLED', {
+      infer: true,
+    });
+    this.botFillWaitMs = config.get('MATCHMAKING_BOT_FILL_WAIT_MS', {
+      infer: true,
+    });
   }
 
   static forTests(options: {
     clock: Clock;
     nodeEnv?: AppConfig['NODE_ENV'];
+    botFillEnabled?: boolean;
+    botFillWaitMs?: number;
   }): MatchService {
     const service = Object.create(MatchService.prototype) as MatchService;
     Object.assign(service, {
@@ -141,6 +178,10 @@ export class MatchService implements OnModuleDestroy {
       clock: options.clock,
       nodeEnv: options.nodeEnv ?? 'test',
       challengeProvider: new DevFixtureProvider(),
+      roomCodes: new RoomCodeRegistry(),
+      rematchParties: new Map(),
+      botFillEnabled: options.botFillEnabled ?? false,
+      botFillWaitMs: options.botFillWaitMs ?? 15_000,
       identityBarrierHooks: {},
     });
     // wait_for_signal always registered
@@ -172,7 +213,7 @@ export class MatchService implements OnModuleDestroy {
     snapshot: ReturnType<MatchEngine['toPublicSnapshot']>;
   }> {
     this.assertDevAllowed();
-    const match = this.engine.createMatch();
+    const match = this.engine.createMatch(undefined, { mode: 'dev' });
     await this.store.save(match);
     return {
       matchId: match.matchId,
@@ -180,7 +221,10 @@ export class MatchService implements OnModuleDestroy {
     };
   }
 
-  async joinMatch(matchId: string): Promise<{
+  async joinMatch(
+    matchId: string,
+    identity?: PlayerIdentityInput,
+  ): Promise<{
     playerId: string;
     resumeToken: string;
     snapshot: ReturnType<MatchEngine['toPublicSnapshot']>;
@@ -193,6 +237,8 @@ export class MatchService implements OnModuleDestroy {
       const result = this.engine.joinPlayer(match, {
         playerId,
         resumeTokenHash: issued.hash,
+        displayName: identity?.displayName,
+        avatarColor: identity?.avatarColor,
       });
       await this.store.save(result.match);
       this.emit(result.match, result.events);
@@ -257,12 +303,7 @@ export class MatchService implements OnModuleDestroy {
         : ('alreadyAccepted' as const);
 
       let countdownStarted = false;
-      if (
-        current.players.size === MATCH_PLAYER_CAPACITY &&
-        current.status === 'waiting' &&
-        current.phase === 'lobby' &&
-        this.engine.allJoinsAccepted(current)
-      ) {
+      if (this.engine.canStartReadyCountdown(current)) {
         const beforePhase =
           (await this.store.get(matchId))?.phase ?? current.phase;
         await this.beginReadyCountdownLocked(matchId);
@@ -398,14 +439,24 @@ export class MatchService implements OnModuleDestroy {
       if (!match) {
         return;
       }
-      const removed = this.engine.removeLobbyPlayer(match, playerId);
-      if (removed.removed) {
-        this.clearTimer(matchId);
-        await this.store.save(removed.match);
-        if (removed.events.length > 0) {
-          this.emit(removed.match, removed.events);
+      try {
+        const removed = this.engine.removeLobbyPlayer(match, playerId);
+        if (removed.removed) {
+          this.clearTimer(matchId);
+          await this.store.save(removed.match);
+          if (removed.events.length > 0) {
+            this.emit(removed.match, removed.events);
+          }
+          if (removed.match.players.size === 0) {
+            this.roomCodes.unregisterMatch(matchId);
+          }
+          return;
         }
-        return;
+      } catch (error) {
+        if (!(error instanceof DomainError) || error.code !== 'NOT_LOBBY') {
+          throw error;
+        }
+        // Past lobby — fall through to disconnected presence.
       }
       try {
         const presence = this.engine.setPresence(
@@ -510,6 +561,61 @@ export class MatchService implements OnModuleDestroy {
         'dev bot fill forbidden in production',
       );
     }
+    return this.fillBotsInternal(matchId, { requireDevOnly: true });
+  }
+
+  /**
+   * Fill remaining lobby seats with bots. Used by create_dev and by
+   * matchmaking bot-fill policy when enabled.
+   */
+  async fillBots(
+    matchId: string,
+    options?: { allowWhenPolicyEnabled?: boolean },
+  ): Promise<{
+    snapshot: ReturnType<MatchEngine['toPublicSnapshot']>;
+    botIds: string[];
+  }> {
+    if (this.nodeEnv === 'production' && !options?.allowWhenPolicyEnabled) {
+      throw new DomainError(
+        'DEV_ONLY_FORBIDDEN',
+        'bot fill forbidden in production',
+      );
+    }
+    if (
+      this.nodeEnv === 'production' &&
+      options?.allowWhenPolicyEnabled &&
+      !this.botFillEnabled
+    ) {
+      throw new DomainError(
+        'DEV_ONLY_FORBIDDEN',
+        'bot fill policy disabled',
+      );
+    }
+    return this.fillBotsInternal(matchId, {
+      requireDevOnly: this.nodeEnv === 'production',
+    });
+  }
+
+  getBotFillPolicy(): { enabled: boolean; waitMs: number } {
+    return { enabled: this.botFillEnabled, waitMs: this.botFillWaitMs };
+  }
+
+  setBotFillPolicy(policy: { enabled?: boolean; waitMs?: number }): void {
+    if (policy.enabled !== undefined) {
+      this.botFillEnabled = policy.enabled;
+    }
+    if (policy.waitMs !== undefined) {
+      this.botFillWaitMs = policy.waitMs;
+    }
+  }
+
+  private async fillBotsInternal(
+    matchId: string,
+    _options: { requireDevOnly: boolean },
+  ): Promise<{
+    snapshot: ReturnType<MatchEngine['toPublicSnapshot']>;
+    botIds: string[];
+  }> {
     return this.enqueue(matchId, async () => {
       let match = await this.requireMatch(matchId);
       if (match.status !== 'waiting' || match.phase !== 'lobby') {
@@ -519,13 +625,15 @@ export class MatchService implements OnModuleDestroy {
         );
       }
       const botIds: string[] = [];
-      while (match.players.size < 6) {
+      while (match.players.size < match.playerCapacity) {
         const botId = `bot-${randomUUID().slice(0, 8)}`;
         const botHash = `bot-hash-${botId}`;
         const result = this.engine.joinPlayer(match, {
           playerId: botId,
           resumeTokenHash: botHash,
           isBot: true,
+          displayName: `Bot ${botIds.length + 1}`,
+          avatarColor: '#6B7280',
         });
         match = result.match;
         botIds.push(botId);
@@ -533,11 +641,7 @@ export class MatchService implements OnModuleDestroy {
       }
       await this.store.save(match);
 
-      if (
-        match.players.size === 6 &&
-        match.status === 'waiting' &&
-        match.phase === 'lobby'
-      ) {
+      if (this.engine.canStartReadyCountdown(match)) {
         await this.beginReadyCountdownLocked(match.matchId);
       }
 
@@ -547,6 +651,335 @@ export class MatchService implements OnModuleDestroy {
         botIds,
       };
     });
+  }
+
+  async leaveMatch(
+    matchId: string,
+    playerId: string,
+  ): Promise<{
+    snapshot: ReturnType<MatchEngine['toPublicSnapshot']> | null;
+    left: boolean;
+  }> {
+    return this.enqueue(matchId, async () => {
+      const match = await this.requireMatch(matchId);
+      const removed = this.engine.removeLobbyPlayer(match, playerId);
+      if (!removed.removed) {
+        return { snapshot: this.engine.toPublicSnapshot(match), left: false };
+      }
+      this.clearTimer(matchId);
+      await this.store.save(removed.match);
+      if (removed.events.length > 0) {
+        this.emit(removed.match, removed.events);
+      }
+      if (removed.match.players.size === 0) {
+        this.roomCodes.unregisterMatch(matchId);
+      }
+      return {
+        snapshot: this.engine.toPublicSnapshot(removed.match),
+        left: true,
+      };
+    });
+  }
+
+  async setReady(
+    matchId: string,
+    playerId: string,
+  ): Promise<{
+    snapshot: ReturnType<MatchEngine['toPublicSnapshot']>;
+    countdownStarted: boolean;
+  }> {
+    return this.enqueue(matchId, async () => {
+      const match = await this.requireMatch(matchId);
+      const result = this.engine.setPlayerReady(match, playerId);
+      if (result.changed) {
+        await this.store.save(result.match);
+        if (result.events.length > 0) {
+          this.emit(result.match, result.events);
+        }
+      }
+      let countdownStarted = false;
+      const current = result.match;
+      if (this.engine.canStartReadyCountdown(current)) {
+        const beforePhase = current.phase;
+        await this.beginReadyCountdownLocked(matchId);
+        const after = await this.store.get(matchId);
+        countdownStarted =
+          beforePhase === 'lobby' && after?.phase === 'ready_countdown';
+      }
+      const latest = await this.requireMatch(matchId);
+      return {
+        snapshot: this.engine.toPublicSnapshot(latest),
+        countdownStarted,
+      };
+    });
+  }
+
+  async createPrivateRoom(identity: PlayerIdentityInput): Promise<
+    SeatCredentials & { roomCode: string }
+  > {
+    const now = this.clock.nowMs();
+    const roomCode = this.roomCodes.generate(now);
+    const match = this.engine.createMatch(undefined, {
+      mode: 'private',
+      roomCode,
+      playerCapacity: MATCH_PLAYER_CAPACITY,
+    });
+    await this.store.save(match);
+    this.roomCodes.register(roomCode, match.matchId, now);
+
+    const seated = await this.joinMatch(match.matchId, identity);
+    // Host is the first seated player.
+    await this.enqueue(match.matchId, async () => {
+      const current = await this.requireMatch(match.matchId);
+      if (current.hostPlayerId == null) {
+        const next = this.engine.setHostPlayerId(current, seated.playerId);
+        await this.store.save(next);
+      }
+    });
+    const snap = await this.requestSnapshot(match.matchId);
+    return {
+      matchId: match.matchId,
+      roomCode,
+      playerId: seated.playerId,
+      resumeToken: seated.resumeToken,
+      snapshot: snap.snapshot,
+    };
+  }
+
+  async joinPrivateRoom(
+    input: PlayerIdentityInput & { roomCode: string },
+  ): Promise<SeatCredentials & { roomCode: string }> {
+    const now = this.clock.nowMs();
+    const matchId = this.roomCodes.lookup(input.roomCode, now);
+    if (!matchId) {
+      throw new DomainError('ROOM_CODE_INVALID', 'room code not found');
+    }
+    const match = await this.store.get(matchId);
+    if (!match || match.mode !== 'private') {
+      throw new DomainError('ROOM_CODE_EXPIRED', 'room code expired');
+    }
+    if (match.status !== 'waiting' || match.phase !== 'lobby') {
+      throw new DomainError('ROOM_CODE_EXPIRED', 'room no longer joinable');
+    }
+    if (match.players.size >= match.playerCapacity) {
+      throw new DomainError('ROOM_FULL', 'room is full');
+    }
+    try {
+      const seated = await this.joinMatch(matchId, {
+        displayName: input.displayName,
+        avatarColor: input.avatarColor,
+      });
+      return {
+        matchId,
+        roomCode: match.roomCode ?? this.roomCodes.normalize(input.roomCode),
+        playerId: seated.playerId,
+        resumeToken: seated.resumeToken,
+        snapshot: seated.snapshot,
+      };
+    } catch (error) {
+      if (error instanceof DomainError && error.code === 'MATCH_FULL') {
+        throw new DomainError('ROOM_FULL', 'room is full');
+      }
+      throw error;
+    }
+  }
+
+  /**
+   * Training: capacity-1 wait-for-state match. After gateway finalizeJoin,
+   * countdown starts immediately and advances into the challenge path.
+   */
+  async startTraining(identity: PlayerIdentityInput): Promise<SeatCredentials> {
+    const match = this.engine.createMatch(undefined, {
+      mode: 'training',
+      playerCapacity: 1,
+    });
+    await this.store.save(match);
+    const seated = await this.joinMatch(match.matchId, identity);
+    return {
+      matchId: match.matchId,
+      playerId: seated.playerId,
+      resumeToken: seated.resumeToken,
+      snapshot: seated.snapshot,
+    };
+  }
+
+  /**
+   * Retry training after completed/halted/round_result: recreate a fresh
+   * capacity-1 training match for the same identity.
+   */
+  async retryTraining(
+    matchId: string,
+    playerId: string,
+  ): Promise<SeatCredentials> {
+    const match = await this.requireMatch(matchId);
+    if (match.mode !== 'training') {
+      throw new DomainError('TRAINING_UNAVAILABLE', 'not a training match');
+    }
+    const player = match.players.get(playerId);
+    if (!player) {
+      throw new DomainError('NOT_IN_MATCH', 'player not in match');
+    }
+    if (
+      match.phase !== 'completed' &&
+      match.phase !== 'halted' &&
+      match.phase !== 'round_result'
+    ) {
+      throw new DomainError(
+        'TRAINING_UNAVAILABLE',
+        'training retry only after result',
+      );
+    }
+    const identity: PlayerIdentityInput = {
+      displayName: player.displayName ?? 'Trainee',
+      avatarColor: player.avatarColor ?? '#94A3B8',
+    };
+    return this.startTraining(identity);
+  }
+
+  /**
+   * Rematch behavior:
+   * - Allowed when the source match is completed or halted.
+   * - Creates a new match with the same mode (capacity preserved).
+   * - Calling player is seated in the new match with fresh credentials.
+   * - Private: if the caller is the host, the room code is preserved on the
+   *   new match and re-registered; other private rematches join the party
+   *   match when one exists within REMATCH_WINDOW_MS.
+   * - Party players who call rematch within the window join the rematch lobby
+   *   instead of creating another match.
+   */
+  async rematch(
+    matchId: string,
+    playerId: string,
+  ): Promise<SeatCredentials> {
+    const source = await this.requireMatch(matchId);
+    if (source.phase !== 'completed' && source.phase !== 'halted') {
+      throw new DomainError('REMATCH_UNAVAILABLE', 'match not finished');
+    }
+    const player = source.players.get(playerId);
+    if (!player) {
+      throw new DomainError('NOT_IN_MATCH', 'player not in match');
+    }
+    const identity: PlayerIdentityInput = {
+      displayName: player.displayName ?? 'Player',
+      avatarColor: player.avatarColor ?? '#94A3B8',
+    };
+    const now = this.clock.nowMs();
+    const existing = this.rematchParties.get(matchId);
+    if (
+      existing &&
+      existing.expiresAtMs > now &&
+      existing.mode === source.mode
+    ) {
+      const partyMatch = await this.store.get(existing.newMatchId);
+      if (
+        partyMatch &&
+        partyMatch.status === 'waiting' &&
+        partyMatch.phase === 'lobby' &&
+        partyMatch.players.size < partyMatch.playerCapacity
+      ) {
+        const seated = await this.joinMatch(existing.newMatchId, identity);
+        return {
+          matchId: existing.newMatchId,
+          playerId: seated.playerId,
+          resumeToken: seated.resumeToken,
+          snapshot: seated.snapshot,
+          roomCode: partyMatch.roomCode,
+        };
+      }
+    }
+
+    const isHost =
+      source.hostPlayerId != null && source.hostPlayerId === playerId;
+    const roomCode =
+      source.mode === 'private' && isHost && source.roomCode
+        ? source.roomCode
+        : source.mode === 'private'
+          ? this.roomCodes.generate(now)
+          : null;
+
+    const next = this.engine.createMatch(undefined, {
+      mode: source.mode,
+      playerCapacity: source.playerCapacity,
+      roomCode,
+      hostPlayerId: source.mode === 'private' ? null : source.hostPlayerId,
+    });
+    await this.store.save(next);
+    if (roomCode) {
+      this.roomCodes.register(roomCode, next.matchId, now);
+    }
+
+    const seated = await this.joinMatch(next.matchId, identity);
+    if (source.mode === 'private') {
+      await this.enqueue(next.matchId, async () => {
+        const current = await this.requireMatch(next.matchId);
+        const updated = this.engine.setHostPlayerId(current, seated.playerId);
+        await this.store.save(updated);
+      });
+    }
+
+    this.rematchParties.set(matchId, {
+      newMatchId: next.matchId,
+      mode: source.mode,
+      roomCode,
+      hostPlayerId: seated.playerId,
+      expiresAtMs: now + REMATCH_WINDOW_MS,
+    });
+
+    const snap = await this.requestSnapshot(next.matchId);
+    return {
+      matchId: next.matchId,
+      playerId: seated.playerId,
+      resumeToken: seated.resumeToken,
+      snapshot: snap.snapshot,
+      roomCode,
+    };
+  }
+
+  /**
+   * Create a quick_survival match and seat the given identities (matchmaking).
+   * Returns per-player credentials in input order.
+   */
+  async createQuickSurvivalMatch(
+    seats: Array<PlayerIdentityInput & { playerId?: string }>,
+  ): Promise<{
+    matchId: string;
+    assignments: Array<{
+      playerId: string;
+      resumeToken: string;
+      displayName: string;
+    }>;
+    snapshot: ReturnType<MatchEngine['toPublicSnapshot']>;
+  }> {
+    if (seats.length === 0 || seats.length > MATCH_PLAYER_CAPACITY) {
+      throw new DomainError('NOT_ENOUGH_PLAYERS', 'invalid seat count');
+    }
+    const match = this.engine.createMatch(undefined, {
+      mode: 'quick_survival',
+      playerCapacity: MATCH_PLAYER_CAPACITY,
+    });
+    await this.store.save(match);
+    const assignments: Array<{
+      playerId: string;
+      resumeToken: string;
+      displayName: string;
+    }> = [];
+    for (const seat of seats) {
+      const joined = await this.joinMatch(match.matchId, {
+        displayName: seat.displayName,
+        avatarColor: seat.avatarColor,
+      });
+      assignments.push({
+        playerId: joined.playerId,
+        resumeToken: joined.resumeToken,
+        displayName: seat.displayName,
+      });
+    }
+    const snap = await this.requestSnapshot(match.matchId);
+    return {
+      matchId: match.matchId,
+      assignments,
+      snapshot: snap.snapshot,
+    };
   }
 
   async startDevRound(
@@ -763,12 +1196,7 @@ export class MatchService implements OnModuleDestroy {
 
   private async beginReadyCountdownLocked(matchId: string): Promise<void> {
     const match = await this.requireMatch(matchId);
-    if (
-      match.players.size !== MATCH_PLAYER_CAPACITY ||
-      match.phase !== 'lobby' ||
-      match.status !== 'waiting' ||
-      !this.engine.allJoinsAccepted(match)
-    ) {
+    if (!this.engine.canStartReadyCountdown(match)) {
       return;
     }
     const result = this.engine.beginReadyCountdown(match, READY_COUNTDOWN_MS);
@@ -780,6 +1208,8 @@ export class MatchService implements OnModuleDestroy {
   private async advanceFromCountdown(matchId: string): Promise<void> {
     const match = await this.requireMatch(matchId);
     if (match.phase !== 'ready_countdown') return;
+    // Room codes are lobby-only — drop once the match leaves the lobby.
+    this.roomCodes.unregisterMatch(matchId);
     const definition = this.challengeProvider.getDefaultDev();
     const result = this.engine.beginChallengeIntro(
       match,

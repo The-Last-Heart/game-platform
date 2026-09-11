@@ -9,6 +9,7 @@ import '../state/match_reducer.dart';
 import '../state/match_snapshot.dart';
 import '../time/server_time_clock.dart';
 import '../transport/realtime_transport.dart';
+import '../../identity/data/identity_store.dart';
 import 'session_store.dart';
 
 /// Generates a cryptographically-secure 32-hex-char identifier (128 bits).
@@ -98,6 +99,7 @@ class MatchSessionController {
   StreamSubscription<bool>? _connectionSub;
   bool _initialized = false;
   bool _devMatchStarting = false;
+  Completer<String?>? _matchmakingWaiter;
   bool _cleaningUp = false;
   bool _disposed = false;
 
@@ -211,6 +213,128 @@ class MatchSessionController {
         inMatch: false,
       );
     }
+  }
+
+  Future<void> _ensureConnected() async {
+    if (state.value.isConnected) return;
+    state.value = state.value.copyWith(
+      lifecycle: SessionLifecycle.connecting,
+      connectionError: () => null,
+    );
+    await transport.connect();
+    state.value = state.value.copyWith(isConnected: true);
+  }
+
+  /// Enqueue Quick Survival. Returns ticketId when status arrives, else null.
+  Future<String?> enqueueMatchmaking(PlayerIdentity identity) async {
+    await _ensureConnected();
+    final String commandId = generateSecureId();
+    final Completer<String?> completer = Completer<String?>();
+    _matchmakingWaiter = completer;
+    _sendCommandWithId(
+      commandId,
+      MessageTypes.matchmakingEnqueue,
+      identity.toCommandPayload(),
+    );
+    return completer.future.timeout(
+      const Duration(seconds: 8),
+      onTimeout: () {
+        _matchmakingWaiter = null;
+        return null;
+      },
+    );
+  }
+
+  Future<void> cancelMatchmaking(String? ticketId) async {
+    if (!state.value.isConnected) return;
+    _sendCommand(MessageTypes.matchmakingCancel, <String, dynamic>{
+      if (ticketId != null) 'ticketId': ticketId,
+    });
+  }
+
+  Future<void> createPrivateRoom(PlayerIdentity identity) async {
+    await _ensureConnected();
+    final String commandId = generateSecureId();
+    _handshake = _PendingHandshake(
+      kind: _HandshakeKind.join,
+      commandId: commandId,
+    );
+    _sendCommandWithId(
+      commandId,
+      MessageTypes.privateRoomCreate,
+      identity.toCommandPayload(),
+    );
+  }
+
+  Future<void> joinPrivateRoom(PlayerIdentity identity, String roomCode) async {
+    await _ensureConnected();
+    final String commandId = generateSecureId();
+    _handshake = _PendingHandshake(
+      kind: _HandshakeKind.join,
+      commandId: commandId,
+    );
+    _sendCommandWithId(commandId, MessageTypes.privateRoomJoin, <String, dynamic>{
+      ...identity.toCommandPayload(),
+      'roomCode': roomCode,
+    });
+  }
+
+  Future<void> startTraining(PlayerIdentity identity) async {
+    await _ensureConnected();
+    final String commandId = generateSecureId();
+    _handshake = _PendingHandshake(
+      kind: _HandshakeKind.join,
+      commandId: commandId,
+    );
+    _sendCommandWithId(
+      commandId,
+      MessageTypes.trainingStart,
+      identity.toCommandPayload(),
+    );
+  }
+
+  Future<void> retryTraining() async {
+    final String? matchId = state.value.matchId;
+    if (matchId == null) return;
+    final String commandId = generateSecureId();
+    _handshake = _PendingHandshake(
+      kind: _HandshakeKind.join,
+      commandId: commandId,
+    );
+    _sendCommandWithId(commandId, MessageTypes.trainingRetry, <String, dynamic>{
+      'matchId': matchId,
+    });
+  }
+
+  Future<void> setReady() async {
+    final String? matchId = state.value.matchId;
+    if (matchId == null) return;
+    _sendCommand(MessageTypes.matchReady, <String, dynamic>{
+      'matchId': matchId,
+    });
+  }
+
+  Future<void> leaveMatch() async {
+    final String? matchId = state.value.matchId;
+    if (matchId != null && state.value.isConnected) {
+      _sendCommand(MessageTypes.matchLeave, <String, dynamic>{
+        'matchId': matchId,
+      });
+    }
+    await clearSessionAndDisconnect();
+  }
+
+  Future<void> requestRematch() async {
+    final String? matchId = state.value.matchId;
+    if (matchId == null) return;
+    final String commandId = generateSecureId();
+    _handshake = _PendingHandshake(
+      kind: _HandshakeKind.join,
+      commandId: commandId,
+    );
+    _sendCommandWithId(commandId, MessageTypes.matchRematch, <String, dynamic>{
+      'matchId': matchId,
+    });
   }
 
   /// Submit an answer for the current challenge.
@@ -577,6 +701,22 @@ class MatchSessionController {
       );
     } else if (type == MessageTypes.challengeSubmissionAck) {
       _handleSubmissionAck(raw);
+    } else if (type == MessageTypes.matchmakingStatus) {
+      final MatchmakingStatusPayload status =
+          MatchmakingStatusPayload.fromJson(
+        Map<String, dynamic>.from(raw['payload'] as Map<dynamic, dynamic>),
+      );
+      final Completer<String?>? waiter = _matchmakingWaiter;
+      if (waiter != null && !waiter.isCompleted) {
+        waiter.complete(status.ticketId);
+        _matchmakingWaiter = null;
+      }
+      state.value = state.value.copyWith(
+        matchmakingAcceptedSeats: status.acceptedSeats,
+        inMatch: status.state == 'assigned' && status.matchId != null
+            ? true
+            : state.value.inMatch,
+      );
     } else if (type == MessageTypes.protocolError) {
       await _handleProtocolError(raw);
     } else if (type == MessageTypes.matchFinished ||

@@ -196,6 +196,9 @@ class MatchReducer {
       phaseDeadlineAtMs: () => snap.phaseDeadlineAtMs,
       nextPhaseAtMs: () => snap.nextPhaseAtMs,
       serverNowMs: snap.serverNowMs,
+      mode: () => snap.mode,
+      hostPlayerId: () => snap.hostPlayerId,
+      roomCode: () => snap.roomCode,
     );
   }
 
@@ -294,6 +297,11 @@ class MatchReducer {
               status: p.status,
               presence: presence.presence,
               submittedForCurrentChallenge: p.submittedForCurrentChallenge,
+              displayName: p.displayName,
+              avatarColor: p.avatarColor,
+              ready: p.ready,
+              isBot: p.isBot,
+              isHost: p.isHost,
             );
           }
           return p;

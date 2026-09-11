@@ -2268,4 +2268,118 @@ describe('MatchGateway integration', () => {
       ).toBe(false);
     }
   }, 30000);
+
+  it('LH-005 private room: create, join, invalid code, leave frees seat', async () => {
+    const host = await tracked();
+    sendCommand(host.socket, MessageTypes.PrivateRoomCreate, {
+      displayName: 'Host',
+      avatarColor: '#111111',
+    });
+    const hostAccepted = await waitForType(host, MessageTypes.SessionAccepted);
+    assertParses(hostAccepted);
+    const matchId = asString(hostAccepted.payload?.['matchId']);
+    const hostSnap = await waitForType(host, MessageTypes.MatchSnapshot);
+    const roomCode = asString(hostSnap.payload?.['roomCode']);
+    expect(roomCode.length).toBeGreaterThanOrEqual(4);
+    expect(hostSnap.payload?.['mode']).toBe('private');
+
+    const guest = await tracked();
+    sendCommand(guest.socket, MessageTypes.PrivateRoomJoin, {
+      displayName: 'Guest',
+      avatarColor: '#222222',
+      roomCode,
+    });
+    const guestAccepted = await waitForType(guest, MessageTypes.SessionAccepted);
+    assertParses(guestAccepted);
+    expect(asString(guestAccepted.payload?.['matchId'])).toBe(matchId);
+    const guestPlayerId = asString(guestAccepted.payload?.['playerId']);
+
+    const bad = await tracked();
+    const beforeBad = bad.events.length - 1;
+    sendCommand(bad.socket, MessageTypes.PrivateRoomJoin, {
+      displayName: 'Nope',
+      avatarColor: '#333333',
+      roomCode: 'ZZZZZZ',
+    });
+    const err = await waitForType(bad, MessageTypes.ProtocolError, {
+      afterIndex: beforeBad,
+    });
+    expect(asString(err.payload?.['code'])).toBe('ROOM_CODE_INVALID');
+
+    const beforeLeave = guest.events.length - 1;
+    sendCommand(guest.socket, MessageTypes.MatchLeave, { matchId });
+    await waitForType(guest, MessageTypes.MatchSnapshot, {
+      afterIndex: beforeLeave,
+    });
+    const store = matchService.getStoreForTests();
+    const started = Date.now();
+    for (;;) {
+      const afterLeave = await store.get(matchId);
+      if (!afterLeave!.players.has(guestPlayerId)) {
+        break;
+      }
+      if (Date.now() - started > 3000) {
+        throw new Error('leave did not free guest seat');
+      }
+      await sleep(20);
+    }
+  }, 20000);
+
+  it('LH-005 matchmaking cancel does not leave a reserved ticket', async () => {
+    const client = await tracked();
+    sendCommand(client.socket, MessageTypes.MatchmakingEnqueue, {
+      displayName: 'Queuer',
+      avatarColor: '#ABCDEF',
+    });
+    const status = await waitForType(client, MessageTypes.MatchmakingStatus);
+    expect(asString(status.payload?.['state'])).toBe('queued');
+    const ticketId = asString(status.payload?.['ticketId']);
+    expect(ticketId).toBeTruthy();
+
+    const beforeCancel = client.events.length - 1;
+    sendCommand(client.socket, MessageTypes.MatchmakingCancel, { ticketId });
+    const cancelled = await waitForType(client, MessageTypes.MatchmakingStatus, {
+      afterIndex: beforeCancel,
+    });
+    expect(asString(cancelled.payload?.['state'])).toBe('cancelled');
+
+    const beforeEnqueue = client.events.length - 1;
+    sendCommand(client.socket, MessageTypes.MatchmakingEnqueue, {
+      displayName: 'Queuer',
+      avatarColor: '#ABCDEF',
+    });
+    const again = await waitForType(client, MessageTypes.MatchmakingStatus, {
+      afterIndex: beforeEnqueue,
+    });
+    expect(asString(again.payload?.['state'])).toBe('queued');
+  }, 15000);
+
+  it('LH-005 training start seats capacity-1 and rematch issues new matchId', async () => {
+    const client = await tracked();
+    sendCommand(client.socket, MessageTypes.TrainingStart, {
+      displayName: 'Trainee',
+      avatarColor: '#101010',
+    });
+    const accepted = await waitForType(client, MessageTypes.SessionAccepted);
+    const matchId = asString(accepted.payload?.['matchId']);
+    const playerId = asString(accepted.payload?.['playerId']);
+    const snap = await waitForType(client, MessageTypes.MatchSnapshot);
+    expect(snap.payload?.['mode']).toBe('training');
+    expect((snap.payload?.['players'] as unknown[]).length).toBe(1);
+
+    const store = matchService.getStoreForTests();
+    const match = await store.get(matchId);
+    match!.phase = 'completed';
+    match!.status = 'completed';
+    match!.winnerId = playerId;
+    await store.save(match!);
+
+    sendCommand(client.socket, MessageTypes.MatchRematch, { matchId });
+    const rematchAccepted = await waitForType(
+      client,
+      MessageTypes.SessionAccepted,
+      { afterIndex: client.events.indexOf(accepted) },
+    );
+    expect(asString(rematchAccepted.payload?.['matchId'])).not.toBe(matchId);
+  }, 20000);
 });
