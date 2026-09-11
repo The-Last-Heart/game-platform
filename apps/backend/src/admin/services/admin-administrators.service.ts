@@ -138,118 +138,133 @@ export class AdminAdministratorsService {
     id: string,
     body: AdminAdministratorPatchRequest,
   ) {
-    return this.db.tx(async (client) => {
-      const locked = await client.query<AdminUserRow>(
-        `SELECT * FROM admin_users WHERE id = $1 FOR UPDATE`,
-        [id],
-      );
-      const target = locked.rows[0];
-      if (!target) {
-        throw new NotFoundException({
-          ok: false,
-          error: { code: 'NOT_FOUND', message: 'Administrator not found' },
-        });
-      }
-
-      if (actor.user.id === target.id) {
-        if (body.status === 'deactivated') {
-          throw new ForbiddenException({
-            ok: false,
-            error: {
-              code: 'SELF_DEACTIVATION_FORBIDDEN',
-              message: 'Cannot deactivate your own account',
-            },
-          });
-        }
-        if (
-          target.role === 'super_admin' &&
-          body.role !== undefined &&
-          body.role !== 'super_admin'
-        ) {
-          throw new ForbiddenException({
-            ok: false,
-            error: {
-              code: 'SELF_DEMOTION_FORBIDDEN',
-              message: 'Cannot demote your own super_admin role',
-            },
-          });
-        }
-      }
-
-      const nextRole: AdminRole = body.role ?? target.role;
-      const nextStatus = body.status ?? target.status;
-      const demotingOrDeactivatingFinalSuperAdmin =
-        target.role === 'super_admin' &&
-        target.status === 'active' &&
-        (nextRole !== 'super_admin' || nextStatus !== 'active');
-
-      if (demotingOrDeactivatingFinalSuperAdmin) {
-        await this.assertNotLastActiveSuperAdmin(client, target.id);
-      }
-
-      let passwordHash = target.password_hash;
-      let passwordChanged = false;
-      if (body.password) {
-        passwordHash = await hashPassword(body.password);
-        passwordChanged = true;
-      }
-
-      const updated = await client.query<AdminUserRow>(
-        `UPDATE admin_users
-         SET display_name = COALESCE($1, display_name),
-             role = $2,
-             status = $3,
-             password_hash = $4,
-             password_changed_at = CASE WHEN $5 THEN now() ELSE password_changed_at END,
-             updated_at = now()
-         WHERE id = $6
-         RETURNING *`,
-        [
-          body.displayName ?? null,
-          nextRole,
-          nextStatus,
-          passwordHash,
-          passwordChanged,
-          id,
-        ],
-      );
-
-      const deactivated =
-        nextStatus === 'deactivated' && target.status !== 'deactivated';
-      // Password reset by another admin: revoke ALL target sessions in this transaction.
-      const revokeAllSessions =
-        deactivated || (passwordChanged && actor.user.id !== target.id);
-
-      if (revokeAllSessions) {
-        await client.query(
-          `UPDATE admin_sessions
-           SET revoked_at = now()
-           WHERE admin_user_id = $1 AND revoked_at IS NULL`,
+    try {
+      return await this.db.tx(async (client) => {
+        const locked = await client.query<AdminUserRow>(
+          `SELECT * FROM admin_users WHERE id = $1 FOR UPDATE`,
           [id],
         );
-      }
+        const target = locked.rows[0];
+        if (!target) {
+          throw new NotFoundException({
+            ok: false,
+            error: { code: 'NOT_FOUND', message: 'Administrator not found' },
+          });
+        }
 
-      // Reactivation only flips status; revoked sessions are intentionally not restored.
+        if (actor.user.id === target.id) {
+          if (body.status === 'deactivated') {
+            throw new ForbiddenException({
+              ok: false,
+              error: {
+                code: 'SELF_DEACTIVATION_FORBIDDEN',
+                message: 'Cannot deactivate your own account',
+              },
+            });
+          }
+          if (
+            target.role === 'super_admin' &&
+            body.role !== undefined &&
+            body.role !== 'super_admin'
+          ) {
+            throw new ForbiddenException({
+              ok: false,
+              error: {
+                code: 'SELF_DEMOTION_FORBIDDEN',
+                message: 'Cannot demote your own super_admin role',
+              },
+            });
+          }
+        }
 
-      await this.audit.write(
-        {
-          actorAdminId: actor.user.id,
-          action: 'administrators.patch',
-          entityType: 'admin_user',
-          entityId: id,
-          outcome: 'success',
-          metadata: {
-            role: nextRole,
-            status: nextStatus,
+        const nextRole: AdminRole = body.role ?? target.role;
+        const nextStatus = body.status ?? target.status;
+        const demotingOrDeactivatingFinalSuperAdmin =
+          target.role === 'super_admin' &&
+          target.status === 'active' &&
+          (nextRole !== 'super_admin' || nextStatus !== 'active');
+
+        if (demotingOrDeactivatingFinalSuperAdmin) {
+          const isLast = await this.isLastActiveSuperAdmin(client, target.id);
+          if (isLast) {
+            throw new ForbiddenException({
+              ok: false,
+              error: {
+                code: 'LAST_SUPER_ADMIN',
+                message: 'Cannot remove the final active super_admin',
+              },
+            });
+          }
+        }
+
+        let passwordHash = target.password_hash;
+        let passwordChanged = false;
+        if (body.password) {
+          passwordHash = await hashPassword(body.password);
+          passwordChanged = true;
+        }
+
+        const updated = await client.query<AdminUserRow>(
+          `UPDATE admin_users
+           SET display_name = COALESCE($1, display_name),
+               role = $2,
+               status = $3,
+               password_hash = $4,
+               password_changed_at = CASE WHEN $5 THEN now() ELSE password_changed_at END,
+               updated_at = now()
+           WHERE id = $6
+           RETURNING *`,
+          [
+            body.displayName ?? null,
+            nextRole,
+            nextStatus,
+            passwordHash,
             passwordChanged,
-            sessionsRevoked: revokeAllSessions,
-          },
-        },
-        client,
-      );
+            id,
+          ],
+        );
 
-      return { administrator: toAdministratorDto(updated.rows[0]!) };
-    });
+        const deactivated =
+          nextStatus === 'deactivated' && target.status !== 'deactivated';
+        // Password reset by another admin: revoke ALL target sessions in this transaction.
+        const revokeAllSessions =
+          deactivated || (passwordChanged && actor.user.id !== target.id);
+
+        if (revokeAllSessions) {
+          await client.query(
+            `UPDATE admin_sessions
+             SET revoked_at = now()
+             WHERE admin_user_id = $1 AND revoked_at IS NULL`,
+            [id],
+          );
+        }
+
+        // Reactivation only flips status; revoked sessions are intentionally not restored.
+
+        await this.audit.write(
+          {
+            actorAdminId: actor.user.id,
+            action: 'administrators.patch',
+            entityType: 'admin_user',
+            entityId: id,
+            outcome: 'success',
+            metadata: {
+              role: nextRole,
+              status: nextStatus,
+              passwordChanged,
+              sessionsRevoked: revokeAllSessions,
+            },
+          },
+          client,
+        );
+
+        return { administrator: toAdministratorDto(updated.rows[0]!) };
+      });
+    } catch (error: unknown) {
+      // Audit after the txn rolls back so FK checks are not blocked by FOR UPDATE locks.
+      await this.auditDeniedAdministratorPatch(actor, id, error);
+      throw error;
+    }
   }
 
   /**
@@ -340,10 +355,10 @@ export class AdminAdministratorsService {
     return result.rows[0];
   }
 
-  private async assertNotLastActiveSuperAdmin(
+  private async isLastActiveSuperAdmin(
     client: PoolClient,
     excludeId: string,
-  ): Promise<void> {
+  ): Promise<boolean> {
     const result = await client.query<{ id: string }>(
       `SELECT id
        FROM admin_users
@@ -352,15 +367,44 @@ export class AdminAdministratorsService {
        FOR UPDATE`,
     );
     const others = result.rows.filter((row) => row.id !== excludeId);
-    if (others.length < 1) {
-      throw new ForbiddenException({
-        ok: false,
-        error: {
-          code: 'LAST_SUPER_ADMIN',
-          message: 'Cannot remove the final active super_admin',
-        },
-      });
+    return others.length < 1;
+  }
+
+  private async auditDeniedAdministratorPatch(
+    actor: AdminAuthContext,
+    id: string,
+    error: unknown,
+  ): Promise<void> {
+    const reason = this.forbiddenErrorCode(error);
+    if (
+      reason !== 'SELF_DEACTIVATION_FORBIDDEN' &&
+      reason !== 'SELF_DEMOTION_FORBIDDEN' &&
+      reason !== 'LAST_SUPER_ADMIN'
+    ) {
+      return;
     }
+    await this.audit.write({
+      actorAdminId: actor.user.id,
+      action: 'administrators.patch',
+      entityType: 'admin_user',
+      entityId: id,
+      outcome: 'denied',
+      metadata: { reason },
+    });
+  }
+
+  private forbiddenErrorCode(error: unknown): string | null {
+    if (!(error instanceof ForbiddenException)) {
+      return null;
+    }
+    const response = error.getResponse();
+    if (typeof response === 'object' && response !== null && 'error' in response) {
+      const nested = (response as { error?: { code?: unknown } }).error;
+      if (nested && typeof nested.code === 'string') {
+        return nested.code;
+      }
+    }
+    return null;
   }
 
   private isUniqueViolation(error: unknown): boolean {

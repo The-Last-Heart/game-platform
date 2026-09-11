@@ -79,7 +79,6 @@
       "src/**/*.(t|j)s"
     ],
     "coverageDirectory": "./coverage",
-    "testEnvironment": "node",
-    "forceExit": true
+    "testEnvironment": "node"
   }
 }

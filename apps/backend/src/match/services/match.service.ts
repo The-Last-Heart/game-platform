@@ -654,9 +654,12 @@ export class MatchService implements OnModuleDestroy {
   /**
    * Safe read-only operational aggregates for admin dashboard/system status.
    * Never includes resume tokens, answers, submissions, or serverConfig.
+   *
+   * activeMatchCount excludes completed/halted. Player metrics are separate
+   * fields (connection presence vs spectator status) — not mutually exclusive.
    */
   async getOperationalAggregates(): Promise<{
-    matchCount: number;
+    activeMatchCount: number;
     matchesByPhase: {
       lobby: number;
       ready_countdown: number;
@@ -666,12 +669,10 @@ export class MatchService implements OnModuleDestroy {
       completed: number;
       halted: number;
     };
-    playersByPresence: {
-      connected: number;
-      disconnected: number;
-      spectator: number;
-    };
-    lobbyWaitingPlayers: number;
+    connectedPlayers: number;
+    disconnectedPlayers: number;
+    spectators: number;
+    waitingLobbyCount: number;
   }> {
     const matchesByPhase = {
       lobby: 0,
@@ -682,12 +683,10 @@ export class MatchService implements OnModuleDestroy {
       completed: 0,
       halted: 0,
     };
-    const playersByPresence = {
-      connected: 0,
-      disconnected: 0,
-      spectator: 0,
-    };
-    let lobbyWaitingPlayers = 0;
+    let connectedPlayers = 0;
+    let disconnectedPlayers = 0;
+    let spectators = 0;
+    let waitingLobbyCount = 0;
 
     const ids = await this.store.listIds();
     for (const matchId of ids) {
@@ -696,28 +695,37 @@ export class MatchService implements OnModuleDestroy {
         continue;
       }
       if (match.phase in matchesByPhase) {
-        matchesByPhase[match.phase] += 1;
+        matchesByPhase[match.phase as keyof typeof matchesByPhase] += 1;
       }
       for (const player of match.players.values()) {
         if (player.status === 'spectator') {
-          playersByPresence.spectator += 1;
+          spectators += 1;
         }
         if (player.presence === 'connected') {
-          playersByPresence.connected += 1;
+          connectedPlayers += 1;
         } else {
-          playersByPresence.disconnected += 1;
+          disconnectedPlayers += 1;
         }
         if (match.phase === 'lobby' && player.status === 'active') {
-          lobbyWaitingPlayers += 1;
+          waitingLobbyCount += 1;
         }
       }
     }
 
+    const activeMatchCount =
+      matchesByPhase.lobby +
+      matchesByPhase.ready_countdown +
+      matchesByPhase.challenge_intro +
+      matchesByPhase.challenge_active +
+      matchesByPhase.round_result;
+
     return {
-      matchCount: ids.length,
+      activeMatchCount,
       matchesByPhase,
-      playersByPresence,
-      lobbyWaitingPlayers,
+      connectedPlayers,
+      disconnectedPlayers,
+      spectators,
+      waitingLobbyCount,
     };
   }
 

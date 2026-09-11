@@ -78,13 +78,19 @@ export class AdminLoginThrottleService implements OnModuleDestroy {
 
   async onModuleDestroy(): Promise<void> {
     try {
-      if (this.redis.status === 'ready') {
+      this.redis.removeAllListeners('error');
+      const status = this.redis.status;
+      if (status === 'ready') {
         await this.redis.quit();
-      } else {
-        this.redis.disconnect();
+      } else if (status !== 'end' && status !== 'close') {
+        this.redis.disconnect(false);
       }
     } catch {
-      this.redis.disconnect();
+      try {
+        this.redis.disconnect(false);
+      } catch {
+        // Best-effort close for test teardown / process exit.
+      }
     }
   }
 }

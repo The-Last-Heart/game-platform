@@ -12,6 +12,10 @@ describe('AdminAuditService redaction', () => {
         role: 'viewer',
       },
       resumeTokenHash: 'abc',
+      databaseUrl: 'postgres://user:pass@localhost/db',
+      serverConfig: { expected: 1 },
+      answer: { choice: 'a' },
+      signalToken: 'sig',
     });
 
     expect(redacted).toEqual({
@@ -22,6 +26,10 @@ describe('AdminAuditService redaction', () => {
         role: 'viewer',
       },
       resumeTokenHash: '[REDACTED]',
+      databaseUrl: '[REDACTED]',
+      serverConfig: '[REDACTED]',
+      answer: '[REDACTED]',
+      signalToken: '[REDACTED]',
     });
   });
 });

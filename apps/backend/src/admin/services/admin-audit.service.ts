@@ -4,7 +4,7 @@ import type { PoolClient } from 'pg';
 import { DatabaseService } from '../../database/database.service';
 
 const REDACT_KEY_PATTERN =
-  /(password|secret|token|authorization|cookie|hash|credential|session)/i;
+  /(password|secret|token|authorization|cookie|hash|credential|session|database|connection.?string|answer|server.?config|resume|signal)/i;
 
 export type AuditWriteInput = {
   actorAdminId: string | null;

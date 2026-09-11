@@ -23,6 +23,29 @@ function outcomeLabel(locale: Locale, outcome: AdminAuditOutcome): string {
   return t(locale, `audit.outcome.${outcome}` as MessageKey);
 }
 
+/** Normalize filter datetime values to ISO-8601 for the contracts schema. */
+function toIsoFilter(value: string): string | null {
+  const trimmed = value.trim();
+  if (!trimmed) {
+    return null;
+  }
+  const parsed = new Date(trimmed);
+  if (Number.isNaN(parsed.getTime())) {
+    return trimmed;
+  }
+  return parsed.toISOString();
+}
+
+const FILTER_KEYS = [
+  'action',
+  'entityType',
+  'entityId',
+  'outcome',
+  'actorAdminId',
+  'from',
+  'to',
+] as const;
+
 export function AuditLogPanel({ locale }: { locale: Locale }) {
   const searchParams = useSearchParams();
   const router = useRouter();
@@ -35,8 +58,11 @@ export function AuditLogPanel({ locale }: { locale: Locale }) {
   const page = Number(searchParams.get('page') ?? '1') || 1;
   const action = searchParams.get('action') ?? '';
   const entityType = searchParams.get('entityType') ?? '';
+  const entityId = searchParams.get('entityId') ?? '';
   const outcome = searchParams.get('outcome') ?? '';
   const actorAdminId = searchParams.get('actorAdminId') ?? '';
+  const from = searchParams.get('from') ?? '';
+  const to = searchParams.get('to') ?? '';
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -45,8 +71,13 @@ export function AuditLogPanel({ locale }: { locale: Locale }) {
     params.set('pageSize', '20');
     if (action.trim()) params.set('action', action.trim());
     if (entityType.trim()) params.set('entityType', entityType.trim());
+    if (entityId.trim()) params.set('entityId', entityId.trim());
     if (outcome) params.set('outcome', outcome);
     if (actorAdminId.trim()) params.set('actorAdminId', actorAdminId.trim());
+    const fromIso = toIsoFilter(from);
+    const toIso = toIsoFilter(to);
+    if (fromIso) params.set('from', fromIso);
+    if (toIso) params.set('to', toIso);
 
     const result = await adminApiFetch<AdminAuditLogListResponse>(
       `/audit-logs?${params.toString()}`,
@@ -62,7 +93,7 @@ export function AuditLogPanel({ locale }: { locale: Locale }) {
     setError(null);
     setData(result.data);
     setLoading(false);
-  }, [page, action, entityType, outcome, actorAdminId]);
+  }, [page, action, entityType, entityId, outcome, actorAdminId, from, to]);
 
   useEffect(() => scheduleEffectTask(() => void load()), [load]);
 
@@ -71,12 +102,7 @@ export function AuditLogPanel({ locale }: { locale: Locale }) {
     const form = new FormData(event.currentTarget);
     const next = new URLSearchParams();
     next.set('page', '1');
-    for (const key of [
-      'action',
-      'entityType',
-      'outcome',
-      'actorAdminId',
-    ] as const) {
+    for (const key of FILTER_KEYS) {
       const value = String(form.get(key) ?? '').trim();
       if (value) next.set(key, value);
     }
@@ -110,6 +136,14 @@ export function AuditLogPanel({ locale }: { locale: Locale }) {
           />
         </div>
         <div className="field">
+          <label htmlFor="audit-entity-id">{t(locale, 'audit.entityId')}</label>
+          <input
+            id="audit-entity-id"
+            name="entityId"
+            defaultValue={entityId}
+          />
+        </div>
+        <div className="field">
           <label htmlFor="audit-actor">{t(locale, 'audit.actor')}</label>
           <input
             id="audit-actor"
@@ -127,6 +161,24 @@ export function AuditLogPanel({ locale }: { locale: Locale }) {
               </option>
             ))}
           </select>
+        </div>
+        <div className="field">
+          <label htmlFor="audit-from">{t(locale, 'audit.from')}</label>
+          <input
+            id="audit-from"
+            name="from"
+            type="datetime-local"
+            defaultValue={from}
+          />
+        </div>
+        <div className="field">
+          <label htmlFor="audit-to">{t(locale, 'audit.to')}</label>
+          <input
+            id="audit-to"
+            name="to"
+            type="datetime-local"
+            defaultValue={to}
+          />
         </div>
         <button type="submit" className="btn btn-secondary">
           {t(locale, 'common.applyFilters')}
@@ -201,6 +253,7 @@ export function AuditLogPanel({ locale }: { locale: Locale }) {
               className="btn btn-secondary"
               disabled={page <= 1}
               onClick={() => {
+                // Preserve all active filters while changing page.
                 const next = new URLSearchParams(searchParams.toString());
                 next.set('page', String(page - 1));
                 router.push(`/${locale}/audit-log?${next.toString()}`);

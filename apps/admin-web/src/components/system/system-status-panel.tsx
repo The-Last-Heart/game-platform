@@ -133,11 +133,23 @@ export function SystemStatusPanel({ locale }: { locale: Locale }) {
             <dl className="definition-list">
               <div>
                 <dt>{t(locale, 'dashboard.matchCount')}</dt>
-                <dd>{data.aggregates.matchCount}</dd>
+                <dd>{data.aggregates.activeMatchCount}</dd>
               </div>
               <div>
                 <dt>{t(locale, 'dashboard.lobbyWaiting')}</dt>
-                <dd>{data.aggregates.lobbyWaitingPlayers}</dd>
+                <dd>{data.aggregates.waitingLobbyCount}</dd>
+              </div>
+              <div>
+                <dt>{t(locale, 'dashboard.connectedPlayers')}</dt>
+                <dd>{data.aggregates.connectedPlayers}</dd>
+              </div>
+              <div>
+                <dt>{t(locale, 'dashboard.disconnectedPlayers')}</dt>
+                <dd>{data.aggregates.disconnectedPlayers}</dd>
+              </div>
+              <div>
+                <dt>{t(locale, 'dashboard.spectators')}</dt>
+                <dd>{data.aggregates.spectators}</dd>
               </div>
             </dl>
           </section>

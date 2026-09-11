@@ -38,6 +38,7 @@ describeDb('database migrations (integration)', () => {
     const status = await getMigrationStatus(pool, migrationsDir);
     expect(status.pending).toEqual([]);
     expect(status.applied).toContain('001_admin_foundation');
+    expect(status.applied).toContain('002_admin_audit_hardening');
 
     const tables = await pool.query<{ table_name: string }>(
       `SELECT table_name

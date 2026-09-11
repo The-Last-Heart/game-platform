@@ -147,13 +147,13 @@ export function DashboardPanel({ locale }: { locale: Locale }) {
               <p className="metric-label">
                 {t(locale, 'dashboard.matchCount')}
               </p>
-              <p className="metric-value">{view.matchCount}</p>
+              <p className="metric-value">{view.activeMatchCount}</p>
             </div>
             <div className="metric">
               <p className="metric-label">
                 {t(locale, 'dashboard.lobbyWaiting')}
               </p>
-              <p className="metric-value">{view.lobbyWaitingPlayers}</p>
+              <p className="metric-value">{view.waitingLobbyCount}</p>
             </div>
             <div className="metric">
               <p className="metric-label">
@@ -172,6 +172,24 @@ export function DashboardPanel({ locale }: { locale: Locale }) {
                 {t(locale, 'dashboard.activeSessions')}
               </p>
               <p className="metric-value">{view.activeSessions}</p>
+            </div>
+            <div className="metric">
+              <p className="metric-label">
+                {t(locale, 'dashboard.connectedPlayers')}
+              </p>
+              <p className="metric-value">{view.connectedPlayers}</p>
+            </div>
+            <div className="metric">
+              <p className="metric-label">
+                {t(locale, 'dashboard.disconnectedPlayers')}
+              </p>
+              <p className="metric-value">{view.disconnectedPlayers}</p>
+            </div>
+            <div className="metric">
+              <p className="metric-label">
+                {t(locale, 'dashboard.spectators')}
+              </p>
+              <p className="metric-value">{view.spectators}</p>
             </div>
           </div>
 
@@ -200,28 +218,6 @@ export function DashboardPanel({ locale }: { locale: Locale }) {
                   </table>
                 </div>
               )}
-            </section>
-
-            <section className="panel">
-              <h2>{t(locale, 'dashboard.playersByPresence')}</h2>
-              <div className="table-wrap">
-                <table className="data-table">
-                  <thead>
-                    <tr>
-                      <th>Presence</th>
-                      <th>Count</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {view.playersByPresence.map((row) => (
-                      <tr key={row.presence}>
-                        <td>{row.presence}</td>
-                        <td>{row.count}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
             </section>
           </div>
         </>

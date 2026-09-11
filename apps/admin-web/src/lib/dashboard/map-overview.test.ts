@@ -7,35 +7,37 @@ describe('mapDashboardOverview', () => {
     const overview: AdminDashboardOverview = {
       generatedAt: '2026-01-01T00:00:00.000Z',
       aggregates: {
-        matchCount: 3,
+        activeMatchCount: 3,
         matchesByPhase: {
           lobby: 1,
           ready_countdown: 0,
           challenge_intro: 0,
           challenge_active: 2,
           round_result: 0,
-          completed: 0,
-          halted: 0,
+          completed: 4,
+          halted: 1,
         },
-        playersByPresence: {
-          connected: 4,
-          disconnected: 1,
-          spectator: 0,
-        },
-        lobbyWaitingPlayers: 2,
+        connectedPlayers: 4,
+        disconnectedPlayers: 1,
+        spectators: 2,
+        waitingLobbyCount: 2,
       },
       adminUsers: { activeCount: 5, deactivatedCount: 1 },
       sessions: { activeCount: 2 },
     };
 
     const view = mapDashboardOverview(overview);
-    expect(view.matchCount).toBe(3);
+    expect(view.activeMatchCount).toBe(3);
+    expect(view.waitingLobbyCount).toBe(2);
     expect(view.activeAdmins).toBe(5);
+    expect(view.connectedPlayers).toBe(4);
+    expect(view.disconnectedPlayers).toBe(1);
+    expect(view.spectators).toBe(2);
     expect(
-      view.matchesByPhase.find((row) => row.phase === 'lobby')?.count,
-    ).toBe(1);
-    expect(
-      view.playersByPresence.find((row) => row.presence === 'connected')?.count,
+      view.matchesByPhase.find((row) => row.phase === 'completed')?.count,
     ).toBe(4);
+    expect(
+      view.matchesByPhase.find((row) => row.phase === 'halted')?.count,
+    ).toBe(1);
   });
 });

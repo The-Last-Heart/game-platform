@@ -74,8 +74,9 @@ export class AdminAuthService {
 
     if (!user || user.status !== 'active') {
       await this.throttle.recordFailure(email);
+      // Failed login must not attribute actorAdminId to the target user.
       await this.audit.write({
-        actorAdminId: user?.id ?? null,
+        actorAdminId: null,
         action: 'auth.login',
         entityType: 'admin_user',
         entityId: user?.id ?? email,
@@ -88,8 +89,9 @@ export class AdminAuthService {
     const passwordOk = await verifyPassword(input.password, user.password_hash);
     if (!passwordOk) {
       await this.throttle.recordFailure(email);
+      // Failed login must not attribute actorAdminId to the target user.
       await this.audit.write({
-        actorAdminId: user.id,
+        actorAdminId: null,
         action: 'auth.login',
         entityType: 'admin_user',
         entityId: user.id,

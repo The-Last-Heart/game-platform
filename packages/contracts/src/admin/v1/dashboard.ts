@@ -2,6 +2,9 @@ import { z } from 'zod';
 
 /**
  * Safe operational aggregates only — never resume tokens, answers, or serverConfig.
+ *
+ * Player metrics are separate fields (not mutually exclusive presence buckets):
+ * connected/disconnected count by connection presence; spectators by player status.
  */
 export const adminMatchPhaseCountsSchema = z
   .object({
@@ -15,20 +18,15 @@ export const adminMatchPhaseCountsSchema = z
   })
   .strict();
 
-export const adminPresenceCountsSchema = z
-  .object({
-    connected: z.number().int().nonnegative(),
-    disconnected: z.number().int().nonnegative(),
-    spectator: z.number().int().nonnegative(),
-  })
-  .strict();
-
 export const adminOperationalAggregatesSchema = z
   .object({
-    matchCount: z.number().int().nonnegative(),
+    /** Matches whose phase is not completed or halted. */
+    activeMatchCount: z.number().int().nonnegative(),
     matchesByPhase: adminMatchPhaseCountsSchema,
-    playersByPresence: adminPresenceCountsSchema,
-    lobbyWaitingPlayers: z.number().int().nonnegative(),
+    connectedPlayers: z.number().int().nonnegative(),
+    disconnectedPlayers: z.number().int().nonnegative(),
+    spectators: z.number().int().nonnegative(),
+    waitingLobbyCount: z.number().int().nonnegative(),
   })
   .strict();
 export type AdminOperationalAggregates = z.infer<

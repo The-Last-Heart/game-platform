@@ -6,6 +6,7 @@ import { toIso } from './admin.types';
 
 type AuditRow = {
   id: string;
+  sequence_id: string | number | bigint;
   actor_admin_id: string | null;
   action: string;
   entity_type: string;
@@ -14,6 +15,13 @@ type AuditRow = {
   metadata: Record<string, unknown> | string;
   created_at: Date;
 };
+
+function sequenceIdToString(value: string | number | bigint): string {
+  if (typeof value === 'bigint') {
+    return value.toString();
+  }
+  return String(value);
+}
 
 @Injectable()
 export class AdminAuditQueryService {
@@ -65,9 +73,19 @@ export class AdminAuditQueryService {
     params.push(query.pageSize, offset);
 
     const rows = await this.db.query<AuditRow>(
-      `SELECT * FROM admin_audit_logs
+      `SELECT
+         id,
+         sequence_id::text AS sequence_id,
+         actor_admin_id,
+         action,
+         entity_type,
+         entity_id,
+         outcome,
+         metadata,
+         created_at
+       FROM admin_audit_logs
        ${where}
-       ORDER BY created_at DESC
+       ORDER BY sequence_id DESC, id DESC
        LIMIT $${params.length - 1} OFFSET $${params.length}`,
       params,
     );
@@ -80,6 +98,7 @@ export class AdminAuditQueryService {
             : row.metadata;
         return {
           id: row.id,
+          sequenceId: sequenceIdToString(row.sequence_id),
           actorAdminId: row.actor_admin_id,
           action: row.action,
           entityType: row.entity_type,

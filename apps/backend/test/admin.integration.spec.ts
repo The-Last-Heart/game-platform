@@ -88,12 +88,7 @@ describe('admin API integration', () => {
 
   afterAll(async () => {
     if (app) {
-      await Promise.race([
-        app.close(),
-        new Promise<void>((resolve) => {
-          setTimeout(resolve, 5_000);
-        }),
-      ]);
+      await app.close();
     }
     if (pool) {
       await pool.end().catch(() => undefined);
@@ -389,6 +384,48 @@ describe('admin API integration', () => {
     expect(payload).toContain('[REDACTED]');
     expect(payload).not.toContain('should-not-leak');
     expect(payload).toContain('visible');
+    const items = (
+      listed.body as {
+        data?: { items?: Array<{ sequenceId?: string }> };
+      }
+    ).data?.items;
+    expect(items?.[0]?.sequenceId).toMatch(/^\d+$/);
+  });
+
+  it('records failed login with null actor and rejects from>to audit filter', async () => {
+    if (!enabled) return;
+    const email = uniqueEmail('fail-actor');
+    const password = 'valid-password-12';
+    const id = await insertAdmin({ email, password });
+
+    const bad = await login(email, 'wrong-password-12');
+    expect(bad.status).toBe(401);
+
+    const rows = await pool.query<{
+      actor_admin_id: string | null;
+      outcome: string;
+    }>(
+      `SELECT actor_admin_id, outcome
+       FROM admin_audit_logs
+       WHERE action = 'auth.login'
+         AND entity_id = $1
+         AND outcome = 'failure'
+       ORDER BY sequence_id DESC
+       LIMIT 1`,
+      [id],
+    );
+    expect(rows.rows[0]?.actor_admin_id).toBeNull();
+
+    const okLogin = await login(email, password);
+    const invalidRange = await http(app)
+      .get('/api/admin/v1/audit-logs')
+      .query({
+        from: '2026-02-01T00:00:00.000Z',
+        to: '2026-01-01T00:00:00.000Z',
+      })
+      .set(authHeaders(okLogin.sessionToken!, okLogin.csrfToken!));
+    expect(invalidRange.status).toBe(400);
+    expect(JSON.stringify(invalidRange.body)).toContain('VALIDATION_ERROR');
   });
 
   it('keeps dashboard aggregates free of private match secrets', async () => {
@@ -398,6 +435,12 @@ describe('admin API integration', () => {
     await insertAdmin({ email, password });
     const created = await matchService.createDevMatch();
     await matchService.joinMatch(created.matchId);
+    const completed = await matchService.createDevMatch();
+    const store = matchService.getStoreForTests();
+    const completedMatch = (await store.get(completed.matchId))!;
+    completedMatch.phase = 'completed';
+    completedMatch.status = 'completed';
+    await store.save(completedMatch);
 
     const loginResult = await login(email, password);
     const overview = await http(app)
@@ -406,12 +449,24 @@ describe('admin API integration', () => {
     expect(overview.status).toBe(200);
     const payload = JSON.stringify(overview.body);
     const overviewBody = overview.body as {
-      data: { aggregates: { matchCount: number } };
+      data: {
+        aggregates: {
+          activeMatchCount: number;
+          matchesByPhase: { completed: number };
+        };
+      };
     };
-    expect(overviewBody.data.aggregates.matchCount).toBeGreaterThanOrEqual(1);
+    expect(overviewBody.data.aggregates.activeMatchCount).toBeGreaterThanOrEqual(
+      1,
+    );
+    expect(overviewBody.data.aggregates.matchesByPhase.completed).toBeGreaterThanOrEqual(
+      1,
+    );
     expect(payload).not.toMatch(/resumeToken/i);
     expect(payload).not.toMatch(/serverConfig/i);
     expect(payload).not.toMatch(/signalToken/i);
+    expect(payload).not.toMatch(/DATABASE_URL/i);
+    expect(payload).not.toMatch(/answer/i);
   });
 
   it('allows multiple independent sessions until revoke-other', async () => {

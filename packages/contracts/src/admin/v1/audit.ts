@@ -5,9 +5,15 @@ export const ADMIN_AUDIT_OUTCOMES = ['success', 'failure', 'denied'] as const;
 export const adminAuditOutcomeSchema = z.enum(ADMIN_AUDIT_OUTCOMES);
 export type AdminAuditOutcome = z.infer<typeof adminAuditOutcomeSchema>;
 
+/** Monotonic audit sequence as a decimal string (avoids JS number precision loss). */
+export const adminAuditSequenceIdSchema = z
+  .string()
+  .regex(/^\d+$/, 'sequenceId must be an unsigned decimal integer string');
+
 export const adminAuditLogEntrySchema = z
   .object({
     id: z.string().uuid(),
+    sequenceId: adminAuditSequenceIdSchema,
     actorAdminId: z.string().uuid().nullable(),
     action: z.string().min(1).max(128),
     entityType: z.string().min(1).max(64),
@@ -30,7 +36,16 @@ export const adminAuditLogQuerySchema = adminPaginationQuerySchema
     from: z.string().datetime().optional(),
     to: z.string().datetime().optional(),
   })
-  .strict();
+  .strict()
+  .superRefine((value, ctx) => {
+    if (value.from && value.to && value.from > value.to) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'from must be less than or equal to to',
+        path: ['from'],
+      });
+    }
+  });
 export type AdminAuditLogQuery = z.infer<typeof adminAuditLogQuerySchema>;
 
 export const adminAuditLogListResponseSchema = adminPaginatedSchema(

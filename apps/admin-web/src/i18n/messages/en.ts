@@ -91,7 +91,9 @@ const en = {
   'dashboard.deactivatedAdmins': 'Deactivated administrators',
   'dashboard.activeSessions': 'Active admin sessions',
   'dashboard.matchesByPhase': 'Matches by phase',
-  'dashboard.playersByPresence': 'Players by presence',
+  'dashboard.connectedPlayers': 'Connected players',
+  'dashboard.disconnectedPlayers': 'Disconnected players',
+  'dashboard.spectators': 'Spectators',
   'dashboard.polling': 'Auto-refreshing while this tab is visible',
   'dashboard.paused': 'Auto-refresh paused (tab hidden)',
 

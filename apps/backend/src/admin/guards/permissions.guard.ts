@@ -9,13 +9,24 @@ import type { AdminPermission } from '@thelastheart/contracts';
 import type { Request } from 'express';
 import { ADMIN_AUTH_REQUEST_KEY } from './admin-auth.guard';
 import type { AdminAuthContext } from '../services/admin.types';
+import { AdminAuditService } from '../services/admin-audit.service';
 import { ADMIN_PERMISSIONS_KEY } from '../decorators/permissions.decorator';
+
+/** Permissions whose denial is treated as security-sensitive for audit. */
+const AUDITED_DENIED_PERMISSIONS = new Set<AdminPermission>([
+  'administrators:read',
+  'administrators:write',
+  'audit:read',
+]);
 
 @Injectable()
 export class PermissionsGuard implements CanActivate {
-  constructor(private readonly reflector: Reflector) {}
+  constructor(
+    private readonly reflector: Reflector,
+    private readonly audit: AdminAuditService,
+  ) {}
 
-  canActivate(context: ExecutionContext): boolean {
+  async canActivate(context: ExecutionContext): Promise<boolean> {
     const required = this.reflector.getAllAndOverride<AdminPermission[]>(
       ADMIN_PERMISSIONS_KEY,
       [context.getHandler(), context.getClass()],
@@ -40,6 +51,23 @@ export class PermissionsGuard implements CanActivate {
     const granted = new Set(auth.permissions);
     const ok = required.every((permission) => granted.has(permission));
     if (!ok) {
+      const shouldAudit = required.some((permission) =>
+        AUDITED_DENIED_PERMISSIONS.has(permission),
+      );
+      if (shouldAudit) {
+        await this.audit.write({
+          actorAdminId: auth.user.id,
+          action: 'authz.denied',
+          entityType: 'permission',
+          entityId: required.join(','),
+          outcome: 'denied',
+          metadata: {
+            method: req.method,
+            path: req.path,
+            required,
+          },
+        });
+      }
       throw new ForbiddenException({
         ok: false,
         error: { code: 'FORBIDDEN', message: 'Insufficient permissions' },

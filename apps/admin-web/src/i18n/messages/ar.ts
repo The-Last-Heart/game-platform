@@ -93,7 +93,9 @@ const ar: Record<MessageKey, string> = {
   'dashboard.deactivatedAdmins': 'مسؤولون معطلون',
   'dashboard.activeSessions': 'جلسات الإدارة النشطة',
   'dashboard.matchesByPhase': 'المباريات حسب المرحلة',
-  'dashboard.playersByPresence': 'اللاعبون حسب الحضور',
+  'dashboard.connectedPlayers': 'لاعبون متصلون',
+  'dashboard.disconnectedPlayers': 'لاعبون غير متصلين',
+  'dashboard.spectators': 'متفرجون',
   'dashboard.polling': 'تحديث تلقائي أثناء ظهور علامة التبويب',
   'dashboard.paused': 'التحديث التلقائي متوقف (التبويب مخفي)',
 
