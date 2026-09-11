@@ -51,6 +51,7 @@ const en = {
   'common.saving': 'Saving…',
   'common.cancel': 'Cancel',
   'common.confirm': 'Confirm',
+  'common.working': 'Working…',
   'common.create': 'Create',
   'common.creating': 'Creating…',
   'common.edit': 'Edit',
@@ -120,6 +121,27 @@ const en = {
   'admins.role.viewer': 'Viewer',
   'admins.status.active': 'Active',
   'admins.status.deactivated': 'Deactivated',
+  'admins.sortBy': 'Sort by',
+  'admins.sortOrder': 'Order',
+  'admins.sort.createdAt': 'Created',
+  'admins.sort.email': 'Email',
+  'admins.sort.displayName': 'Display name',
+  'admins.sort.lastLoginAt': 'Last login',
+  'admins.sort.role': 'Role',
+  'admins.sort.status': 'Status',
+  'admins.sort.asc': 'Ascending',
+  'admins.sort.desc': 'Descending',
+  'admins.revokeSessions': 'Revoke sessions',
+  'admins.revokeSessionsConfirm':
+    'Revoke active sessions for this administrator? They will need to sign in again.',
+  'admins.revokeSessionsSuccess': 'Sessions revoked',
+  'admins.confirmDeactivate':
+    'Deactivate this administrator? All of their sessions will be revoked.',
+  'admins.confirmPasswordReset':
+    'Reset this administrator’s password? All of their sessions will be revoked.',
+  'admins.confirmRoleReduction':
+    'Reduce this administrator’s role? Confirm before continuing.',
+  'admins.readOnly': 'You have read-only access to administrators.',
 
   'audit.title': 'Audit log',
   'audit.subtitle': 'Security and administration activity',
@@ -165,6 +187,9 @@ const en = {
   'profile.passwordChanged': 'Password last changed',
   'profile.sessionExpires': 'Current session expires',
   'profile.securityLink': 'Security settings',
+  'profile.saveSuccess': 'Profile updated',
+  'profile.displayNameHint': 'This name appears in the admin shell.',
+  'profile.updateDisplayName': 'Update display name',
 
   'security.title': 'Security',
   'security.subtitle': 'Password and session controls',

@@ -1,8 +1,12 @@
 'use client';
 
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { FormEvent, useCallback, useEffect, useState } from 'react';
-import type { AdminSessionsResponse } from '@thelastheart/contracts';
+import type {
+  AdminAuthenticatedUser,
+  AdminSessionsResponse,
+} from '@thelastheart/contracts';
 import {
   ConfirmDialog,
   EmptyState,
@@ -24,7 +28,41 @@ export function ProfilePanel({
   locale: Locale;
   session: AdminSessionSnapshot;
 }) {
-  const { user } = session;
+  const router = useRouter();
+  const { pushToast } = useToast();
+  const [user, setUser] = useState<AdminAuthenticatedUser>(session.user);
+  const [displayName, setDisplayName] = useState(session.user.displayName);
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function onSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (submitting) return;
+    setError(null);
+    const nextName = displayName.trim();
+    if (!nextName) {
+      setError(t(locale, 'common.error'));
+      return;
+    }
+    setSubmitting(true);
+    const result = await adminApiFetch<{ user: AdminAuthenticatedUser }>(
+      '/auth/profile',
+      {
+        method: 'PATCH',
+        body: JSON.stringify({ displayName: nextName }),
+      },
+    );
+    setSubmitting(false);
+    if (!result.ok) {
+      setError(result.error.message);
+      return;
+    }
+    setUser(result.data.user);
+    setDisplayName(result.data.user.displayName);
+    pushToast(t(locale, 'profile.saveSuccess'), 'success');
+    router.refresh();
+  }
+
   return (
     <div>
       <div className="page-header">
@@ -39,12 +77,38 @@ export function ProfilePanel({
           {t(locale, 'profile.securityLink')}
         </Link>
       </div>
-      <section className="panel">
-        <dl className="definition-list">
-          <div>
-            <dt>{t(locale, 'profile.displayName')}</dt>
-            <dd>{user.displayName}</dd>
+      <section className="panel stack">
+        <form className="stack" onSubmit={onSubmit}>
+          {error ? <p className="form-error">{error}</p> : null}
+          <div className="field">
+            <label htmlFor="profile-display-name">
+              {t(locale, 'profile.displayName')}
+            </label>
+            <input
+              id="profile-display-name"
+              name="displayName"
+              value={displayName}
+              onChange={(event) => setDisplayName(event.target.value)}
+              required
+              maxLength={120}
+              disabled={submitting}
+              aria-describedby="profile-display-name-hint"
+            />
+            <span id="profile-display-name-hint">
+              {t(locale, 'profile.displayNameHint')}
+            </span>
           </div>
+          <button
+            type="submit"
+            className="btn btn-primary"
+            disabled={submitting}
+          >
+            {submitting
+              ? t(locale, 'common.saving')
+              : t(locale, 'profile.updateDisplayName')}
+          </button>
+        </form>
+        <dl className="definition-list">
           <div>
             <dt>{t(locale, 'profile.email')}</dt>
             <dd>{user.email}</dd>
@@ -145,6 +209,7 @@ export function SecurityPanel({ locale }: { locale: Locale }) {
   }
 
   async function revokeOthers() {
+    if (revoking) return;
     setRevoking(true);
     const result = await adminApiFetch<{ revokedCount: number }>(
       '/auth/revoke-other-sessions',
@@ -189,6 +254,7 @@ export function SecurityPanel({ locale }: { locale: Locale }) {
                 type="password"
                 autoComplete="current-password"
                 required
+                disabled={submitting}
               />
             </div>
             <div className="field">
@@ -202,6 +268,7 @@ export function SecurityPanel({ locale }: { locale: Locale }) {
                 autoComplete="new-password"
                 minLength={12}
                 required
+                disabled={submitting}
               />
             </div>
             <div className="field">
@@ -215,6 +282,7 @@ export function SecurityPanel({ locale }: { locale: Locale }) {
                 autoComplete="new-password"
                 minLength={12}
                 required
+                disabled={submitting}
               />
             </div>
             <button
@@ -300,7 +368,11 @@ export function SecurityPanel({ locale }: { locale: Locale }) {
         open={confirmOpen}
         message={t(locale, 'security.revokeConfirm')}
         danger
-        onCancel={() => setConfirmOpen(false)}
+        busy={revoking}
+        onCancel={() => {
+          if (revoking) return;
+          setConfirmOpen(false);
+        }}
         onConfirm={() => {
           void revokeOthers();
         }}

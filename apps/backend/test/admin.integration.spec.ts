@@ -558,4 +558,215 @@ describe('admin API integration', () => {
       spy.mockRestore();
     }
   });
+
+  it('revokes target sessions and returns envelope for invalid UUID', async () => {
+    if (!enabled) return;
+    const actorEmail = uniqueEmail('revoke-actor');
+    const targetEmail = uniqueEmail('revoke-target');
+    const password = 'valid-password-12';
+    const actorId = await insertAdmin({
+      email: actorEmail,
+      password,
+      role: 'super_admin',
+    });
+    const targetId = await insertAdmin({
+      email: targetEmail,
+      password,
+      role: 'viewer',
+    });
+
+    const actorLogin = await login(actorEmail, password);
+    const targetLoginA = await login(targetEmail, password);
+    const targetLoginB = await login(targetEmail, password);
+
+    const revoked = await http(app)
+      .post(`/api/admin/v1/administrators/${targetId}/revoke-sessions`)
+      .set(authHeaders(actorLogin.sessionToken!, actorLogin.csrfToken!));
+    expect(revoked.status).toBe(200);
+    expect(
+      (revoked.body as { data?: { revokedCount?: number } }).data?.revokedCount,
+    ).toBeGreaterThanOrEqual(2);
+
+    const staleA = await http(app)
+      .get('/api/admin/v1/auth/me')
+      .set(authHeaders(targetLoginA.sessionToken!, targetLoginA.csrfToken!));
+    expect(staleA.status).toBe(401);
+
+    const staleB = await http(app)
+      .get('/api/admin/v1/auth/me')
+      .set(authHeaders(targetLoginB.sessionToken!, targetLoginB.csrfToken!));
+    expect(staleB.status).toBe(401);
+
+    const keepSession = await login(actorEmail, password);
+    const prior = await login(actorEmail, password);
+    const keepCurrent = await http(app)
+      .post(`/api/admin/v1/administrators/${actorId}/revoke-sessions`)
+      .set(authHeaders(keepSession.sessionToken!, keepSession.csrfToken!));
+    expect(keepCurrent.status).toBe(200);
+    expect(
+      (keepCurrent.body as { data?: { revokedCount?: number } }).data
+        ?.revokedCount,
+    ).toBeGreaterThanOrEqual(1);
+
+    const stillCurrent = await http(app)
+      .get('/api/admin/v1/auth/me')
+      .set(authHeaders(keepSession.sessionToken!, keepSession.csrfToken!));
+    expect(stillCurrent.status).toBe(200);
+
+    const otherGone = await http(app)
+      .get('/api/admin/v1/auth/me')
+      .set(authHeaders(prior.sessionToken!, prior.csrfToken!));
+    expect(otherGone.status).toBe(401);
+
+    const badUuid = await http(app)
+      .get('/api/admin/v1/administrators/not-a-uuid')
+      .set(authHeaders(keepSession.sessionToken!, keepSession.csrfToken!));
+    expect(badUuid.status).toBe(400);
+    expect(badUuid.body).toMatchObject({
+      ok: false,
+      error: { code: 'VALIDATION_ERROR' },
+    });
+  });
+
+  it('revokes sessions on password reset and deactivation; reactivation does not restore', async () => {
+    if (!enabled) return;
+    const actorEmail = uniqueEmail('pw-actor');
+    const targetEmail = uniqueEmail('pw-target');
+    const password = 'valid-password-12';
+    await insertAdmin({ email: actorEmail, password, role: 'super_admin' });
+    const targetId = await insertAdmin({
+      email: targetEmail,
+      password,
+      role: 'viewer',
+    });
+    const actorLogin = await login(actorEmail, password);
+    const targetSession = await login(targetEmail, password);
+
+    const reset = await http(app)
+      .patch(`/api/admin/v1/administrators/${targetId}`)
+      .set(authHeaders(actorLogin.sessionToken!, actorLogin.csrfToken!))
+      .send({ password: 'reset-password-12' });
+    expect(reset.status).toBe(200);
+
+    const afterReset = await http(app)
+      .get('/api/admin/v1/auth/me')
+      .set(authHeaders(targetSession.sessionToken!, targetSession.csrfToken!));
+    expect(afterReset.status).toBe(401);
+
+    const targetFresh = await login(targetEmail, 'reset-password-12');
+    expect(targetFresh.status).toBe(200);
+
+    const deactivate = await http(app)
+      .patch(`/api/admin/v1/administrators/${targetId}`)
+      .set(authHeaders(actorLogin.sessionToken!, actorLogin.csrfToken!))
+      .send({ status: 'deactivated' });
+    expect(deactivate.status).toBe(200);
+
+    const afterDeactivate = await http(app)
+      .get('/api/admin/v1/auth/me')
+      .set(authHeaders(targetFresh.sessionToken!, targetFresh.csrfToken!));
+    expect(afterDeactivate.status).toBe(401);
+
+    const reactivate = await http(app)
+      .patch(`/api/admin/v1/administrators/${targetId}`)
+      .set(authHeaders(actorLogin.sessionToken!, actorLogin.csrfToken!))
+      .send({ status: 'active' });
+    expect(reactivate.status).toBe(200);
+
+    const stillRevoked = await http(app)
+      .get('/api/admin/v1/auth/me')
+      .set(authHeaders(targetFresh.sessionToken!, targetFresh.csrfToken!));
+    expect(stillRevoked.status).toBe(401);
+
+    const loginAgain = await login(targetEmail, 'reset-password-12');
+    expect(loginAgain.status).toBe(200);
+  });
+
+  it('updates own profile display name only', async () => {
+    if (!enabled) return;
+    const email = uniqueEmail('profile');
+    const password = 'valid-password-12';
+    await insertAdmin({
+      email,
+      password,
+      displayName: 'Before Name',
+    });
+    const okLogin = await login(email, password);
+
+    const updated = await http(app)
+      .patch('/api/admin/v1/auth/profile')
+      .set(authHeaders(okLogin.sessionToken!, okLogin.csrfToken!))
+      .send({ displayName: 'After Name' });
+    expect(updated.status).toBe(200);
+    expect(
+      (updated.body as { data?: { user?: { displayName?: string } } }).data
+        ?.user?.displayName,
+    ).toBe('After Name');
+
+    const rejected = await http(app)
+      .patch('/api/admin/v1/auth/profile')
+      .set(authHeaders(okLogin.sessionToken!, okLogin.csrfToken!))
+      .send({ displayName: 'X', role: 'viewer' });
+    expect(rejected.status).toBe(400);
+    expect(JSON.stringify(rejected.body)).toContain('VALIDATION_ERROR');
+  });
+
+  it('sorts administrators with allowlisted fields and rejects injection', async () => {
+    if (!enabled) return;
+    const email = uniqueEmail('sort-actor');
+    const password = 'valid-password-12';
+    await insertAdmin({ email, password, role: 'super_admin' });
+    const loginResult = await login(email, password);
+
+    const stamp = `${Date.now()}.${Math.random().toString(16).slice(2)}`;
+    const alphaName = `Alpha Sort ${stamp}`;
+    const zuluName = `Zulu Sort ${stamp}`;
+    await insertAdmin({
+      email: uniqueEmail('sort-a'),
+      password,
+      displayName: alphaName,
+      role: 'viewer',
+    });
+    await insertAdmin({
+      email: uniqueEmail('sort-z'),
+      password,
+      displayName: zuluName,
+      role: 'viewer',
+    });
+
+    const sorted = await http(app)
+      .get('/api/admin/v1/administrators')
+      .query({
+        q: stamp,
+        sortBy: 'displayName',
+        sortOrder: 'asc',
+        pageSize: 100,
+      })
+      .set(authHeaders(loginResult.sessionToken!, loginResult.csrfToken!));
+    expect(sorted.status).toBe(200);
+    const items = (
+      sorted.body as {
+        data?: { items?: Array<{ displayName: string }> };
+      }
+    ).data?.items;
+    expect(items).toBeDefined();
+    const names = items!.map((item) => item.displayName);
+    const alphaIdx = names.indexOf(alphaName);
+    const zuluIdx = names.indexOf(zuluName);
+    expect(alphaIdx).toBeGreaterThanOrEqual(0);
+    expect(zuluIdx).toBeGreaterThan(alphaIdx);
+
+    const injection = await http(app)
+      .get('/api/admin/v1/administrators')
+      .query({
+        sortBy: 'created_at;drop table admin_users',
+        sortOrder: 'asc',
+      })
+      .set(authHeaders(loginResult.sessionToken!, loginResult.csrfToken!));
+    expect(injection.status).toBe(400);
+    expect(injection.body).toMatchObject({
+      ok: false,
+      error: { code: 'VALIDATION_ERROR' },
+    });
+  });
 });

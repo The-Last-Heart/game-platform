@@ -463,6 +463,48 @@ export class AdminAuthService {
     return result.rowCount ?? 0;
   }
 
+  /**
+   * Authenticated profile update: displayName only.
+   * Cannot change role, status, or email via this endpoint.
+   */
+  async updateProfile(
+    auth: AdminAuthContext,
+    displayName: string,
+  ): Promise<ReturnType<typeof toAuthenticatedUser>> {
+    const updated = await this.db.tx(async (client) => {
+      const result = await client.query<AdminUserRow>(
+        `UPDATE admin_users
+         SET display_name = $1, updated_at = now()
+         WHERE id = $2
+         RETURNING *`,
+        [displayName, auth.user.id],
+      );
+      const user = result.rows[0];
+      if (!user) {
+        throw new UnauthorizedException({
+          ok: false,
+          error: {
+            code: 'UNAUTHORIZED',
+            message: 'Authentication required',
+          },
+        });
+      }
+      await this.audit.write(
+        {
+          actorAdminId: auth.user.id,
+          action: 'auth.update_profile',
+          entityType: 'admin_user',
+          entityId: auth.user.id,
+          outcome: 'success',
+          metadata: { displayNameUpdated: true },
+        },
+        client,
+      );
+      return user;
+    });
+    return toAuthenticatedUser(updated);
+  }
+
   async countActiveSessions(): Promise<number> {
     const result = await this.db.query<{ count: string }>(
       `SELECT COUNT(*)::text AS count

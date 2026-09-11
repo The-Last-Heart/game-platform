@@ -3,6 +3,7 @@ import {
   Body,
   Controller,
   Get,
+  HttpCode,
   Param,
   ParseUUIDPipe,
   Patch,
@@ -18,6 +19,7 @@ import {
   adminAdministratorListResponseSchema,
   adminAdministratorPatchRequestSchema,
   adminAdministratorPatchResponseSchema,
+  adminAdministratorRevokeSessionsResponseSchema,
   adminSuccessEnvelopeSchema,
 } from '@thelastheart/contracts';
 import { CurrentAdmin } from '../decorators/current-admin.decorator';
@@ -107,5 +109,18 @@ export class AdminAdministratorsController {
     return adminSuccessEnvelopeSchema(
       adminAdministratorPatchResponseSchema,
     ).parse(ok(data));
+  }
+
+  @Post(':id/revoke-sessions')
+  @HttpCode(200)
+  @RequirePermissions('administrators:write')
+  async revokeSessions(
+    @Param('id', ParseUUIDPipe) id: string,
+    @CurrentAdmin() admin: AdminAuthContext,
+  ) {
+    const revokedCount = await this.administrators.revokeSessions(admin, id);
+    return adminSuccessEnvelopeSchema(
+      adminAdministratorRevokeSessionsResponseSchema,
+    ).parse(ok({ revokedCount }));
   }
 }

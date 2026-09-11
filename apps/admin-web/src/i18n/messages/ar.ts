@@ -53,6 +53,7 @@ const ar: Record<MessageKey, string> = {
   'common.saving': 'جارٍ الحفظ…',
   'common.cancel': 'إلغاء',
   'common.confirm': 'تأكيد',
+  'common.working': 'جارٍ العمل…',
   'common.create': 'إنشاء',
   'common.creating': 'جارٍ الإنشاء…',
   'common.edit': 'تعديل',
@@ -122,6 +123,27 @@ const ar: Record<MessageKey, string> = {
   'admins.role.viewer': 'مشاهد',
   'admins.status.active': 'نشط',
   'admins.status.deactivated': 'معطل',
+  'admins.sortBy': 'ترتيب حسب',
+  'admins.sortOrder': 'الاتجاه',
+  'admins.sort.createdAt': 'تاريخ الإنشاء',
+  'admins.sort.email': 'البريد الإلكتروني',
+  'admins.sort.displayName': 'اسم العرض',
+  'admins.sort.lastLoginAt': 'آخر تسجيل دخول',
+  'admins.sort.role': 'الدور',
+  'admins.sort.status': 'الحالة',
+  'admins.sort.asc': 'تصاعدي',
+  'admins.sort.desc': 'تنازلي',
+  'admins.revokeSessions': 'إلغاء الجلسات',
+  'admins.revokeSessionsConfirm':
+    'إلغاء الجلسات النشطة لهذا المسؤول؟ سيحتاجون إلى تسجيل الدخول مجدداً.',
+  'admins.revokeSessionsSuccess': 'تم إلغاء الجلسات',
+  'admins.confirmDeactivate':
+    'تعطيل هذا المسؤول؟ سيتم إلغاء كل جلساته.',
+  'admins.confirmPasswordReset':
+    'إعادة تعيين كلمة مرور هذا المسؤول؟ سيتم إلغاء كل جلساته.',
+  'admins.confirmRoleReduction':
+    'تخفيض دور هذا المسؤول؟ أكّد قبل المتابعة.',
+  'admins.readOnly': 'لديك صلاحية قراءة فقط للمسؤولين.',
 
   'audit.title': 'سجل التدقيق',
   'audit.subtitle': 'نشاط الأمان والإدارة',
@@ -167,6 +189,9 @@ const ar: Record<MessageKey, string> = {
   'profile.passwordChanged': 'آخر تغيير لكلمة المرور',
   'profile.sessionExpires': 'انتهاء الجلسة الحالية',
   'profile.securityLink': 'إعدادات الأمان',
+  'profile.saveSuccess': 'تم تحديث الملف الشخصي',
+  'profile.displayNameHint': 'يظهر هذا الاسم في واجهة الإدارة.',
+  'profile.updateDisplayName': 'تحديث اسم العرض',
 
   'security.title': 'الأمان',
   'security.subtitle': 'التحكم بكلمة المرور والجلسات',

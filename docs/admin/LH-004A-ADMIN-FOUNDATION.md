@@ -131,7 +131,9 @@ Invariants:
 | GET | `/api/admin/v1/auth/sessions` | Auth; active sessions (no secrets) |
 | POST | `/api/admin/v1/auth/change-password` | Auth + CSRF; rotates session |
 | POST | `/api/admin/v1/auth/revoke-other-sessions` | Auth + CSRF |
-| GET/POST/GET/PATCH | `/api/admin/v1/administrators` | RBAC |
+| GET/POST/GET/PATCH | `/api/admin/v1/administrators` | RBAC; list supports allowlisted `sortBy`/`sortOrder` |
+| POST | `/api/admin/v1/administrators/:id/revoke-sessions` | `administrators:write`; self keeps current session |
+| PATCH | `/api/admin/v1/auth/profile` | Auth; `{ displayName }` only |
 | GET | `/api/admin/v1/dashboard/overview` | Safe aggregates only |
 | GET | `/api/admin/v1/system/status` | Health + sessions + aggregates |
 | GET | `/api/admin/v1/audit-logs` | Redacted metadata |

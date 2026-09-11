@@ -19,5 +19,14 @@ export default async function AdministratorDetailPage({ params }: PageProps) {
     return <ForbiddenState label={t(rawLocale, 'common.forbidden')} />;
   }
 
-  return <AdministratorDetailForm locale={rawLocale} id={id} />;
+  const canWrite = session.user.permissions.includes('administrators:write');
+
+  return (
+    <AdministratorDetailForm
+      locale={rawLocale}
+      id={id}
+      canWrite={canWrite}
+      viewerId={session.user.id}
+    />
+  );
 }

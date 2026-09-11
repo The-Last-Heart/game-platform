@@ -14,6 +14,7 @@ import type { PoolClient } from 'pg';
 import { DatabaseService } from '../../database/database.service';
 import { hashPassword } from '../security/password';
 import { AdminAuditService } from './admin-audit.service';
+import { resolveAdministratorOrderBy } from './admin-administrators.sort';
 import {
   toAdministratorDto,
   type AdminAuthContext,
@@ -47,6 +48,7 @@ export class AdminAdministratorsService {
     }
 
     const where = filters.length > 0 ? `WHERE ${filters.join(' AND ')}` : '';
+    const orderBy = resolveAdministratorOrderBy(query.sortBy, query.sortOrder);
     const countResult = await this.db.query<{ count: string }>(
       `SELECT COUNT(*)::text AS count FROM admin_users ${where}`,
       params,
@@ -57,7 +59,7 @@ export class AdminAdministratorsService {
     const rows = await this.db.query<AdminUserRow>(
       `SELECT * FROM admin_users
        ${where}
-       ORDER BY created_at ASC
+       ORDER BY ${orderBy}
        LIMIT $${params.length - 1} OFFSET $${params.length}`,
       params,
     );
@@ -212,7 +214,13 @@ export class AdminAdministratorsService {
         ],
       );
 
-      if (nextStatus === 'deactivated') {
+      const deactivated =
+        nextStatus === 'deactivated' && target.status !== 'deactivated';
+      // Password reset by another admin: revoke ALL target sessions in this transaction.
+      const revokeAllSessions =
+        deactivated || (passwordChanged && actor.user.id !== target.id);
+
+      if (revokeAllSessions) {
         await client.query(
           `UPDATE admin_sessions
            SET revoked_at = now()
@@ -220,6 +228,8 @@ export class AdminAdministratorsService {
           [id],
         );
       }
+
+      // Reactivation only flips status; revoked sessions are intentionally not restored.
 
       await this.audit.write(
         {
@@ -232,12 +242,72 @@ export class AdminAdministratorsService {
             role: nextRole,
             status: nextStatus,
             passwordChanged,
+            sessionsRevoked: revokeAllSessions,
           },
         },
         client,
       );
 
       return { administrator: toAdministratorDto(updated.rows[0]!) };
+    });
+  }
+
+  /**
+   * Revoke sessions for a target administrator.
+   * Self-target: revoke all OTHER sessions (keep the actor's current session).
+   * Other-target: revoke ALL of their sessions.
+   */
+  async revokeSessions(
+    actor: AdminAuthContext,
+    targetId: string,
+  ): Promise<number> {
+    return this.db.tx(async (client) => {
+      const target = await client.query<AdminUserRow>(
+        `SELECT * FROM admin_users WHERE id = $1 FOR UPDATE`,
+        [targetId],
+      );
+      if (!target.rows[0]) {
+        throw new NotFoundException({
+          ok: false,
+          error: { code: 'NOT_FOUND', message: 'Administrator not found' },
+        });
+      }
+
+      const isSelf = actor.user.id === targetId;
+      let result;
+      if (isSelf) {
+        result = await client.query<{ id: string }>(
+          `UPDATE admin_sessions
+           SET revoked_at = now()
+           WHERE admin_user_id = $1
+             AND revoked_at IS NULL
+             AND id <> $2
+           RETURNING id`,
+          [targetId, actor.session.id],
+        );
+      } else {
+        result = await client.query<{ id: string }>(
+          `UPDATE admin_sessions
+           SET revoked_at = now()
+           WHERE admin_user_id = $1 AND revoked_at IS NULL
+           RETURNING id`,
+          [targetId],
+        );
+      }
+
+      const revokedCount = result.rowCount ?? 0;
+      await this.audit.write(
+        {
+          actorAdminId: actor.user.id,
+          action: 'administrators.revoke_sessions',
+          entityType: 'admin_user',
+          entityId: targetId,
+          outcome: 'success',
+          metadata: { revokedCount, selfTarget: isSelf },
+        },
+        client,
+      );
+      return revokedCount;
     });
   }
 

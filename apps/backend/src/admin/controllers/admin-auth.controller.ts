@@ -4,6 +4,7 @@ import {
   Controller,
   Get,
   HttpCode,
+  Patch,
   Post,
   Req,
   Res,
@@ -20,6 +21,8 @@ import {
   adminChangePasswordResponseSchema,
   adminRevokeOtherSessionsResponseSchema,
   adminSessionsResponseSchema,
+  adminUpdateProfileRequestSchema,
+  adminUpdateProfileResponseSchema,
 } from '@thelastheart/contracts';
 import type { Request, Response } from 'express';
 import { CurrentAdmin } from '../decorators/current-admin.decorator';
@@ -135,6 +138,33 @@ export class AdminAuthController {
       },
     };
     return adminSuccessEnvelopeSchema(adminMeResponseSchema).parse(ok(data));
+  }
+
+  @Patch('profile')
+  @HttpCode(200)
+  @UseGuards(AdminAuthGuard)
+  async updateProfile(
+    @Body() body: unknown,
+    @CurrentAdmin() admin: AdminAuthContext,
+  ) {
+    const parsedBody = adminUpdateProfileRequestSchema.safeParse(body);
+    if (!parsedBody.success) {
+      throw new BadRequestException({
+        ok: false,
+        error: {
+          code: 'VALIDATION_ERROR',
+          message: 'Invalid profile payload',
+          details: parsedBody.error.flatten(),
+        },
+      });
+    }
+    const user = await this.auth.updateProfile(
+      admin,
+      parsedBody.data.displayName,
+    );
+    return adminSuccessEnvelopeSchema(adminUpdateProfileResponseSchema).parse(
+      ok({ user }),
+    );
   }
 
   @Get('sessions')

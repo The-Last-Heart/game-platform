@@ -12,6 +12,7 @@ type ConfirmDialogProps = {
   confirmLabel?: string;
   cancelLabel?: string;
   danger?: boolean;
+  busy?: boolean;
   onConfirm: () => void;
   onCancel: () => void;
 };
@@ -24,6 +25,7 @@ export function ConfirmDialog({
   confirmLabel,
   cancelLabel,
   danger,
+  busy,
   onConfirm,
   onCancel,
 }: ConfirmDialogProps) {
@@ -39,20 +41,26 @@ export function ConfirmDialog({
   useEffect(() => {
     if (!open) return;
     const onKey = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') {
+      if (event.key === 'Escape' && !busy) {
         onCancel();
       }
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [open, onCancel]);
+  }, [open, onCancel, busy]);
 
   if (!open) {
     return null;
   }
 
   return (
-    <div className="dialog-backdrop" role="presentation" onClick={onCancel}>
+    <div
+      className="dialog-backdrop"
+      role="presentation"
+      onClick={() => {
+        if (!busy) onCancel();
+      }}
+    >
       <div
         className="dialog"
         role="alertdialog"
@@ -67,6 +75,7 @@ export function ConfirmDialog({
             type="button"
             className="btn btn-secondary"
             onClick={onCancel}
+            disabled={busy}
           >
             {cancelLabel ?? t(locale, 'common.cancel')}
           </button>
@@ -75,8 +84,11 @@ export function ConfirmDialog({
             type="button"
             className={`btn ${danger ? 'btn-danger' : 'btn-primary'}`}
             onClick={onConfirm}
+            disabled={busy}
           >
-            {confirmLabel ?? t(locale, 'common.confirm')}
+            {busy
+              ? t(locale, 'common.working')
+              : (confirmLabel ?? t(locale, 'common.confirm'))}
           </button>
         </div>
       </div>

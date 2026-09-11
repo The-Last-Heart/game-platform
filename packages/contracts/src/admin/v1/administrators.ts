@@ -9,6 +9,25 @@ const emailSchema = z
   .max(320)
   .transform((value) => value.toLowerCase());
 
+/** Allowlisted administrator list sort fields (never accept raw SQL identifiers). */
+export const ADMIN_ADMINISTRATOR_SORT_FIELDS = [
+  'createdAt',
+  'email',
+  'displayName',
+  'lastLoginAt',
+  'role',
+  'status',
+] as const;
+export const adminAdministratorSortFieldSchema = z.enum(
+  ADMIN_ADMINISTRATOR_SORT_FIELDS,
+);
+export type AdminAdministratorSortField = z.infer<
+  typeof adminAdministratorSortFieldSchema
+>;
+
+export const adminSortOrderSchema = z.enum(['asc', 'desc']);
+export type AdminSortOrder = z.infer<typeof adminSortOrderSchema>;
+
 export const adminAdministratorSchema = z
   .object({
     id: z.string().uuid(),
@@ -30,6 +49,8 @@ export const adminAdministratorListQuerySchema = adminPaginationQuerySchema
     role: adminRoleSchema.optional(),
     status: adminUserStatusSchema.optional(),
     q: z.string().trim().min(1).max(120).optional(),
+    sortBy: adminAdministratorSortFieldSchema.default('createdAt'),
+    sortOrder: adminSortOrderSchema.default('asc'),
   })
   .strict();
 export type AdminAdministratorListQuery = z.infer<
@@ -100,4 +121,13 @@ export const adminAdministratorPatchResponseSchema = z
   .strict();
 export type AdminAdministratorPatchResponse = z.infer<
   typeof adminAdministratorPatchResponseSchema
+>;
+
+export const adminAdministratorRevokeSessionsResponseSchema = z
+  .object({
+    revokedCount: z.number().int().nonnegative(),
+  })
+  .strict();
+export type AdminAdministratorRevokeSessionsResponse = z.infer<
+  typeof adminAdministratorRevokeSessionsResponseSchema
 >;

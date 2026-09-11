@@ -6,11 +6,18 @@ import { FormEvent, useCallback, useEffect, useState } from 'react';
 import type {
   AdminAdministrator,
   AdminAdministratorListResponse,
+  AdminAdministratorSortField,
   AdminRole,
+  AdminSortOrder,
   AdminUserStatus,
 } from '@thelastheart/contracts';
-import { ADMIN_ROLES, ADMIN_USER_STATUSES } from '@thelastheart/contracts';
 import {
+  ADMIN_ADMINISTRATOR_SORT_FIELDS,
+  ADMIN_ROLES,
+  ADMIN_USER_STATUSES,
+} from '@thelastheart/contracts';
+import {
+  ConfirmDialog,
   EmptyState,
   ErrorState,
   ForbiddenState,
@@ -31,6 +38,16 @@ function statusLabel(locale: Locale, status: AdminUserStatus): string {
   return t(locale, `admins.status.${status}` as MessageKey);
 }
 
+const ROLE_RANK: Record<AdminRole, number> = {
+  super_admin: 5,
+  content_manager: 4,
+  live_ops: 3,
+  translator: 2,
+  viewer: 1,
+};
+
+type PendingDanger = 'deactivate' | 'passwordReset' | 'roleReduction';
+
 export function AdministratorsList({
   locale,
   canWrite,
@@ -49,6 +66,9 @@ export function AdministratorsList({
   const q = searchParams.get('q') ?? '';
   const role = searchParams.get('role') ?? '';
   const status = searchParams.get('status') ?? '';
+  const sortBy = (searchParams.get('sortBy') ??
+    'createdAt') as AdminAdministratorSortField;
+  const sortOrder = (searchParams.get('sortOrder') ?? 'asc') as AdminSortOrder;
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -58,6 +78,8 @@ export function AdministratorsList({
     if (q.trim()) params.set('q', q.trim());
     if (role) params.set('role', role);
     if (status) params.set('status', status);
+    params.set('sortBy', sortBy);
+    params.set('sortOrder', sortOrder);
 
     const result = await adminApiFetch<AdminAdministratorListResponse>(
       `/administrators?${params.toString()}`,
@@ -73,7 +95,7 @@ export function AdministratorsList({
     setError(null);
     setData(result.data);
     setLoading(false);
-  }, [page, q, role, status]);
+  }, [page, q, role, status, sortBy, sortOrder]);
 
   useEffect(() => scheduleEffectTask(() => void load()), [load]);
 
@@ -85,9 +107,13 @@ export function AdministratorsList({
     const nextQ = String(form.get('q') ?? '').trim();
     const nextRole = String(form.get('role') ?? '');
     const nextStatus = String(form.get('status') ?? '');
+    const nextSortBy = String(form.get('sortBy') ?? 'createdAt');
+    const nextSortOrder = String(form.get('sortOrder') ?? 'asc');
     if (nextQ) next.set('q', nextQ);
     if (nextRole) next.set('role', nextRole);
     if (nextStatus) next.set('status', nextStatus);
+    next.set('sortBy', nextSortBy);
+    next.set('sortOrder', nextSortOrder);
     router.push(`/${locale}/administrators?${next.toString()}`);
   }
 
@@ -137,6 +163,29 @@ export function AdministratorsList({
                 {statusLabel(locale, value)}
               </option>
             ))}
+          </select>
+        </div>
+        <div className="field">
+          <label htmlFor="admins-sort-by">{t(locale, 'admins.sortBy')}</label>
+          <select id="admins-sort-by" name="sortBy" defaultValue={sortBy}>
+            {ADMIN_ADMINISTRATOR_SORT_FIELDS.map((value) => (
+              <option key={value} value={value}>
+                {t(locale, `admins.sort.${value}` as MessageKey)}
+              </option>
+            ))}
+          </select>
+        </div>
+        <div className="field">
+          <label htmlFor="admins-sort-order">
+            {t(locale, 'admins.sortOrder')}
+          </label>
+          <select
+            id="admins-sort-order"
+            name="sortOrder"
+            defaultValue={sortOrder}
+          >
+            <option value="asc">{t(locale, 'admins.sort.asc')}</option>
+            <option value="desc">{t(locale, 'admins.sort.desc')}</option>
           </select>
         </div>
         <button type="submit" className="btn btn-secondary">
@@ -316,9 +365,13 @@ export function AdministratorCreateForm({ locale }: { locale: Locale }) {
 export function AdministratorDetailForm({
   locale,
   id,
+  canWrite,
+  viewerId,
 }: {
   locale: Locale;
   id: string;
+  canWrite: boolean;
+  viewerId: string;
 }) {
   const { pushToast } = useToast();
   const [admin, setAdmin] = useState<AdminAdministrator | null>(null);
@@ -327,6 +380,12 @@ export function AdministratorDetailForm({
   const [forbidden, setForbidden] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
+  const [pendingBody, setPendingBody] = useState<Record<string, string> | null>(
+    null,
+  );
+  const [confirmKind, setConfirmKind] = useState<PendingDanger | null>(null);
+  const [revokeConfirmOpen, setRevokeConfirmOpen] = useState(false);
+  const [revoking, setRevoking] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -348,20 +407,7 @@ export function AdministratorDetailForm({
 
   useEffect(() => scheduleEffectTask(() => void load()), [load]);
 
-  async function onSubmit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    if (!admin) return;
-    setFormError(null);
-    const form = new FormData(event.currentTarget);
-    const password = String(form.get('password') ?? '');
-    const body: Record<string, string> = {
-      displayName: String(form.get('displayName') ?? '').trim(),
-      role: String(form.get('role') ?? ''),
-      status: String(form.get('status') ?? ''),
-    };
-    if (password) {
-      body.password = password;
-    }
+  async function submitPatch(body: Record<string, string>) {
     setSubmitting(true);
     const result = await adminApiFetch<{ administrator: AdminAdministrator }>(
       `/administrators/${id}`,
@@ -371,12 +417,89 @@ export function AdministratorDetailForm({
       },
     );
     setSubmitting(false);
+    setConfirmKind(null);
+    setPendingBody(null);
     if (!result.ok) {
       setFormError(result.error.message);
       return;
     }
     setAdmin(result.data.administrator);
     pushToast(t(locale, 'admins.saveSuccess'), 'success');
+  }
+
+  function onSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!admin || !canWrite || submitting) return;
+    setFormError(null);
+    const form = new FormData(event.currentTarget);
+    const password = String(form.get('password') ?? '');
+    const nextRole = String(form.get('role') ?? '') as AdminRole;
+    const nextStatus = String(form.get('status') ?? '') as AdminUserStatus;
+    const body: Record<string, string> = {
+      displayName: String(form.get('displayName') ?? '').trim(),
+      role: nextRole,
+      status: nextStatus,
+    };
+    if (password) {
+      body.password = password;
+    }
+
+    const isOther = viewerId !== admin.id;
+    const deactivating =
+      nextStatus === 'deactivated' && admin.status !== 'deactivated';
+    const passwordReset = Boolean(password) && isOther;
+    const roleReduction =
+      ROLE_RANK[nextRole] < ROLE_RANK[admin.role] && nextRole !== admin.role;
+
+    if (deactivating) {
+      setPendingBody(body);
+      setConfirmKind('deactivate');
+      return;
+    }
+    if (passwordReset) {
+      setPendingBody(body);
+      setConfirmKind('passwordReset');
+      return;
+    }
+    if (roleReduction) {
+      setPendingBody(body);
+      setConfirmKind('roleReduction');
+      return;
+    }
+
+    void submitPatch(body);
+  }
+
+  async function revokeSessions() {
+    if (!canWrite || revoking) return;
+    setRevoking(true);
+    const result = await adminApiFetch<{ revokedCount: number }>(
+      `/administrators/${id}/revoke-sessions`,
+      { method: 'POST' },
+    );
+    setRevoking(false);
+    setRevokeConfirmOpen(false);
+    if (!result.ok) {
+      pushToast(result.error.message, 'error');
+      return;
+    }
+    pushToast(
+      `${t(locale, 'admins.revokeSessionsSuccess')} (${result.data.revokedCount})`,
+      'success',
+    );
+  }
+
+  function confirmMessage(): string {
+    if (confirmKind === 'deactivate') {
+      return t(locale, 'admins.confirmDeactivate');
+    }
+    if (confirmKind === 'passwordReset') {
+      return t(locale, 'admins.confirmPasswordReset');
+    }
+    if (confirmKind === 'roleReduction') {
+      return t(locale, 'admins.confirmRoleReduction');
+    }
+    return t(locale, 'confirm.title');
   }
 
   if (forbidden) {
@@ -395,6 +518,8 @@ export function AdministratorDetailForm({
     );
   }
 
+  const readOnly = !canWrite;
+
   return (
     <div>
       <div className="page-header">
@@ -406,6 +531,7 @@ export function AdministratorDetailForm({
           {t(locale, 'common.back')}
         </Link>
       </div>
+      {readOnly ? <p className="panel">{t(locale, 'admins.readOnly')}</p> : null}
       <form className="panel stack" onSubmit={onSubmit}>
         {formError ? <p className="form-error">{formError}</p> : null}
         <div className="field">
@@ -416,11 +542,19 @@ export function AdministratorDetailForm({
             defaultValue={admin.displayName}
             required
             maxLength={120}
+            disabled={readOnly || submitting}
+            key={`name-${admin.updatedAt}`}
           />
         </div>
         <div className="field">
           <label htmlFor="detail-role">{t(locale, 'admins.role')}</label>
-          <select id="detail-role" name="role" defaultValue={admin.role}>
+          <select
+            id="detail-role"
+            name="role"
+            defaultValue={admin.role}
+            disabled={readOnly || submitting}
+            key={`role-${admin.updatedAt}`}
+          >
             {ADMIN_ROLES.map((value) => (
               <option key={value} value={value}>
                 {roleLabel(locale, value)}
@@ -430,7 +564,13 @@ export function AdministratorDetailForm({
         </div>
         <div className="field">
           <label htmlFor="detail-status">{t(locale, 'admins.status')}</label>
-          <select id="detail-status" name="status" defaultValue={admin.status}>
+          <select
+            id="detail-status"
+            name="status"
+            defaultValue={admin.status}
+            disabled={readOnly || submitting}
+            key={`status-${admin.updatedAt}`}
+          >
             {ADMIN_USER_STATUSES.map((value) => (
               <option key={value} value={value}>
                 {statusLabel(locale, value)}
@@ -438,21 +578,24 @@ export function AdministratorDetailForm({
             ))}
           </select>
         </div>
-        <div className="field">
-          <label htmlFor="detail-password">
-            {t(locale, 'admins.newPassword')}
-          </label>
-          <input
-            id="detail-password"
-            name="password"
-            type="password"
-            minLength={12}
-            aria-describedby="detail-password-hint"
-          />
-          <span id="detail-password-hint">
-            {t(locale, 'admins.passwordHint')}
-          </span>
-        </div>
+        {canWrite ? (
+          <div className="field">
+            <label htmlFor="detail-password">
+              {t(locale, 'admins.newPassword')}
+            </label>
+            <input
+              id="detail-password"
+              name="password"
+              type="password"
+              minLength={12}
+              disabled={submitting}
+              aria-describedby="detail-password-hint"
+            />
+            <span id="detail-password-hint">
+              {t(locale, 'admins.passwordHint')}
+            </span>
+          </div>
+        ) : null}
         <dl className="definition-list">
           <div>
             <dt>{t(locale, 'admins.lastLogin')}</dt>
@@ -475,10 +618,60 @@ export function AdministratorDetailForm({
             <dd>{new Date(admin.passwordChangedAt).toLocaleString(locale)}</dd>
           </div>
         </dl>
-        <button type="submit" className="btn btn-primary" disabled={submitting}>
-          {submitting ? t(locale, 'common.saving') : t(locale, 'common.save')}
-        </button>
+        {canWrite ? (
+          <div className="dialog-actions">
+            <button
+              type="submit"
+              className="btn btn-primary"
+              disabled={submitting || revoking}
+            >
+              {submitting
+                ? t(locale, 'common.saving')
+                : t(locale, 'common.save')}
+            </button>
+            <button
+              type="button"
+              className="btn btn-danger"
+              disabled={submitting || revoking}
+              onClick={() => setRevokeConfirmOpen(true)}
+            >
+              {t(locale, 'admins.revokeSessions')}
+            </button>
+          </div>
+        ) : null}
       </form>
+
+      <ConfirmDialog
+        locale={locale}
+        open={confirmKind !== null}
+        message={confirmMessage()}
+        danger
+        busy={submitting}
+        onCancel={() => {
+          if (submitting) return;
+          setConfirmKind(null);
+          setPendingBody(null);
+        }}
+        onConfirm={() => {
+          if (!pendingBody || submitting) return;
+          void submitPatch(pendingBody);
+        }}
+      />
+
+      <ConfirmDialog
+        locale={locale}
+        open={revokeConfirmOpen}
+        message={t(locale, 'admins.revokeSessionsConfirm')}
+        danger
+        busy={revoking}
+        onCancel={() => {
+          if (revoking) return;
+          setRevokeConfirmOpen(false);
+        }}
+        onConfirm={() => {
+          void revokeSessions();
+        }}
+      />
     </div>
   );
 }

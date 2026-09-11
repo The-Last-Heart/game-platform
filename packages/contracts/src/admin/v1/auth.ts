@@ -124,3 +124,21 @@ export const adminLogoutResponseSchema = z
   })
   .strict();
 export type AdminLogoutResponse = z.infer<typeof adminLogoutResponseSchema>;
+
+export const adminUpdateProfileRequestSchema = z
+  .object({
+    displayName: z.string().trim().min(1).max(120),
+  })
+  .strict();
+export type AdminUpdateProfileRequest = z.infer<
+  typeof adminUpdateProfileRequestSchema
+>;
+
+export const adminUpdateProfileResponseSchema = z
+  .object({
+    user: adminAuthenticatedUserSchema,
+  })
+  .strict();
+export type AdminUpdateProfileResponse = z.infer<
+  typeof adminUpdateProfileResponseSchema
+>;
