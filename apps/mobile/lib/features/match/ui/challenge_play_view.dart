@@ -7,6 +7,7 @@ import '../../../theme/lh_tokens.dart';
 import '../engines/challenge_engine.dart';
 import '../protocol/realtime_messages.dart';
 import '../state/match_snapshot.dart';
+import 'widgets/energy_display.dart';
 import 'widgets/hearts_display.dart';
 
 /// Active challenge view: header chrome over a full-bleed engine surface.
@@ -92,6 +93,8 @@ class _ChallengePlayViewState extends State<ChallengePlayView> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: <Widget>[
                   HeartsDisplay(hearts: local?.hearts ?? 0),
+                  const SizedBox(width: 12),
+                  EnergyDisplay(energy: local?.energy ?? 0),
                   const Spacer(),
                   Text(
                     resolver.resolve(

@@ -1,0 +1,21 @@
+{
+  "definitionId": "gesture.reverse_swipe.dev",
+  "definitionVersion": 1,
+  "engineId": "gesture.reverse_swipe",
+  "durationMs": 5000,
+  "heartPenaltyOnFailure": 1,
+  "energyRewardOnSuccess": 1,
+  "promptKey": "challenge.reverse_swipe.intro",
+  "choiceKeys": [],
+  "clientConfig": {
+    "categoryKey": "challenge.category.gesture",
+    "promptKey": "challenge.reverse_swipe.prompt",
+    "displayedDirection": "right",
+    "minDistancePx": 80
+  },
+  "serverConfig": {
+    "requiredDirection": "left",
+    "minDistancePx": 80,
+    "maxDurationMs": 1500
+  }
+}

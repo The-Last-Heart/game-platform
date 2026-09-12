@@ -1254,6 +1254,16 @@ export class MatchGateway
           serverTimestampMs: event.serverTimestampMs,
           payload: { winnerId: event.winnerId },
         });
+      } else if (event.kind === 'match_drawn') {
+        this.server.to(this.room(broadcast.matchId)).emit('event', {
+          schemaVersion: REALTIME_SCHEMA_VERSION,
+          type: MessageTypes.MatchDrawn,
+          messageId: randomUUID(),
+          matchId: broadcast.matchId,
+          serverSequence: event.sequence,
+          serverTimestampMs: event.serverTimestampMs,
+          payload: {},
+        });
       } else if (
         event.kind === 'player_joined' ||
         event.kind === 'presence_changed'

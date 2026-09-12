@@ -7,6 +7,7 @@ import {
   WaitForSignalEvaluator,
   WAIT_FOR_SIGNAL_ENGINE_ID,
 } from './wait-for-signal.evaluator';
+import { createLaunchEvaluators } from './engines/launch-evaluators';
 import { MatchEngine, toPublicChallengeView } from './match.engine';
 import {
   DomainError,
@@ -23,7 +24,9 @@ function setup() {
   const registry = new ChallengeEvaluatorRegistryImpl();
   registry.register(new DevDeterministicChoiceEvaluator());
   registry.register(new WaitForSignalEvaluator());
-  const engine = new MatchEngine(clock, registry);
+  for (const evaluator of createLaunchEvaluators()) {
+    registry.register(evaluator);
+  }  const engine = new MatchEngine(clock, registry);
   return { clock, engine, registry };
 }
 
@@ -956,7 +959,7 @@ describe('WaitForSignal engine', () => {
     expect(finished.events.some((e) => e.kind === 'match_finished')).toBe(true);
   });
 
-  it('completeByStandings does not invent a winner on equal hearts', () => {
+  it('completeByStandings does not invent a winner on equal hearts — draw', () => {
     const { engine } = setup();
     let match = fillSix(engine);
     for (const player of match.players.values()) {
@@ -968,8 +971,10 @@ describe('WaitForSignal engine', () => {
     match.players.get('p0')!.energy = 9;
     match.players.get('p1')!.energy = 0;
     const finished = engine.completeByStandings(match);
-    expect(finished.match.phase).toBe('halted');
+    expect(finished.match.phase).toBe('draw');
+    expect(finished.match.status).toBe('completed');
     expect(finished.match.winnerId).toBeNull();
+    expect(finished.events.some((e) => e.kind === 'match_drawn')).toBe(true);
     expect(finished.events.some((e) => e.kind === 'match_finished')).toBe(
       false,
     );

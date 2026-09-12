@@ -26,7 +26,7 @@ export class WaitForSignalEvaluator implements ChallengeEvaluator {
     deadlineMonoMs: number;
   }): ChallengeEvaluation {
     if (input.receivedMonoMs > input.deadlineMonoMs) {
-      return { success: false };
+      return { success: false, reasonKey: 'result.timeout' };
     }
 
     // _expectedSignalToken is injected by the engine before evaluation
@@ -35,13 +35,20 @@ export class WaitForSignalEvaluator implements ChallengeEvaluator {
 
     if (!expectedToken || typeof expectedToken !== 'string') {
       // Signal has not fired yet — early tap is a failure
-      return { success: false };
+      return { success: false, reasonKey: 'result.too_early' };
     }
 
     if (!submittedToken || typeof submittedToken !== 'string') {
-      return { success: false };
+      return { success: false, reasonKey: 'result.failure' };
     }
 
-    return { success: submittedToken === expectedToken };
+    const success = submittedToken === expectedToken;
+    return {
+      success,
+      reasonKey: success ? 'result.success' : 'result.failure',
+      measureMs: success
+        ? Math.max(0, Math.floor(input.receivedMonoMs))
+        : undefined,
+    };
   }
 }

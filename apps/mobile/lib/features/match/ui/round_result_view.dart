@@ -271,7 +271,7 @@ class _RoundResultViewState extends State<RoundResultView> {
   ) {
     return <Widget>[
       Text(
-        _failureReason(resolver, resolution.outcome),
+        _failureReason(resolver, resolution),
         style: Theme.of(context).textTheme.titleMedium,
         textAlign: TextAlign.center,
       ),
@@ -377,8 +377,15 @@ class _RoundResultViewState extends State<RoundResultView> {
     };
   }
 
-  String _failureReason(TranslationResolver resolver, String? outcome) {
-    return switch (outcome) {
+  String _failureReason(
+    TranslationResolver resolver,
+    PlayerChallengeResolution? resolution,
+  ) {
+    final String? key = resolution?.reasonKey;
+    if (key != null && key.isNotEmpty) {
+      return resolver.resolve(key);
+    }
+    return switch (resolution?.outcome) {
       'timeout' => resolver.resolve(TranslationKeys.resultTimeoutReason),
       'failure' => resolver.resolve(TranslationKeys.resultPressedEarlyReason),
       _ => resolver.resolve(TranslationKeys.resultFailureReason),

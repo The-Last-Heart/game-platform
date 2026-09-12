@@ -7,6 +7,7 @@ import '../session/match_session_controller.dart';
 import '../state/match_snapshot.dart';
 import 'challenge_intro_view.dart';
 import 'challenge_play_view.dart';
+import 'draw_view.dart';
 import 'halted_view.dart';
 import 'lobby_view.dart';
 import 'ready_countdown_view.dart';
@@ -144,6 +145,12 @@ class _MatchShellState extends State<MatchShell> {
         );
       case MatchPhase.completed:
         return WinnerView(
+          state: state,
+          onBackHome: widget.onBackHome,
+          onRematch: widget.onRematch,
+        );
+      case MatchPhase.draw:
+        return DrawView(
           state: state,
           onBackHome: widget.onBackHome,
           onRematch: widget.onRematch,

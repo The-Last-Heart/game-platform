@@ -371,6 +371,7 @@ class MatchSessionController {
     final MatchPhase phase = state.value.phase;
     if (phase == MatchPhase.roundResult ||
         phase == MatchPhase.completed ||
+        phase == MatchPhase.draw ||
         phase == MatchPhase.halted) {
       state.value = state.value.copyWith(
         phase: MatchPhase.lobby,
@@ -836,6 +837,7 @@ class MatchSessionController {
       await _handleProtocolError(raw);
     } else if (type == MessageTypes.matchFinished ||
         state.value.phase == MatchPhase.completed ||
+        state.value.phase == MatchPhase.draw ||
         state.value.phase == MatchPhase.halted) {
       _maybeEnterTerminal(state.value);
     }
@@ -1131,7 +1133,9 @@ class MatchSessionController {
     final _PendingHandshake? handshake = _handshake;
 
     final bool terminalPhase =
-        view.phase == MatchPhase.completed || view.phase == MatchPhase.halted;
+        view.phase == MatchPhase.completed ||
+        view.phase == MatchPhase.draw ||
+        view.phase == MatchPhase.halted;
 
     // Terminal authoritative states after bind or terminal resume — only when
     // recovery has converged (below-watermark terminal-looking snaps must not
@@ -1207,6 +1211,7 @@ class MatchSessionController {
     if (view.lifecycle == SessionLifecycle.bound) {
       if (view.phase != MatchPhase.lobby &&
           view.phase != MatchPhase.completed &&
+          view.phase != MatchPhase.draw &&
           view.phase != MatchPhase.halted) {
         _rematchLobbyActive = false;
       }
@@ -1457,7 +1462,9 @@ class MatchSessionController {
         view.lifecycle != SessionLifecycle.terminal) {
       return;
     }
-    if (view.phase == MatchPhase.completed || view.phase == MatchPhase.halted) {
+    if (view.phase == MatchPhase.completed ||
+        view.phase == MatchPhase.draw ||
+        view.phase == MatchPhase.halted) {
       _enterTerminal();
     }
   }

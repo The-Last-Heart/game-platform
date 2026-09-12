@@ -155,6 +155,7 @@ abstract final class TranslationKeys {
   static const String challengeAnswerWaiting = 'challenge.answer_waiting';
   static const String winnerStandings = 'winner.standings';
   static const String winnerEnergyScore = 'winner.energy_score';
+  static const String resultEqual = 'result.equal';
 
   // ── LH-005 entry ──
   static const String commonBack = 'common.back';

@@ -35,6 +35,7 @@ abstract final class MessageTypes {
   static const String challengeResolved = 'challenge.resolved';
   static const String matchStateChanged = 'match.state_changed';
   static const String matchFinished = 'match.finished';
+  static const String matchDrawn = 'match.drawn';
   static const String matchmakingStatus = 'matchmaking.status';
   static const String protocolError = 'protocol.error';
 }
@@ -102,6 +103,7 @@ enum MatchPhase {
   challengeActive,
   roundResult,
   completed,
+  draw,
   halted;
 
   static MatchPhase fromString(String value) {
@@ -112,6 +114,7 @@ enum MatchPhase {
       'challenge_active' => MatchPhase.challengeActive,
       'round_result' => MatchPhase.roundResult,
       'completed' => MatchPhase.completed,
+      'draw' => MatchPhase.draw,
       'halted' => MatchPhase.halted,
       _ => throw ArgumentError('Unknown MatchPhase: $value'),
     };
@@ -125,6 +128,7 @@ enum MatchPhase {
       MatchPhase.challengeActive => 'challenge_active',
       MatchPhase.roundResult => 'round_result',
       MatchPhase.completed => 'completed',
+      MatchPhase.draw => 'draw',
       MatchPhase.halted => 'halted',
     };
   }
@@ -135,6 +139,8 @@ enum RoundPhase {
   waitingSignal,
   signalActive,
   signalExpired,
+  preview,
+  answer,
   resolved;
 
   static RoundPhase fromString(String value) {
@@ -142,6 +148,8 @@ enum RoundPhase {
       'waiting_signal' => RoundPhase.waitingSignal,
       'signal_active' => RoundPhase.signalActive,
       'signal_expired' => RoundPhase.signalExpired,
+      'preview' => RoundPhase.preview,
+      'answer' => RoundPhase.answer,
       'resolved' => RoundPhase.resolved,
       _ => throw ArgumentError('Unknown RoundPhase: $value'),
     };
@@ -323,6 +331,8 @@ class PlayerChallengeResolution {
     required this.heartsAfter,
     required this.energyAfter,
     required this.statusAfter,
+    this.reasonKey,
+    this.measureMs,
   });
 
   final String playerId;
@@ -332,6 +342,8 @@ class PlayerChallengeResolution {
   final int heartsAfter;
   final int energyAfter;
   final PlayerStatus statusAfter;
+  final String? reasonKey;
+  final int? measureMs;
 
   factory PlayerChallengeResolution.fromJson(Map<String, dynamic> json) {
     return PlayerChallengeResolution(
@@ -342,6 +354,8 @@ class PlayerChallengeResolution {
       heartsAfter: json['heartsAfter'] as int,
       energyAfter: json['energyAfter'] as int,
       statusAfter: PlayerStatus.fromString(json['statusAfter'] as String),
+      reasonKey: json['reasonKey'] as String?,
+      measureMs: json['measureMs'] as int?,
     );
   }
 }
@@ -684,6 +698,15 @@ class MatchFinishedPayload {
 
   factory MatchFinishedPayload.fromJson(Map<String, dynamic> json) {
     return MatchFinishedPayload(winnerId: json['winnerId'] as String);
+  }
+}
+
+/// match.drawn payload — catalog exhausted with tied top hearts.
+class MatchDrawnPayload {
+  const MatchDrawnPayload();
+
+  factory MatchDrawnPayload.fromJson(Map<String, dynamic> json) {
+    return const MatchDrawnPayload();
   }
 }
 

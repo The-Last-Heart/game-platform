@@ -1,0 +1,23 @@
+{
+  "definitionId": "tap.precision.dev",
+  "definitionVersion": 1,
+  "engineId": "tap.precision",
+  "durationMs": 5000,
+  "heartPenaltyOnFailure": 1,
+  "energyRewardOnSuccess": 1,
+  "promptKey": "challenge.precision.intro",
+  "choiceKeys": [],
+  "clientConfig": {
+    "categoryKey": "challenge.category.tap",
+    "promptKey": "challenge.precision.prompt",
+    "attemptCount": 2,
+    "targets": [
+      { "id": "t1", "x": 0.3, "y": 0.4 },
+      { "id": "t2", "x": 0.7, "y": 0.6 }
+    ]
+  },
+  "serverConfig": {
+    "targetIds": ["t1", "t2"],
+    "attemptCount": 2
+  }
+}

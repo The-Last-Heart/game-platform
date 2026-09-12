@@ -765,7 +765,7 @@ describe('MatchService', () => {
     service.onModuleDestroy();
   });
 
-  it('after a playlist round, survivors continue with a cycled challenge', async () => {
+  it('after the last playlist round, equal hearts ends in a draw', async () => {
     const clock = new FakeClock(5_000_000);
     const service = MatchService.forTests({ clock, nodeEnv: 'test' });
     const created = await service.createQuickSurvivalMatch([
@@ -781,10 +781,10 @@ describe('MatchService', () => {
     const store = service.getStoreForTests();
     const match = await store.get(created.matchId);
     expect(match).toBeTruthy();
-    // Simulate completed first playlist round awaiting hold expiry — both still alive.
+    // One-item (or exhausted) catalog: roundNumber past last index.
     match!.phase = 'round_result';
     match!.status = 'waiting';
-    match!.roundNumber = 1;
+    match!.roundNumber = Math.max(match!.pinnedPlaylist.length, 1);
     match!.phaseDeadlineAtMs = clock.nowMs();
     match!.phaseDeadlineMonoMs = clock.monoMs();
     match!.players.get(hostId)!.hearts = 2;
@@ -793,9 +793,10 @@ describe('MatchService', () => {
 
     await service.tickDue(created.matchId);
     const after = await store.get(created.matchId);
-    expect(after?.phase).toBe('challenge_active');
+    expect(after?.phase).toBe('draw');
+    expect(after?.status).toBe('completed');
     expect(after?.winnerId).toBeNull();
-    expect(after?.currentChallenge).toBeTruthy();
+    expect(after?.currentChallenge).toBeNull();
 
     service.onModuleDestroy();
   });

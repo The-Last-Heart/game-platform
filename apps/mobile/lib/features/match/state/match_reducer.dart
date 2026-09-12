@@ -317,6 +317,14 @@ class MatchReducer {
           serverSequence: envelope.serverSequence ?? state.serverSequence,
         );
 
+      case MessageTypes.matchDrawn:
+        return state.copyWith(
+          phase: MatchPhase.draw,
+          winnerId: () => null,
+          currentChallenge: () => null,
+          serverSequence: envelope.serverSequence ?? state.serverSequence,
+        );
+
       case MessageTypes.playerPresence:
         final PlayerPresencePayload presence = PlayerPresencePayload.fromJson(
           envelope.payload!,

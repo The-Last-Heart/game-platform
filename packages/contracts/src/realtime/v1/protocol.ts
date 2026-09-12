@@ -33,6 +33,7 @@ export const MessageTypes = {
   ChallengeResolved: 'challenge.resolved',
   MatchStateChanged: 'match.state_changed',
   MatchFinished: 'match.finished',
+  MatchDrawn: 'match.drawn',
   MatchmakingStatus: 'matchmaking.status',
   ProtocolError: 'protocol.error',
 } as const;
@@ -262,6 +263,7 @@ export const matchPhaseSchema = z.enum([
   'challenge_active',
   'round_result',
   'completed',
+  'draw',
   'halted',
 ]);
 
@@ -271,6 +273,8 @@ export const roundPhaseSchema = z.enum([
   'waiting_signal',
   'signal_active',
   'signal_expired',
+  'preview',
+  'answer',
   'resolved',
 ]);
 
@@ -331,20 +335,26 @@ export const publicChallengeSchema = z
     }
   });
 
+export const playerChallengeResolutionSchema = z
+  .object({
+    playerId: uuidLike,
+    outcome: z.enum(['success', 'failure', 'timeout', 'skipped_spectator']),
+    heartsDelta: z.number().int(),
+    energyDelta: z.number().int(),
+    heartsAfter: z.number().int().min(0).max(3),
+    energyAfter: z.number().int().min(0),
+    statusAfter: z.enum(['active', 'spectator']),
+    /** Translation key explaining the outcome (success/failure/timeout reason). */
+    reasonKey: nonEmpty.optional(),
+    /** Measured player performance for this challenge when applicable. */
+    measureMs: z.number().int().nonnegative().optional(),
+  })
+  .strict();
+
 export const lastRoundResultSchema = z
   .object({
     challengeInstanceId: uuidLike,
-    resolutions: z.array(
-      z.object({
-        playerId: uuidLike,
-        outcome: z.enum(['success', 'failure', 'timeout', 'skipped_spectator']),
-        heartsDelta: z.number().int(),
-        energyDelta: z.number().int(),
-        heartsAfter: z.number().int().min(0).max(3),
-        energyAfter: z.number().int().min(0),
-        statusAfter: z.enum(['active', 'spectator']),
-      }).strict(),
-    ),
+    resolutions: z.array(playerChallengeResolutionSchema),
   })
   .strict();
 
@@ -465,18 +475,6 @@ export const challengeSubmissionAckPayloadSchema = z
   })
   .strict();
 
-export const playerChallengeResolutionSchema = z
-  .object({
-    playerId: uuidLike,
-    outcome: z.enum(['success', 'failure', 'timeout', 'skipped_spectator']),
-    heartsDelta: z.number().int(),
-    energyDelta: z.number().int(),
-    heartsAfter: z.number().int().min(0).max(3),
-    energyAfter: z.number().int().min(0),
-    statusAfter: z.enum(['active', 'spectator']),
-  })
-  .strict();
-
 export const challengeResolvedPayloadSchema = z
   .object({
     challengeInstanceId: uuidLike,
@@ -501,6 +499,9 @@ export const matchFinishedPayloadSchema = z
     winnerId: uuidLike,
   })
   .strict();
+
+/** Catalog exhausted with tied top hearts — no winner. */
+export const matchDrawnPayloadSchema = z.object({}).strict();
 
 export const protocolErrorPayloadSchema = z
   .object({
@@ -587,6 +588,10 @@ export const serverEventSchema = z.discriminatedUnion('type', [
   serverEventBase.extend({
     type: z.literal(MessageTypes.MatchFinished),
     payload: matchFinishedPayloadSchema,
+  }),
+  serverEventBase.extend({
+    type: z.literal(MessageTypes.MatchDrawn),
+    payload: matchDrawnPayloadSchema,
   }),
   serverEventBase.extend({
     type: z.literal(MessageTypes.MatchmakingStatus),

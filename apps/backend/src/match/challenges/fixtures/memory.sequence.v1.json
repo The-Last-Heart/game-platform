@@ -1,0 +1,21 @@
+{
+  "definitionId": "memory.sequence.dev",
+  "definitionVersion": 1,
+  "engineId": "memory.sequence",
+  "durationMs": 6000,
+  "heartPenaltyOnFailure": 1,
+  "energyRewardOnSuccess": 1,
+  "promptKey": "challenge.memory.intro",
+  "choiceKeys": [],
+  "clientConfig": {
+    "categoryKey": "challenge.category.memory",
+    "promptKey": "challenge.memory.prompt",
+    "previewMs": 1500,
+    "optionKeys": ["memory.opt.a", "memory.opt.b", "memory.opt.c", "memory.opt.d"]
+  },
+  "serverConfig": {
+    "sequence": ["memory.opt.a", "memory.opt.c", "memory.opt.b"],
+    "previewMs": 1500,
+    "optionKeys": ["memory.opt.a", "memory.opt.b", "memory.opt.c", "memory.opt.d"]
+  }
+}

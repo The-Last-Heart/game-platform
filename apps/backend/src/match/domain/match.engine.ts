@@ -679,11 +679,28 @@ export class MatchEngine {
         (challenge.definition.serverConfig['signalDelayMs'] as number) ?? 1500;
       challenge.signalAtMonoMs = nowMono + signalDelay;
       challenge.signalToken = randomBytes(16).toString('base64url');
+      challenge.previewEndsAtMonoMs = null;
+      challenge.signaledAtMs = null;
+      challenge.signalEndsAtMs = null;
+      challenge.signalEndsAtMonoMs = null;
+    } else if (challenge.engineId === 'memory.sequence') {
+      const previewMs =
+        (challenge.definition.serverConfig['previewMs'] as number) ?? 1500;
+      challenge.roundPhase = 'preview';
+      challenge.previewEndsAtMonoMs = nowMono + previewMs;
+      challenge.signalToken = null;
+      challenge.signalAtMonoMs = null;
       challenge.signaledAtMs = null;
       challenge.signalEndsAtMs = null;
       challenge.signalEndsAtMonoMs = null;
     } else {
-      challenge.roundPhase = 'signal_active';
+      challenge.roundPhase = 'answer';
+      challenge.previewEndsAtMonoMs = null;
+      challenge.signalToken = null;
+      challenge.signalAtMonoMs = null;
+      challenge.signaledAtMs = null;
+      challenge.signalEndsAtMs = null;
+      challenge.signalEndsAtMonoMs = null;
     }
 
     next.status = 'challenge_active';
@@ -810,9 +827,14 @@ export class MatchEngine {
         (pinned.serverConfig['signalDelayMs'] as number) ?? 1500;
       round.signalAtMonoMs = nowMono + signalDelay;
       round.signalToken = randomBytes(16).toString('base64url');
+      round.previewEndsAtMonoMs = null;
+    } else if (pinned.engineId === 'memory.sequence') {
+      const previewMs = (pinned.serverConfig['previewMs'] as number) ?? 1500;
+      round.roundPhase = 'preview';
+      round.previewEndsAtMonoMs = nowMono + previewMs;
     } else {
-      // Non-signal engines start in signal_active immediately
-      round.roundPhase = 'signal_active';
+      round.roundPhase = 'answer';
+      round.previewEndsAtMonoMs = null;
     }
 
     for (const player of next.players.values()) {
@@ -892,6 +914,30 @@ export class MatchEngine {
   }
 
   /**
+   * Memory preview → answer transition when preview window elapses.
+   */
+  advancePreview(match: MatchState): {
+    match: MatchState;
+    events: DomainEvent[];
+  } {
+    if (
+      !match.currentChallenge ||
+      match.currentChallenge.status !== 'active' ||
+      match.currentChallenge.roundPhase !== 'preview'
+    ) {
+      return { match, events: [] };
+    }
+    const ends = match.currentChallenge.previewEndsAtMonoMs;
+    if (ends == null || this.clock.monoMs() < ends) {
+      return { match, events: [] };
+    }
+    const next = this.cloneMatch(match);
+    next.currentChallenge!.roundPhase = 'answer';
+    const bump = this.bump(next);
+    return { match: next, events: [bump] };
+  }
+
+  /**
    * Ends the blue-heart window: heart returns to red; late taps fail.
    * Token is no longer published; evaluation uses the mono window.
    */
@@ -908,7 +954,8 @@ export class MatchEngine {
     }
 
     const endsAtMono = match.currentChallenge.signalEndsAtMonoMs;
-    if (endsAtMono == null || this.clock.monoMs() < endsAtMono) {
+    // Inclusive blue window: expire only after the end instant.
+    if (endsAtMono == null || this.clock.monoMs() <= endsAtMono) {
       return { match, events: [] };
     }
 
@@ -959,15 +1006,18 @@ export class MatchEngine {
   }
 
   /**
-   * Fallback end when no playable catalog remains. Live survival crowns only a
-   * unique hearts leader — equal remaining hearts never invents a winner
-   * (energy / playerId must not break a hearts tie).
+   * End when no further catalog entry remains. Crowns a unique hearts leader;
+   * tied top hearts → terminal draw (no winner). Energy must not break ties.
    */
   completeByStandings(match: MatchState): {
     match: MatchState;
     events: DomainEvent[];
   } {
-    if (match.status === 'completed' || match.winnerId != null) {
+    if (
+      match.status === 'completed' ||
+      match.winnerId != null ||
+      match.phase === 'draw'
+    ) {
       return { match, events: [] };
     }
     const next = this.cloneMatch(match);
@@ -994,24 +1044,24 @@ export class MatchEngine {
     }
     const topHearts = Math.max(...alive.map((p) => p.hearts));
     const leaders = alive.filter((p) => p.hearts === topHearts);
+    next.currentChallenge = null;
+    next.phaseDeadlineAtMs = null;
+    next.phaseDeadlineMonoMs = null;
+    next.nextPhaseAtMs = null;
     if (leaders.length !== 1) {
-      // Shared remaining hearts — do not invent a winner.
-      next.status = 'resolving';
-      next.phase = 'halted';
-      next.currentChallenge = null;
-      next.phaseDeadlineAtMs = null;
-      next.phaseDeadlineMonoMs = null;
-      next.nextPhaseAtMs = null;
-      const haltBump = this.bump(next);
+      next.status = 'completed';
+      next.phase = 'draw';
+      next.winnerId = null;
+      const drawBump = this.bump(next);
       return {
         match: next,
         events: [
-          haltBump,
+          drawBump,
           {
-            kind: 'unsafe_zero_survivors',
+            kind: 'match_drawn',
             sequence: next.sequence,
             revision: next.revision,
-            serverTimestampMs: haltBump.serverTimestampMs,
+            serverTimestampMs: drawBump.serverTimestampMs,
           },
         ],
       };
@@ -1019,10 +1069,6 @@ export class MatchEngine {
     next.status = 'completed';
     next.phase = 'completed';
     next.winnerId = leaders[0]!.playerId;
-    next.currentChallenge = null;
-    next.phaseDeadlineAtMs = null;
-    next.phaseDeadlineMonoMs = null;
-    next.nextPhaseAtMs = null;
     const finishBump = this.bump(next);
     return {
       match: next,
@@ -1101,10 +1147,15 @@ export class MatchEngine {
       return { match: next, events: [], duplicate: false, ack };
     }
 
-    if (
-      challenge.submissions.has(input.playerId) ||
-      player.submittedForCurrentChallenge
-    ) {
+    const existing = challenge.submissions.get(input.playerId);
+    const isFinal = input.answer['final'] !== false;
+    if (existing && existing.final !== false) {
+      const ack = { accepted: true, reason: 'already_submitted' };
+      const next = this.cloneMatch(match);
+      next.commandAcks.set(input.commandId, ack);
+      return { match: next, events: [], duplicate: false, ack };
+    }
+    if (player.submittedForCurrentChallenge) {
       const ack = { accepted: true, reason: 'already_submitted' };
       const next = this.cloneMatch(match);
       next.commandAcks.set(input.commandId, ack);
@@ -1119,17 +1170,24 @@ export class MatchEngine {
       commandId: input.commandId,
       answer: { ...input.answer },
       receivedMonoMs,
+      final: isFinal,
     });
-    next.players.get(input.playerId)!.submittedForCurrentChallenge = true;
-    const ack = { accepted: true };
+    if (isFinal) {
+      next.players.get(input.playerId)!.submittedForCurrentChallenge = true;
+    }
+    const ack = {
+      accepted: true,
+      reason: isFinal ? undefined : 'progress',
+    };
     next.commandAcks.set(input.commandId, ack);
     next.updatedAtMs = this.clock.nowMs();
 
-    // Early resolve when every participating active player has submitted.
-    const allSubmitted = nextChallenge.participatingPlayerIds.every((id) =>
-      nextChallenge.submissions.has(id),
-    );
-    if (allSubmitted) {
+    // Early resolve when every participating active player has a final submission.
+    const allSubmitted = nextChallenge.participatingPlayerIds.every((id) => {
+      const sub = nextChallenge.submissions.get(id);
+      return sub != null && sub.final !== false;
+    });
+    if (allSubmitted && isFinal) {
       const resolved = this.resolveChallenge(next);
       return {
         match: resolved.match,
@@ -1199,10 +1257,20 @@ export class MatchEngine {
 
       const submission = challenge.submissions.get(playerId);
       let outcome: PlayerChallengeResolution['outcome'];
+      let reasonKey: string | undefined;
+      let measureMs: number | undefined;
       if (!submission) {
-        outcome = 'timeout';
+        if (evaluator.absenceOutcome === 'success') {
+          outcome = 'success';
+          reasonKey = 'result.success';
+          measureMs = challenge.definition.durationMs;
+        } else {
+          outcome = 'timeout';
+          reasonKey = 'result.timeout';
+        }
       } else if (submission.receivedMonoMs > challenge.deadlineMonoMs) {
         outcome = 'timeout';
+        reasonKey = 'result.timeout';
       } else {
         const answerForEval = { ...submission.answer };
         if (
@@ -1211,9 +1279,9 @@ export class MatchEngine {
           challenge.signalAtMonoMs != null &&
           challenge.signalEndsAtMonoMs != null &&
           submission.receivedMonoMs >= challenge.signalAtMonoMs &&
-          submission.receivedMonoMs < challenge.signalEndsAtMonoMs
+          submission.receivedMonoMs <= challenge.signalEndsAtMonoMs
         ) {
-          // Inject expected token only inside the blue window.
+          // Inject expected token only inside the inclusive blue window.
           answerForEval['_expectedSignalToken'] = challenge.signalToken;
         }
         const evaluation = evaluator.evaluate({
@@ -1223,6 +1291,8 @@ export class MatchEngine {
           deadlineMonoMs: challenge.deadlineMonoMs,
         });
         outcome = evaluation.success ? 'success' : 'failure';
+        reasonKey = evaluation.reasonKey;
+        measureMs = evaluation.measureMs;
       }
 
       let heartsDelta = 0;
@@ -1245,6 +1315,8 @@ export class MatchEngine {
         heartsAfter: player.hearts,
         energyAfter: player.energy,
         statusAfter: player.status,
+        reasonKey,
+        measureMs,
       });
     }
 
@@ -1304,16 +1376,44 @@ export class MatchEngine {
         match.phase = 'challenge_active';
         match.currentChallenge = challenge;
       } else {
-        // Do not invent a winner. Halt safely after resolution broadcast.
-        match.status = 'resolving';
-        match.phase = 'halted';
-        const haltBump = this.bump(match);
-        events.push(haltBump, {
-          kind: 'unsafe_zero_survivors',
-          sequence: match.sequence,
-          revision: match.revision,
-          serverTimestampMs: haltBump.serverTimestampMs,
-        });
+        // Best-performer among players eliminated this round (hit 0 hearts).
+        const eliminated = resolutions.filter(
+          (r) => r.heartsAfter === 0 && r.heartsDelta < 0,
+        );
+        const withMeasure = eliminated.filter(
+          (r) => typeof r.measureMs === 'number',
+        );
+        if (withMeasure.length > 0) {
+          withMeasure.sort((a, b) => {
+            const am = a.measureMs!;
+            const bm = b.measureMs!;
+            if (am !== bm) return am - bm;
+            return a.playerId.localeCompare(b.playerId);
+          });
+          const winnerId = withMeasure[0]!.playerId;
+          match.status = 'completed';
+          match.phase = 'completed';
+          match.winnerId = winnerId;
+          match.currentChallenge = challenge;
+          const finishBump = this.bump(match);
+          events.push(finishBump, {
+            kind: 'match_finished',
+            sequence: match.sequence,
+            revision: match.revision,
+            serverTimestampMs: finishBump.serverTimestampMs,
+            winnerId,
+          });
+        } else {
+          match.status = 'resolving';
+          match.phase = 'halted';
+          const haltBump = this.bump(match);
+          events.push(haltBump, {
+            kind: 'unsafe_zero_survivors',
+            sequence: match.sequence,
+            revision: match.revision,
+            serverTimestampMs: haltBump.serverTimestampMs,
+          });
+        }
       }
     } else {
       // Keep the resolved challenge until the service enters round_result

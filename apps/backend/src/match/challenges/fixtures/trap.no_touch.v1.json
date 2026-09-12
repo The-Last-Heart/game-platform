@@ -1,0 +1,19 @@
+{
+  "definitionId": "trap.no_touch.dev",
+  "definitionVersion": 1,
+  "engineId": "trap.no_touch",
+  "durationMs": 4000,
+  "heartPenaltyOnFailure": 1,
+  "energyRewardOnSuccess": 1,
+  "promptKey": "challenge.no_touch.intro",
+  "choiceKeys": [],
+  "clientConfig": {
+    "categoryKey": "challenge.category.trap",
+    "promptKey": "challenge.no_touch.prompt",
+    "zoneHintKey": "challenge.no_touch.zone_hint",
+    "zone": { "x": 0.25, "y": 0.3, "width": 0.5, "height": 0.4 }
+  },
+  "serverConfig": {
+    "allowSystemGestures": true
+  }
+}

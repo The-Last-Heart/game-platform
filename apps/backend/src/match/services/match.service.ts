@@ -25,6 +25,7 @@ import {
   WaitForSignalEvaluator,
   WAIT_FOR_SIGNAL_ENGINE_ID,
 } from '../domain/wait-for-signal.evaluator';
+import { createLaunchEvaluators } from '../domain/engines/launch-evaluators';
 import type {
   ChallengeDefinition,
   Clock,
@@ -170,6 +171,9 @@ export class MatchService implements OnModuleDestroy, OnModuleInit {
     this.registry = new ChallengeEvaluatorRegistryImpl();
     // wait_for_signal is a real engine — register always
     this.registry.register(new WaitForSignalEvaluator());
+    for (const evaluator of createLaunchEvaluators()) {
+      this.registry.register(evaluator);
+    }
     if (this.nodeEnv !== 'production') {
       this.registry.register(new DevDeterministicChoiceEvaluator());
     }
@@ -231,6 +235,9 @@ export class MatchService implements OnModuleDestroy, OnModuleInit {
     });
     // wait_for_signal always registered
     service['registry'].register(new WaitForSignalEvaluator());
+    for (const evaluator of createLaunchEvaluators()) {
+      service['registry'].register(evaluator);
+    }
     if (service['nodeEnv'] !== 'production') {
       service['registry'].register(new DevDeterministicChoiceEvaluator());
     }
@@ -1028,7 +1035,11 @@ export class MatchService implements OnModuleDestroy, OnModuleInit {
     playerId: string,
   ): Promise<SeatCredentials> {
     const source = await this.requireMatch(matchId);
-    if (source.phase !== 'completed' && source.phase !== 'halted') {
+    if (
+      source.phase !== 'completed' &&
+      source.phase !== 'halted' &&
+      source.phase !== 'draw'
+    ) {
       throw new DomainError('REMATCH_UNAVAILABLE', 'match not finished');
     }
     const player = source.players.get(playerId);
@@ -1459,13 +1470,29 @@ export class MatchService implements OnModuleDestroy, OnModuleInit {
       match.currentChallenge.status === 'active' &&
       match.currentChallenge.roundPhase === 'signal_active' &&
       match.currentChallenge.signalEndsAtMonoMs != null &&
-      this.clock.monoMs() >= match.currentChallenge.signalEndsAtMonoMs
+      this.clock.monoMs() > match.currentChallenge.signalEndsAtMonoMs
     ) {
       const expireResult = this.engine.expireSignal(match);
       if (expireResult.events.length > 0) {
         match = expireResult.match;
         await this.store.save(match);
         this.emit(match, expireResult.events);
+      }
+    }
+
+    if (
+      match.status === 'challenge_active' &&
+      match.currentChallenge &&
+      match.currentChallenge.status === 'active' &&
+      match.currentChallenge.roundPhase === 'preview' &&
+      match.currentChallenge.previewEndsAtMonoMs != null &&
+      this.clock.monoMs() >= match.currentChallenge.previewEndsAtMonoMs
+    ) {
+      const previewResult = this.engine.advancePreview(match);
+      if (previewResult.events.length > 0) {
+        match = previewResult.match;
+        await this.store.save(match);
+        this.emit(match, previewResult.events);
       }
     }
 
@@ -1719,10 +1746,7 @@ export class MatchService implements OnModuleDestroy, OnModuleInit {
 
   /**
    * Next playlist entry for this match. `roundNumber` is how many challenges
-   * have already been introduced.
-   *
-   * Survival keeps cycling the pinned catalog until only one active player
-   * remains — a short catalog must not invent a winner while hearts are tied.
+   * have already been introduced. The catalog is finite — do not cycle.
    */
   private definitionForNextRound(
     match: MatchState,
@@ -1734,7 +1758,7 @@ export class MatchService implements OnModuleDestroy, OnModuleInit {
     if (playlist.length === 0) {
       return null;
     }
-    return playlist[match.roundNumber % playlist.length] ?? null;
+    return playlist[match.roundNumber] ?? null;
   }
 
   private async startDevRoundLocked(
@@ -1961,8 +1985,31 @@ export class MatchService implements OnModuleDestroy, OnModuleInit {
     );
     if (botPlayers.length === 0) return;
 
-    // Bots always submit wrong token (bot-miss) — they fail evaluation
+    // Engine-aware bot answers — prefer safe wrong/failing submissions.
+    const answerForEngine = (
+      engineId: string,
+    ): Record<string, unknown> | null => {
+      switch (engineId) {
+        case 'trap.no_touch':
+          // Touch the zone → fail (bots do not idle-win).
+          return { touched: true };
+        case 'gesture.reverse_swipe':
+          return { dx: 0, dy: 0, durationMs: 50 };
+        case 'tap.precision':
+          return { tappedTargetIds: [] };
+        case 'memory.sequence':
+          return { sequence: [] };
+        case 'hold.multitouch':
+          return { contacts: 1, heldMs: 100, final: true };
+        case WAIT_FOR_SIGNAL_ENGINE_ID:
+        default:
+          return { signalToken: 'bot-miss' };
+      }
+    };
+
     const submitBots = async () => {
+      const answer = answerForEngine(challenge.engineId);
+      if (!answer) return;
       for (const bot of botPlayers) {
         try {
           await this.submitAnswer({
@@ -1970,7 +2017,7 @@ export class MatchService implements OnModuleDestroy, OnModuleInit {
             playerId: bot.playerId,
             challengeInstanceId: challenge.challengeInstanceId,
             commandId: randomUUID(),
-            answer: { signalToken: 'bot-miss' },
+            answer,
           });
         } catch {
           // Bot submission may fail if challenge resolved; ignore

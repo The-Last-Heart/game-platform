@@ -1,0 +1,21 @@
+{
+  "definitionId": "hold.multitouch.dev",
+  "definitionVersion": 1,
+  "engineId": "hold.multitouch",
+  "durationMs": 5000,
+  "heartPenaltyOnFailure": 1,
+  "energyRewardOnSuccess": 1,
+  "promptKey": "challenge.hold.intro",
+  "choiceKeys": [],
+  "clientConfig": {
+    "categoryKey": "challenge.category.hold",
+    "promptKey": "challenge.hold.prompt",
+    "requiredContacts": 2,
+    "holdMs": 1500
+  },
+  "serverConfig": {
+    "requiredContacts": 2,
+    "holdMs": 1500,
+    "resetOnLift": true
+  }
+}

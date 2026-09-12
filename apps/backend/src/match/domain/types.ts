@@ -27,12 +27,15 @@ export type MatchPhase =
   | 'challenge_active'
   | 'round_result'
   | 'completed'
+  | 'draw'
   | 'halted';
 
 export type RoundPhase =
   | 'waiting_signal'
   | 'signal_active'
   | 'signal_expired'
+  | 'preview'
+  | 'answer'
   | 'resolved';
 
 export type PlayerStatus = 'active' | 'spectator';
@@ -164,6 +167,8 @@ export type PlayerChallengeResolution = {
   heartsAfter: number;
   energyAfter: number;
   statusAfter: PlayerStatus;
+  reasonKey?: string;
+  measureMs?: number;
 };
 
 export type ChallengeRound = {
@@ -194,9 +199,13 @@ export type ChallengeRound = {
       commandId: string;
       answer: Record<string, unknown>;
       receivedMonoMs: number;
+      /** When false, further progress updates may overwrite until final. */
+      final: boolean;
     }
   >;
   resolutions: PlayerChallengeResolution[];
+  /** Memory: preview ends at this mono time then answer phase begins. */
+  previewEndsAtMonoMs?: number | null;
 };
 
 export type MatchState = {
@@ -304,6 +313,12 @@ export type DomainEvent =
       winnerId: string;
     }
   | {
+      kind: 'match_drawn';
+      sequence: number;
+      revision: number;
+      serverTimestampMs: number;
+    }
+  | {
       kind: 'unsafe_zero_survivors';
       sequence: number;
       revision: number;
@@ -352,15 +367,23 @@ export class DomainError extends Error {
 
 export type ChallengeEvaluation = {
   success: boolean;
+  reasonKey?: string;
+  measureMs?: number;
 };
 
 export interface ChallengeEvaluator {
   readonly engineId: string;
+  /**
+   * How missing submission at inclusive deadline is treated.
+   * Default timeout failure; no-touch uses success.
+   */
+  readonly absenceOutcome?: 'timeout' | 'success';
   evaluate(input: {
     definition: ChallengeDefinition;
     answer: Record<string, unknown>;
     receivedMonoMs: number;
     deadlineMonoMs: number;
+    challengeStartsAtMonoMs?: number;
   }): ChallengeEvaluation;
 }
 
