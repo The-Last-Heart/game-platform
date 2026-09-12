@@ -155,6 +155,7 @@ Map<String, dynamic> makeActiveChallenge({
     'roundPhase': 'signal_active',
     'signalToken': 'tok-signal',
     'signaledAtMs': startsAtMs + 1500,
+    'signalEndsAtMs': startsAtMs + 2500,
   };
 }
 
@@ -226,6 +227,7 @@ Map<String, dynamic> makeChallengeSignal({
       'challengeInstanceId': challengeInstanceId,
       'signalToken': 'tok-signal',
       'signaledAtMs': serverNowMs,
+      'signalEndsAtMs': serverNowMs + 1000,
       'serverNowMs': serverNowMs,
     },
   };
@@ -752,7 +754,7 @@ void main() {
           resumeToken: 'tok-resume',
         ),
       );
-      await controller.bootstrap();
+      await controller.tryResume();
       await controller.idle;
       expect(transport.isConnected, isTrue);
       expect(controller.state.value.lifecycle, SessionLifecycle.resuming);
@@ -770,6 +772,26 @@ void main() {
       expect(data!.pendingResumeCommandId, resumes.first['commandId']);
     });
 
+    test('cold start bootstrap clears prior match session', () async {
+      await store.save(
+        const SessionData(
+          matchId: 'match-1',
+          playerId: 'player-1',
+          resumeToken: 'tok-resume',
+        ),
+      );
+      await controller.bootstrap();
+      await controller.idle;
+      expect(await store.load(), isNull);
+      expect(controller.state.value.inMatch, isFalse);
+      expect(
+        transport.sentCommands.any(
+          (Map<String, dynamic> c) => c['type'] == MessageTypes.matchResume,
+        ),
+        isFalse,
+      );
+    });
+
     test(
       'cold resume: accepted + snapshot → bound and clears pending command',
       () async {
@@ -780,7 +802,7 @@ void main() {
             resumeToken: 'tok-resume',
           ),
         );
-        await controller.bootstrap();
+        await controller.tryResume();
         await controller.idle;
         await completeResumeHandshake(controller, transport);
         expect(controller.state.value.lifecycle, SessionLifecycle.bound);
@@ -799,7 +821,7 @@ void main() {
           resumeToken: 'tok-expired',
         ),
       );
-      await controller.bootstrap();
+      await controller.tryResume();
       await controller.idle;
       final Map<String, dynamic> resumeCmd = transport.sentCommands.lastWhere(
         (Map<String, dynamic> c) => c['type'] == MessageTypes.matchResume,
@@ -828,7 +850,7 @@ void main() {
             resumeToken: 'tok-1',
           ),
         );
-        await controller.bootstrap();
+        await controller.tryResume();
         await controller.idle;
         await completeResumeHandshake(controller, transport);
         expect(
@@ -1205,6 +1227,135 @@ void main() {
       expect(controller.state.value.phase, MatchPhase.halted);
     });
 
+    test(
+      'training.retry after round_result applies low-seq snapshot for new match',
+      () async {
+        await completeJoinHandshake(controller, transport);
+        transport.emitEvent(
+          makeSnapshot(
+            sequence: 8,
+            phase: 'round_result',
+            players: <Map<String, dynamic>>[
+              makePlayer(playerId: 'player-1'),
+            ],
+          ),
+        );
+        await controller.idle;
+        // Force training mode + failure chrome the way a live fail ends.
+        controller.state.value = controller.state.value.copyWith(
+          mode: () => MatchMode.training,
+          phase: MatchPhase.roundResult,
+          lifecycle: SessionLifecycle.bound,
+          lastRoundResult: () => const LastRoundResult(
+            challengeInstanceId: 'ch-fail',
+            resolutions: <PlayerChallengeResolution>[
+              PlayerChallengeResolution(
+                playerId: 'player-1',
+                outcome: 'timeout',
+                heartsDelta: -1,
+                energyDelta: 0,
+                heartsAfter: 2,
+                energyAfter: 0,
+                statusAfter: PlayerStatus.active,
+              ),
+            ],
+          ),
+          serverSequence: 8,
+        );
+        expect(controller.state.value.phase, MatchPhase.roundResult);
+        expect(controller.state.value.lastRoundResult, isNotNull);
+
+        await controller.retryTraining();
+        await controller.idle;
+        expect(controller.state.value.phase, MatchPhase.lobby);
+        expect(controller.state.value.lastRoundResult, isNull);
+
+        final Map<String, dynamic> retryCmd = transport.sentCommands.lastWhere(
+          (Map<String, dynamic> c) => c['type'] == MessageTypes.trainingRetry,
+        );
+        transport.emitEvent(
+          makeSessionAccepted(
+            matchId: 'match-retry',
+            playerId: 'player-retry',
+            resumeToken: 'tok-round-retry',
+            commandId: retryCmd['commandId'] as String,
+          ),
+        );
+        await controller.idle;
+        expect(controller.state.value.matchId, 'match-retry');
+        expect(controller.state.value.serverSequence, -1);
+
+        transport.emitEvent(
+          makeSnapshot(
+            matchId: 'match-retry',
+            sequence: 1,
+            phase: 'ready_countdown',
+            players: <Map<String, dynamic>>[
+              makePlayer(playerId: 'player-retry'),
+            ],
+          ),
+        );
+        await controller.idle;
+
+        expect(controller.state.value.phase, MatchPhase.readyCountdown);
+        expect(controller.state.value.lifecycle, SessionLifecycle.bound);
+        expect(controller.state.value.lastRoundResult, isNull);
+      },
+    );
+
+    test(
+      'training.retry after completed applies low-seq snapshot for new match',
+      () async {
+        await completeJoinHandshake(controller, transport);
+        transport.emitEvent(
+          makeSnapshot(
+            sequence: 12,
+            phase: 'completed',
+            winnerId: 'player-1',
+          ),
+        );
+        await controller.idle;
+        expect(controller.state.value.lifecycle, SessionLifecycle.terminal);
+        expect(controller.state.value.serverSequence, 12);
+
+        await controller.retryTraining();
+        await controller.idle;
+        final Map<String, dynamic> retryCmd = transport.sentCommands.lastWhere(
+          (Map<String, dynamic> c) => c['type'] == MessageTypes.trainingRetry,
+        );
+
+        transport.emitEvent(
+          makeSessionAccepted(
+            matchId: 'match-2',
+            playerId: 'player-2',
+            resumeToken: 'tok-retry',
+            commandId: retryCmd['commandId'] as String,
+          ),
+        );
+        await controller.idle;
+        expect(controller.state.value.matchId, 'match-2');
+        expect(controller.state.value.serverSequence, -1);
+
+        transport.emitEvent(
+          makeSnapshot(
+            matchId: 'match-2',
+            sequence: 1,
+            phase: 'ready_countdown',
+            players: <Map<String, dynamic>>[
+              makePlayer(playerId: 'player-2'),
+            ],
+          ),
+        );
+        await controller.idle;
+
+        expect(controller.state.value.phase, MatchPhase.readyCountdown);
+        expect(controller.state.value.lifecycle, SessionLifecycle.bound);
+        expect(controller.state.value.serverSequence, 1);
+        expect(controller.state.value.inMatch, isTrue);
+        expect(controller.state.value.winnerId, isNull);
+      },
+    );
+
     test('terminal resume: completed snapshot after reconnect', () async {
       await completeJoinHandshake(controller, transport);
       transport.simulateDisconnect();
@@ -1258,6 +1409,7 @@ void main() {
         controller.state.value.answerStatus,
         AnswerSubmissionStatus.pending,
       );
+      expect(controller.state.value.answerSubmittedEarly, isFalse);
 
       final String cmdId =
           transport.sentCommands.lastWhere(
@@ -1282,6 +1434,21 @@ void main() {
             .length,
         1,
       );
+    });
+
+    test('empty early submit marks answerSubmittedEarly', () async {
+      await completeJoinHandshake(
+        controller,
+        transport,
+        phase: 'challenge_active',
+        currentChallenge: makeActiveChallenge(),
+      );
+      controller.submitAnswer('ch-1', <String, dynamic>{});
+      expect(
+        controller.state.value.answerStatus,
+        AnswerSubmissionStatus.pending,
+      );
+      expect(controller.state.value.answerSubmittedEarly, isTrue);
     });
 
     test('rejected ACK restores idle while deadline open', () async {
@@ -1951,7 +2118,7 @@ void main() {
           pendingResumeCommandId: 'R2',
         ),
       );
-      await controller.bootstrap();
+      await controller.tryResume();
       await controller.idle;
       expect(controller.state.value.lifecycle, SessionLifecycle.resuming);
       final Map<String, dynamic> resumeCmd = transport.sentCommands.lastWhere(
@@ -1984,7 +2151,7 @@ void main() {
             pendingResumeCommandId: 'R2',
           ),
         );
-        await controller.bootstrap();
+        await controller.tryResume();
         await controller.idle;
 
         transport.emitEvent(
@@ -2009,7 +2176,7 @@ void main() {
           pendingResumeCommandId: 'R2',
         ),
       );
-      await controller.bootstrap();
+      await controller.tryResume();
       await controller.idle;
 
       transport.emitEvent(
@@ -2033,7 +2200,7 @@ void main() {
           pendingResumeCommandId: 'R2',
         ),
       );
-      await controller.bootstrap();
+      await controller.tryResume();
       await controller.idle;
 
       transport.emitEvent(
@@ -2503,7 +2670,7 @@ void main() {
             pendingResumeCommandId: 'R2',
           ),
         );
-        await controller.bootstrap();
+        await controller.tryResume();
         await controller.idle;
         expect(controller.state.value.lifecycle, SessionLifecycle.resuming);
 

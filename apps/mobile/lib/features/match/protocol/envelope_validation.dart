@@ -19,6 +19,7 @@ const Set<String> _knownServerEventTypes = <String>{
   MessageTypes.playerPresence,
   MessageTypes.challengeStarted,
   MessageTypes.challengeSignal,
+  MessageTypes.challengeSignalEnded,
   MessageTypes.challengeSubmissionAck,
   MessageTypes.challengeResolved,
   MessageTypes.matchStateChanged,
@@ -70,6 +71,7 @@ const Set<String> _matchStatuses = <String>{
 const Set<String> _roundPhases = <String>{
   'waiting_signal',
   'signal_active',
+  'signal_expired',
   'resolved',
 };
 
@@ -230,6 +232,7 @@ EnvelopeValidation? _validatePublicChallenge(
     'roundPhase',
     'signalToken',
     'signaledAtMs',
+    'signalEndsAtMs',
   }, label);
   if (extra != null) return extra;
   if (json.containsKey('serverConfig')) {
@@ -293,6 +296,11 @@ EnvelopeValidation? _validatePublicChallenge(
       !_isNonNegInt(json['signaledAtMs'])) {
     return EnvelopeValidation.invalid('$label.signaledAtMs invalid');
   }
+  if (json.containsKey('signalEndsAtMs') &&
+      json['signalEndsAtMs'] != null &&
+      !_isNonNegInt(json['signalEndsAtMs'])) {
+    return EnvelopeValidation.invalid('$label.signalEndsAtMs invalid');
+  }
   return null;
 }
 
@@ -341,6 +349,7 @@ EnvelopeValidation _validateMatchSnapshot(Map<String, dynamic> payload) {
     'status',
     'phase',
     'phaseDeadlineAtMs',
+    'lobbyFillDeadlineAtMs',
     'roundNumber',
     'serverNowMs',
     'lastRoundResult',
@@ -370,6 +379,12 @@ EnvelopeValidation _validateMatchSnapshot(Map<String, dynamic> payload) {
   if (phaseDeadline != null && !_isNonNegInt(phaseDeadline)) {
     return const EnvelopeValidation.invalid(
       'match.snapshot.phaseDeadlineAtMs invalid',
+    );
+  }
+  final Object? lobbyFillDeadline = payload['lobbyFillDeadlineAtMs'];
+  if (lobbyFillDeadline != null && !_isNonNegInt(lobbyFillDeadline)) {
+    return const EnvelopeValidation.invalid(
+      'match.snapshot.lobbyFillDeadlineAtMs invalid',
     );
   }
   if (!_isNonNegInt(payload['roundNumber']) ||
@@ -497,6 +512,7 @@ EnvelopeValidation _validateChallengeSignal(Map<String, dynamic> payload) {
     'challengeInstanceId',
     'signalToken',
     'signaledAtMs',
+    'signalEndsAtMs',
     'serverNowMs',
   }, 'challenge.signal');
   if (extra != null) return extra;
@@ -511,9 +527,38 @@ EnvelopeValidation _validateChallengeSignal(Map<String, dynamic> payload) {
     );
   }
   if (!_isNonNegInt(payload['signaledAtMs']) ||
+      !_isNonNegInt(payload['signalEndsAtMs']) ||
       !_isNonNegInt(payload['serverNowMs'])) {
     return const EnvelopeValidation.invalid(
       'challenge.signal timing fields invalid',
+    );
+  }
+  final int signaledAtMs = payload['signaledAtMs'] as int;
+  final int signalEndsAtMs = payload['signalEndsAtMs'] as int;
+  if (signalEndsAtMs <= signaledAtMs) {
+    return const EnvelopeValidation.invalid(
+      'challenge.signal.signalEndsAtMs must be after signaledAtMs',
+    );
+  }
+  return const EnvelopeValidation.valid();
+}
+
+EnvelopeValidation _validateChallengeSignalEnded(Map<String, dynamic> payload) {
+  final EnvelopeValidation? extra = _rejectExtraKeys(payload, <String>{
+    'challengeInstanceId',
+    'signalEndsAtMs',
+    'serverNowMs',
+  }, 'challenge.signal_ended');
+  if (extra != null) return extra;
+  if (!_isUuidLike(payload['challengeInstanceId'])) {
+    return const EnvelopeValidation.invalid(
+      'challenge.signal_ended.challengeInstanceId invalid',
+    );
+  }
+  if (!_isNonNegInt(payload['signalEndsAtMs']) ||
+      !_isNonNegInt(payload['serverNowMs'])) {
+    return const EnvelopeValidation.invalid(
+      'challenge.signal_ended timing fields invalid',
     );
   }
   return const EnvelopeValidation.valid();
@@ -728,6 +773,8 @@ EnvelopeValidation validateServerEnvelope(Map<String, dynamic> raw) {
         return _validateChallengeStarted(payload);
       case MessageTypes.challengeSignal:
         return _validateChallengeSignal(payload);
+      case MessageTypes.challengeSignalEnded:
+        return _validateChallengeSignalEnded(payload);
       case MessageTypes.challengeSubmissionAck:
         return _validateSubmissionAck(payload);
       case MessageTypes.challengeResolved:

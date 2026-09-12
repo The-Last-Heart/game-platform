@@ -14,8 +14,9 @@ import 'challenge_engine.dart';
 
 /// Engine for the "reaction.wait_for_signal" challenge.
 ///
+/// The whole play surface is the input: any tap while the heart is red fails;
+/// any tap after the heart turns blue (signal active) succeeds.
 /// All prompt text comes from validated server-provided clientConfig keys.
-/// Missing/invalid config renders the generic content-unavailable state.
 class ReactionWaitForSignalEngine implements ChallengeEngine {
   @override
   String get engineId => 'reaction.wait_for_signal';
@@ -41,10 +42,27 @@ class _ReactionWaitForSignalWidgetState
   Timer? _timer;
   double _progress = 1.0;
   String _timerLabel = '';
+  bool _submitted = false;
 
   PublicChallenge get challenge => widget.challengeContext.challenge;
 
-  bool get _isSignalActive => challenge.roundPhase == RoundPhase.signalActive;
+  /// Blue only while the server says the window is open.
+  /// Prefer roundPhase; also close locally when estimateServerNowMs >= endsAt
+  /// so UI turns red even if challenge.signal_ended is slightly delayed.
+  bool get _isSignalActive {
+    if (challenge.roundPhase != RoundPhase.signalActive) {
+      return false;
+    }
+    final int? endsAt = challenge.signalEndsAtMs;
+    if (endsAt == null) {
+      return true;
+    }
+    final int nowMs = widget.challengeContext.estimateServerNowMs();
+    if (nowMs <= 0) {
+      return true;
+    }
+    return nowMs < endsAt;
+  }
 
   @override
   void initState() {
@@ -79,15 +97,19 @@ class _ReactionWaitForSignalWidgetState
   }
 
   void _handleTap() {
+    if (_submitted) return;
     if (widget.challengeContext.isInteractionLocked) return;
 
+    _submitted = true;
     if (_isSignalActive && challenge.signalToken != null) {
       widget.challengeContext.onSubmit(<String, dynamic>{
         'signalToken': challenge.signalToken,
       });
-    } else {
-      widget.challengeContext.onSubmit(<String, dynamic>{});
+      return;
     }
+
+    // Early tap (heart still red): intentional fail — empty answer, no token.
+    widget.challengeContext.onSubmit(<String, dynamic>{});
   }
 
   /// Resolve a required non-empty clientConfig translation key.
@@ -140,101 +162,79 @@ class _ReactionWaitForSignalWidgetState
         widget.challengeContext.answerStatus ==
             AnswerSubmissionStatus.confirmed;
 
-    return GestureDetector(
-      onTap: locked ? null : _handleTap,
-      behavior: HitTestBehavior.opaque,
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: <Widget>[
-          const Spacer(flex: 2),
-          CountdownRing(
-            progress: _progress,
-            label: _timerLabel,
-            size: 160,
-            ringColor: accentColor,
-            glow: _isSignalActive,
-          ),
-          const SizedBox(height: 32),
-          Semantics(
-            label: promptText,
-            button: true,
-            enabled: !locked,
-            child: LhHeartLogo(
-              size: 120,
-              color: locked ? LhColors.disabled : accentColor,
-            ),
-          ),
-          const SizedBox(height: 28),
-          Text(
-            promptText,
-            style: Theme.of(context).textTheme.headlineLarge?.copyWith(
-              color: _isSignalActive ? LhColors.success : LhColors.text,
-              shadows: _isSignalActive
-                  ? <Shadow>[
-                      Shadow(
-                        color: LhColors.success.withValues(alpha: 0.5),
-                        blurRadius: 16,
-                      ),
-                    ]
-                  : null,
-            ),
-            textAlign: TextAlign.center,
-            semanticsLabel: promptText,
-          ),
-          const SizedBox(height: 8),
-          Text(
-            hintText,
-            style: Theme.of(context).textTheme.titleMedium?.copyWith(
-              color: _isSignalActive ? LhColors.success : LhColors.textMuted,
-            ),
-            textAlign: TextAlign.center,
-            semanticsLabel: hintText,
-          ),
-          // Keep category available for tests/semantics without inventing copy.
-          Opacity(
-            opacity: 0,
-            child: Text(
-              resolver.resolve(categoryKey),
-              semanticsLabel: resolver.resolve(categoryKey),
-            ),
-          ),
-          const Spacer(),
-          if (_isSignalActive && !locked)
-            Padding(
-              padding: const EdgeInsets.only(bottom: 24),
-              child: SizedBox(
-                width: double.infinity,
-                height: 56,
-                child: ElevatedButton(
-                  onPressed: _handleTap,
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: LhColors.success,
-                    foregroundColor: LhColors.bg,
-                    shape: const RoundedRectangleBorder(
-                      borderRadius: LhRadii.mdAll,
-                    ),
-                    elevation: 0,
-                    shadowColor: LhColors.success.withValues(alpha: 0.4),
-                  ),
-                  child: Text(
-                    resolver.resolve(actionKey),
-                    style: const TextStyle(
-                      fontSize: 20,
-                      fontWeight: FontWeight.w700,
-                    ),
-                  ),
+    return Semantics(
+      label: promptText,
+      button: true,
+      enabled: !locked && !_submitted,
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        // onTapDown: reaction games need immediate recognition, not tap settle.
+        onTapDown: (locked || _submitted) ? null : (_) => _handleTap(),
+        child: SizedBox.expand(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: <Widget>[
+              const Spacer(flex: 2),
+              CountdownRing(
+                progress: _progress,
+                label: _timerLabel,
+                size: 160,
+                ringColor: accentColor,
+                glow: _isSignalActive,
+              ),
+              const SizedBox(height: 32),
+              LhHeartLogo(
+                size: 120,
+                color: locked ? LhColors.disabled : accentColor,
+              ),
+              const SizedBox(height: 28),
+              Text(
+                promptText,
+                style: Theme.of(context).textTheme.headlineLarge?.copyWith(
+                  color: _isSignalActive ? LhColors.success : LhColors.text,
+                  shadows: _isSignalActive
+                      ? <Shadow>[
+                          Shadow(
+                            color: LhColors.success.withValues(alpha: 0.5),
+                            blurRadius: 16,
+                          ),
+                        ]
+                      : null,
+                ),
+                textAlign: TextAlign.center,
+                semanticsLabel: promptText,
+              ),
+              const SizedBox(height: 8),
+              Text(
+                hintText,
+                style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                  color: _isSignalActive
+                      ? LhColors.success
+                      : LhColors.textMuted,
+                ),
+                textAlign: TextAlign.center,
+                semanticsLabel: hintText,
+              ),
+              // Keep category for semantics/tests only — never reveal on-screen.
+              Opacity(
+                opacity: 0,
+                child: Text(
+                  resolver.resolve(categoryKey),
+                  semanticsLabel: resolver.resolve(categoryKey),
                 ),
               ),
-            ),
-          if (showWaiting)
-            Padding(
-              padding: const EdgeInsets.only(bottom: 24),
-              child: Text(
-                resolver.resolve(TranslationKeys.resultWaiting),
-                style: Theme.of(context).textTheme.titleMedium,
-              ),
-            ),
-        ],
+              const Spacer(),
+              if (showWaiting)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 24),
+                  child: Text(
+                    resolver.resolve(TranslationKeys.resultWaiting),
+                    style: Theme.of(context).textTheme.titleMedium,
+                  ),
+                ),
+            ],
+          ),
+        ),
       ),
     );
   }

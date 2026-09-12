@@ -21,6 +21,7 @@ class MatchViewState {
     this.roundNumber = 0,
     this.serverSequence = -1,
     this.phaseDeadlineAtMs,
+    this.lobbyFillDeadlineAtMs,
     this.nextPhaseAtMs,
     this.serverNowMs = 0,
     this.connectionError,
@@ -30,6 +31,7 @@ class MatchViewState {
     this.needsSnapshot = false,
     this.answerStatus = AnswerSubmissionStatus.idle,
     this.answerChallengeInstanceId,
+    this.answerSubmittedEarly = false,
     this.inMatch = false,
     this.mode,
     this.hostPlayerId,
@@ -47,6 +49,7 @@ class MatchViewState {
   final int roundNumber;
   final int serverSequence;
   final int? phaseDeadlineAtMs;
+  final int? lobbyFillDeadlineAtMs;
   final int? nextPhaseAtMs;
   final int serverNowMs;
   final String? connectionError;
@@ -56,6 +59,9 @@ class MatchViewState {
   final bool needsSnapshot;
   final AnswerSubmissionStatus answerStatus;
   final String? answerChallengeInstanceId;
+
+  /// True when the in-flight/confirmed submit was an early miss (no signal token).
+  final bool answerSubmittedEarly;
 
   /// Whether UI should show the active-match shell (authoritative navigation).
   final bool inMatch;
@@ -102,6 +108,7 @@ class MatchViewState {
     int? roundNumber,
     int? serverSequence,
     int? Function()? phaseDeadlineAtMs,
+    int? Function()? lobbyFillDeadlineAtMs,
     int? Function()? nextPhaseAtMs,
     int? serverNowMs,
     String? Function()? connectionError,
@@ -111,6 +118,7 @@ class MatchViewState {
     bool? needsSnapshot,
     AnswerSubmissionStatus? answerStatus,
     String? Function()? answerChallengeInstanceId,
+    bool? answerSubmittedEarly,
     bool? inMatch,
     MatchMode? Function()? mode,
     String? Function()? hostPlayerId,
@@ -135,6 +143,9 @@ class MatchViewState {
       phaseDeadlineAtMs: phaseDeadlineAtMs != null
           ? phaseDeadlineAtMs()
           : this.phaseDeadlineAtMs,
+      lobbyFillDeadlineAtMs: lobbyFillDeadlineAtMs != null
+          ? lobbyFillDeadlineAtMs()
+          : this.lobbyFillDeadlineAtMs,
       nextPhaseAtMs: nextPhaseAtMs != null
           ? nextPhaseAtMs()
           : this.nextPhaseAtMs,
@@ -150,6 +161,8 @@ class MatchViewState {
       answerChallengeInstanceId: answerChallengeInstanceId != null
           ? answerChallengeInstanceId()
           : this.answerChallengeInstanceId,
+      answerSubmittedEarly:
+          answerSubmittedEarly ?? this.answerSubmittedEarly,
       inMatch: inMatch ?? this.inMatch,
       mode: mode != null ? mode() : this.mode,
       hostPlayerId: hostPlayerId != null ? hostPlayerId() : this.hostPlayerId,

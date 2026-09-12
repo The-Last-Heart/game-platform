@@ -92,10 +92,17 @@ abstract final class TranslationKeys {
   static const String lobbyWaitingPlayers = 'lobby.waiting_players';
   static const String lobbyInviteFriend = 'lobby.invite_friend';
   static const String lobbyStartWhenFull = 'lobby.start_when_full';
+  static const String lobbyFillStartsIn = 'lobby.fill_starts_in';
+  static const String lobbyExtendWait = 'lobby.extend_wait';
+  static const String lobbyStartNow = 'lobby.start_now';
 
   // ── LH-003 Countdown Chrome ──
   static const String countdownAllReady = 'countdown.all_ready';
   static const String countdownMatchStarts = 'countdown.match_starts';
+  static const String countdownChallengesStarting =
+      'countdown.challenges_starting';
+  static const String countdownChallengesStartingSub =
+      'countdown.challenges_starting_sub';
   static const String countdownTip1Title = 'countdown.tip1_title';
   static const String countdownTip1Desc = 'countdown.tip1_desc';
   static const String countdownTip2Title = 'countdown.tip2_title';
@@ -106,6 +113,7 @@ abstract final class TranslationKeys {
   static const String introRoundOf = 'intro.round_of';
   static const String introChallengeType = 'intro.challenge_type';
   static const String introReadInstructions = 'intro.read_instructions';
+  static const String introGetReady = 'intro.get_ready';
 
   // ── LH-003 Result Chrome ──
   static const String resultChallengeTitle = 'result.challenge_title';
@@ -144,6 +152,9 @@ abstract final class TranslationKeys {
   // ── Connection / recovery ──
   static const String sessionReconnecting = 'session.reconnecting';
   static const String sessionRecoveringState = 'session.recovering_state';
+  static const String challengeAnswerWaiting = 'challenge.answer_waiting';
+  static const String winnerStandings = 'winner.standings';
+  static const String winnerEnergyScore = 'winner.energy_score';
 
   // ── LH-005 entry ──
   static const String commonBack = 'common.back';
@@ -193,6 +204,7 @@ abstract final class TranslationKeys {
   static const String homeGreeting = 'home.greeting';
   static const String onboardingStepOf = 'onboarding.step_of';
   static const String onboardingHowToPlay = 'onboarding.how_to_play';
+  static const String appPressBackAgainToExit = 'app.press_back_again_to_exit';
 }
 
 /// Shared normalization for catalog create/lookup/resolve.

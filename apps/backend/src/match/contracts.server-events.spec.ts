@@ -84,7 +84,18 @@ describe('serverEventSchema contracts', () => {
           challengeInstanceId: 'ch-1',
           signalToken: 'tok-abc',
           signaledAtMs: 2_500,
+          signalEndsAtMs: 3_500,
           serverNowMs: 2_500,
+        },
+      },
+      {
+        ...base,
+        type: MessageTypes.ChallengeSignalEnded,
+        serverSequence: 3,
+        payload: {
+          challengeInstanceId: 'ch-1',
+          signalEndsAtMs: 3_500,
+          serverNowMs: 3_500,
         },
       },
       {
@@ -96,7 +107,7 @@ describe('serverEventSchema contracts', () => {
       {
         ...base,
         type: MessageTypes.ChallengeResolved,
-        serverSequence: 3,
+        serverSequence: 4,
         payload: {
           challengeInstanceId: 'ch-1',
           resolutions: [
@@ -115,7 +126,7 @@ describe('serverEventSchema contracts', () => {
       {
         ...base,
         type: MessageTypes.MatchStateChanged,
-        serverSequence: 4,
+        serverSequence: 5,
         payload: {
           status: 'resolving',
           reasonKey: 'errors.match.unsafe_zero_survivors',
@@ -124,7 +135,7 @@ describe('serverEventSchema contracts', () => {
       {
         ...base,
         type: MessageTypes.MatchFinished,
-        serverSequence: 5,
+        serverSequence: 6,
         payload: { winnerId: 'p1' },
       },
       {
@@ -237,11 +248,27 @@ describe('serverEventSchema contracts', () => {
         challengeInstanceId: 'ch-sig',
         signalToken: 'tok-signal',
         signaledAtMs: 3_000,
+        signalEndsAtMs: 4_000,
         serverNowMs: 3_000,
       },
     };
     expect(serverEventSchema.safeParse(signalEvent).success).toBe(true);
     expect(safeParseServerEvent(signalEvent).success).toBe(true);
+  });
+
+  it('serverEventSchema includes challenge.signal_ended', () => {
+    const endedEvent = {
+      ...base,
+      type: MessageTypes.ChallengeSignalEnded,
+      serverSequence: 11,
+      payload: {
+        challengeInstanceId: 'ch-sig',
+        signalEndsAtMs: 4_000,
+        serverNowMs: 4_000,
+      },
+    };
+    expect(serverEventSchema.safeParse(endedEvent).success).toBe(true);
+    expect(safeParseServerEvent(endedEvent).success).toBe(true);
   });
 
   it('accepts snapshots with phase fields and roundPhase in challenge', () => {

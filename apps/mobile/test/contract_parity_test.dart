@@ -148,6 +148,19 @@ void main() {
       );
       expect(signal.signalToken, 'signal-tok-xyz');
       expect(signal.challengeInstanceId, 'ch-inst-1');
+      expect(signal.signalEndsAtMs, 1700000012000);
+    });
+
+    test('challenge_signal_ended', () {
+      final Map<String, dynamic> raw = Map<String, dynamic>.from(
+        fixtures['challenge_signal_ended'] as Map,
+      );
+      final RealtimeEnvelope env = RealtimeEnvelope.fromJson(raw);
+      expect(env.type, MessageTypes.challengeSignalEnded);
+      final ChallengeSignalEndedPayload ended =
+          ChallengeSignalEndedPayload.fromJson(env.payload!);
+      expect(ended.challengeInstanceId, 'ch-inst-1');
+      expect(ended.signalEndsAtMs, 1700000012000);
     });
 
     test('challenge_submission_ack', () {
@@ -352,6 +365,19 @@ void main() {
                 'challengeInstanceId': 'ch',
                 'signalToken': '',
                 'signaledAtMs': 1,
+                'signalEndsAtMs': 2,
+                'serverNowMs': 1,
+              },
+            },
+            MessageTypes.challengeSignalEnded: <String, dynamic>{
+              'schemaVersion': '1',
+              'type': MessageTypes.challengeSignalEnded,
+              'messageId': 'm5b',
+              'matchId': 'match-1',
+              'serverSequence': 1,
+              'payload': <String, dynamic>{
+                'challengeInstanceId': 'ch',
+                'signalEndsAtMs': -1,
                 'serverNowMs': 1,
               },
             },

@@ -19,6 +19,8 @@ abstract final class MessageTypes {
   static const String privateRoomJoin = 'private_room.join';
   static const String matchReady = 'match.ready';
   static const String matchLeave = 'match.leave';
+  static const String matchExtendLobbyFill = 'match.extend_lobby_fill';
+  static const String matchStartLobby = 'match.start_lobby';
   static const String trainingStart = 'training.start';
   static const String trainingRetry = 'training.retry';
   static const String matchRematch = 'match.rematch';
@@ -28,6 +30,7 @@ abstract final class MessageTypes {
   static const String playerPresence = 'match.player_presence';
   static const String challengeStarted = 'challenge.started';
   static const String challengeSignal = 'challenge.signal';
+  static const String challengeSignalEnded = 'challenge.signal_ended';
   static const String challengeSubmissionAck = 'challenge.submission_ack';
   static const String challengeResolved = 'challenge.resolved';
   static const String matchStateChanged = 'match.state_changed';
@@ -131,12 +134,14 @@ enum MatchPhase {
 enum RoundPhase {
   waitingSignal,
   signalActive,
+  signalExpired,
   resolved;
 
   static RoundPhase fromString(String value) {
     return switch (value) {
       'waiting_signal' => RoundPhase.waitingSignal,
       'signal_active' => RoundPhase.signalActive,
+      'signal_expired' => RoundPhase.signalExpired,
       'resolved' => RoundPhase.resolved,
       _ => throw ArgumentError('Unknown RoundPhase: $value'),
     };
@@ -262,6 +267,7 @@ class PublicChallenge {
     this.choiceKeys = const <String>[],
     this.signalToken,
     this.signaledAtMs,
+    this.signalEndsAtMs,
   });
 
   final String challengeInstanceId;
@@ -278,6 +284,7 @@ class PublicChallenge {
   final RoundPhase roundPhase;
   final String? signalToken;
   final int? signaledAtMs;
+  final int? signalEndsAtMs;
 
   factory PublicChallenge.fromJson(Map<String, dynamic> json) {
     final dynamic rawChoiceKeys = json['choiceKeys'];
@@ -301,6 +308,7 @@ class PublicChallenge {
       roundPhase: RoundPhase.fromString(json['roundPhase'] as String),
       signalToken: json['signalToken'] as String?,
       signaledAtMs: json['signaledAtMs'] as int?,
+      signalEndsAtMs: json['signalEndsAtMs'] as int?,
     );
   }
 }
@@ -374,6 +382,7 @@ class MatchSnapshotPayload {
     required this.sequence,
     required this.players,
     this.phaseDeadlineAtMs,
+    this.lobbyFillDeadlineAtMs,
     this.lastRoundResult,
     this.nextPhaseAtMs,
     this.winnerId,
@@ -387,6 +396,7 @@ class MatchSnapshotPayload {
   final String status;
   final MatchPhase phase;
   final int? phaseDeadlineAtMs;
+  final int? lobbyFillDeadlineAtMs;
   final int roundNumber;
   final int serverNowMs;
   final LastRoundResult? lastRoundResult;
@@ -408,6 +418,7 @@ class MatchSnapshotPayload {
       status: json['status'] as String,
       phase: MatchPhase.fromString(json['phase'] as String),
       phaseDeadlineAtMs: json['phaseDeadlineAtMs'] as int?,
+      lobbyFillDeadlineAtMs: json['lobbyFillDeadlineAtMs'] as int?,
       roundNumber: json['roundNumber'] as int,
       serverNowMs: json['serverNowMs'] as int,
       lastRoundResult: lastRound != null
@@ -552,12 +563,14 @@ class ChallengeSignalPayload {
     required this.challengeInstanceId,
     required this.signalToken,
     required this.signaledAtMs,
+    required this.signalEndsAtMs,
     required this.serverNowMs,
   });
 
   final String challengeInstanceId;
   final String signalToken;
   final int signaledAtMs;
+  final int signalEndsAtMs;
   final int serverNowMs;
 
   factory ChallengeSignalPayload.fromJson(Map<String, dynamic> json) {
@@ -565,6 +578,28 @@ class ChallengeSignalPayload {
       challengeInstanceId: json['challengeInstanceId'] as String,
       signalToken: json['signalToken'] as String,
       signaledAtMs: json['signaledAtMs'] as int,
+      signalEndsAtMs: json['signalEndsAtMs'] as int,
+      serverNowMs: json['serverNowMs'] as int,
+    );
+  }
+}
+
+/// challenge.signal_ended payload — blue window closed; heart returns to red.
+class ChallengeSignalEndedPayload {
+  const ChallengeSignalEndedPayload({
+    required this.challengeInstanceId,
+    required this.signalEndsAtMs,
+    required this.serverNowMs,
+  });
+
+  final String challengeInstanceId;
+  final int signalEndsAtMs;
+  final int serverNowMs;
+
+  factory ChallengeSignalEndedPayload.fromJson(Map<String, dynamic> json) {
+    return ChallengeSignalEndedPayload(
+      challengeInstanceId: json['challengeInstanceId'] as String,
+      signalEndsAtMs: json['signalEndsAtMs'] as int,
       serverNowMs: json['serverNowMs'] as int,
     );
   }

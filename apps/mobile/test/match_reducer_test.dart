@@ -248,6 +248,25 @@ void main() {
         signalResult.state.currentChallenge!.signalToken,
         'signal-tok-xyz',
       );
+      expect(
+        signalResult.state.currentChallenge!.signalEndsAtMs,
+        1700000012000,
+      );
+
+      final Map<String, dynamic> endedRaw = clone(
+        fixtures['challenge_signal_ended'] as Map<String, dynamic>,
+      );
+      endedRaw['serverSequence'] = 12;
+      final ReducerResult endedResult = reducer.reduce(
+        signalResult.state,
+        endedRaw,
+      );
+      expect(endedResult.disposition, ReducerDisposition.applied);
+      expect(
+        endedResult.state.currentChallenge!.roundPhase,
+        RoundPhase.signalExpired,
+      );
+      expect(endedResult.state.currentChallenge!.signalToken, isNull);
     });
 
     test('challenge resolved transitions to round_result phase', () {

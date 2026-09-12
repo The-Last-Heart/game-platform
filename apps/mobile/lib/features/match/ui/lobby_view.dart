@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -15,17 +17,25 @@ class LobbyView extends StatelessWidget {
     required this.state,
     this.onReady,
     this.onLeave,
+    this.onExtendLobbyFill,
+    this.onStartLobby,
+    this.estimateServerNowMs,
     super.key,
   });
 
   final MatchViewState state;
   final VoidCallback? onReady;
   final VoidCallback? onLeave;
+  final VoidCallback? onExtendLobbyFill;
+  final VoidCallback? onStartLobby;
+  final int Function()? estimateServerNowMs;
 
   @override
   Widget build(BuildContext context) {
     final TranslationResolver resolver = AppLocalization.of(context);
-    final int capacity = state.mode == MatchMode.training ? 1 : 6;
+    final bool isTraining = state.mode == MatchMode.training;
+    final bool isQuick = state.mode == MatchMode.quickSurvival;
+    final int capacity = isTraining ? 1 : 6;
     final int playerCount = state.players.length;
     final int emptySlots = (capacity - playerCount).clamp(0, capacity);
     final String? code = state.roomCode;
@@ -42,6 +52,14 @@ class LobbyView extends StatelessWidget {
       }
       return state.players.isNotEmpty ? state.players.first.playerId : '';
     }();
+    final bool isLocalHost =
+        state.playerId != null && state.playerId == hostId;
+    final bool showFillTimer = isQuick &&
+        state.phase == MatchPhase.lobby &&
+        playerCount >= 2 &&
+        playerCount < capacity &&
+        state.lobbyFillDeadlineAtMs != null &&
+        estimateServerNowMs != null;
 
     return Column(
       children: <Widget>[
@@ -57,19 +75,22 @@ class LobbyView extends StatelessWidget {
                   children: <Widget>[
                     Text(
                       resolver.resolve(
-                        state.mode == MatchMode.privateRoom
-                            ? TranslationKeys.lobbyPrivateRoom
-                            : TranslationKeys.lobbyTitle,
+                        isTraining
+                            ? TranslationKeys.trainingTitle
+                            : state.mode == MatchMode.privateRoom
+                                ? TranslationKeys.lobbyPrivateRoom
+                                : TranslationKeys.lobbyTitle,
                       ),
                       style: Theme.of(context).textTheme.headlineMedium,
                     ),
-                    Text(
-                      resolver.resolve(
-                        TranslationKeys.lobbyPlayersOfMax,
-                        params: <String, String>{'count': '$playerCount'},
+                    if (!isTraining)
+                      Text(
+                        resolver.resolve(
+                          TranslationKeys.lobbyPlayersOfMax,
+                          params: <String, String>{'count': '$playerCount'},
+                        ),
+                        style: Theme.of(context).textTheme.bodySmall,
                       ),
-                      style: Theme.of(context).textTheme.bodySmall,
-                    ),
                   ],
                 ),
               ),
@@ -124,43 +145,69 @@ class LobbyView extends StatelessWidget {
             ),
           ),
         if (showRoomCode) const SizedBox(height: 20),
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 20),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: <Widget>[
-              Text(
-                resolver.resolve(TranslationKeys.lobbyTitle),
-                style: Theme.of(context).textTheme.headlineMedium,
+        if (isTraining)
+          Expanded(
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 28),
+              child: Center(
+                child: Text(
+                  resolver.resolve(TranslationKeys.trainingExplain),
+                  style: Theme.of(context).textTheme.titleMedium,
+                  textAlign: TextAlign.center,
+                ),
               ),
-              if (hostId.isNotEmpty)
-                Text(
-                  '${resolver.resolve(TranslationKeys.lobbyHostLabel)}: ${_labelForHost(hostId)}',
-                  style: Theme.of(context).textTheme.bodySmall,
-                ),
-            ],
-          ),
-        ),
-        const SizedBox(height: 12),
-        Expanded(
-          child: ListView(
+            ),
+          )
+        else ...<Widget>[
+          Padding(
             padding: const EdgeInsets.symmetric(horizontal: 20),
-            children: <Widget>[
-              for (final PlayerPublic player in state.players)
-                _PlayerRow(
-                  player: player,
-                  isHost: player.playerId == hostId || player.isHost == true,
-                  resolver: resolver,
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: <Widget>[
+                Text(
+                  resolver.resolve(TranslationKeys.lobbyTitle),
+                  style: Theme.of(context).textTheme.headlineMedium,
                 ),
-              if (emptySlots > 0)
-                _EmptySlotRow(count: emptySlots, resolver: resolver),
-            ],
+                if (hostId.isNotEmpty)
+                  Text(
+                    '${resolver.resolve(TranslationKeys.lobbyHostLabel)}: ${_labelForHost(hostId)}',
+                    style: Theme.of(context).textTheme.bodySmall,
+                  ),
+              ],
+            ),
           ),
-        ),
+          const SizedBox(height: 12),
+          Expanded(
+            child: ListView(
+              padding: const EdgeInsets.symmetric(horizontal: 20),
+              children: <Widget>[
+                for (final PlayerPublic player in state.players)
+                  _PlayerRow(
+                    player: player,
+                    isHost: player.playerId == hostId || player.isHost == true,
+                    resolver: resolver,
+                  ),
+                if (emptySlots > 0)
+                  _EmptySlotRow(count: emptySlots, resolver: resolver),
+              ],
+            ),
+          ),
+        ],
         Padding(
           padding: const EdgeInsets.fromLTRB(20, 8, 20, 12),
           child: Column(
             children: <Widget>[
+              if (showFillTimer) ...<Widget>[
+                _LobbyFillTimerBanner(
+                  deadlineAtMs: state.lobbyFillDeadlineAtMs!,
+                  estimateServerNowMs: estimateServerNowMs!,
+                  showHostActions: isLocalHost,
+                  onExtend: onExtendLobbyFill,
+                  onStart: onStartLobby,
+                  resolver: resolver,
+                ),
+                const SizedBox(height: 8),
+              ],
               if (showRoomCode) ...<Widget>[
                 SizedBox(
                   width: double.infinity,
@@ -192,32 +239,33 @@ class LobbyView extends StatelessWidget {
                 ),
                 const SizedBox(height: 8),
               ],
-              SizedBox(
-                width: double.infinity,
-                child: FilledButton(
-                  onPressed: localReady ? null : onReady,
-                  style: FilledButton.styleFrom(
-                    backgroundColor: LhColors.success,
-                    disabledBackgroundColor: LhColors.border,
-                    shape: const RoundedRectangleBorder(
-                      borderRadius: LhRadii.mdAll,
+              if (!isQuick)
+                SizedBox(
+                  width: double.infinity,
+                  child: FilledButton(
+                    onPressed: localReady ? null : onReady,
+                    style: FilledButton.styleFrom(
+                      backgroundColor: LhColors.success,
+                      disabledBackgroundColor: LhColors.border,
+                      shape: const RoundedRectangleBorder(
+                        borderRadius: LhRadii.mdAll,
+                      ),
+                      padding: const EdgeInsets.symmetric(vertical: 14),
                     ),
-                    padding: const EdgeInsets.symmetric(vertical: 14),
-                  ),
-                  child: Text(
-                    resolver.resolve(
-                      localReady
-                          ? TranslationKeys.lobbyReady
-                          : TranslationKeys.privateReady,
-                    ),
-                    style: const TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.w600,
+                    child: Text(
+                      resolver.resolve(
+                        localReady
+                            ? TranslationKeys.lobbyReady
+                            : TranslationKeys.privateReady,
+                      ),
+                      style: const TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w600,
+                      ),
                     ),
                   ),
                 ),
-              ),
-              const SizedBox(height: 8),
+              if (!isQuick) const SizedBox(height: 8),
               SizedBox(
                 width: double.infinity,
                 child: TextButton(
@@ -238,14 +286,14 @@ class LobbyView extends StatelessWidget {
         return _displayName(p);
       }
     }
-    return hostId.length > 8 ? hostId.substring(0, 8) : hostId;
+    return '—';
   }
 
+  /// Prefer server displayName; never surface a truncated playerId as a name.
   static String _displayName(PlayerPublic player) {
-    final String? name = player.displayName;
+    final String? name = player.displayName?.trim();
     if (name != null && name.isNotEmpty) return name;
-    if (player.playerId.length > 8) return player.playerId.substring(0, 8);
-    return player.playerId;
+    return '—';
   }
 }
 
@@ -266,7 +314,8 @@ class _PlayerRow extends StatelessWidget {
         kPlayerAvatarColors[player.playerId.hashCode.abs() %
             kPlayerAvatarColors.length];
     final String name = LobbyView._displayName(player);
-    final String initial = name.isNotEmpty ? name[0].toUpperCase() : '?';
+    final String initial =
+        name.isNotEmpty && name != '—' ? name[0].toUpperCase() : '?';
     final bool disconnected = player.presence == Presence.disconnected;
     final bool ready = player.ready == true;
     final bool bot = player.isBot == true;
@@ -428,6 +477,133 @@ class _EmptySlotRow extends StatelessWidget {
             ),
             child: const Icon(Icons.add, color: LhColors.textMuted, size: 20),
           ),
+        ],
+      ),
+    );
+  }
+}
+
+class _LobbyFillTimerBanner extends StatefulWidget {
+  const _LobbyFillTimerBanner({
+    required this.deadlineAtMs,
+    required this.estimateServerNowMs,
+    required this.showHostActions,
+    required this.resolver,
+    this.onExtend,
+    this.onStart,
+  });
+
+  final int deadlineAtMs;
+  final int Function() estimateServerNowMs;
+  final bool showHostActions;
+  final VoidCallback? onExtend;
+  final VoidCallback? onStart;
+  final TranslationResolver resolver;
+
+  @override
+  State<_LobbyFillTimerBanner> createState() => _LobbyFillTimerBannerState();
+}
+
+class _LobbyFillTimerBannerState extends State<_LobbyFillTimerBanner> {
+  Timer? _timer;
+  int _secondsLeft = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    _tick();
+    _timer = Timer.periodic(const Duration(milliseconds: 200), (_) => _tick());
+  }
+
+  @override
+  void didUpdateWidget(covariant _LobbyFillTimerBanner oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.deadlineAtMs != widget.deadlineAtMs) {
+      _tick();
+    }
+  }
+
+  void _tick() {
+    final int nowMs = widget.estimateServerNowMs();
+    if (nowMs <= 0) return;
+    final int remaining = ((widget.deadlineAtMs - nowMs) / 1000).ceil();
+    final int next = remaining.clamp(0, 999);
+    if (next != _secondsLeft) {
+      setState(() => _secondsLeft = next);
+    }
+  }
+
+  @override
+  void dispose() {
+    _timer?.cancel();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      decoration: BoxDecoration(
+        color: LhColors.elevated,
+        borderRadius: LhRadii.mdAll,
+        border: Border.all(color: LhColors.border),
+      ),
+      child: Column(
+        children: <Widget>[
+          Text(
+            widget.resolver.resolve(
+              TranslationKeys.lobbyFillStartsIn,
+              params: <String, String>{'seconds': '$_secondsLeft'},
+            ),
+            style: Theme.of(context).textTheme.titleMedium,
+            textAlign: TextAlign.center,
+          ),
+          if (widget.showHostActions) ...<Widget>[
+            if (widget.onStart != null) ...<Widget>[
+              const SizedBox(height: 8),
+              SizedBox(
+                width: double.infinity,
+                child: FilledButton(
+                  onPressed: widget.onStart,
+                  style: FilledButton.styleFrom(
+                    backgroundColor: LhColors.warning,
+                    foregroundColor: LhColors.bg,
+                    shape: const RoundedRectangleBorder(
+                      borderRadius: LhRadii.mdAll,
+                    ),
+                    padding: const EdgeInsets.symmetric(vertical: 14),
+                  ),
+                  child: Text(
+                    widget.resolver.resolve(TranslationKeys.lobbyStartNow),
+                    style: const TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ),
+              ),
+            ],
+            if (widget.onExtend != null) ...<Widget>[
+              const SizedBox(height: 8),
+              SizedBox(
+                width: double.infinity,
+                child: OutlinedButton(
+                  onPressed: widget.onExtend,
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: LhColors.text,
+                    side: const BorderSide(color: LhColors.warning),
+                    shape: const RoundedRectangleBorder(
+                      borderRadius: LhRadii.mdAll,
+                    ),
+                  ),
+                  child: Text(
+                    widget.resolver.resolve(TranslationKeys.lobbyExtendWait),
+                  ),
+                ),
+              ),
+            ],
+          ],
         ],
       ),
     );

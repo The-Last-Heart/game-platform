@@ -381,11 +381,162 @@ describe('MatchService', () => {
 
     const left = await service.leaveMatch(room.matchId, guest.playerId);
     expect(left.left).toBe(true);
+    expect(left.emptied).toBe(false);
     expect(left.snapshot?.players).toHaveLength(1);
     expect(
       left.snapshot?.players.some((p) => p.playerId === guest.playerId),
     ).toBe(false);
 
+    service.onModuleDestroy();
+  });
+
+  it('quick leave reopens fill wait so the seat is joinable again', async () => {
+    const clock = new FakeClock(5_000_000);
+    const service = MatchService.forTests({ clock, nodeEnv: 'test' });
+    const created = await service.createQuickSurvivalMatch([
+      { displayName: 'Host', avatarColor: '#111111' },
+      { displayName: 'Guest', avatarColor: '#222222' },
+    ]);
+    const guestId = created.assignments[1]!.playerId;
+
+    clock.advance(30_000);
+    const left = await service.leaveMatch(created.matchId, guestId);
+    expect(left.left).toBe(true);
+    expect(left.emptied).toBe(false);
+    expect(left.lobbyFillWaitMs).toBe(60_000);
+    expect(left.snapshot?.players).toHaveLength(1);
+    expect(left.snapshot?.lobbyFillDeadlineAtMs).toBe(
+      clock.nowMs() + 60_000,
+    );
+    expect(left.snapshot?.hostPlayerId).toBe(created.assignments[0]!.playerId);
+
+    const openId = await service.findOpenQuickSurvivalLobby();
+    expect(openId).toBe(created.matchId);
+
+    // Even after the original fill window would have elapsed, the refreshed
+    // deadline keeps this room open for packing.
+    clock.advance(45_000);
+    expect(await service.findOpenQuickSurvivalLobby()).toBe(created.matchId);
+
+    service.onModuleDestroy();
+  });
+
+  it('findOpenQuickSurvivalLobby still returns a solo lobby past fill deadline', async () => {
+    const clock = new FakeClock(5_000_000);
+    const service = MatchService.forTests({ clock, nodeEnv: 'test' });
+    const created = await service.createQuickSurvivalMatch([
+      { displayName: 'SoloHost', avatarColor: '#111111' },
+    ]);
+    clock.advance(60_000);
+    expect(await service.findOpenQuickSurvivalLobby()).toBe(created.matchId);
+    service.onModuleDestroy();
+  });
+
+  it('exposes lobbyFillDeadlineAtMs and sets first seat as host', async () => {
+    const clock = new FakeClock(5_000_000);
+    const service = MatchService.forTests({ clock, nodeEnv: 'test' });
+    const created = await service.createQuickSurvivalMatch([
+      { displayName: 'Host', avatarColor: '#111111' },
+    ]);
+    expect(created.snapshot.lobbyFillDeadlineAtMs).toBe(
+      clock.nowMs() + 60_000,
+    );
+    expect(created.snapshot.hostPlayerId).toBe(
+      created.assignments[0]!.playerId,
+    );
+    service.onModuleDestroy();
+  });
+
+  it('host can extend fill wait; non-host cannot', async () => {
+    const clock = new FakeClock(5_000_000);
+    const service = MatchService.forTests({ clock, nodeEnv: 'test' });
+    const created = await service.createQuickSurvivalMatch([
+      { displayName: 'Host', avatarColor: '#111111' },
+      { displayName: 'Guest', avatarColor: '#222222' },
+    ]);
+    const hostId = created.assignments[0]!.playerId;
+    const guestId = created.assignments[1]!.playerId;
+
+    clock.advance(40_000);
+    await expect(
+      service.extendLobbyFill(created.matchId, guestId),
+    ).rejects.toMatchObject({ code: 'NOT_HOST' });
+
+    const extended = await service.extendLobbyFill(created.matchId, hostId);
+    // Remaining was 20s + 30s = 50s (under 120s cap).
+    expect(extended.lobbyFillWaitMs).toBe(50_000);
+    expect(extended.snapshot.lobbyFillDeadlineAtMs).toBe(
+      clock.nowMs() + 50_000,
+    );
+
+    clock.advance(50_000);
+    const resolved = await service.resolveQuickLobbyFill(created.matchId);
+    expect(resolved.outcome).toBe('started');
+
+    service.onModuleDestroy();
+  });
+
+  it('host can start lobby early with two players; non-host and solo cannot', async () => {
+    const clock = new FakeClock(5_000_000);
+    const service = MatchService.forTests({ clock, nodeEnv: 'test' });
+    const solo = await service.createQuickSurvivalMatch([
+      { displayName: 'Alone', avatarColor: '#111111' },
+    ]);
+    await expect(
+      service.startLobbyNow(solo.matchId, solo.assignments[0]!.playerId),
+    ).rejects.toMatchObject({ code: 'NOT_ENOUGH_PLAYERS' });
+
+    const created = await service.createQuickSurvivalMatch([
+      { displayName: 'Host', avatarColor: '#111111' },
+      { displayName: 'Guest', avatarColor: '#222222' },
+    ]);
+    const hostId = created.assignments[0]!.playerId;
+    const guestId = created.assignments[1]!.playerId;
+
+    await expect(
+      service.startLobbyNow(created.matchId, guestId),
+    ).rejects.toMatchObject({ code: 'NOT_HOST' });
+
+    const started = await service.startLobbyNow(created.matchId, hostId);
+    expect(started.snapshot.phase).toBe('ready_countdown');
+    expect(started.snapshot.players).toHaveLength(2);
+
+    service.onModuleDestroy();
+  });
+
+  it('extend rejects full lobby and ready_countdown', async () => {
+    const clock = new FakeClock(5_000_000);
+    const service = MatchService.forTests({ clock, nodeEnv: 'test' });
+    const seats = Array.from({ length: 6 }, (_, i) => ({
+      displayName: `P${i}`,
+      avatarColor: '#112233',
+    }));
+    const created = await service.createQuickSurvivalMatch(seats);
+    for (const a of created.assignments) {
+      await service.finalizeJoin(created.matchId, a.playerId);
+    }
+    const match = await service.getStoreForTests().get(created.matchId);
+    expect(match?.phase).toBe('ready_countdown');
+    await expect(
+      service.extendLobbyFill(
+        created.matchId,
+        created.assignments[0]!.playerId,
+      ),
+    ).rejects.toMatchObject({ code: 'NOT_LOBBY' });
+    service.onModuleDestroy();
+  });
+
+  it('transfers host when the host leaves a quick lobby', async () => {
+    const clock = new FakeClock(5_000_000);
+    const service = MatchService.forTests({ clock, nodeEnv: 'test' });
+    const created = await service.createQuickSurvivalMatch([
+      { displayName: 'Host', avatarColor: '#111111' },
+      { displayName: 'Guest', avatarColor: '#222222' },
+    ]);
+    const hostId = created.assignments[0]!.playerId;
+    const guestId = created.assignments[1]!.playerId;
+    const left = await service.leaveMatch(created.matchId, hostId);
+    expect(left.snapshot?.hostPlayerId).toBe(guestId);
     service.onModuleDestroy();
   });
 
@@ -468,6 +619,55 @@ describe('MatchService', () => {
     service.onModuleDestroy();
   });
 
+  it('training.retry carries remaining hearts; resets to 3 after wipe', async () => {
+    const clock = new FakeClock(5_000_000);
+    const service = MatchService.forTests({ clock, nodeEnv: 'test' });
+    const started = await service.startTraining({
+      displayName: 'Trainee',
+      avatarColor: '#ABCDEF',
+    });
+    await service.finalizeJoin(started.matchId, started.playerId);
+    const store = service.getStoreForTests();
+
+    let match = await store.get(started.matchId);
+    match!.phase = 'round_result';
+    match!.status = 'waiting';
+    const player = match!.players.get(started.playerId)!;
+    player.hearts = 2;
+    player.energy = 1;
+    await store.save(match!);
+
+    const midRetry = await service.retryTraining(
+      started.matchId,
+      started.playerId,
+    );
+    expect(midRetry.matchId).not.toBe(started.matchId);
+    const carried = midRetry.snapshot.players[0];
+    expect(carried?.hearts).toBe(2);
+    expect(carried?.energy).toBe(1);
+
+    await service.finalizeJoin(midRetry.matchId, midRetry.playerId);
+    match = await store.get(midRetry.matchId);
+    match!.phase = 'round_result';
+    match!.status = 'waiting';
+    const wiped = match!.players.get(midRetry.playerId)!;
+    wiped.hearts = 0;
+    wiped.energy = 4;
+    wiped.status = 'spectator';
+    await store.save(match!);
+
+    const fresh = await service.retryTraining(
+      midRetry.matchId,
+      midRetry.playerId,
+    );
+    expect(fresh.matchId).not.toBe(midRetry.matchId);
+    expect(fresh.snapshot.players[0]?.hearts).toBe(3);
+    expect(fresh.snapshot.players[0]?.energy).toBe(0);
+    expect(fresh.snapshot.players[0]?.status).toBe('active');
+
+    service.onModuleDestroy();
+  });
+
   it('rematch returns a new matchId', async () => {
     const clock = new FakeClock(5_000_000);
     const service = MatchService.forTests({ clock, nodeEnv: 'test' });
@@ -516,7 +716,7 @@ describe('MatchService', () => {
       displayName: 'Queued',
       avatarColor: '#123456',
     });
-    expect(queued.state).toBe('queued');
+    expect(queued.state).toBe('assigned');
     expect(mm.getTicket(queued.ticketId)).toBeTruthy();
 
     const cancelled = await mm.cancel(queued.ticketId);
@@ -528,9 +728,43 @@ describe('MatchService', () => {
       displayName: 'Queued',
       avatarColor: '#123456',
     });
-    expect(again.state).toBe('queued');
+    expect(again.state).toBe('assigned');
 
     mm.onModuleDestroy();
+    service.onModuleDestroy();
+  });
+
+  it('after the only playlist challenge, round_result finishes by standings', async () => {
+    const clock = new FakeClock(5_000_000);
+    const service = MatchService.forTests({ clock, nodeEnv: 'test' });
+    const created = await service.createQuickSurvivalMatch([
+      { displayName: 'Host', avatarColor: '#111111' },
+      { displayName: 'Guest', avatarColor: '#222222' },
+    ]);
+    const hostId = created.assignments[0]!.playerId;
+    const guestId = created.assignments[1]!.playerId;
+    for (const a of created.assignments) {
+      await service.finalizeJoin(created.matchId, a.playerId);
+    }
+
+    const store = service.getStoreForTests();
+    const match = await store.get(created.matchId);
+    expect(match).toBeTruthy();
+    // Simulate completed first (and only) playlist round awaiting hold expiry.
+    match!.phase = 'round_result';
+    match!.status = 'waiting';
+    match!.roundNumber = 1;
+    match!.phaseDeadlineAtMs = clock.nowMs();
+    match!.phaseDeadlineMonoMs = clock.monoMs();
+    match!.players.get(hostId)!.hearts = 3;
+    match!.players.get(guestId)!.hearts = 2;
+    await store.save(match!);
+
+    await service.tickDue(created.matchId);
+    const after = await store.get(created.matchId);
+    expect(after?.phase).toBe('completed');
+    expect(after?.winnerId).toBe(hostId);
+
     service.onModuleDestroy();
   });
 });

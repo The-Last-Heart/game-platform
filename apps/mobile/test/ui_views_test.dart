@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:game/features/match/engines/reaction_wait_for_signal_engine.dart';
 import 'package:game/features/match/protocol/realtime_messages.dart';
 import 'package:game/features/match/state/match_snapshot.dart';
+import 'package:game/features/match/ui/challenge_play_view.dart';
 import 'package:game/features/match/ui/halted_view.dart';
 import 'package:game/features/match/ui/lobby_view.dart';
 import 'package:game/features/match/ui/round_result_view.dart';
@@ -92,6 +94,42 @@ void main() {
       );
       expect(find.text('AB12CD'), findsOneWidget);
       expect(find.text('Host'), findsOneWidget);
+    });
+
+    testWidgets('training lobby hides player roster', (
+      WidgetTester tester,
+    ) async {
+      const MatchViewState state = MatchViewState(
+        matchId: 'train-1',
+        mode: MatchMode.training,
+        players: <PlayerPublic>[
+          PlayerPublic(
+            playerId: 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee',
+            hearts: 3,
+            energy: 0,
+            status: PlayerStatus.active,
+            presence: Presence.connected,
+            submittedForCurrentChallenge: false,
+            displayName: 'وجدي',
+            ready: true,
+            isHost: true,
+          ),
+        ],
+      );
+
+      await tester.pumpWidget(
+        wrapWithL10n(
+          LobbyView(state: state, onReady: () {}, onLeave: () {}),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(
+        find.text(resolver.resolve(TranslationKeys.trainingTitle)),
+        findsOneWidget,
+      );
+      expect(find.text('وجدي'), findsNothing);
+      expect(find.text('aaaaaaaa'), findsNothing);
     });
   });
 
@@ -237,6 +275,54 @@ void main() {
       expect(find.textContaining('p1'), findsNothing);
       expect(find.textContaining('٨٥٠'), findsNothing);
       expect(find.textContaining('850'), findsNothing);
+    });
+
+    testWidgets('shows standings with names hearts and energy score', (
+      WidgetTester tester,
+    ) async {
+      const MatchViewState state = MatchViewState(
+        playerId: 'p1',
+        winnerId: 'p1',
+        phase: MatchPhase.completed,
+        players: <PlayerPublic>[
+          PlayerPublic(
+            playerId: 'p2',
+            hearts: 1,
+            energy: 4,
+            status: PlayerStatus.active,
+            presence: Presence.connected,
+            submittedForCurrentChallenge: false,
+            displayName: 'سارة',
+          ),
+          PlayerPublic(
+            playerId: 'p1',
+            hearts: 2,
+            energy: 10,
+            status: PlayerStatus.active,
+            presence: Presence.connected,
+            submittedForCurrentChallenge: false,
+            displayName: 'أحمد',
+          ),
+        ],
+      );
+
+      await tester.pumpWidget(
+        wrapWithL10n(WinnerView(state: state, onBackHome: () {})),
+      );
+      await tester.pumpAndSettle();
+
+      expect(
+        find.text(resolver.resolve(TranslationKeys.winnerStandings)),
+        findsOneWidget,
+      );
+      expect(find.text('أحمد'), findsWidgets);
+      expect(find.text('سارة'), findsOneWidget);
+      expect(
+        find.textContaining(
+          resolver.resolve(TranslationKeys.winnerEnergyScore),
+        ),
+        findsWidgets,
+      );
     });
 
     testWidgets('does not show truncated playerId as winner name', (
@@ -388,6 +474,179 @@ void main() {
       expect(
         find.text(resolver.resolve(TranslationKeys.resultLostHeartLabel)),
         findsOneWidget,
+      );
+    });
+
+    testWidgets('training mode shows retry and back home instead of auto-continue', (
+      WidgetTester tester,
+    ) async {
+      var retryPressed = false;
+      var homePressed = false;
+      const MatchViewState state = MatchViewState(
+        playerId: 'p1',
+        mode: MatchMode.training,
+        phase: MatchPhase.roundResult,
+        lastRoundResult: LastRoundResult(
+          challengeInstanceId: 'ch-1',
+          resolutions: <PlayerChallengeResolution>[
+            PlayerChallengeResolution(
+              playerId: 'p1',
+              outcome: 'timeout',
+              heartsDelta: -1,
+              energyDelta: 0,
+              heartsAfter: 2,
+              energyAfter: 0,
+              statusAfter: PlayerStatus.active,
+            ),
+          ],
+        ),
+      );
+
+      await tester.pumpWidget(
+        wrapWithL10n(
+          RoundResultView(
+            state: state,
+            estimateServerNowMs: () => 1_000_000,
+            onRetry: () => retryPressed = true,
+            onBackHome: () => homePressed = true,
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(
+        find.text(resolver.resolve(TranslationKeys.resultAutoContinue)),
+        findsNothing,
+      );
+      expect(
+        find.text(resolver.resolve(TranslationKeys.trainingRetry)),
+        findsOneWidget,
+      );
+      expect(
+        find.text(resolver.resolve(TranslationKeys.winnerBackHome)),
+        findsOneWidget,
+      );
+
+      await tester.tap(find.text(resolver.resolve(TranslationKeys.trainingRetry)));
+      await tester.pump();
+      expect(retryPressed, isTrue);
+
+      await tester.tap(
+        find.text(resolver.resolve(TranslationKeys.winnerBackHome)),
+      );
+      await tester.pump();
+      expect(homePressed, isTrue);
+    });
+  });
+
+  group('ChallengePlayView', () {
+    PublicChallenge challenge() => const PublicChallenge(
+      challengeInstanceId: 'ch-1',
+      engineId: 'reaction.wait_for_signal',
+      definitionId: 'reaction.wait_for_signal.v1',
+      definitionVersion: 1,
+      promptKey: 'challenge.wait_for_signal.intro',
+      startsAtMs: 1_000_000,
+      deadlineAtMs: 1_005_000,
+      durationMs: 5000,
+      roundPhase: RoundPhase.waitingSignal,
+      clientConfig: <String, dynamic>{
+        'waitingPromptKey': 'challenge.wait_for_signal.waiting',
+        'waitingHintKey': 'challenge.wait_for_signal.waiting_hint',
+        'activePromptKey': 'challenge.wait_for_signal.active',
+        'actionKey': 'challenge.wait_for_signal.action',
+        'categoryKey': 'challenge.category.reaction',
+      },
+      serverNowMs: 1_000_000,
+    );
+
+    testWidgets('early submit shows تسرعت not recovering', (
+      WidgetTester tester,
+    ) async {
+      final MatchViewState state = MatchViewState(
+        playerId: 'p1',
+        phase: MatchPhase.challengeActive,
+        lifecycle: SessionLifecycle.bound,
+        isConnected: true,
+        answerStatus: AnswerSubmissionStatus.confirmed,
+        answerSubmittedEarly: true,
+        currentChallenge: challenge(),
+        players: const <PlayerPublic>[
+          PlayerPublic(
+            playerId: 'p1',
+            hearts: 2,
+            energy: 0,
+            status: PlayerStatus.active,
+            presence: Presence.connected,
+            submittedForCurrentChallenge: true,
+          ),
+        ],
+      );
+
+      await tester.pumpWidget(
+        wrapWithL10n(
+          ChallengePlayView(
+            state: state,
+            engine: ReactionWaitForSignalEngine(),
+            estimateServerNowMs: () => 1_000_000,
+            onSubmit: (_) {},
+          ),
+        ),
+      );
+      await tester.pump();
+
+      expect(
+        find.text(resolver.resolve(TranslationKeys.resultTooEarlyTitle)),
+        findsOneWidget,
+      );
+      expect(
+        find.text(resolver.resolve(TranslationKeys.sessionRecoveringState)),
+        findsNothing,
+      );
+    });
+
+    testWidgets('successful submit wait does not show recovering', (
+      WidgetTester tester,
+    ) async {
+      final MatchViewState state = MatchViewState(
+        playerId: 'p1',
+        phase: MatchPhase.challengeActive,
+        lifecycle: SessionLifecycle.bound,
+        isConnected: true,
+        answerStatus: AnswerSubmissionStatus.confirmed,
+        answerSubmittedEarly: false,
+        currentChallenge: challenge(),
+        players: const <PlayerPublic>[
+          PlayerPublic(
+            playerId: 'p1',
+            hearts: 3,
+            energy: 0,
+            status: PlayerStatus.active,
+            presence: Presence.connected,
+            submittedForCurrentChallenge: true,
+          ),
+        ],
+      );
+
+      await tester.pumpWidget(
+        wrapWithL10n(
+          ChallengePlayView(
+            state: state,
+            engine: ReactionWaitForSignalEngine(),
+            estimateServerNowMs: () => 1_000_000,
+            onSubmit: (_) {},
+          ),
+        ),
+      );
+      await tester.pump();
+
+      expect(
+        find.text(resolver.resolve(TranslationKeys.challengeAnswerWaiting)),
+        findsOneWidget,
+      );
+      expect(
+        find.text(resolver.resolve(TranslationKeys.sessionRecoveringState)),
+        findsNothing,
       );
     });
   });

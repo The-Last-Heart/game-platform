@@ -16,6 +16,8 @@ export const MessageTypes = {
   PrivateRoomJoin: 'private_room.join',
   MatchReady: 'match.ready',
   MatchLeave: 'match.leave',
+  MatchExtendLobbyFill: 'match.extend_lobby_fill',
+  MatchStartLobby: 'match.start_lobby',
   TrainingStart: 'training.start',
   TrainingRetry: 'training.retry',
   MatchRematch: 'match.rematch',
@@ -25,6 +27,7 @@ export const MessageTypes = {
   PlayerPresence: 'match.player_presence',
   ChallengeStarted: 'challenge.started',
   ChallengeSignal: 'challenge.signal',
+  ChallengeSignalEnded: 'challenge.signal_ended',
   ChallengeSubmissionAck: 'challenge.submission_ack',
   ChallengeResolved: 'challenge.resolved',
   MatchStateChanged: 'match.state_changed',
@@ -164,6 +167,18 @@ export const matchLeavePayloadSchema = z
   })
   .strict();
 
+export const matchExtendLobbyFillPayloadSchema = z
+  .object({
+    matchId: uuidLike,
+  })
+  .strict();
+
+export const matchStartLobbyPayloadSchema = z
+  .object({
+    matchId: uuidLike,
+  })
+  .strict();
+
 export const trainingStartPayloadSchema = playerIdentityPayloadSchema;
 
 export const trainingRetryPayloadSchema = z
@@ -193,6 +208,8 @@ export const clientCommandSchema = envelopeBaseSchema
       MessageTypes.PrivateRoomJoin,
       MessageTypes.MatchReady,
       MessageTypes.MatchLeave,
+      MessageTypes.MatchExtendLobbyFill,
+      MessageTypes.MatchStartLobby,
       MessageTypes.TrainingStart,
       MessageTypes.TrainingRetry,
       MessageTypes.MatchRematch,
@@ -214,6 +231,8 @@ export const clientCommandSchema = envelopeBaseSchema
       [MessageTypes.PrivateRoomJoin]: privateRoomJoinPayloadSchema,
       [MessageTypes.MatchReady]: matchReadyPayloadSchema,
       [MessageTypes.MatchLeave]: matchLeavePayloadSchema,
+      [MessageTypes.MatchExtendLobbyFill]: matchExtendLobbyFillPayloadSchema,
+      [MessageTypes.MatchStartLobby]: matchStartLobbyPayloadSchema,
       [MessageTypes.TrainingStart]: trainingStartPayloadSchema,
       [MessageTypes.TrainingRetry]: trainingRetryPayloadSchema,
       [MessageTypes.MatchRematch]: matchRematchPayloadSchema,
@@ -250,6 +269,7 @@ export type MatchPhase = z.infer<typeof matchPhaseSchema>;
 export const roundPhaseSchema = z.enum([
   'waiting_signal',
   'signal_active',
+  'signal_expired',
   'resolved',
 ]);
 
@@ -290,6 +310,8 @@ export const publicChallengeSchema = z
     roundPhase: roundPhaseSchema,
     signalToken: z.string().optional(),
     signaledAtMs: z.number().int().nonnegative().optional(),
+    /** Wall-clock end of the blue-heart window (server-driven). */
+    signalEndsAtMs: z.number().int().nonnegative().optional(),
   })
   .strict()
   .superRefine((value, ctx) => {
@@ -336,6 +358,8 @@ export const matchSnapshotPayloadSchema = z
     ]),
     phase: matchPhaseSchema,
     phaseDeadlineAtMs: z.number().int().nullable(),
+    /** Quick Survival open-lobby fill wait end (wall clock); null when sealed. */
+    lobbyFillDeadlineAtMs: z.number().int().nullable().optional(),
     roundNumber: z.number().int().nonnegative(),
     serverNowMs: z.number().int().nonnegative(),
     lastRoundResult: lastRoundResultSchema.nullable(),
@@ -407,6 +431,25 @@ export const challengeSignalPayloadSchema = z
     challengeInstanceId: uuidLike,
     signalToken: nonEmpty,
     signaledAtMs: z.number().int().nonnegative(),
+    /** Inclusive-exclusive window end: blue while serverNow < signalEndsAtMs. */
+    signalEndsAtMs: z.number().int().nonnegative(),
+    serverNowMs: z.number().int().nonnegative(),
+  })
+  .strict()
+  .superRefine((value, ctx) => {
+    if (value.signalEndsAtMs <= value.signaledAtMs) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'signalEndsAtMs must be greater than signaledAtMs',
+        path: ['signalEndsAtMs'],
+      });
+    }
+  });
+
+export const challengeSignalEndedPayloadSchema = z
+  .object({
+    challengeInstanceId: uuidLike,
+    signalEndsAtMs: z.number().int().nonnegative(),
     serverNowMs: z.number().int().nonnegative(),
   })
   .strict();
@@ -521,6 +564,10 @@ export const serverEventSchema = z.discriminatedUnion('type', [
     payload: challengeSignalPayloadSchema,
   }),
   serverEventBase.extend({
+    type: z.literal(MessageTypes.ChallengeSignalEnded),
+    payload: challengeSignalEndedPayloadSchema,
+  }),
+  serverEventBase.extend({
     type: z.literal(MessageTypes.ChallengeSubmissionAck),
     payload: challengeSubmissionAckPayloadSchema,
     // Required for challenge.submission_ack (overrides optional from envelope base).
@@ -630,6 +677,8 @@ function isClientCommandType(type: string): type is ClientCommand['type'] {
     type === MessageTypes.PrivateRoomJoin ||
     type === MessageTypes.MatchReady ||
     type === MessageTypes.MatchLeave ||
+    type === MessageTypes.MatchExtendLobbyFill ||
+    type === MessageTypes.MatchStartLobby ||
     type === MessageTypes.TrainingStart ||
     type === MessageTypes.TrainingRetry ||
     type === MessageTypes.MatchRematch

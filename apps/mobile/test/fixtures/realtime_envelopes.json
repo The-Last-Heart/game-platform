@@ -148,7 +148,21 @@
       "challengeInstanceId": "ch-inst-1",
       "signalToken": "signal-tok-xyz",
       "signaledAtMs": 1700000011000,
+      "signalEndsAtMs": 1700000012000,
       "serverNowMs": 1700000011000
+    }
+  },
+  "challenge_signal_ended": {
+    "schemaVersion": "1",
+    "type": "challenge.signal_ended",
+    "messageId": "msg-005b",
+    "matchId": "match-abc",
+    "serverSequence": 10,
+    "serverTimestampMs": 1700000012000,
+    "payload": {
+      "challengeInstanceId": "ch-inst-1",
+      "signalEndsAtMs": 1700000012000,
+      "serverNowMs": 1700000012000
     }
   },
   "challenge_submission_ack": {

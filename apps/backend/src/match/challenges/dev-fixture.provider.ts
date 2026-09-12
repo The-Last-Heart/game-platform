@@ -26,11 +26,20 @@ export class DevFixtureProvider implements ChallengeDefinitionProvider {
     return def;
   }
 
+  /**
+   * Live playlist for the current content pin. One wait-for-signal round until
+   * LH-007 ships a multi-engine pack — do not silently repeat the same
+   * definition across rounds.
+   */
+  getPlaylist(): readonly ChallengeDefinition[] {
+    return [this.getDefaultDev()];
+  }
+
   private loadFixture(filename: string): void {
     const raw = readFileSync(join(__dirname, 'fixtures', filename), 'utf-8');
     const parsed = JSON.parse(raw) as ChallengeDefinition;
-    // signalDelayMs is provisional development config — will be replaced
-    // by a per-difficulty configuration system in a future milestone.
+    // signalDelayMs / signalWindowMs are provisional development config —
+    // will be replaced by a per-difficulty configuration system later.
     this.definitions.set(parsed.definitionId, parsed);
   }
 }

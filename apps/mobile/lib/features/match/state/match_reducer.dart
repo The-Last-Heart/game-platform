@@ -100,6 +100,7 @@ class MatchReducer {
     return type == MessageTypes.matchSnapshot ||
         type == MessageTypes.challengeStarted ||
         type == MessageTypes.challengeSignal ||
+        type == MessageTypes.challengeSignalEnded ||
         type == MessageTypes.challengeResolved ||
         type == MessageTypes.matchFinished ||
         type == MessageTypes.playerPresence ||
@@ -194,6 +195,7 @@ class MatchReducer {
       roundNumber: snap.roundNumber,
       serverSequence: snap.sequence,
       phaseDeadlineAtMs: () => snap.phaseDeadlineAtMs,
+      lobbyFillDeadlineAtMs: () => snap.lobbyFillDeadlineAtMs,
       nextPhaseAtMs: () => snap.nextPhaseAtMs,
       serverNowMs: snap.serverNowMs,
       mode: () => snap.mode,
@@ -250,9 +252,42 @@ class MatchReducer {
               roundPhase: RoundPhase.signalActive,
               signalToken: signal.signalToken,
               signaledAtMs: signal.signaledAtMs,
+              signalEndsAtMs: signal.signalEndsAtMs,
             ),
             serverSequence: envelope.serverSequence ?? state.serverSequence,
             serverNowMs: signal.serverNowMs,
+          );
+        }
+        return state.copyWith(
+          serverSequence: envelope.serverSequence ?? state.serverSequence,
+        );
+
+      case MessageTypes.challengeSignalEnded:
+        final ChallengeSignalEndedPayload ended =
+            ChallengeSignalEndedPayload.fromJson(envelope.payload!);
+        final PublicChallenge? currentEnded = state.currentChallenge;
+        if (currentEnded != null &&
+            currentEnded.challengeInstanceId == ended.challengeInstanceId) {
+          return state.copyWith(
+            currentChallenge: () => PublicChallenge(
+              challengeInstanceId: currentEnded.challengeInstanceId,
+              definitionId: currentEnded.definitionId,
+              definitionVersion: currentEnded.definitionVersion,
+              engineId: currentEnded.engineId,
+              promptKey: currentEnded.promptKey,
+              choiceKeys: currentEnded.choiceKeys,
+              clientConfig: currentEnded.clientConfig,
+              serverNowMs: ended.serverNowMs,
+              startsAtMs: currentEnded.startsAtMs,
+              deadlineAtMs: currentEnded.deadlineAtMs,
+              durationMs: currentEnded.durationMs,
+              roundPhase: RoundPhase.signalExpired,
+              signalToken: null,
+              signaledAtMs: currentEnded.signaledAtMs,
+              signalEndsAtMs: ended.signalEndsAtMs,
+            ),
+            serverSequence: envelope.serverSequence ?? state.serverSequence,
+            serverNowMs: ended.serverNowMs,
           );
         }
         return state.copyWith(

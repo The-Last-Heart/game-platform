@@ -6,13 +6,14 @@ import '../../../l10n/translation_resolver.dart';
 import '../../../theme/lh_tokens.dart';
 import '../protocol/realtime_messages.dart';
 import '../state/match_snapshot.dart';
+import 'widgets/hearts_display.dart';
 import 'widgets/lh_buttons.dart';
 import 'widgets/lh_heart_logo.dart';
 
-/// Match completion view showing the authoritative winner only.
+/// Match completion view showing the winner and full standings.
 ///
 /// Must not invent challenge counts, rewards, XP, or other progression values
-/// that the server has not supplied.
+/// that the server has not supplied. Energy is the authoritative score field.
 class WinnerView extends StatelessWidget {
   const WinnerView({
     required this.state,
@@ -30,6 +31,7 @@ class WinnerView extends StatelessWidget {
     final TranslationResolver resolver = AppLocalization.of(context);
     final bool isWinner = state.winnerId == state.playerId;
     final String winnerLabel = _winnerDisplayName(state);
+    final List<PlayerPublic> standings = _sortedStandings(state);
 
     return SingleChildScrollView(
       padding: const EdgeInsets.symmetric(horizontal: 20),
@@ -104,29 +106,20 @@ class WinnerView extends StatelessWidget {
               style: Theme.of(context).textTheme.titleMedium,
               textAlign: TextAlign.center,
             ),
-          const SizedBox(height: 24),
-          if (state.localPlayer != null)
-            Container(
-              width: double.infinity,
-              padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 16),
-              decoration: BoxDecoration(
-                color: LhColors.surface,
-                borderRadius: LhRadii.mdAll,
-                border: Border.all(color: LhColors.border),
-              ),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: <Widget>[
-                  Text(
-                    resolver.resolve(TranslationKeys.winnerHeartsLeft),
-                    style: Theme.of(context).textTheme.bodyMedium,
-                  ),
-                  Text(
-                    '${state.localPlayer!.hearts}',
-                    style: Theme.of(context).textTheme.headlineMedium,
-                  ),
-                ],
-              ),
+          const SizedBox(height: 28),
+          Align(
+            alignment: AlignmentDirectional.centerStart,
+            child: Text(
+              resolver.resolve(TranslationKeys.winnerStandings),
+              style: Theme.of(context).textTheme.headlineMedium,
+            ),
+          ),
+          const SizedBox(height: 12),
+          for (final PlayerPublic player in standings)
+            _StandingRow(
+              player: player,
+              isWinner: player.playerId == state.winnerId,
+              resolver: resolver,
             ),
           const SizedBox(height: 32),
           LhPrimaryButton(
@@ -151,6 +144,18 @@ class WinnerView extends StatelessWidget {
     );
   }
 
+  static List<PlayerPublic> _sortedStandings(MatchViewState state) {
+    final List<PlayerPublic> players = List<PlayerPublic>.from(state.players);
+    players.sort((PlayerPublic a, PlayerPublic b) {
+      final bool aWin = a.playerId == state.winnerId;
+      final bool bWin = b.playerId == state.winnerId;
+      if (aWin != bWin) return aWin ? -1 : 1;
+      if (a.hearts != b.hearts) return b.hearts.compareTo(a.hearts);
+      return b.energy.compareTo(a.energy);
+    });
+    return players;
+  }
+
   /// Prefer server-provided displayName; never show a truncated playerId.
   static String _winnerDisplayName(MatchViewState state) {
     final String? winnerId = state.winnerId;
@@ -166,5 +171,57 @@ class WinnerView extends StatelessWidget {
       return local;
     }
     return '';
+  }
+}
+
+class _StandingRow extends StatelessWidget {
+  const _StandingRow({
+    required this.player,
+    required this.isWinner,
+    required this.resolver,
+  });
+
+  final PlayerPublic player;
+  final bool isWinner;
+  final TranslationResolver resolver;
+
+  @override
+  Widget build(BuildContext context) {
+    final String name = () {
+      final String? trimmed = player.displayName?.trim();
+      if (trimmed != null && trimmed.isNotEmpty) return trimmed;
+      return '—';
+    }();
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 8),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      decoration: BoxDecoration(
+        color: LhColors.elevated,
+        borderRadius: LhRadii.mdAll,
+        border: Border.all(
+          color: isWinner ? LhColors.warning : LhColors.border,
+        ),
+      ),
+      child: Row(
+        children: <Widget>[
+          Expanded(
+            child: Text(
+              name,
+              style: Theme.of(context).textTheme.titleMedium,
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
+          if (player.hearts > 0) ...<Widget>[
+            HeartsDisplay(hearts: player.hearts),
+            const SizedBox(width: 12),
+          ],
+          Text(
+            '${resolver.resolve(TranslationKeys.winnerEnergyScore)} ${player.energy}',
+            style: Theme.of(context).textTheme.bodySmall,
+          ),
+        ],
+      ),
+    );
   }
 }

@@ -117,9 +117,34 @@ export class MatchGateway
       // Holding the lease until after the presence write prevents a concurrent
       // resume from being overwritten by a stale disconnect.
       if (this.connectionLeases.get(key) === client.id) {
-        await this.matches.markDisconnected(matchId, playerId, {
-          stillOwnsLease: () => this.connectionLeases.get(key) === client.id,
-        });
+        // Pre-challenge: free the seat immediately so the roster drops the name
+        // and open-lobby packing can reuse the same room. Mid-challenge keeps
+        // markDisconnected for resume grace.
+        const canLeaveLobby = await this.matches.canLeaveLobbySeat(matchId);
+        if (
+          canLeaveLobby &&
+          this.connectionLeases.get(key) === client.id
+        ) {
+          try {
+            const left = await this.matches.leaveMatch(matchId, playerId);
+            this.matchmaking.releaseTicketForPlayer(playerId);
+            this.matchmaking.onLobbyCompositionChanged(matchId, {
+              emptied: left.emptied,
+              lobbyFillWaitMs: left.lobbyFillWaitMs,
+            });
+          } catch {
+            if (this.connectionLeases.get(key) === client.id) {
+              await this.matches.markDisconnected(matchId, playerId, {
+                stillOwnsLease: () =>
+                  this.connectionLeases.get(key) === client.id,
+              });
+            }
+          }
+        } else if (this.connectionLeases.get(key) === client.id) {
+          await this.matches.markDisconnected(matchId, playerId, {
+            stillOwnsLease: () => this.connectionLeases.get(key) === client.id,
+          });
+        }
         if (this.connectionLeases.get(key) === client.id) {
           this.connectionLeases.delete(key);
         }
@@ -287,6 +312,22 @@ export class MatchGateway
           break;
         case MessageTypes.MatchLeave:
           await this.handleLeave(
+            client,
+            commandId!,
+            command.messageId,
+            (command.payload as { matchId: string }).matchId,
+          );
+          break;
+        case MessageTypes.MatchExtendLobbyFill:
+          await this.handleExtendLobbyFill(
+            client,
+            commandId!,
+            command.messageId,
+            (command.payload as { matchId: string }).matchId,
+          );
+          break;
+        case MessageTypes.MatchStartLobby:
+          await this.handleStartLobby(
             client,
             commandId!,
             command.messageId,
@@ -786,6 +827,68 @@ export class MatchGateway
     });
   }
 
+  private async handleExtendLobbyFill(
+    client: Socket,
+    commandId: string,
+    correlationId: string,
+    matchId: string,
+  ): Promise<void> {
+    const state = client.data as SocketState;
+    if (!state.matchId || !state.playerId || state.matchId !== matchId) {
+      this.emitError(client, 'UNAUTHORIZED', 'errors.protocol.unauthorized', {
+        commandId,
+      });
+      return;
+    }
+    if (!this.ownsLease(client, state.matchId, state.playerId)) {
+      this.emitError(client, 'UNAUTHORIZED', 'errors.protocol.unauthorized', {
+        commandId,
+      });
+      return;
+    }
+    const result = await this.matches.extendLobbyFill(matchId, state.playerId);
+    this.matchmaking.onLobbyCompositionChanged(matchId, {
+      emptied: false,
+      lobbyFillWaitMs: result.lobbyFillWaitMs,
+    });
+    this.emitToClient(client, MessageTypes.MatchSnapshot, result.snapshot, {
+      commandId,
+      correlationId,
+      matchId,
+      sequence: result.snapshot.sequence,
+    });
+  }
+
+  private async handleStartLobby(
+    client: Socket,
+    commandId: string,
+    correlationId: string,
+    matchId: string,
+  ): Promise<void> {
+    const state = client.data as SocketState;
+    if (!state.matchId || !state.playerId || state.matchId !== matchId) {
+      this.emitError(client, 'UNAUTHORIZED', 'errors.protocol.unauthorized', {
+        commandId,
+      });
+      return;
+    }
+    if (!this.ownsLease(client, state.matchId, state.playerId)) {
+      this.emitError(client, 'UNAUTHORIZED', 'errors.protocol.unauthorized', {
+        commandId,
+      });
+      return;
+    }
+    const result = await this.matches.startLobbyNow(matchId, state.playerId);
+    // Clear fill timer; do not re-arm — countdown owns the match now.
+    this.matchmaking.onLobbyCompositionChanged(matchId, { emptied: false });
+    this.emitToClient(client, MessageTypes.MatchSnapshot, result.snapshot, {
+      commandId,
+      correlationId,
+      matchId,
+      sequence: result.snapshot.sequence,
+    });
+  }
+
   private async handleLeave(
     client: Socket,
     commandId: string,
@@ -807,6 +910,11 @@ export class MatchGateway
     }
     const playerId = state.playerId;
     const result = await this.matches.leaveMatch(matchId, playerId);
+    this.matchmaking.releaseTicketForPlayer(playerId);
+    this.matchmaking.onLobbyCompositionChanged(matchId, {
+      emptied: result.emptied,
+      lobbyFillWaitMs: result.lobbyFillWaitMs,
+    });
     this.releaseLeaseIfOwned(client, matchId, playerId);
     await client.leave(this.room(matchId));
     (client.data as SocketState) = {};
@@ -1090,6 +1198,21 @@ export class MatchGateway
             challengeInstanceId: event.challengeInstanceId,
             signalToken: event.signalToken,
             signaledAtMs: event.signaledAtMs,
+            signalEndsAtMs: event.signalEndsAtMs,
+            serverNowMs: event.serverNowMs,
+          },
+        });
+      } else if (event.kind === 'challenge_signal_ended') {
+        this.server.to(this.room(broadcast.matchId)).emit('event', {
+          schemaVersion: REALTIME_SCHEMA_VERSION,
+          type: MessageTypes.ChallengeSignalEnded,
+          messageId: randomUUID(),
+          matchId: broadcast.matchId,
+          serverSequence: event.sequence,
+          serverTimestampMs: event.serverTimestampMs,
+          payload: {
+            challengeInstanceId: event.challengeInstanceId,
+            signalEndsAtMs: event.signalEndsAtMs,
             serverNowMs: event.serverNowMs,
           },
         });
@@ -1258,6 +1381,10 @@ export class MatchGateway
       },
       NOT_IN_MATCH: { code: 'NOT_IN_MATCH', key: 'errors.match.not_in_match' },
       NOT_HOST: { code: 'NOT_HOST', key: 'errors.match.not_host' },
+      NOT_ENOUGH_PLAYERS: {
+        code: 'NOT_ENOUGH_PLAYERS',
+        key: 'errors.match.not_enough_players',
+      },
       REMATCH_UNAVAILABLE: {
         code: 'REMATCH_UNAVAILABLE',
         key: 'errors.match.rematch_unavailable',

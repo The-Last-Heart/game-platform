@@ -15,6 +15,7 @@
     "actionKey": "challenge.wait_for_signal.action"
   },
   "serverConfig": {
-    "signalDelayMs": 1500
+    "signalDelayMs": 1500,
+    "signalWindowMs": 750
   }
 }

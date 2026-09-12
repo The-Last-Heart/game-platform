@@ -9,6 +9,7 @@ import '../../../theme/lh_tokens.dart';
 import '../protocol/realtime_messages.dart';
 import '../state/match_snapshot.dart';
 import 'widgets/hearts_display.dart';
+import 'widgets/lh_buttons.dart';
 import 'widgets/lh_heart_logo.dart';
 
 /// Displays round results — survived (22) or lost heart (23).
@@ -16,11 +17,15 @@ class RoundResultView extends StatefulWidget {
   const RoundResultView({
     required this.state,
     required this.estimateServerNowMs,
+    this.onBackHome,
+    this.onRetry,
     super.key,
   });
 
   final MatchViewState state;
   final int Function() estimateServerNowMs;
+  final VoidCallback? onBackHome;
+  final VoidCallback? onRetry;
 
   @override
   State<RoundResultView> createState() => _RoundResultViewState();
@@ -79,13 +84,14 @@ class _RoundResultViewState extends State<RoundResultView> {
     }
 
     final bool survived = localResolution?.outcome == 'success';
+    final bool isTraining = widget.state.mode == MatchMode.training;
 
     return SingleChildScrollView(
       padding: const EdgeInsets.symmetric(horizontal: 20),
       child: Column(
         children: <Widget>[
           const SizedBox(height: 8),
-          // Header
+          // Header — brand + title only (no fake settings/notifications chrome).
           _buildHeader(context, resolver),
           const SizedBox(height: 24),
           // Icon ring
@@ -121,33 +127,66 @@ class _RoundResultViewState extends State<RoundResultView> {
             ..._buildFailedContent(context, resolver, localResolution),
 
           const SizedBox(height: 24),
-          // Footer
-          Container(
-            width: double.infinity,
-            padding: const EdgeInsets.symmetric(vertical: 16),
-            decoration: BoxDecoration(
-              color: LhColors.surface,
-              borderRadius: LhRadii.mdAll,
-              border: Border.all(color: LhColors.border),
+          if (isTraining)
+            _buildTrainingActions(resolver)
+          else
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.symmetric(vertical: 16),
+              decoration: BoxDecoration(
+                color: LhColors.surface,
+                borderRadius: LhRadii.mdAll,
+                border: Border.all(color: LhColors.border),
+              ),
+              child: Text(
+                survived
+                    ? resolver.resolve(
+                        TranslationKeys.resultNextChallengeIn,
+                        params: <String, String>{
+                          'seconds': '$_nextChallengeSeconds',
+                        },
+                      )
+                    : resolver.resolve(TranslationKeys.resultAutoContinue),
+                style: Theme.of(
+                  context,
+                ).textTheme.bodyMedium?.copyWith(color: LhColors.textMuted),
+                textAlign: TextAlign.center,
+              ),
             ),
-            child: Text(
-              survived
-                  ? resolver.resolve(
-                      TranslationKeys.resultNextChallengeIn,
-                      params: <String, String>{
-                        'seconds': '$_nextChallengeSeconds',
-                      },
-                    )
-                  : resolver.resolve(TranslationKeys.resultAutoContinue),
-              style: Theme.of(
-                context,
-              ).textTheme.bodyMedium?.copyWith(color: LhColors.textMuted),
-              textAlign: TextAlign.center,
-            ),
-          ),
           const SizedBox(height: 20),
         ],
       ),
+    );
+  }
+
+  Widget _buildTrainingActions(TranslationResolver resolver) {
+    final String? errorKey = widget.state.connectionError;
+    return Column(
+      children: <Widget>[
+        if (errorKey != null && errorKey.isNotEmpty) ...<Widget>[
+          Text(
+            resolver.resolve(errorKey),
+            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+              color: LhColors.primary,
+            ),
+            textAlign: TextAlign.center,
+          ),
+          const SizedBox(height: 12),
+        ],
+        if (widget.onRetry != null)
+          LhPrimaryButton(
+            label: resolver.resolve(TranslationKeys.trainingRetry),
+            icon: Icons.replay,
+            onPressed: widget.onRetry!,
+          ),
+        if (widget.onRetry != null && widget.onBackHome != null)
+          const SizedBox(height: 10),
+        if (widget.onBackHome != null)
+          LhSecondaryButton(
+            label: resolver.resolve(TranslationKeys.winnerBackHome),
+            onPressed: widget.onBackHome!,
+          ),
+      ],
     );
   }
 
@@ -175,17 +214,6 @@ class _RoundResultViewState extends State<RoundResultView> {
               ),
             ],
           ),
-        ),
-        const Icon(
-          Icons.settings_outlined,
-          color: LhColors.textMuted,
-          size: 22,
-        ),
-        const SizedBox(width: 8),
-        const Icon(
-          Icons.notifications_outlined,
-          color: LhColors.textMuted,
-          size: 22,
         ),
       ],
     );
@@ -224,6 +252,7 @@ class _RoundResultViewState extends State<RoundResultView> {
           resolution: result.resolutions[i],
           index: i,
           isLocal: result.resolutions[i].playerId == widget.state.playerId,
+          displayName: _resolvePlayerName(result.resolutions[i].playerId),
           outcomeLabel: _outcomeLabel(resolver, result.resolutions[i].outcome),
         ),
       const SizedBox(height: 16),
@@ -326,6 +355,20 @@ class _RoundResultViewState extends State<RoundResultView> {
     );
   }
 
+  String _resolvePlayerName(String playerId) {
+    for (final PlayerPublic player in widget.state.players) {
+      if (player.playerId != playerId) continue;
+      final String? name = player.displayName?.trim();
+      if (name != null && name.isNotEmpty) return name;
+      break;
+    }
+    if (playerId == widget.state.playerId) {
+      final String? local = widget.state.localPlayer?.displayName?.trim();
+      if (local != null && local.isNotEmpty) return local;
+    }
+    return '—';
+  }
+
   String _failureTitle(TranslationResolver resolver, String? outcome) {
     return switch (outcome) {
       'failure' => resolver.resolve(TranslationKeys.resultTooEarlyTitle),
@@ -360,20 +403,22 @@ class _PlayerResultRow extends StatelessWidget {
     required this.resolution,
     required this.index,
     required this.isLocal,
+    required this.displayName,
     required this.outcomeLabel,
   });
 
   final PlayerChallengeResolution resolution;
   final int index;
   final bool isLocal;
+  final String displayName;
   final String outcomeLabel;
 
   @override
   Widget build(BuildContext context) {
     final Color avatarColor =
         kPlayerAvatarColors[index % kPlayerAvatarColors.length];
-    final String initial = resolution.playerId.isNotEmpty
-        ? resolution.playerId[0].toUpperCase()
+    final String initial = displayName.isNotEmpty && displayName != '—'
+        ? displayName[0].toUpperCase()
         : '?';
     return Container(
       margin: const EdgeInsets.only(bottom: 8),
@@ -409,9 +454,7 @@ class _PlayerResultRow extends StatelessWidget {
           const SizedBox(width: 12),
           Expanded(
             child: Text(
-              resolution.playerId.length > 8
-                  ? resolution.playerId.substring(0, 8)
-                  : resolution.playerId,
+              displayName,
               style: Theme.of(
                 context,
               ).textTheme.bodyLarge?.copyWith(fontWeight: FontWeight.w600),

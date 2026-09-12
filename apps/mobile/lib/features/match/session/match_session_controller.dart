@@ -165,21 +165,26 @@ class MatchSessionController {
   void init() {
     if (_initialized) return;
     _initialized = true;
-    _eventSub = transport.events.listen(
-      (Map<String, dynamic> e) => _enqueue(() => _processEvent(e)),
-    );
+    _eventSub = transport.events.listen((Map<String, dynamic> e) {
+      // Stamp epoch at enqueue time so stale frames from a prior socket
+      // (queued while _prepareFreshJoinSocket tears down) cannot wipe a new
+      // join/training handshake or mutate identity after reconnect.
+      final int epoch = _connectionEpoch;
+      _enqueue(() async {
+        if (epoch != _connectionEpoch) return;
+        await _processEvent(e);
+      });
+    });
     _connectionSub = transport.connectionState.listen((bool connected) {
       final int epoch = _connectionEpoch;
       _enqueue(() async => _handleConnectionChange(connected, epoch));
     });
   }
 
-  /// Cold-start bootstrap: check session store; if session exists → resume.
+  /// Cold-start bootstrap: discard any prior match seat so the player lands on
+  /// entry/home — never auto-resume into a previous match after process exit.
   Future<void> bootstrap() async {
-    final SessionData? data = await sessionStore.load();
-    if (data != null) {
-      await tryResume();
-    }
+    await sessionStore.clear();
   }
 
   /// Start a dev match: create_dev → join → fill_dev_bots.
@@ -285,12 +290,13 @@ class MatchSessionController {
     _handshake = null;
     _matchmakingWaiter = null;
     await sessionStore.clear();
+    // Drop stale event/connection jobs from the prior socket before teardown,
+    // then bump again after disconnect so teardown's own disconnect callback
+    // cannot clear the next join/training handshake (service unavailable).
+    _connectionEpoch++;
     if (transport.isConnected || state.value.isConnected) {
       await transport.disconnect();
     }
-    // Invalidate disconnect handlers already queued from the dispose above.
-    // Otherwise they run after we set the join handshake and wipe it, so
-    // session.accepted is ignored and the UI shows service unavailable.
     _connectionEpoch++;
     state.value = state.value.copyWith(
       lifecycle: SessionLifecycle.disconnected,
@@ -350,6 +356,25 @@ class MatchSessionController {
   Future<void> retryTraining() async {
     final String? matchId = state.value.matchId;
     if (matchId == null) return;
+
+    // Leave failure/winner chrome immediately so a slow/failed handshake is
+    // visible as progress (or a surfaced error), not a dead "لم تنجح" screen.
+    final MatchPhase phase = state.value.phase;
+    if (phase == MatchPhase.roundResult ||
+        phase == MatchPhase.completed ||
+        phase == MatchPhase.halted) {
+      state.value = state.value.copyWith(
+        phase: MatchPhase.lobby,
+        lastRoundResult: () => null,
+        winnerId: () => null,
+        currentChallenge: () => null,
+        answerStatus: AnswerSubmissionStatus.idle,
+        answerChallengeInstanceId: () => null,
+        answerSubmittedEarly: false,
+        connectionError: () => null,
+      );
+    }
+
     final String commandId = generateSecureId();
     _handshake = _PendingHandshake(
       kind: _HandshakeKind.join,
@@ -374,8 +399,27 @@ class MatchSessionController {
       _sendCommand(MessageTypes.matchLeave, <String, dynamic>{
         'matchId': matchId,
       });
+      // Give the leave frame a moment to flush before tearing down the socket.
+      // Server also frees lobby seats on disconnect as a safety net.
+      await Future<void>.delayed(const Duration(milliseconds: 80));
     }
     await clearSessionAndDisconnect();
+  }
+
+  void extendLobbyFill() {
+    final String? matchId = state.value.matchId;
+    if (matchId == null) return;
+    _sendCommand(MessageTypes.matchExtendLobbyFill, <String, dynamic>{
+      'matchId': matchId,
+    });
+  }
+
+  void startLobbyNow() {
+    final String? matchId = state.value.matchId;
+    if (matchId == null) return;
+    _sendCommand(MessageTypes.matchStartLobby, <String, dynamic>{
+      'matchId': matchId,
+    });
   }
 
   Future<void> requestRematch() async {
@@ -401,6 +445,7 @@ class MatchSessionController {
     if (state.value.answerStatus == AnswerSubmissionStatus.confirmed) return;
 
     final String commandId = generateSecureId();
+    final bool earlyMiss = !_answerLooksLikeSignalSubmit(answer);
     _pending = PendingSubmission(
       commandId: commandId,
       challengeInstanceId: challengeInstanceId,
@@ -409,6 +454,7 @@ class MatchSessionController {
     state.value = state.value.copyWith(
       answerStatus: AnswerSubmissionStatus.pending,
       answerChallengeInstanceId: () => challengeInstanceId,
+      answerSubmittedEarly: earlyMiss,
     );
 
     _sendCommandWithId(
@@ -822,7 +868,8 @@ class MatchSessionController {
       final Object? value = payload?['serverNowMs'];
       if (value is int) freshServerNow = value;
     } else if (type == MessageTypes.challengeStarted ||
-        type == MessageTypes.challengeSignal) {
+        type == MessageTypes.challengeSignal ||
+        type == MessageTypes.challengeSignalEnded) {
       final Object? value = payload?['serverNowMs'];
       if (value is int) freshServerNow = value;
     }
@@ -872,9 +919,16 @@ class MatchSessionController {
         state.value = state.value.copyWith(
           answerStatus: AnswerSubmissionStatus.idle,
           answerChallengeInstanceId: () => null,
+          answerSubmittedEarly: false,
         );
       }
     }
+  }
+
+  /// Wait-for-signal success submits carry a non-empty signalToken; early miss does not.
+  static bool _answerLooksLikeSignalSubmit(Map<String, dynamic> answer) {
+    final Object? token = answer['signalToken'];
+    return token is String && token.trim().isNotEmpty;
   }
 
   /// Validate and apply session.accepted. Identity mutates only after durable save.
@@ -1015,11 +1069,29 @@ class MatchSessionController {
 
       handshake.tokenPersisted = true;
 
-      // Identity is set ONLY after successful durable persistence.
+      // Rematch / training.retry seats a *new* matchId while the prior match
+      // may already be at a high serverSequence. Reset sequence and leave the
+      // prior phase (round_result / completed) so low-seq snapshots apply and
+      // the failure/winner chrome does not stick.
+      final String? previousMatchId = state.value.matchId;
+      final bool switchedMatch =
+          previousMatchId != null && previousMatchId != matchId;
       state.value = state.value.copyWith(
         matchId: () => matchId,
         playerId: () => playerId,
+        serverSequence: switchedMatch ? -1 : null,
+        phase: switchedMatch ? MatchPhase.lobby : null,
+        lifecycle: switchedMatch ? SessionLifecycle.connecting : null,
+        winnerId: switchedMatch ? () => null : null,
+        lastRoundResult: switchedMatch ? () => null : null,
+        currentChallenge: switchedMatch ? () => null : null,
+        answerStatus: switchedMatch ? AnswerSubmissionStatus.idle : null,
+        answerChallengeInstanceId: switchedMatch ? () => null : null,
+        connectionError: () => null,
       );
+      if (switchedMatch) {
+        _clearRecoveryState(clearWatermark: true);
+      }
 
       if (handshake.kind == _HandshakeKind.join && _devMatchStarting) {
         _sendCommand(MessageTypes.matchFillDevBots, <String, dynamic>{
@@ -1132,6 +1204,7 @@ class MatchSessionController {
         state.value = state.value.copyWith(
           answerStatus: AnswerSubmissionStatus.idle,
           answerChallengeInstanceId: () => null,
+          answerSubmittedEarly: false,
         );
       }
       return;
@@ -1310,6 +1383,7 @@ class MatchSessionController {
       state.value = state.value.copyWith(
         answerStatus: AnswerSubmissionStatus.idle,
         answerChallengeInstanceId: () => null,
+        answerSubmittedEarly: false,
       );
       return;
     }

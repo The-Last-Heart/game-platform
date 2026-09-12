@@ -2,7 +2,7 @@ import { Injectable, Logger, OnModuleDestroy } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { randomUUID } from 'node:crypto';
 import type { AppConfig } from '../../config/env.validation';
-import { DomainError, MATCH_PLAYER_CAPACITY } from '../domain/types';
+import { DomainError, MATCH_PLAYER_CAPACITY, QUICK_LOBBY_FILL_WAIT_MS } from '../domain/types';
 import {
   MatchService,
   type PlayerIdentityInput,
@@ -14,10 +14,14 @@ const SCAN_INTERVAL_MS = 1_000;
 export type MatchmakingTicket = {
   ticketId: string;
   playerKey: string;
+  /** Authoritative seat id once seated in an open lobby. */
   playerId: string;
   identity: PlayerIdentityInput;
   enqueuedAtMs: number;
   timeoutAtMs: number;
+  /** Set as soon as the player is seated in a quick_survival lobby. */
+  matchId: string | null;
+  resumeToken: string | null;
 };
 
 export type MatchmakingStatusEvent = {
@@ -35,6 +39,23 @@ export type MatchmakingStatusEvent = {
   };
 };
 
+/**
+ * Quick Survival pairing: open-lobby model.
+ *
+ * - First player opens a quick_survival lobby (1/6).
+ * - Later players join the fullest open lobby with free seats.
+ * - A full lobby (6) starts ready-countdown immediately.
+ * - After the lobby fill wait: start with ≥2 players, or abort if still alone.
+ *
+ * Concurrency (single Nest process):
+ * - All seat placements run through a promise-chain mutex so 100 simultaneous
+ *   enqueues cannot overfill a room or each open a solo room.
+ * - joinPlayer still enforces capacity; MATCH_FULL retries under the lock.
+ * Multi-process / multi-region scale needs a distributed lock (e.g. Redis) later.
+ *
+ * Bot fill is intentionally dormant: policy getters/setters remain for admin UI,
+ * but no bots are seated from matchmaking until a later planned milestone.
+ */
 @Injectable()
 export class MatchmakingService implements OnModuleDestroy {
   private readonly logger = new Logger(MatchmakingService.name);
@@ -45,7 +66,10 @@ export class MatchmakingService implements OnModuleDestroy {
   private botFillEnabled: boolean;
   private botFillWaitMs: number;
   private scanTimer: NodeJS.Timeout | undefined;
-  private matching = false;
+  /** Serializes open-lobby find/join/create — see withSeatingLock. */
+  private seatingChain: Promise<void> = Promise.resolve();
+  private readonly lobbyFillTimers = new Map<string, NodeJS.Timeout>();
+  private readonly lobbyFillWaitMs: number;
 
   constructor(
     private readonly matches: MatchService,
@@ -54,7 +78,7 @@ export class MatchmakingService implements OnModuleDestroy {
     const policy = this.matches.getBotFillPolicy();
     this.botFillEnabled = policy.enabled;
     this.botFillWaitMs = policy.waitMs;
-    // Prefer env when MatchService was constructed with config.
+    this.lobbyFillWaitMs = QUICK_LOBBY_FILL_WAIT_MS;
     try {
       this.botFillEnabled = config.get('MATCHMAKING_BOT_FILL_ENABLED', {
         infer: true,
@@ -69,11 +93,15 @@ export class MatchmakingService implements OnModuleDestroy {
     this.armScanner();
   }
 
-  static forTests(matches: MatchService, options?: {
-    botFillEnabled?: boolean;
-    botFillWaitMs?: number;
-    queueTimeoutMs?: number;
-  }): MatchmakingService {
+  static forTests(
+    matches: MatchService,
+    options?: {
+      botFillEnabled?: boolean;
+      botFillWaitMs?: number;
+      queueTimeoutMs?: number;
+      lobbyFillWaitMs?: number;
+    },
+  ): MatchmakingService {
     const service = Object.create(
       MatchmakingService.prototype,
     ) as MatchmakingService;
@@ -88,7 +116,9 @@ export class MatchmakingService implements OnModuleDestroy {
         options?.botFillEnabled ?? matches.getBotFillPolicy().enabled,
       botFillWaitMs:
         options?.botFillWaitMs ?? matches.getBotFillPolicy().waitMs,
-      matching: false,
+      lobbyFillWaitMs: options?.lobbyFillWaitMs ?? QUICK_LOBBY_FILL_WAIT_MS,
+      seatingChain: Promise.resolve(),
+      lobbyFillTimers: new Map(),
     });
     return service;
   }
@@ -105,6 +135,10 @@ export class MatchmakingService implements OnModuleDestroy {
       clearInterval(this.scanTimer);
       this.scanTimer = undefined;
     }
+    for (const timer of this.lobbyFillTimers.values()) {
+      clearTimeout(timer);
+    }
+    this.lobbyFillTimers.clear();
     this.listeners.clear();
     this.tickets.clear();
     this.byPlayerKey.clear();
@@ -126,54 +160,27 @@ export class MatchmakingService implements OnModuleDestroy {
   }
 
   async enqueue(identity: PlayerIdentityInput): Promise<MatchmakingStatusEvent> {
-    const playerKey = identity.displayName.trim().toLowerCase();
-    if (this.byPlayerKey.has(playerKey)) {
-      throw new DomainError('ALREADY_IN_QUEUE', 'already in matchmaking queue');
-    }
-    const now = Date.now();
-    const ticket: MatchmakingTicket = {
-      ticketId: randomUUID(),
-      playerKey,
-      playerId: randomUUID(),
-      identity: {
-        displayName: identity.displayName.trim(),
-        avatarColor: identity.avatarColor,
-      },
-      enqueuedAtMs: now,
-      timeoutAtMs: now + this.queueTimeoutMs,
-    };
-    this.tickets.set(ticket.ticketId, ticket);
-    this.byPlayerKey.set(playerKey, ticket.ticketId);
-    const status = this.toStatus(ticket, 'queued', {
-      acceptedSeats: this.tickets.size,
-    });
-    this.emit(status);
-    // Fan-out seat count so every waiting ticket sees 2/6… progress.
-    if (this.tickets.size > 1) {
-      const seats = this.tickets.size;
-      for (const other of this.tickets.values()) {
-        if (other.ticketId === ticket.ticketId) {
-          continue;
-        }
-        this.emit(
-          this.toStatus(other, 'queued', {
-            acceptedSeats: seats,
-          }),
-        );
+    try {
+      return await this.withSeatingLock(() => this.seatUnderLock(identity));
+    } catch (error) {
+      if (error instanceof DomainError && error.code === 'ALREADY_IN_QUEUE') {
+        throw error;
       }
+      this.logger.error({
+        event: 'matchmaking_seat_failed',
+        category: error instanceof Error ? error.name : 'UnknownError',
+      });
+      // Ticket may not exist if claim failed before insert.
+      return {
+        ticketId: randomUUID(),
+        state: 'failed',
+        acceptedSeats: 0,
+        capacity: MATCH_PLAYER_CAPACITY as 6,
+        timeoutAtMs: null,
+        matchId: null,
+        serverNowMs: Date.now(),
+      };
     }
-    const assigned = await this.tryMatch();
-    const forTicket = assigned.get(ticket.ticketId);
-    if (forTicket) {
-      return forTicket;
-    }
-    const latest = this.tickets.get(ticket.ticketId);
-    if (!latest) {
-      return status;
-    }
-    return this.toStatus(latest, 'queued', {
-      acceptedSeats: this.tickets.size,
-    });
   }
 
   async cancel(
@@ -187,6 +194,20 @@ export class MatchmakingService implements OnModuleDestroy {
     if (!ticket) {
       throw new DomainError('QUEUE_NOT_FOUND', 'queue ticket not found');
     }
+    if (ticket.matchId) {
+      try {
+        const left = await this.matches.leaveMatch(
+          ticket.matchId,
+          ticket.playerId,
+        );
+        this.onLobbyCompositionChanged(ticket.matchId, {
+          emptied: left.emptied,
+          lobbyFillWaitMs: left.lobbyFillWaitMs,
+        });
+      } catch {
+        // Match may already be gone or past lobby.
+      }
+    }
     this.removeTicket(ticket);
     const status = this.toStatus(ticket, 'cancelled', { acceptedSeats: 0 });
     this.emit(status);
@@ -197,7 +218,28 @@ export class MatchmakingService implements OnModuleDestroy {
     return this.tickets.get(ticketId);
   }
 
-  /** Test helper: drive timeout/bot-fill without waiting on the scanner. */
+  /**
+   * Drop queue bookkeeping after the socket is bound / player left.
+   * Does not leave the match.
+   */
+  releaseTicket(ticketId: string): void {
+    const ticket = this.tickets.get(ticketId);
+    if (!ticket) {
+      return;
+    }
+    this.removeTicket(ticket);
+  }
+
+  releaseTicketForPlayer(playerId: string): void {
+    const ticket = [...this.tickets.values()].find(
+      (t) => t.playerId === playerId,
+    );
+    if (ticket) {
+      this.removeTicket(ticket);
+    }
+  }
+
+  /** Test helper: drive lobby idle timeouts without waiting on the scanner. */
   async scanForTests(): Promise<void> {
     await this.scan();
   }
@@ -218,109 +260,256 @@ export class MatchmakingService implements OnModuleDestroy {
   }
 
   private async scan(): Promise<void> {
-    const now = Date.now();
-    for (const ticket of [...this.tickets.values()]) {
-      if (ticket.timeoutAtMs <= now) {
-        this.removeTicket(ticket);
-        this.emit(this.toStatus(ticket, 'timed_out', { acceptedSeats: 0 }));
+    // Resolve any quick lobbies whose fill wait elapsed (partial start or solo abort).
+    const dueMatchIds = new Set<string>();
+    for (const ticket of this.tickets.values()) {
+      if (ticket.matchId) {
+        dueMatchIds.add(ticket.matchId);
       }
     }
-    await this.tryMatch();
-    await this.maybeBotFill();
+    for (const matchId of dueMatchIds) {
+      await this.applyLobbyFillDecision(matchId);
+    }
+
+    for (const ticket of [...this.tickets.values()]) {
+      if (!ticket.matchId) {
+        continue;
+      }
+      const phase = await this.matches.getMatchPhase(ticket.matchId);
+      // Match gone or left lobby (countdown/play) — drop queue bookkeeping.
+      if (!phase.exists || phase.phase !== 'lobby') {
+        this.removeTicket(ticket);
+      }
+    }
+    // Bot fill intentionally not invoked — deferred product work.
   }
 
-  private async tryMatch(): Promise<Map<string, MatchmakingStatusEvent>> {
-    const assigned = new Map<string, MatchmakingStatusEvent>();
-    if (this.matching) {
-      return assigned;
+  /** Test helper: fire lobby-fill decision for a match immediately. */
+  async resolveLobbyFillForTests(matchId: string): Promise<void> {
+    await this.applyLobbyFillDecision(matchId);
+  }
+
+  /**
+   * After a lobby seat is freed (leave / disconnect / cancel): drop or re-arm
+   * the fill timer so the room stays joinable for the refreshed wait window.
+   */
+  onLobbyCompositionChanged(
+    matchId: string,
+    options: { emptied: boolean; lobbyFillWaitMs?: number },
+  ): void {
+    this.clearLobbyFillTimer(matchId);
+    if (options.emptied) {
+      return;
     }
-    if (this.tickets.size < MATCH_PLAYER_CAPACITY) {
-      return assigned;
+    if (options.lobbyFillWaitMs != null) {
+      this.scheduleLobbyFillTimer(matchId, options.lobbyFillWaitMs);
     }
-    this.matching = true;
+  }
+
+  private scheduleLobbyFillTimer(matchId: string, waitMs: number): void {
+    if (this.lobbyFillTimers.has(matchId)) {
+      return;
+    }
+    const timer = setTimeout(() => {
+      this.lobbyFillTimers.delete(matchId);
+      void this.applyLobbyFillDecision(matchId).catch((error: unknown) => {
+        this.logger.error({
+          event: 'lobby_fill_resolve_failed',
+          matchId,
+          category: error instanceof Error ? error.name : 'UnknownError',
+        });
+      });
+    }, Math.max(1, waitMs));
+    timer.unref?.();
+    this.lobbyFillTimers.set(matchId, timer);
+  }
+
+  private clearLobbyFillTimer(matchId: string): void {
+    const timer = this.lobbyFillTimers.get(matchId);
+    if (timer) {
+      clearTimeout(timer);
+      this.lobbyFillTimers.delete(matchId);
+    }
+  }
+
+  private async applyLobbyFillDecision(matchId: string): Promise<void> {
+    const result = await this.matches.resolveQuickLobbyFill(matchId);
+    if (result.outcome === 'started' || result.outcome === 'aborted_solo') {
+      this.clearLobbyFillTimer(matchId);
+    } else if (result.outcome === 'noop' || result.outcome === 'gone') {
+      const phase = await this.matches.getMatchPhase(matchId);
+      if (!phase.exists || phase.phase !== 'lobby') {
+        this.clearLobbyFillTimer(matchId);
+      }
+    }
+    if (result.outcome === 'aborted_solo') {
+      for (const playerId of result.playerIds) {
+        const ticket = [...this.tickets.values()].find(
+          (t) => t.playerId === playerId,
+        );
+        if (!ticket) {
+          continue;
+        }
+        this.removeTicket(ticket);
+        this.emit(
+          this.toStatus(ticket, 'timed_out', {
+            acceptedSeats: 0,
+            matchId: null,
+          }),
+        );
+      }
+    }
+    if (result.outcome === 'started') {
+      for (const playerId of result.playerIds) {
+        this.releaseTicketForPlayer(playerId);
+      }
+    }
+  }
+
+  /**
+   * Claim identity + seat. Caller must hold withSeatingLock.
+   */
+  private async seatUnderLock(
+    identity: PlayerIdentityInput,
+  ): Promise<MatchmakingStatusEvent> {
+    const playerKey = identity.displayName.trim().toLowerCase();
+    if (this.byPlayerKey.has(playerKey)) {
+      throw new DomainError('ALREADY_IN_QUEUE', 'already in matchmaking queue');
+    }
+    const now = Date.now();
+    const ticket: MatchmakingTicket = {
+      ticketId: randomUUID(),
+      playerKey,
+      playerId: randomUUID(),
+      identity: {
+        displayName: identity.displayName.trim(),
+        avatarColor: identity.avatarColor,
+      },
+      enqueuedAtMs: now,
+      timeoutAtMs: now + this.queueTimeoutMs,
+      matchId: null,
+      resumeToken: null,
+    };
+    this.tickets.set(ticket.ticketId, ticket);
+    this.byPlayerKey.set(playerKey, ticket.ticketId);
+
     try {
-      while (this.tickets.size >= MATCH_PLAYER_CAPACITY) {
-        const batch = [...this.tickets.values()]
-          .sort((a, b) => a.enqueuedAtMs - b.enqueuedAtMs)
-          .slice(0, MATCH_PLAYER_CAPACITY);
-        const batchAssigned = await this.assignBatch(batch);
-        for (const [id, event] of batchAssigned) {
-          assigned.set(id, event);
+      return await this.seatIntoOpenLobbyUnlocked(ticket);
+    } catch (error) {
+      this.removeTicket(ticket);
+      throw error;
+    }
+  }
+
+  /**
+   * Seat into fullest open lobby or create one. Caller must hold seating lock.
+   * On MATCH_FULL / not-joinable, retries so a burst packs into ceil(N/6) rooms.
+   */
+  private async seatIntoOpenLobbyUnlocked(
+    ticket: MatchmakingTicket,
+  ): Promise<MatchmakingStatusEvent> {
+    const maxAttempts = MATCH_PLAYER_CAPACITY * 4;
+    for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
+      const openMatchId = await this.matches.findOpenQuickSurvivalLobby();
+      if (openMatchId) {
+        try {
+          const joined = await this.matches.joinMatch(
+            openMatchId,
+            ticket.identity,
+          );
+          if (joined.snapshot.players.length > MATCH_PLAYER_CAPACITY) {
+            throw new DomainError(
+              'MATCH_FULL',
+              'open lobby exceeded capacity after join',
+            );
+          }
+          // If the fill wait already elapsed, resolve now (noop while still
+          // within the window). Covers a spent timer + late packer joining a
+          // still-visible lobby after the former seal window.
+          if (
+            joined.snapshot.phase === 'lobby' &&
+            joined.snapshot.players.length >= 2
+          ) {
+            await this.applyLobbyFillDecision(openMatchId);
+          }
+          return this.markAssigned(
+            ticket,
+            openMatchId,
+            joined.playerId,
+            joined.resumeToken,
+            joined.snapshot.players.length,
+          );
+        } catch (error) {
+          if (
+            error instanceof DomainError &&
+            (error.code === 'MATCH_FULL' ||
+              error.code === 'MATCH_NOT_JOINABLE' ||
+              error.code === 'MATCH_NOT_FOUND')
+          ) {
+            continue;
+          }
+          throw error;
         }
       }
-    } finally {
-      this.matching = false;
+
+      const created = await this.matches.createQuickSurvivalMatch([
+        ticket.identity,
+      ]);
+      const assignment = created.assignments[0]!;
+      this.scheduleLobbyFillTimer(
+        created.matchId,
+        created.lobbyFillWaitMs ?? this.lobbyFillWaitMs,
+      );
+      return this.markAssigned(
+        ticket,
+        created.matchId,
+        assignment.playerId,
+        assignment.resumeToken,
+        created.snapshot.players.length,
+      );
     }
-    return assigned;
+
+    throw new DomainError(
+      'MATCHMAKING_PAUSED',
+      'unable to seat into an open or new lobby',
+    );
   }
 
-  private async maybeBotFill(): Promise<void> {
-    if (!this.botFillEnabled || this.matching) {
-      return;
-    }
-    if (this.tickets.size === 0 || this.tickets.size >= MATCH_PLAYER_CAPACITY) {
-      return;
-    }
-    const oldest = [...this.tickets.values()].sort(
-      (a, b) => a.enqueuedAtMs - b.enqueuedAtMs,
-    )[0];
-    if (!oldest) {
-      return;
-    }
-    if (Date.now() - oldest.enqueuedAtMs < this.botFillWaitMs) {
-      return;
-    }
-    this.matching = true;
+  /**
+   * FIFO mutex for seating. Critical section covers identity claim +
+   * find → join/create so concurrent enqueues cannot overfill a room or each
+   * open a solo lobby.
+   */
+  private async withSeatingLock<T>(fn: () => Promise<T>): Promise<T> {
+    const previous = this.seatingChain;
+    let release!: () => void;
+    this.seatingChain = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    await previous;
     try {
-      const batch = [...this.tickets.values()].sort(
-        (a, b) => a.enqueuedAtMs - b.enqueuedAtMs,
-      );
-      await this.assignBatch(batch, { fillBots: true });
+      return await fn();
     } finally {
-      this.matching = false;
+      release();
     }
   }
 
-  private async assignBatch(
-    batch: MatchmakingTicket[],
-    options?: { fillBots?: boolean },
-  ): Promise<Map<string, MatchmakingStatusEvent>> {
-    const assigned = new Map<string, MatchmakingStatusEvent>();
-    for (const ticket of batch) {
-      this.removeTicket(ticket);
-    }
-    try {
-      const created = await this.matches.createQuickSurvivalMatch(
-        batch.map((t) => t.identity),
-      );
-      if (options?.fillBots) {
-        await this.matches.fillBots(created.matchId, {
-          allowWhenPolicyEnabled: true,
-        });
-      }
-      for (let i = 0; i < batch.length; i += 1) {
-        const ticket = batch[i]!;
-        const assignment = created.assignments[i]!;
-        const event = this.toStatus(ticket, 'assigned', {
-          acceptedSeats: MATCH_PLAYER_CAPACITY,
-          matchId: created.matchId,
-          assignment: {
-            playerId: assignment.playerId,
-            resumeToken: assignment.resumeToken,
-          },
-        });
-        assigned.set(ticket.ticketId, event);
-        this.emit(event);
-      }
-    } catch (error) {
-      this.logger.error({
-        event: 'matchmaking_assign_failed',
-        category: error instanceof Error ? error.name : 'UnknownError',
-      });
-      for (const ticket of batch) {
-        this.emit(this.toStatus(ticket, 'failed', { acceptedSeats: 0 }));
-      }
-    }
+  private markAssigned(
+    ticket: MatchmakingTicket,
+    matchId: string,
+    playerId: string,
+    resumeToken: string,
+    acceptedSeats: number,
+  ): MatchmakingStatusEvent {
+    ticket.matchId = matchId;
+    ticket.playerId = playerId;
+    ticket.resumeToken = resumeToken;
+    const assigned = this.toStatus(ticket, 'assigned', {
+      acceptedSeats,
+      matchId,
+      assignment: { playerId, resumeToken },
+    });
+    this.emit(assigned);
     return assigned;
   }
 
@@ -344,9 +533,9 @@ export class MatchmakingService implements OnModuleDestroy {
       ticketId: ticket.ticketId,
       state,
       acceptedSeats: extras.acceptedSeats,
-      capacity: 6,
+      capacity: MATCH_PLAYER_CAPACITY as 6,
       timeoutAtMs: state === 'queued' ? ticket.timeoutAtMs : null,
-      matchId: extras.matchId ?? null,
+      matchId: extras.matchId ?? ticket.matchId ?? null,
       serverNowMs: Date.now(),
       ...(extras.assignment ? { assignment: extras.assignment } : {}),
     };

@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -50,7 +52,7 @@ class AppEntryScreen extends StatefulWidget {
 }
 
 class _AppEntryScreenState extends State<AppEntryScreen>
-    with SingleTickerProviderStateMixin {
+    with SingleTickerProviderStateMixin, WidgetsBindingObserver {
   late final IdentityStore _identityStore;
   late final EntryPreferencesStore _entryPreferences;
   _EntryPhase _phase = _EntryPhase.loading;
@@ -62,10 +64,12 @@ class _AppEntryScreenState extends State<AppEntryScreen>
   final TextEditingController _roomCodeController = TextEditingController();
   late final AnimationController _splashPulse;
   late final Animation<double> _splashScale;
+  DateTime? _lastBackAt;
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _identityStore = widget.identityStore ?? IdentityStore();
     _entryPreferences = widget.entryPreferences ?? EntryPreferencesStore();
     _splashPulse = AnimationController(
@@ -81,10 +85,81 @@ class _AppEntryScreenState extends State<AppEntryScreen>
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     widget.controller.state.removeListener(_onMatchState);
     _roomCodeController.dispose();
     _splashPulse.dispose();
     super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    // Process death / swipe-away: drop match seat so next cold start is home.
+    if (state == AppLifecycleState.detached) {
+      unawaited(widget.controller.clearSessionAndDisconnect());
+    }
+  }
+
+  Future<void> _exitAppCleanly() async {
+    await widget.controller.clearSessionAndDisconnect();
+    await SystemNavigator.pop();
+  }
+
+  void _showExitHint() {
+    if (!mounted) return;
+    final TranslationResolver resolver = AppLocalization.of(context);
+    final ScaffoldMessengerState messenger = ScaffoldMessenger.of(context);
+    messenger.hideCurrentSnackBar();
+    messenger.showSnackBar(
+      SnackBar(
+        content: Text(
+          resolver.resolve(TranslationKeys.appPressBackAgainToExit),
+        ),
+        duration: const Duration(seconds: 2),
+        behavior: SnackBarBehavior.floating,
+      ),
+    );
+  }
+
+  Future<void> _onRootBack() async {
+    final MatchViewState matchState = widget.controller.state.value;
+    if (matchState.inMatch) {
+      await widget.controller.leaveMatch();
+      if (mounted) {
+        setState(() {
+          _phase = _EntryPhase.home;
+          _queueError = null;
+        });
+      }
+      return;
+    }
+
+    switch (_phase) {
+      case _EntryPhase.matchmaking:
+        await _cancelQueue();
+        return;
+      case _EntryPhase.privateAccess:
+      case _EntryPhase.onboardingReplay:
+      case _EntryPhase.identityEdit:
+        setState(() {
+          _phase = _EntryPhase.home;
+          _queueError = null;
+        });
+        return;
+      case _EntryPhase.home:
+      case _EntryPhase.loading:
+      case _EntryPhase.onboarding:
+      case _EntryPhase.identity:
+        final DateTime now = DateTime.now();
+        final DateTime? last = _lastBackAt;
+        if (last != null && now.difference(last) < const Duration(seconds: 2)) {
+          await _exitAppCleanly();
+          return;
+        }
+        _lastBackAt = now;
+        _showExitHint();
+        return;
+    }
   }
 
   void _onMatchState() {
@@ -280,72 +355,113 @@ class _AppEntryScreenState extends State<AppEntryScreen>
 
   @override
   Widget build(BuildContext context) {
-    return ValueListenableBuilder<MatchViewState>(
-      valueListenable: widget.controller.state,
-      builder: (BuildContext context, MatchViewState matchState, _) {
-        if (matchState.inMatch) {
-          return MatchShell(
-            controller: widget.controller,
-            onBackHome: () async {
-              await widget.controller.leaveMatch();
-            },
-            onRematch: () async {
-              if (widget.controller.state.value.mode == MatchMode.training) {
-                await widget.controller.retryTraining();
-              } else {
-                await widget.controller.requestRematch();
-              }
-            },
-          );
-        }
-
-        return switch (_phase) {
-          _EntryPhase.loading => _SplashView(
-            versionLabel: _versionLabel,
-            scale: _splashScale,
-          ),
-          _EntryPhase.onboarding || _EntryPhase.onboardingReplay =>
-            OnboardingScreen(
-              replayMode: _phase == _EntryPhase.onboardingReplay,
-              onCompleted: _completeOnboarding,
-              onReplayExit: () => setState(() => _phase = _EntryPhase.home),
-            ),
-          _EntryPhase.identity || _EntryPhase.identityEdit => IdentityScreen(
-            initial: _identity,
-            onSaved: _saveIdentity,
-          ),
-          _EntryPhase.matchmaking => _MatchmakingView(
-            seats: matchState.matchmakingAcceptedSeats > 0
-                ? matchState.matchmakingAcceptedSeats
-                : _queueSeats,
-            identity: _identity,
-            onCancel: _cancelQueue,
-          ),
-          _EntryPhase.privateAccess => _PrivateAccessView(
-            codeController: _roomCodeController,
-            errorKey: _queueError,
-            onCreate: _createPrivate,
-            onJoin: _joinPrivate,
-            onBack: () => setState(() {
-              _phase = _EntryPhase.home;
-              _queueError = null;
-            }),
-          ),
-          _EntryPhase.home => _HomeView(
-            identity: _identity,
-            errorKey: _queueError,
-            onPlayNow: _enqueueQuickSurvival,
-            onPrivate: () => setState(() {
-              _phase = _EntryPhase.privateAccess;
-              _queueError = null;
-            }),
-            onTraining: _startTraining,
-            onHelp: () => setState(() => _phase = _EntryPhase.onboardingReplay),
-            onEditIdentity: () =>
-                setState(() => _phase = _EntryPhase.identityEdit),
-          ),
-        };
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (bool didPop, Object? result) {
+        if (didPop) return;
+        unawaited(_onRootBack());
       },
+      child: ValueListenableBuilder<MatchViewState>(
+        valueListenable: widget.controller.state,
+        builder: (BuildContext context, MatchViewState matchState, _) {
+          final bool soloQuickSearch = matchState.inMatch &&
+              matchState.mode == MatchMode.quickSurvival &&
+              matchState.phase == MatchPhase.lobby &&
+              matchState.players.length < 2;
+
+          if (matchState.inMatch && !soloQuickSearch) {
+            return MatchShell(
+              controller: widget.controller,
+              onBackHome: () async {
+                await widget.controller.leaveMatch();
+              },
+              onRematch: () async {
+                if (widget.controller.state.value.mode == MatchMode.training) {
+                  await widget.controller.retryTraining();
+                } else {
+                  await widget.controller.requestRematch();
+                }
+              },
+            );
+          }
+
+          if (_phase == _EntryPhase.matchmaking || soloQuickSearch) {
+            final int seats = soloQuickSearch
+                ? matchState.players.length.clamp(1, 6)
+                : (matchState.matchmakingAcceptedSeats > 0
+                    ? matchState.matchmakingAcceptedSeats
+                    : _queueSeats);
+            return _MatchmakingView(
+              seats: seats,
+              identity: _identity,
+              onCancel: () {
+                unawaited(() async {
+                  if (soloQuickSearch || matchState.inMatch) {
+                    await widget.controller.leaveMatch();
+                    if (!mounted) return;
+                    setState(() {
+                      _phase = _EntryPhase.home;
+                      _ticketId = null;
+                      _queueSeats = 0;
+                      _queueError = null;
+                    });
+                  } else {
+                    await _cancelQueue();
+                  }
+                }());
+              },
+            );
+          }
+
+          return switch (_phase) {
+            _EntryPhase.loading => _SplashView(
+              versionLabel: _versionLabel,
+              scale: _splashScale,
+            ),
+            _EntryPhase.onboarding || _EntryPhase.onboardingReplay =>
+              OnboardingScreen(
+                replayMode: _phase == _EntryPhase.onboardingReplay,
+                onCompleted: _completeOnboarding,
+                onReplayExit: () => setState(() => _phase = _EntryPhase.home),
+              ),
+            _EntryPhase.identity || _EntryPhase.identityEdit => IdentityScreen(
+              initial: _identity,
+              onSaved: _saveIdentity,
+            ),
+            _EntryPhase.matchmaking => _MatchmakingView(
+              seats: matchState.matchmakingAcceptedSeats > 0
+                  ? matchState.matchmakingAcceptedSeats
+                  : _queueSeats,
+              identity: _identity,
+              onCancel: _cancelQueue,
+            ),
+            _EntryPhase.privateAccess => _PrivateAccessView(
+              codeController: _roomCodeController,
+              errorKey: _queueError,
+              onCreate: _createPrivate,
+              onJoin: _joinPrivate,
+              onBack: () => setState(() {
+                _phase = _EntryPhase.home;
+                _queueError = null;
+              }),
+            ),
+            _EntryPhase.home => _HomeView(
+              identity: _identity,
+              errorKey: _queueError,
+              onPlayNow: _enqueueQuickSurvival,
+              onPrivate: () => setState(() {
+                _phase = _EntryPhase.privateAccess;
+                _queueError = null;
+              }),
+              onTraining: _startTraining,
+              onHelp: () =>
+                  setState(() => _phase = _EntryPhase.onboardingReplay),
+              onEditIdentity: () =>
+                  setState(() => _phase = _EntryPhase.identityEdit),
+            ),
+          };
+        },
+      ),
     );
   }
 }

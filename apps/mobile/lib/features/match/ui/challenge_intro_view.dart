@@ -11,7 +11,8 @@ import 'widgets/countdown_ring.dart';
 import 'widgets/hearts_display.dart';
 import 'widgets/lh_heart_logo.dart';
 
-/// Brief challenge intro screen showing round, category, and heart logo.
+/// Brief pre-challenge hold. Must not reveal challenge type/category —
+/// the active challenge prompt is the surprise.
 class ChallengeIntroView extends StatefulWidget {
   const ChallengeIntroView({
     required this.state,
@@ -34,7 +35,7 @@ class _ChallengeIntroViewState extends State<ChallengeIntroView> {
   void initState() {
     super.initState();
     _computeRemaining();
-    _timer = Timer.periodic(const Duration(milliseconds: 500), (_) {
+    _timer = Timer.periodic(const Duration(milliseconds: 100), (_) {
       _computeRemaining();
     });
   }
@@ -69,102 +70,42 @@ class _ChallengeIntroViewState extends State<ChallengeIntroView> {
       child: Column(
         children: <Widget>[
           const SizedBox(height: 8),
-          // Header
           Row(
             children: <Widget>[
               const LhHeartLogo(size: 36),
               const SizedBox(width: 10),
               Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: <Widget>[
-                    Text(
-                      resolver.resolve(TranslationKeys.appTitle),
-                      style: Theme.of(context).textTheme.headlineMedium,
-                    ),
-                    Text(
-                      resolver.resolve(
-                        TranslationKeys.introRound,
-                        params: <String, String>{'round': '$round'},
-                      ),
-                      style: Theme.of(context).textTheme.bodySmall,
-                    ),
-                  ],
+                child: Text(
+                  resolver.resolve(TranslationKeys.appTitle),
+                  style: Theme.of(context).textTheme.headlineMedium,
                 ),
-              ),
-              const Icon(
-                Icons.settings_outlined,
-                color: LhColors.textMuted,
-                size: 22,
-              ),
-              const SizedBox(width: 8),
-              const Icon(
-                Icons.notifications_outlined,
-                color: LhColors.textMuted,
-                size: 22,
               ),
             ],
           ),
           const SizedBox(height: 16),
-
-          // Hearts + challenge label row
           Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: <Widget>[
               HeartsDisplay(hearts: hearts),
               const Spacer(),
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.end,
-                children: <Widget>[
-                  Text(
-                    resolver.resolve(
-                      TranslationKeys.introChallengeLabel,
-                      params: <String, String>{'number': '$round'},
-                    ),
-                    style: Theme.of(context).textTheme.headlineMedium,
-                  ),
-                  if (widget.state.currentChallenge != null)
-                    Text(
-                      _resolveCategory(resolver),
-                      style: Theme.of(context).textTheme.bodySmall,
-                    ),
-                ],
+              Text(
+                resolver.resolve(
+                  TranslationKeys.introRound,
+                  params: <String, String>{'round': '$round'},
+                ),
+                style: Theme.of(context).textTheme.headlineMedium,
               ),
             ],
           ),
-
           const Spacer(flex: 2),
-
-          // Challenge type label
+          const LhHeartLogo(size: 120),
+          const SizedBox(height: 24),
           Text(
-            resolver.resolve(TranslationKeys.introChallengeType),
-            style: Theme.of(
-              context,
-            ).textTheme.titleMedium?.copyWith(color: LhColors.success),
-          ),
-          const SizedBox(height: 8),
-
-          // Category name (cyan glow)
-          Text(
-            _resolveCategory(resolver),
-            style: Theme.of(context).textTheme.displayLarge?.copyWith(
-              color: LhColors.success,
-              shadows: <Shadow>[
-                Shadow(
-                  color: LhColors.success.withValues(alpha: 0.6),
-                  blurRadius: 24,
-                ),
-              ],
-            ),
+            resolver.resolve(TranslationKeys.introGetReady),
+            style: Theme.of(context).textTheme.headlineLarge,
             textAlign: TextAlign.center,
           ),
-          const SizedBox(height: 24),
-
-          // Large heart logo
-          const LhHeartLogo(size: 120),
           const SizedBox(height: 32),
-
-          // Small countdown ring
           CountdownRing(
             progress: _secondsRemaining / 3.0,
             label: _toArabicDigit(_secondsRemaining),
@@ -172,46 +113,30 @@ class _ChallengeIntroViewState extends State<ChallengeIntroView> {
             ringColor: LhColors.primary,
             glow: true,
           ),
-
           const Spacer(),
-
-          // Footer instruction
           Text(
             resolver.resolve(TranslationKeys.introReadInstructions),
-            style: Theme.of(context).textTheme.titleMedium,
+            style: Theme.of(
+              context,
+            ).textTheme.bodyMedium?.copyWith(color: LhColors.textMuted),
             textAlign: TextAlign.center,
           ),
-          const SizedBox(height: 20),
+          const SizedBox(height: 24),
         ],
       ),
     );
   }
 
-  String _resolveCategory(TranslationResolver resolver) {
-    final String? categoryKey =
-        widget.state.currentChallenge?.clientConfig['categoryKey'] as String?;
-    if (categoryKey != null && categoryKey.isNotEmpty) {
-      return resolver.resolve(categoryKey);
-    }
-    return resolver.resolve(TranslationKeys.challengeCategoryReaction);
-  }
-
   static String _toArabicDigit(int n) {
-    const List<String> digits = <String>[
-      '٠',
-      '١',
-      '٢',
-      '٣',
-      '٤',
-      '٥',
-      '٦',
-      '٧',
-      '٨',
-      '٩',
-    ];
-    return n.toString().split('').map((String c) {
-      final int? d = int.tryParse(c);
-      return d != null && d < 10 ? digits[d] : c;
-    }).join();
+    const String western = '0123456789';
+    const String arabic = '٠١٢٣٤٥٦٧٨٩';
+    return n
+        .toString()
+        .split('')
+        .map((String c) {
+          final int i = western.indexOf(c);
+          return i >= 0 ? arabic[i] : c;
+        })
+        .join();
   }
 }

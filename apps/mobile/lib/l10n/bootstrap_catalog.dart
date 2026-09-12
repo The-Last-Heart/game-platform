@@ -56,7 +56,7 @@ TranslationCatalog createBootstrapCatalog() {
             'اضغط عندما يصبح القلب أزرق',
         TranslationKeys.challengeWaitForSignalWaitingHint: 'لا تستعجل',
         TranslationKeys.challengeWaitForSignalActive: 'اضغط الآن!',
-        TranslationKeys.challengeWaitForSignalAction: 'اضغط',
+        TranslationKeys.challengeWaitForSignalAction: 'اضغط في أي مكان',
 
         // ── Results ──
         TranslationKeys.resultSuccess: 'نجحت! 🎉',
@@ -116,10 +116,16 @@ TranslationCatalog createBootstrapCatalog() {
         TranslationKeys.lobbyWaitingPlayers: 'بانتظار لاعبين',
         TranslationKeys.lobbyInviteFriend: 'دعوة صديق',
         TranslationKeys.lobbyStartWhenFull: 'ابدأ عند اكتمال ٦ لاعبين',
+        TranslationKeys.lobbyFillStartsIn: 'تبدأ اللعبة خلال {seconds}',
+        TranslationKeys.lobbyExtendWait: 'تمديد الانتظار',
+        TranslationKeys.lobbyStartNow: 'ابدأ الآن',
 
         // ── LH-003 Countdown Chrome ──
         TranslationKeys.countdownAllReady: 'الجميع جاهز',
         TranslationKeys.countdownMatchStarts: 'تبدأ المباراة الآن',
+        TranslationKeys.countdownChallengesStarting: 'التحديات على وشك البدء',
+        TranslationKeys.countdownChallengesStartingSub:
+            'استعد — العداد بدأ',
         TranslationKeys.countdownTip1Title: 'اقرأ بسرعة',
         TranslationKeys.countdownTip1Desc: 'التعليمات قد تكون خادعة',
         TranslationKeys.countdownTip2Title: 'نفّذ بدقة',
@@ -130,6 +136,7 @@ TranslationCatalog createBootstrapCatalog() {
         TranslationKeys.introRoundOf: 'الجولة {round} من {total}',
         TranslationKeys.introChallengeType: 'نوع التحدي',
         TranslationKeys.introReadInstructions: 'اقرأ التعليمات ونفّذ فورًا',
+        TranslationKeys.introGetReady: 'استعد',
 
         // ── LH-003 Result Chrome ──
         TranslationKeys.resultChallengeTitle: 'نتيجة التحدي',
@@ -171,6 +178,10 @@ TranslationCatalog createBootstrapCatalog() {
 
         TranslationKeys.sessionReconnecting: 'جارٍ إعادة الاتصال…',
         TranslationKeys.sessionRecoveringState: 'جارٍ استعادة حالة المباراة…',
+        TranslationKeys.challengeAnswerWaiting:
+            'تم الإرسال — بانتظار نتيجة الجولة',
+        TranslationKeys.winnerStandings: 'الترتيب',
+        TranslationKeys.winnerEnergyScore: 'النقاط',
 
         TranslationKeys.commonBack: 'رجوع',
         TranslationKeys.commonNext: 'التالي',
@@ -219,6 +230,7 @@ TranslationCatalog createBootstrapCatalog() {
         TranslationKeys.homeGreeting: 'مرحبًا، {name}',
         TranslationKeys.onboardingStepOf: 'الخطوة {current} من {total}',
         TranslationKeys.onboardingHowToPlay: 'كيف تلعب',
+        TranslationKeys.appPressBackAgainToExit: 'اضغط مرة أخرى للخروج',
       },
       'en': <String, String>{
         // ── Foundation ──
@@ -259,7 +271,7 @@ TranslationCatalog createBootstrapCatalog() {
             'Tap when the heart turns blue',
         TranslationKeys.challengeWaitForSignalWaitingHint: 'Don\'t rush',
         TranslationKeys.challengeWaitForSignalActive: 'Tap now!',
-        TranslationKeys.challengeWaitForSignalAction: 'Tap',
+        TranslationKeys.challengeWaitForSignalAction: 'Tap anywhere',
 
         // ── Results ──
         TranslationKeys.resultSuccess: 'Success! 🎉',
@@ -320,10 +332,17 @@ TranslationCatalog createBootstrapCatalog() {
         TranslationKeys.lobbyWaitingPlayers: 'Waiting for players',
         TranslationKeys.lobbyInviteFriend: 'Invite Friend',
         TranslationKeys.lobbyStartWhenFull: 'Start when 6 players join',
+        TranslationKeys.lobbyFillStartsIn: 'Game starts in {seconds}',
+        TranslationKeys.lobbyExtendWait: 'Extend wait',
+        TranslationKeys.lobbyStartNow: 'Start now',
 
         // ── LH-003 Countdown Chrome ──
         TranslationKeys.countdownAllReady: 'All Ready',
         TranslationKeys.countdownMatchStarts: 'Match starts now',
+        TranslationKeys.countdownChallengesStarting:
+            'Challenges are about to start',
+        TranslationKeys.countdownChallengesStartingSub:
+            'Get ready — countdown started',
         TranslationKeys.countdownTip1Title: 'Read fast',
         TranslationKeys.countdownTip1Desc: 'Instructions can be tricky',
         TranslationKeys.countdownTip2Title: 'Act precisely',
@@ -335,6 +354,7 @@ TranslationCatalog createBootstrapCatalog() {
         TranslationKeys.introChallengeType: 'Challenge Type',
         TranslationKeys.introReadInstructions:
             'Read instructions and act immediately',
+        TranslationKeys.introGetReady: 'Get ready',
 
         // ── LH-003 Result Chrome ──
         TranslationKeys.resultChallengeTitle: 'Challenge Result',
@@ -377,6 +397,10 @@ TranslationCatalog createBootstrapCatalog() {
 
         TranslationKeys.sessionReconnecting: 'Reconnecting…',
         TranslationKeys.sessionRecoveringState: 'Recovering match state…',
+        TranslationKeys.challengeAnswerWaiting:
+            'Submitted — waiting for round result',
+        TranslationKeys.winnerStandings: 'Standings',
+        TranslationKeys.winnerEnergyScore: 'Score',
 
         TranslationKeys.commonBack: 'Back',
         TranslationKeys.commonNext: 'Next',
@@ -428,6 +452,7 @@ TranslationCatalog createBootstrapCatalog() {
         TranslationKeys.homeGreeting: 'Hello, {name}',
         TranslationKeys.onboardingStepOf: 'Step {current} of {total}',
         TranslationKeys.onboardingHowToPlay: 'How to play',
+        TranslationKeys.appPressBackAgainToExit: 'Press back again to exit',
       },
     },
   );

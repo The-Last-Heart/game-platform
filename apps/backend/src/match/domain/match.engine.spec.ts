@@ -59,7 +59,10 @@ function createWaitForSignalDefinition(
       activePromptKey: 'challenge.wait_for_signal.active',
       actionKey: 'challenge.wait_for_signal.action',
     },
-    serverConfig: overrides.serverConfig ?? { signalDelayMs: 1500 },
+    serverConfig: overrides.serverConfig ?? {
+      signalDelayMs: 1500,
+      signalWindowMs: 1000,
+    },
   };
 }
 
@@ -604,11 +607,74 @@ describe('WaitForSignal engine', () => {
     expect(match.currentChallenge!.roundPhase).toBe('signal_active');
     expect(match.currentChallenge!.signaledAtMs).toBeTruthy();
 
-    // Public view after signal includes signalToken
+    // Public view after signal includes signalToken and window end
     const pub = toPublicChallengeView(match.currentChallenge!, clock.nowMs());
     expect(pub.roundPhase).toBe('signal_active');
     expect(pub.signalToken).toBeTruthy();
     expect(pub.signaledAtMs).toBeTruthy();
+    expect(pub.signalEndsAtMs).toBe(clock.nowMs() + 1000);
+  });
+
+  it('expires blue window and late taps with token evaluate as failure', () => {
+    const { clock, engine } = setup();
+    let match = fillSix(engine);
+    match = engine.startChallenge(match, createWaitForSignalDefinition()).match;
+    const token = match.currentChallenge!.signalToken!;
+
+    clock.advance(1500);
+    match = engine.activateSignal(match).match;
+    expect(match.currentChallenge!.roundPhase).toBe('signal_active');
+
+    clock.advance(1000);
+    const expired = engine.expireSignal(match);
+    expect(expired.events.some((e) => e.kind === 'challenge_signal_ended')).toBe(
+      true,
+    );
+    match = expired.match;
+    expect(match.currentChallenge!.roundPhase).toBe('signal_expired');
+
+    const pub = toPublicChallengeView(match.currentChallenge!, clock.nowMs());
+    expect(pub.roundPhase).toBe('signal_expired');
+    expect(pub.signalToken).toBeUndefined();
+    expect(pub.signalEndsAtMs).toBeTruthy();
+
+    for (let i = 0; i < 6; i++) {
+      match = engine.submitAnswer(match, {
+        playerId: `p${i}`,
+        challengeInstanceId: match.currentChallenge!.challengeInstanceId,
+        commandId: `late-${i}`,
+        answer: { signalToken: token },
+      }).match;
+    }
+
+    expect(match.players.get('p0')!.hearts).toBe(2);
+    expect(match.players.get('p0')!.energy).toBe(0);
+  });
+
+  it('rejects malformed signalWindowMs before challenge starts', () => {
+    const { engine } = setup();
+    const match = fillSix(engine);
+
+    expect(() =>
+      engine.startChallenge(
+        match,
+        createWaitForSignalDefinition({
+          serverConfig: { signalDelayMs: 1500, signalWindowMs: 0 },
+        }),
+      ),
+    ).toThrow(DomainError);
+
+    expect(() =>
+      engine.startChallenge(
+        match,
+        createWaitForSignalDefinition({
+          durationMs: 5000,
+          serverConfig: { signalDelayMs: 4000, signalWindowMs: 2000 },
+        }),
+      ),
+    ).toThrow(DomainError);
+
+    expect(match.currentChallenge).toBeNull();
   });
 
   it('early tap (before signal) is accepted but evaluates as failure', () => {
@@ -783,6 +849,27 @@ describe('WaitForSignal engine', () => {
     expect(round.deadlineAtMs - round.startsAtMs).toBe(5000);
   });
 
+  it('deferred intro bump keeps challenge.started consecutive', () => {
+    const { engine } = setup();
+    let match = fillSix(engine);
+    const beforeSeq = match.sequence;
+    const def = createWaitForSignalDefinition({ durationMs: 5000 });
+    const intro = engine.beginChallengeIntro(match, 0, def, {
+      deferSequenceBump: true,
+    });
+    expect(intro.events).toHaveLength(0);
+    expect(intro.match.sequence).toBe(beforeSeq);
+    expect(intro.match.phase).toBe('challenge_intro');
+
+    const started = engine.startChallenge(intro.match);
+    expect(started.match.sequence).toBe(beforeSeq + 1);
+    expect(started.match.phase).toBe('challenge_active');
+    expect(
+      started.events.some((e) => e.kind === 'challenge_started'),
+    ).toBe(true);
+    expect(started.events[0]!.sequence).toBe(beforeSeq + 1);
+  });
+
   it('reconnect snapshot before signal omits signalToken', () => {
     const { engine } = setup();
     let match = fillSix(engine);
@@ -827,26 +914,46 @@ describe('WaitForSignal engine', () => {
       }).match;
     }
 
-    // After auto-resolve, status is waiting, phase is round_result
+    // After auto-resolve, status is waiting with challenge retained for hold.
     expect(match.status).toBe('waiting');
 
-    const resolutions = [
-      {
-        playerId: 'p0',
-        outcome: 'success' as const,
-        heartsDelta: 0,
-        energyDelta: 1,
-        heartsAfter: 3,
-        energyAfter: 1,
-        statusAfter: 'active' as const,
-      },
-    ];
+    const resolutions = match.currentChallenge!.resolutions;
     const result = engine.beginRoundResult(match, resolutions, cid, 2500);
     match = result.match;
     expect(match.phase).toBe('round_result');
     expect(match.lastRoundResult).not.toBeNull();
     expect(match.lastRoundResult!.challengeInstanceId).toBe(cid);
     expect(match.nextPhaseAtMs).toBeTruthy();
+  });
+
+  it('completeByStandings crowns the highest hearts then energy', () => {
+    const { engine } = setup();
+    let match = fillSix(engine);
+    match = engine.startChallenge(
+      match,
+      createDevChallengeDefinition({ durationMs: 3000 }),
+    ).match;
+    const cid = match.currentChallenge!.challengeInstanceId;
+
+    for (let i = 0; i < 6; i++) {
+      match = engine.submitAnswer(match, {
+        playerId: `p${i}`,
+        challengeInstanceId: cid,
+        commandId: `cmd-${i}`,
+        answer: { choice: i === 0 ? 'a' : 'b' },
+      }).match;
+    }
+
+    const hold = engine.beginRoundResult(
+      match,
+      match.currentChallenge!.resolutions,
+      cid,
+      2500,
+    );
+    const finished = engine.completeByStandings(hold.match);
+    expect(finished.match.phase).toBe('completed');
+    expect(finished.match.winnerId).toBe('p0');
+    expect(finished.events.some((e) => e.kind === 'match_finished')).toBe(true);
   });
 });
 
@@ -862,7 +969,11 @@ describe('Challenge definition pinning and validation', () => {
       actionKey: 'challenge.wait_for_signal.action',
       ui: { tone: 'warm' },
     };
-    const nestedServer = { signalDelayMs: 1500, meta: { seed: 7 } };
+    const nestedServer = {
+      signalDelayMs: 1500,
+      signalWindowMs: 1000,
+      meta: { seed: 7 },
+    };
     const def = createWaitForSignalDefinition({
       clientConfig: nestedClient,
       serverConfig: nestedServer,
@@ -885,7 +996,11 @@ describe('Challenge definition pinning and validation', () => {
       actionKey: 'challenge.wait_for_signal.action',
       ui: { tone: 'warm' },
     });
-    expect(pinnedServer).toEqual({ signalDelayMs: 1500, meta: { seed: 7 } });
+    expect(pinnedServer).toEqual({
+      signalDelayMs: 1500,
+      signalWindowMs: 1000,
+      meta: { seed: 7 },
+    });
     expect(pinnedClient).not.toBe(def.clientConfig);
     expect(pinnedServer).not.toBe(def.serverConfig);
 
@@ -1129,6 +1244,35 @@ describe('Challenge definition pinning and validation', () => {
 
     expect(match.currentChallenge?.status).toBe('resolved');
     expect(match.players.get('trainee')!.hearts).toBe(2);
+    expect(match.phase).not.toBe('completed');
+    expect(match.winnerId).toBeNull();
+    expect(match.status).toBe('waiting');
+  });
+
+  it('training last-heart failure does not halt; stays waiting for round feedback', () => {
+    const { engine } = setup();
+    let match = engine.createMatch('train-wipe', {
+      mode: 'training',
+      playerCapacity: 1,
+    });
+    match = engine.joinPlayer(match, {
+      playerId: 'trainee',
+      resumeTokenHash: 'hash',
+      hearts: 1,
+    }).match;
+    match = engine.acceptJoin(match, 'trainee').match;
+    match = engine.startChallenge(match, createWaitForSignalDefinition()).match;
+
+    match = engine.submitAnswer(match, {
+      playerId: 'trainee',
+      challengeInstanceId: match.currentChallenge!.challengeInstanceId,
+      commandId: 'last-fail',
+      answer: {},
+    }).match;
+
+    expect(match.players.get('trainee')!.hearts).toBe(0);
+    expect(match.players.get('trainee')!.status).toBe('spectator');
+    expect(match.phase).not.toBe('halted');
     expect(match.phase).not.toBe('completed');
     expect(match.winnerId).toBeNull();
     expect(match.status).toBe('waiting');

@@ -58,10 +58,11 @@ class _MatchShellState extends State<MatchShell> {
   }
 
   Widget _buildPhase(BuildContext context, MatchViewState state) {
-    // If spectator and match not yet completed, show spectator view.
+    // Spectators watch remaining challenges; do not steal round_result so a
+    // last-heart miss can still show the fail screen for the hold window.
     if (state.isSpectator &&
-        state.phase != MatchPhase.completed &&
-        state.phase != MatchPhase.halted) {
+        (state.phase == MatchPhase.challengeIntro ||
+            state.phase == MatchPhase.challengeActive)) {
       return SpectatorView(state: state);
     }
 
@@ -73,6 +74,14 @@ class _MatchShellState extends State<MatchShell> {
             widget.controller.setReady();
           },
           onLeave: widget.onBackHome,
+          onExtendLobbyFill: () {
+            widget.controller.extendLobbyFill();
+          },
+          onStartLobby: () {
+            widget.controller.startLobbyNow();
+          },
+          estimateServerNowMs:
+              widget.controller.serverClock.estimateServerNowMs,
         );
       case MatchPhase.readyCountdown:
         return ReadyCountdownView(
@@ -110,12 +119,28 @@ class _MatchShellState extends State<MatchShell> {
             widget.controller.setReady();
           },
           onLeave: widget.onBackHome,
+          onExtendLobbyFill: () {
+            widget.controller.extendLobbyFill();
+          },
+          onStartLobby: () {
+            widget.controller.startLobbyNow();
+          },
+          estimateServerNowMs:
+              widget.controller.serverClock.estimateServerNowMs,
         );
       case MatchPhase.roundResult:
         return RoundResultView(
           state: state,
           estimateServerNowMs:
               widget.controller.serverClock.estimateServerNowMs,
+          onBackHome: widget.onBackHome,
+          onRetry: state.mode == MatchMode.training
+              ? () {
+                  // Always training.retry — do not route through rematch
+                  // (rematch rejects round_result and leaves the fail screen).
+                  widget.controller.retryTraining();
+                }
+              : null,
         );
       case MatchPhase.completed:
         return WinnerView(

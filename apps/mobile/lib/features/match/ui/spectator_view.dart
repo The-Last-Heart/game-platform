@@ -50,17 +50,6 @@ class SpectatorView extends StatelessWidget {
                   ],
                 ),
               ),
-              const Icon(
-                Icons.settings_outlined,
-                color: LhColors.textMuted,
-                size: 22,
-              ),
-              const SizedBox(width: 8),
-              const Icon(
-                Icons.notifications_outlined,
-                color: LhColors.textMuted,
-                size: 22,
-              ),
             ],
           ),
         ),
@@ -134,9 +123,9 @@ class SpectatorView extends StatelessWidget {
               final bool isEliminated = player.status == PlayerStatus.spectator;
               final Color avatarColor =
                   kPlayerAvatarColors[index % kPlayerAvatarColors.length];
-              final String initial = player.playerId.isNotEmpty
-                  ? player.playerId[0].toUpperCase()
-                  : '?';
+              final String name = _playerDisplayName(player);
+              final String initial =
+                  name.isNotEmpty && name != '—' ? name[0].toUpperCase() : '?';
               return Container(
                 margin: const EdgeInsets.only(bottom: 8),
                 padding: const EdgeInsets.symmetric(
@@ -172,9 +161,7 @@ class SpectatorView extends StatelessWidget {
                     const SizedBox(width: 12),
                     Expanded(
                       child: Text(
-                        player.playerId.length > 8
-                            ? player.playerId.substring(0, 8)
-                            : player.playerId,
+                        name,
                         style: Theme.of(context).textTheme.bodyLarge?.copyWith(
                           fontWeight: FontWeight.w600,
                           color: isEliminated
@@ -230,5 +217,11 @@ class SpectatorView extends StatelessWidget {
         const SizedBox(height: 12),
       ],
     );
+  }
+
+  static String _playerDisplayName(PlayerPublic player) {
+    final String? name = player.displayName?.trim();
+    if (name != null && name.isNotEmpty) return name;
+    return '—';
   }
 }

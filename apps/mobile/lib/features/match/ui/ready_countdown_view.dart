@@ -28,28 +28,37 @@ class ReadyCountdownView extends StatefulWidget {
 
 class _ReadyCountdownViewState extends State<ReadyCountdownView> {
   Timer? _timer;
-  int _secondsRemaining = 3;
+  int _secondsLabel = 3;
+  double _progress = 1.0;
+  int? _deadlineMs;
+  int _totalMs = 3000;
 
   @override
   void initState() {
     super.initState();
     _computeRemaining();
-    _timer = Timer.periodic(const Duration(seconds: 1), (_) {
+    _timer = Timer.periodic(const Duration(milliseconds: 50), (_) {
       _computeRemaining();
     });
   }
 
   void _computeRemaining() {
     final int? deadline = widget.state.phaseDeadlineAtMs;
-    if (deadline != null) {
-      final int nowMs = widget.estimateServerNowMs();
-      final int remaining = nowMs > 0
-          ? ((deadline - nowMs) / 1000).ceil().clamp(0, 10)
-          : 0;
-      setState(() {
-        _secondsRemaining = remaining;
-      });
+    if (deadline == null) return;
+    final int nowMs = widget.estimateServerNowMs();
+    if (nowMs <= 0) return;
+
+    // Capture total window once per countdown episode for smooth ring fill.
+    if (_deadlineMs != deadline) {
+      _deadlineMs = deadline;
+      _totalMs = (deadline - nowMs).clamp(1, 15000);
     }
+
+    final int remainingMs = (deadline - nowMs).clamp(0, _totalMs);
+    setState(() {
+      _progress = remainingMs / _totalMs;
+      _secondsLabel = (remainingMs / 1000).ceil().clamp(0, 99);
+    });
   }
 
   @override
@@ -61,7 +70,6 @@ class _ReadyCountdownViewState extends State<ReadyCountdownView> {
   @override
   Widget build(BuildContext context) {
     final TranslationResolver resolver = AppLocalization.of(context);
-    final double progress = _secondsRemaining / 3.0;
 
     return SingleChildScrollView(
       padding: const EdgeInsets.symmetric(horizontal: 20),
@@ -78,39 +86,34 @@ class _ReadyCountdownViewState extends State<ReadyCountdownView> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: <Widget>[
                     Text(
-                      resolver.resolve(TranslationKeys.countdownAllReady),
+                      resolver.resolve(
+                        TranslationKeys.countdownChallengesStarting,
+                      ),
                       style: Theme.of(context).textTheme.headlineMedium,
                     ),
                     Text(
-                      resolver.resolve(TranslationKeys.countdownMatchStarts),
+                      resolver.resolve(
+                        TranslationKeys.countdownChallengesStartingSub,
+                      ),
                       style: Theme.of(context).textTheme.bodySmall,
                     ),
                   ],
                 ),
               ),
-              const Icon(
-                Icons.settings_outlined,
-                color: LhColors.textMuted,
-                size: 22,
-              ),
-              const SizedBox(width: 8),
-              const Icon(
-                Icons.notifications_outlined,
-                color: LhColors.textMuted,
-                size: 22,
-              ),
             ],
           ),
           const SizedBox(height: 20),
 
-          // 2×3 player grid
-          _buildPlayerGrid(context),
-          const SizedBox(height: 28),
+          // Multiplayer only — training is solo, so skip the roster grid.
+          if (widget.state.mode != MatchMode.training) ...<Widget>[
+            _buildPlayerGrid(context),
+            const SizedBox(height: 28),
+          ],
 
-          // Countdown ring
+          // Countdown ring — progress updates every 50ms for a smooth arc.
           CountdownRing(
-            progress: progress,
-            label: _toArabicDigit(_secondsRemaining),
+            progress: _progress,
+            label: _toArabicDigit(_secondsLabel),
             size: 160,
             ringColor: LhColors.primary,
             glow: true,
@@ -159,9 +162,8 @@ class _ReadyCountdownViewState extends State<ReadyCountdownView> {
         final PlayerPublic player = players[index];
         final Color avatarColor =
             kPlayerAvatarColors[index % kPlayerAvatarColors.length];
-        final String initial = player.playerId.isNotEmpty
-            ? player.playerId[0].toUpperCase()
-            : '?';
+        final String name = _playerDisplayName(player);
+        final String initial = name.isNotEmpty ? name[0].toUpperCase() : '?';
         return Container(
           padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 6),
           decoration: const BoxDecoration(
@@ -191,13 +193,12 @@ class _ReadyCountdownViewState extends State<ReadyCountdownView> {
               ),
               const SizedBox(height: 6),
               Text(
-                player.playerId.length > 6
-                    ? player.playerId.substring(0, 6)
-                    : player.playerId,
+                name,
                 style: Theme.of(
                   context,
                 ).textTheme.bodySmall?.copyWith(color: LhColors.text),
                 overflow: TextOverflow.ellipsis,
+                maxLines: 1,
                 textAlign: TextAlign.center,
               ),
               const SizedBox(height: 4),
@@ -220,6 +221,13 @@ class _ReadyCountdownViewState extends State<ReadyCountdownView> {
         );
       },
     );
+  }
+
+  /// Prefer server displayName; never surface a truncated playerId as a name.
+  static String _playerDisplayName(PlayerPublic player) {
+    final String? name = player.displayName?.trim();
+    if (name != null && name.isNotEmpty) return name;
+    return '—';
   }
 
   static String _toArabicDigit(int n) {

@@ -48,6 +48,7 @@ PublicChallenge makeChallenge({
   RoundPhase roundPhase = RoundPhase.waitingSignal,
   String? signalToken,
   int? signaledAtMs,
+  int? signalEndsAtMs,
   Map<String, dynamic>? clientConfig,
 }) {
   return PublicChallenge(
@@ -64,6 +65,7 @@ PublicChallenge makeChallenge({
     roundPhase: roundPhase,
     signalToken: signalToken,
     signaledAtMs: signaledAtMs,
+    signalEndsAtMs: signalEndsAtMs,
   );
 }
 
@@ -240,6 +242,44 @@ void main() {
 
       expect(submittedAnswer, isNotNull);
       expect(submittedAnswer!['signalToken'], 'tok-signal');
+    });
+
+    testWidgets('after signal window ends, tap submits without token', (
+      WidgetTester tester,
+    ) async {
+      Map<String, dynamic>? submittedAnswer;
+      final PublicChallenge challenge = makeChallenge(
+        roundPhase: RoundPhase.signalActive,
+        signalToken: 'tok-signal',
+        signaledAtMs: 1700000002000,
+        signalEndsAtMs: 1700000003000,
+      );
+
+      final ReactionWaitForSignalEngine engine = ReactionWaitForSignalEngine();
+
+      await tester.pumpWidget(
+        wrapWithL10n(
+          Builder(
+            builder: (BuildContext context) {
+              return engine.build(
+                context,
+                makeContext(
+                  challenge: challenge,
+                  estimateServerNowMs: () => 1700000003500,
+                  onSubmit: (Map<String, dynamic> a) => submittedAnswer = a,
+                ),
+              );
+            },
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byType(GestureDetector).first);
+      await tester.pump();
+
+      expect(submittedAnswer, isNotNull);
+      expect(submittedAnswer!.containsKey('signalToken'), isFalse);
     });
 
     testWidgets('early tap submits without token', (WidgetTester tester) async {

@@ -1,4 +1,12 @@
 export const MATCH_PLAYER_CAPACITY = 6;
+/** Quick Survival / live lobbies: need at least two humans to start. */
+export const MIN_LIVE_MATCH_PLAYERS = 2;
+/** How long an open quick lobby waits to fill before starting (if ≥2) or aborting (if 1). */
+export const QUICK_LOBBY_FILL_WAIT_MS = 60_000;
+/** Host extend adds this much to the open-lobby fill wait. */
+export const QUICK_LOBBY_FILL_EXTEND_MS = 30_000;
+/** Cap on remaining fill wait after an extend (from now). */
+export const QUICK_LOBBY_FILL_MAX_REMAINING_MS = 120_000;
 export const INITIAL_HEARTS = 3;
 export const INITIAL_ENERGY = 0;
 export const MIN_CHALLENGE_DURATION_MS = 3000;
@@ -21,7 +29,11 @@ export type MatchPhase =
   | 'completed'
   | 'halted';
 
-export type RoundPhase = 'waiting_signal' | 'signal_active' | 'resolved';
+export type RoundPhase =
+  | 'waiting_signal'
+  | 'signal_active'
+  | 'signal_expired'
+  | 'resolved';
 
 export type PlayerStatus = 'active' | 'spectator';
 export type Presence = 'connected' | 'disconnected';
@@ -156,11 +168,15 @@ export type ChallengeRound = {
   deadlineMonoMs: number;
   status: 'active' | 'resolved';
   roundPhase: RoundPhase;
-  /** Private until signaled; after signal becomes public. */
+  /** Private until signaled; after signal becomes public until window ends. */
   signalToken: string | null;
   signaledAtMs: number | null;
   /** Private monotonic schedule for signal activation. */
   signalAtMonoMs: number | null;
+  /** Wall-clock end of the blue window (public while active / after expire). */
+  signalEndsAtMs: number | null;
+  /** Private monotonic end of the blue window (exclusive). */
+  signalEndsAtMonoMs: number | null;
   submissions: Map<
     string,
     {
@@ -181,6 +197,13 @@ export type MatchState = {
   roomCode: string | null;
   /** Seat capacity for this match (default 6; training = 1). */
   playerCapacity: number;
+  /**
+   * Quick Survival open-lobby fill deadline. While set and phase is lobby, new
+   * players may join until capacity; when due, start if ≥2 else abort.
+   * Wall clock is published to clients; mono drives server timers.
+   */
+  lobbyFillDeadlineAtMs: number | null;
+  lobbyFillDeadlineMonoMs: number | null;
   phaseDeadlineAtMs: number | null;
   phaseDeadlineMonoMs: number | null;
   roundNumber: number;
@@ -238,6 +261,16 @@ export type DomainEvent =
       challengeInstanceId: string;
       signalToken: string;
       signaledAtMs: number;
+      signalEndsAtMs: number;
+      serverNowMs: number;
+    }
+  | {
+      kind: 'challenge_signal_ended';
+      sequence: number;
+      revision: number;
+      serverTimestampMs: number;
+      challengeInstanceId: string;
+      signalEndsAtMs: number;
       serverNowMs: number;
     }
   | {
@@ -335,4 +368,5 @@ export type PublicChallengeView = {
   roundPhase: RoundPhase;
   signalToken?: string;
   signaledAtMs?: number;
+  signalEndsAtMs?: number;
 };

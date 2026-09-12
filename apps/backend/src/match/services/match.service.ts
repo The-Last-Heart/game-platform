@@ -23,6 +23,10 @@ import type {
 import {
   DomainError,
   MATCH_PLAYER_CAPACITY,
+  MIN_LIVE_MATCH_PLAYERS,
+  QUICK_LOBBY_FILL_EXTEND_MS,
+  QUICK_LOBBY_FILL_MAX_REMAINING_MS,
+  QUICK_LOBBY_FILL_WAIT_MS,
   SystemClock,
 } from '../domain/types';
 import { InMemoryMatchStore, type MatchStore } from '../store/match.store';
@@ -32,7 +36,6 @@ import type { ChallengeDefinitionProvider } from '../challenges/challenge-defini
 import { RoomCodeRegistry } from './room-code.registry';
 
 const READY_COUNTDOWN_MS = 3000;
-const CHALLENGE_INTRO_MS = 2000;
 const ROUND_RESULT_MS = 2500;
 const RESUME_ACK_PREFIX = 'match.resume:';
 const REMATCH_WINDOW_MS = 60_000;
@@ -224,6 +227,7 @@ export class MatchService implements OnModuleDestroy {
   async joinMatch(
     matchId: string,
     identity?: PlayerIdentityInput,
+    progress?: { hearts: number; energy: number },
   ): Promise<{
     playerId: string;
     resumeToken: string;
@@ -239,6 +243,8 @@ export class MatchService implements OnModuleDestroy {
         resumeTokenHash: issued.hash,
         displayName: identity?.displayName,
         avatarColor: identity?.avatarColor,
+        hearts: progress?.hearts,
+        energy: progress?.energy,
       });
       await this.store.save(result.match);
       this.emit(result.match, result.events);
@@ -443,12 +449,23 @@ export class MatchService implements OnModuleDestroy {
         const removed = this.engine.removeLobbyPlayer(match, playerId);
         if (removed.removed) {
           this.clearTimer(matchId);
-          await this.store.save(removed.match);
-          if (removed.events.length > 0) {
-            this.emit(removed.match, removed.events);
+          const next = removed.match;
+          if (
+            next.mode === 'quick_survival' &&
+            next.phase === 'lobby' &&
+            next.players.size > 0 &&
+            next.players.size < next.playerCapacity
+          ) {
+            this.armLobbyFillWait(next, QUICK_LOBBY_FILL_WAIT_MS);
+            this.ensureQuickHost(next);
           }
-          if (removed.match.players.size === 0) {
+          await this.store.save(next);
+          if (removed.events.length > 0) {
+            this.emit(next, removed.events);
+          }
+          if (next.players.size === 0) {
             this.roomCodes.unregisterMatch(matchId);
+            await this.store.delete(matchId);
           }
           return;
         }
@@ -653,30 +670,75 @@ export class MatchService implements OnModuleDestroy {
     });
   }
 
+  /**
+   * True while the match is still pre-challenge (lobby / ready_countdown).
+   * Used by the gateway so a disconnect frees the seat instead of leaving a
+   * ghost "disconnected" row that blocks open-lobby packing.
+   */
+  async canLeaveLobbySeat(matchId: string): Promise<boolean> {
+    const match = await this.store.get(matchId);
+    if (!match) {
+      return false;
+    }
+    return (
+      match.status === 'waiting' &&
+      (match.phase === 'lobby' || match.phase === 'ready_countdown')
+    );
+  }
+
   async leaveMatch(
     matchId: string,
     playerId: string,
   ): Promise<{
     snapshot: ReturnType<MatchEngine['toPublicSnapshot']> | null;
     left: boolean;
+    emptied: boolean;
+    /** When set, matchmaking should (re)arm the open-lobby fill timer. */
+    lobbyFillWaitMs?: number;
   }> {
     return this.enqueue(matchId, async () => {
       const match = await this.requireMatch(matchId);
       const removed = this.engine.removeLobbyPlayer(match, playerId);
       if (!removed.removed) {
-        return { snapshot: this.engine.toPublicSnapshot(match), left: false };
+        return {
+          snapshot: this.engine.toPublicSnapshot(match),
+          left: false,
+          emptied: false,
+        };
       }
       this.clearTimer(matchId);
-      await this.store.save(removed.match);
-      if (removed.events.length > 0) {
-        this.emit(removed.match, removed.events);
+
+      const next = removed.match;
+      let lobbyFillWaitMs: number | undefined;
+      // Vacating a seat before start re-opens the quick lobby for joins and
+      // refreshes the fill wait so remaining players are not sealed forever.
+      if (
+        next.mode === 'quick_survival' &&
+        next.phase === 'lobby' &&
+        next.players.size > 0 &&
+        next.players.size < next.playerCapacity
+      ) {
+        this.armLobbyFillWait(next, QUICK_LOBBY_FILL_WAIT_MS);
+        lobbyFillWaitMs = QUICK_LOBBY_FILL_WAIT_MS;
       }
-      if (removed.match.players.size === 0) {
+      if (next.players.size > 0) {
+        this.ensureQuickHost(next, playerId);
+      }
+
+      await this.store.save(next);
+      if (removed.events.length > 0) {
+        this.emit(next, removed.events);
+      }
+      const emptied = next.players.size === 0;
+      if (emptied) {
         this.roomCodes.unregisterMatch(matchId);
+        await this.store.delete(matchId);
       }
       return {
-        snapshot: this.engine.toPublicSnapshot(removed.match),
+        snapshot: this.engine.toPublicSnapshot(next),
         left: true,
+        emptied,
+        lobbyFillWaitMs,
       };
     });
   }
@@ -788,13 +850,16 @@ export class MatchService implements OnModuleDestroy {
    * Training: capacity-1 wait-for-state match. After gateway finalizeJoin,
    * countdown starts immediately and advances into the challenge path.
    */
-  async startTraining(identity: PlayerIdentityInput): Promise<SeatCredentials> {
+  async startTraining(
+    identity: PlayerIdentityInput,
+    progress?: { hearts: number; energy: number },
+  ): Promise<SeatCredentials> {
     const match = this.engine.createMatch(undefined, {
       mode: 'training',
       playerCapacity: 1,
     });
     await this.store.save(match);
-    const seated = await this.joinMatch(match.matchId, identity);
+    const seated = await this.joinMatch(match.matchId, identity, progress);
     return {
       matchId: match.matchId,
       playerId: seated.playerId,
@@ -804,8 +869,9 @@ export class MatchService implements OnModuleDestroy {
   }
 
   /**
-   * Retry training after completed/halted/round_result: recreate a fresh
-   * capacity-1 training match for the same identity.
+   * Retry training after completed/halted/round_result.
+   * Mid-run (hearts still > 0): carry remaining hearts/energy into the new seat.
+   * Full wipe (0 hearts): fresh restart at INITIAL_HEARTS.
    */
   async retryTraining(
     matchId: string,
@@ -833,7 +899,11 @@ export class MatchService implements OnModuleDestroy {
       displayName: player.displayName ?? 'Trainee',
       avatarColor: player.avatarColor ?? '#94A3B8',
     };
-    return this.startTraining(identity);
+    const progress =
+      player.hearts > 0
+        ? { hearts: player.hearts, energy: player.energy }
+        : undefined;
+    return this.startTraining(identity, progress);
   }
 
   /**
@@ -949,6 +1019,7 @@ export class MatchService implements OnModuleDestroy {
       displayName: string;
     }>;
     snapshot: ReturnType<MatchEngine['toPublicSnapshot']>;
+    lobbyFillWaitMs: number;
   }> {
     if (seats.length === 0 || seats.length > MATCH_PLAYER_CAPACITY) {
       throw new DomainError('NOT_ENOUGH_PLAYERS', 'invalid seat count');
@@ -974,12 +1045,239 @@ export class MatchService implements OnModuleDestroy {
         displayName: seat.displayName,
       });
     }
-    const snap = await this.requestSnapshot(match.matchId);
+    // Arm open-lobby fill wait (partial start or solo abort when due).
+    const withDeadline = await this.requireMatch(match.matchId);
+    this.armLobbyFillWait(withDeadline, QUICK_LOBBY_FILL_WAIT_MS);
+    // First seated player is the open-lobby host (extend fill wait).
+    const firstHostId = assignments[0]?.playerId;
+    if (firstHostId) {
+      withDeadline.hostPlayerId = firstHostId;
+    }
+    await this.store.save(withDeadline);
     return {
       matchId: match.matchId,
       assignments,
-      snapshot: snap.snapshot,
+      snapshot: this.engine.toPublicSnapshot(withDeadline),
+      lobbyFillWaitMs: QUICK_LOBBY_FILL_WAIT_MS,
     };
+  }
+
+  /**
+   * Host extends the open-lobby fill wait (+30s, capped at 120s remaining).
+   * Allowed only for quick_survival lobby with 2–5 seated players.
+   */
+  async extendLobbyFill(
+    matchId: string,
+    playerId: string,
+  ): Promise<{
+    snapshot: ReturnType<MatchEngine['toPublicSnapshot']>;
+    lobbyFillWaitMs: number;
+  }> {
+    return this.enqueue(matchId, async () => {
+      const match = await this.requireMatch(matchId);
+      if (match.mode !== 'quick_survival') {
+        throw new DomainError('NOT_LOBBY', 'extend only for quick survival');
+      }
+      if (match.status !== 'waiting' || match.phase !== 'lobby') {
+        throw new DomainError('NOT_LOBBY', 'extend only while lobby is open');
+      }
+      if (match.hostPlayerId !== playerId) {
+        throw new DomainError('NOT_HOST', 'only the lobby host can extend');
+      }
+      const size = match.players.size;
+      if (size < MIN_LIVE_MATCH_PLAYERS || size >= match.playerCapacity) {
+        throw new DomainError(
+          'NOT_ENOUGH_PLAYERS',
+          'extend requires a partial open lobby (2-5 players)',
+        );
+      }
+
+      const nowMono = this.clock.monoMs();
+      const remaining =
+        match.lobbyFillDeadlineMonoMs != null
+          ? Math.max(0, match.lobbyFillDeadlineMonoMs - nowMono)
+          : 0;
+      const nextRemaining = Math.min(
+        QUICK_LOBBY_FILL_MAX_REMAINING_MS,
+        remaining + QUICK_LOBBY_FILL_EXTEND_MS,
+      );
+      const result = this.engine.setLobbyFillDeadline(
+        match,
+        this.clock.nowMs() + nextRemaining,
+        nowMono + nextRemaining,
+      );
+      await this.store.save(result.match);
+      if (result.events.length > 0) {
+        this.emit(result.match, result.events);
+      }
+      return {
+        snapshot: this.engine.toPublicSnapshot(result.match),
+        lobbyFillWaitMs: nextRemaining,
+      };
+    });
+  }
+
+  /**
+   * Host starts the quick lobby immediately (≥ MIN_LIVE_MATCH_PLAYERS).
+   * Skips remaining fill wait and enters ready countdown with a partial table.
+   */
+  async startLobbyNow(
+    matchId: string,
+    playerId: string,
+  ): Promise<{
+    snapshot: ReturnType<MatchEngine['toPublicSnapshot']>;
+  }> {
+    return this.enqueue(matchId, async () => {
+      const match = await this.requireMatch(matchId);
+      if (match.mode !== 'quick_survival') {
+        throw new DomainError('NOT_LOBBY', 'start only for quick survival');
+      }
+      if (match.status !== 'waiting' || match.phase !== 'lobby') {
+        throw new DomainError('NOT_LOBBY', 'start only while lobby is open');
+      }
+      if (match.hostPlayerId !== playerId) {
+        throw new DomainError('NOT_HOST', 'only the lobby host can start');
+      }
+      const size = match.players.size;
+      if (size < MIN_LIVE_MATCH_PLAYERS) {
+        throw new DomainError(
+          'NOT_ENOUGH_PLAYERS',
+          'start requires at least two players',
+        );
+      }
+
+      let current = match;
+      for (const seatedId of match.players.keys()) {
+        const accepted = this.engine.acceptJoin(current, seatedId);
+        current = accepted.match;
+      }
+      if (current !== match) {
+        await this.store.save(current);
+      }
+      if (
+        !this.engine.canStartReadyCountdown(current, {
+          allowPartialFill: true,
+        })
+      ) {
+        throw new DomainError(
+          'NOT_ENOUGH_PLAYERS',
+          'lobby cannot start ready countdown',
+        );
+      }
+      await this.beginReadyCountdownLocked(matchId, {
+        allowPartialFill: true,
+      });
+      const latest = await this.requireMatch(matchId);
+      return {
+        snapshot: this.engine.toPublicSnapshot(latest),
+      };
+    });
+  }
+
+  /**
+   * Open quick_survival lobby with free seats (waiting + lobby, not full).
+   * Prefers the fullest room so tables pack before opening another.
+   *
+   * Past fill deadline does NOT hide incomplete lobbies: resolveQuickLobbyFill
+   * still starts (≥2) or aborts (solo) under the match lock, and concurrent
+   * joins serialize on that same lock. Sealing here created a window where a
+   * host still sitting in lobby was invisible, so the next enqueue opened a
+   * second room.
+   */
+  async findOpenQuickSurvivalLobby(): Promise<string | null> {
+    const ids = await this.store.listIds();
+    let bestId: string | null = null;
+    let bestSize = -1;
+    for (const id of ids) {
+      const match = await this.store.get(id);
+      if (!match) continue;
+      if (match.mode !== 'quick_survival') continue;
+      if (match.status !== 'waiting' || match.phase !== 'lobby') continue;
+      const size = match.players.size;
+      if (size <= 0 || size >= match.playerCapacity) continue;
+      if (size > bestSize) {
+        bestSize = size;
+        bestId = id;
+      }
+    }
+    return bestId;
+  }
+
+  async getMatchPhase(
+    matchId: string,
+  ): Promise<{ exists: boolean; phase: MatchState['phase'] | null }> {
+    const match = await this.store.get(matchId);
+    if (!match) {
+      return { exists: false, phase: null };
+    }
+    return { exists: true, phase: match.phase };
+  }
+
+  /**
+   * When a quick_survival lobby fill wait elapses:
+   * - ≥ MIN_LIVE_MATCH_PLAYERS → begin ready countdown (partial table OK)
+   * - 1 player → abort (cannot play live alone)
+   * - 0 → delete empty match
+   */
+  async resolveQuickLobbyFill(matchId: string): Promise<{
+    outcome: 'started' | 'aborted_solo' | 'noop' | 'gone';
+    playerIds: string[];
+  }> {
+    return this.enqueue(matchId, async () => {
+      const match = await this.store.get(matchId);
+      if (!match) {
+        return { outcome: 'gone' as const, playerIds: [] };
+      }
+      if (
+        match.mode !== 'quick_survival' ||
+        match.status !== 'waiting' ||
+        match.phase !== 'lobby'
+      ) {
+        return { outcome: 'noop' as const, playerIds: [] };
+      }
+      if (
+        match.lobbyFillDeadlineMonoMs != null &&
+        this.clock.monoMs() < match.lobbyFillDeadlineMonoMs
+      ) {
+        return { outcome: 'noop' as const, playerIds: [] };
+      }
+
+      const playerIds = [...match.players.keys()];
+      const size = match.players.size;
+
+      if (size >= MIN_LIVE_MATCH_PLAYERS) {
+        // Accept any reserved seats still awaiting socket finalize so a live
+        // table can start when the fill wait elapses (ghost seats should already
+        // have been abandoned).
+        let current = match;
+        for (const playerId of playerIds) {
+          const accepted = this.engine.acceptJoin(current, playerId);
+          current = accepted.match;
+        }
+        if (current !== match) {
+          await this.store.save(current);
+        }
+        if (
+          !this.engine.canStartReadyCountdown(current, {
+            allowPartialFill: true,
+          })
+        ) {
+          return { outcome: 'noop' as const, playerIds };
+        }
+        await this.beginReadyCountdownLocked(matchId, {
+          allowPartialFill: true,
+        });
+        return { outcome: 'started' as const, playerIds };
+      }
+
+      this.clearTimer(matchId);
+      this.roomCodes.unregisterMatch(matchId);
+      await this.store.delete(matchId);
+      return {
+        outcome: size === 1 ? ('aborted_solo' as const) : ('gone' as const),
+        playerIds,
+      };
+    });
   }
 
   async startDevRound(
@@ -1046,6 +1344,27 @@ export class MatchService implements OnModuleDestroy {
         await this.store.save(match);
         this.emit(match, signalResult.events);
         this.scheduleBotSubmissions(match);
+        const windowMs =
+          (match.currentChallenge?.definition.serverConfig[
+            'signalWindowMs'
+          ] as number) ?? 1000;
+        this.scheduleSignalExpiry(matchId, windowMs);
+      }
+    }
+
+    // Check for blue-window expiry (heart returns to red)
+    if (
+      match.currentChallenge &&
+      match.currentChallenge.status === 'active' &&
+      match.currentChallenge.roundPhase === 'signal_active' &&
+      match.currentChallenge.signalEndsAtMonoMs != null &&
+      this.clock.monoMs() >= match.currentChallenge.signalEndsAtMonoMs
+    ) {
+      const expireResult = this.engine.expireSignal(match);
+      if (expireResult.events.length > 0) {
+        match = expireResult.match;
+        await this.store.save(match);
+        this.emit(match, expireResult.events);
       }
     }
 
@@ -1194,12 +1513,19 @@ export class MatchService implements OnModuleDestroy {
     }
   }
 
-  private async beginReadyCountdownLocked(matchId: string): Promise<void> {
+  private async beginReadyCountdownLocked(
+    matchId: string,
+    options?: { allowPartialFill?: boolean },
+  ): Promise<void> {
     const match = await this.requireMatch(matchId);
-    if (!this.engine.canStartReadyCountdown(match)) {
+    if (!this.engine.canStartReadyCountdown(match, options)) {
       return;
     }
-    const result = this.engine.beginReadyCountdown(match, READY_COUNTDOWN_MS);
+    const result = this.engine.beginReadyCountdown(
+      match,
+      READY_COUNTDOWN_MS,
+      options,
+    );
     await this.store.save(result.match);
     this.emit(result.match, result.events);
     this.schedulePhaseTimer(matchId, READY_COUNTDOWN_MS);
@@ -1210,15 +1536,23 @@ export class MatchService implements OnModuleDestroy {
     if (match.phase !== 'ready_countdown') return;
     // Room codes are lobby-only — drop once the match leaves the lobby.
     this.roomCodes.unregisterMatch(matchId);
-    const definition = this.challengeProvider.getDefaultDev();
-    const result = this.engine.beginChallengeIntro(
-      match,
-      CHALLENGE_INTRO_MS,
-      definition,
-    );
-    await this.store.save(result.match);
-    this.emit(result.match, result.events);
-    this.schedulePhaseTimer(matchId, CHALLENGE_INTRO_MS);
+    const definition = this.definitionForNextRound(match);
+    if (!definition) {
+      const finished = this.engine.completeByStandings(match);
+      await this.store.save(finished.match);
+      this.emit(finished.match, finished.events);
+      return;
+    }
+    // Pin the next challenge then start it immediately — do not linger in
+    // challenge_intro (that screen reveals the upcoming challenge type).
+    const intro = this.engine.beginChallengeIntro(match, 0, definition, {
+      deferSequenceBump: true,
+    });
+    const result = this.engine.startChallenge(intro.match);
+    const started = result.match;
+    await this.store.save(started);
+    this.emit(started, result.events);
+    this.armActiveChallengeTimers(started);
   }
 
   private async advanceFromIntro(matchId: string): Promise<void> {
@@ -1228,8 +1562,12 @@ export class MatchService implements OnModuleDestroy {
     match = result.match;
     await this.store.save(match);
     this.emit(match, result.events);
+    this.armActiveChallengeTimers(match);
+  }
 
-    // Schedule signal activation for wait_for_signal challenges
+  /** Signal + timeout timers for a freshly started challenge. */
+  private armActiveChallengeTimers(match: MatchState): void {
+    const matchId = match.matchId;
     if (
       match.currentChallenge &&
       match.currentChallenge.engineId === WAIT_FOR_SIGNAL_ENGINE_ID &&
@@ -1241,8 +1579,6 @@ export class MatchService implements OnModuleDestroy {
         ] as number) ?? 1500;
       this.scheduleSignalActivation(matchId, signalDelay);
     }
-
-    // Schedule challenge timeout
     if (match.currentChallenge) {
       this.scheduleTimeout(
         matchId,
@@ -1259,17 +1595,35 @@ export class MatchService implements OnModuleDestroy {
     const survivors = [...match.players.values()].filter(
       (p) => p.status === 'active',
     );
+    // Training is capacity-1: stay on round_result until retry/leave.
     if (survivors.length < 2) return;
 
-    const definition = this.challengeProvider.getDefaultDev();
-    const result = this.engine.beginChallengeIntro(
-      match,
-      CHALLENGE_INTRO_MS,
-      definition,
-    );
+    const definition = this.definitionForNextRound(match);
+    if (!definition) {
+      // Playlist exhausted — crown by standings; do not replay the same challenge.
+      const finished = this.engine.completeByStandings(match);
+      await this.store.save(finished.match);
+      this.emit(finished.match, finished.events);
+      return;
+    }
+    const intro = this.engine.beginChallengeIntro(match, 0, definition, {
+      deferSequenceBump: true,
+    });
+    const result = this.engine.startChallenge(intro.match);
     await this.store.save(result.match);
     this.emit(result.match, result.events);
-    this.schedulePhaseTimer(matchId, CHALLENGE_INTRO_MS);
+    this.armActiveChallengeTimers(result.match);
+  }
+
+  /**
+   * Next playlist entry for this match. `roundNumber` is how many challenges
+   * have already been introduced; index that into the ordered playlist.
+   */
+  private definitionForNextRound(
+    match: MatchState,
+  ): ChallengeDefinition | null {
+    const playlist = this.challengeProvider.getPlaylist();
+    return playlist[match.roundNumber] ?? null;
   }
 
   private async startDevRoundLocked(
@@ -1315,6 +1669,10 @@ export class MatchService implements OnModuleDestroy {
       );
       if (survivors.length >= 2) {
         await this.enterRoundResult(match);
+        return;
+      }
+      if (match.mode === 'training' && survivors.length <= 1) {
+        await this.enterRoundResult(match);
       }
       return;
     }
@@ -1325,6 +1683,8 @@ export class MatchService implements OnModuleDestroy {
         (p) => p.status === 'active',
       );
       if (survivors.length >= 2) {
+        this.schedulePhaseTimer(match.matchId, ROUND_RESULT_MS);
+      } else if (match.mode === 'training' && survivors.length <= 1) {
         this.schedulePhaseTimer(match.matchId, ROUND_RESULT_MS);
       }
       return;
@@ -1354,6 +1714,12 @@ export class MatchService implements OnModuleDestroy {
       (p) => p.status === 'active',
     );
     if (survivors.length >= 2) {
+      await this.enterRoundResult(match);
+      return;
+    }
+    // Training (capacity-1): show round feedback after failure/timeout —
+    // including last-heart wipe — so retry can carry or reset hearts.
+    if (match.mode === 'training' && survivors.length <= 1) {
       await this.enterRoundResult(match);
     }
   }
@@ -1396,6 +1762,11 @@ export class MatchService implements OnModuleDestroy {
             await this.store.save(result.match);
             this.emit(result.match, result.events);
             this.scheduleBotSubmissions(result.match);
+            const windowMs =
+              (result.match.currentChallenge?.definition.serverConfig[
+                'signalWindowMs'
+              ] as number) ?? 1000;
+            this.scheduleSignalExpiry(matchId, windowMs);
             return;
           }
           // Wall timer can fire before mono reaches signalAtMonoMs — reschedule.
@@ -1423,6 +1794,51 @@ export class MatchService implements OnModuleDestroy {
     );
     timer.unref?.();
     this.timers.set(`${matchId}:signal`, timer);
+  }
+
+  private scheduleSignalExpiry(matchId: string, windowMs: number): void {
+    if (this.nodeEnv === 'test') return;
+    const key = `${matchId}:signal_end`;
+    const existing = this.timers.get(key);
+    if (existing) {
+      clearTimeout(existing);
+      this.timers.delete(key);
+    }
+    const timer = setTimeout(
+      () => {
+        void this.enqueue(matchId, async () => {
+          const match = await this.requireMatch(matchId);
+          const result = this.engine.expireSignal(match);
+          if (result.events.length > 0) {
+            await this.store.save(result.match);
+            this.emit(result.match, result.events);
+            return;
+          }
+          const challenge = match.currentChallenge;
+          if (
+            match.status === 'challenge_active' &&
+            challenge &&
+            challenge.status === 'active' &&
+            challenge.roundPhase === 'signal_active' &&
+            challenge.signalEndsAtMonoMs != null &&
+            this.clock.monoMs() < challenge.signalEndsAtMonoMs
+          ) {
+            const remaining =
+              challenge.signalEndsAtMonoMs - this.clock.monoMs();
+            this.scheduleSignalExpiry(matchId, Math.max(1, remaining));
+          }
+        }).catch((error: unknown) => {
+          this.logger.error({
+            event: 'signal_expiry_failed',
+            matchId,
+            category: error instanceof Error ? error.name : 'UnknownError',
+          });
+        });
+      },
+      Math.max(1, windowMs),
+    );
+    timer.unref?.();
+    this.timers.set(key, timer);
   }
 
   private scheduleBotSubmissions(match: MatchState): void {
@@ -1519,6 +1935,34 @@ export class MatchService implements OnModuleDestroy {
     }, delayMs);
     timer.unref?.();
     this.timers.set(matchId, timer);
+  }
+
+  /** Arm wall + mono open-lobby fill deadlines together. */
+  private armLobbyFillWait(match: MatchState, waitMs: number): void {
+    match.lobbyFillDeadlineAtMs = this.clock.nowMs() + waitMs;
+    match.lobbyFillDeadlineMonoMs = this.clock.monoMs() + waitMs;
+  }
+
+  /**
+   * Ensure quick_survival has a host. If `leftPlayerId` was the host (or host
+   * is unset), assign an arbitrary remaining seat.
+   */
+  private ensureQuickHost(match: MatchState, leftPlayerId?: string): void {
+    if (match.mode !== 'quick_survival') {
+      return;
+    }
+    if (match.players.size === 0) {
+      match.hostPlayerId = null;
+      return;
+    }
+    const hostGone =
+      match.hostPlayerId == null ||
+      match.hostPlayerId === leftPlayerId ||
+      !match.players.has(match.hostPlayerId);
+    if (!hostGone) {
+      return;
+    }
+    match.hostPlayerId = match.players.keys().next().value ?? null;
   }
 
   private clearTimer(matchId: string): void {

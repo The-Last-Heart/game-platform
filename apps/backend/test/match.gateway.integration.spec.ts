@@ -282,69 +282,58 @@ describe('MatchGateway integration', () => {
     expect(latestSnap?.payload?.['phase']).toBeDefined();
     expect(latestSnap?.payload?.['roundNumber']).toBeDefined();
 
-    for (let round = 0; round < 3; round += 1) {
-      // Advance through countdown → intro → challenge_started
-      clock.advance(3001);
-      await matchService.tickDue(matchId);
-      await sleep(50);
-      clock.advance(2001);
-      await matchService.tickDue(matchId);
-      await sleep(50);
+    // Single-challenge playlist: one live round, then standings finish.
+    // Ready countdown → challenge starts immediately (no intro linger).
+    clock.advance(3001);
+    await matchService.tickDue(matchId);
+    await sleep(50);
 
-      const started = await waitForCount(
-        clients[0]!,
-        MessageTypes.ChallengeStarted,
-        round + 1,
+    const started = await waitForCount(
+      clients[0]!,
+      MessageTypes.ChallengeStarted,
+      1,
+    );
+    assertParses(started);
+    expect(started.payload?.['definitionId']).toBeTruthy();
+    expect(Number(started.payload?.['definitionVersion'])).toBeGreaterThan(0);
+    expect(started.payload?.['roundPhase']).toBeDefined();
+    expect(JSON.stringify(started.payload)).not.toContain('serverConfig');
+
+    const challengeInstanceId = asString(
+      started.payload?.['challengeInstanceId'],
+    );
+
+    // Activate signal (delay 1500ms); submit inside the 750ms window.
+    clock.advance(1500);
+    await matchService.tickDue(matchId);
+    await sleep(50);
+
+    const currentMatch = await matchService.requestSnapshot(matchId);
+    const signalToken = (
+      currentMatch.snapshot.currentChallenge as Record<string, unknown> | null
+    )?.['signalToken'] as string | undefined;
+    expect(signalToken).toBeTruthy();
+
+    sendCommand(sessions[0]!.tracked.socket, MessageTypes.MatchSubmitAnswer, {
+      challengeInstanceId,
+      answer: { signalToken },
+    });
+    for (let i = 1; i < 6; i += 1) {
+      sendCommand(
+        sessions[i]!.tracked.socket,
+        MessageTypes.MatchSubmitAnswer,
+        {
+          challengeInstanceId,
+          answer: { signalToken: 'wrong-token' },
+        },
       );
-      assertParses(started);
-      expect(started.payload?.['definitionId']).toBeTruthy();
-      expect(Number(started.payload?.['definitionVersion'])).toBeGreaterThan(0);
-      expect(started.payload?.['roundPhase']).toBeDefined();
-      expect(JSON.stringify(started.payload)).not.toContain('serverConfig');
-
-      const challengeInstanceId = asString(
-        started.payload?.['challengeInstanceId'],
-      );
-
-      // Activate signal
-      clock.advance(1501);
-      await matchService.tickDue(matchId);
-      await sleep(50);
-
-      // p0 submits correct token, others submit wrong
-      const currentMatch = await matchService.requestSnapshot(matchId);
-      const signalToken = (
-        currentMatch.snapshot.currentChallenge as Record<string, unknown> | null
-      )?.['signalToken'] as string | undefined;
-
-      sendCommand(sessions[0]!.tracked.socket, MessageTypes.MatchSubmitAnswer, {
-        challengeInstanceId,
-        answer: { signalToken: signalToken ?? 'fallback' },
-      });
-      for (let i = 1; i < 6; i += 1) {
-        sendCommand(
-          sessions[i]!.tracked.socket,
-          MessageTypes.MatchSubmitAnswer,
-          {
-            challengeInstanceId,
-            answer: { signalToken: 'wrong-token' },
-          },
-        );
-      }
-
-      await waitForCount(
-        clients[0]!,
-        MessageTypes.ChallengeResolved,
-        round + 1,
-      );
-
-      // If not last round, advance through round_result
-      if (round < 2) {
-        clock.advance(2501);
-        await matchService.tickDue(matchId);
-        await sleep(50);
-      }
     }
+
+    await waitForCount(clients[0]!, MessageTypes.ChallengeResolved, 1);
+
+    clock.advance(2501);
+    await matchService.tickDue(matchId);
+    await sleep(50);
 
     const finished = await waitForType(clients[0]!, MessageTypes.MatchFinished);
     assertParses(finished);
@@ -1827,7 +1816,9 @@ describe('MatchGateway integration', () => {
     clock.advance(deadline - clock.monoMs());
     await matchService.tickDue(matchId);
     const afterTick = await store.get(matchId);
-    expect(afterTick!.phase).toBe('challenge_intro');
+    expect(afterTick!.phase).toBe('challenge_active');
+    expect(afterTick!.currentChallenge?.status).toBe('active');
+    expect(afterTick!.currentChallenge?.startsAtMs).toBeGreaterThan(0);
   }, 25000);
 
   it('delayed fifth finalizeJoin cannot start countdown while sixth is only reserved', async () => {
@@ -2332,9 +2323,11 @@ describe('MatchGateway integration', () => {
       avatarColor: '#ABCDEF',
     });
     const status = await waitForType(client, MessageTypes.MatchmakingStatus);
-    expect(asString(status.payload?.['state'])).toBe('queued');
+    // Open-lobby pairing assigns immediately into a shared quick_survival room.
+    expect(asString(status.payload?.['state'])).toBe('assigned');
     const ticketId = asString(status.payload?.['ticketId']);
     expect(ticketId).toBeTruthy();
+    expect(asString(status.payload?.['matchId'])).toBeTruthy();
 
     const beforeCancel = client.events.length - 1;
     sendCommand(client.socket, MessageTypes.MatchmakingCancel, { ticketId });
@@ -2351,7 +2344,7 @@ describe('MatchGateway integration', () => {
     const again = await waitForType(client, MessageTypes.MatchmakingStatus, {
       afterIndex: beforeEnqueue,
     });
-    expect(asString(again.payload?.['state'])).toBe('queued');
+    expect(asString(again.payload?.['state'])).toBe('assigned');
   }, 15000);
 
   it('LH-005 training start seats capacity-1 and rematch issues new matchId', async () => {
