@@ -328,37 +328,59 @@ describe('admin API integration', () => {
     });
     const actorLogin = await login(actorEmail, password);
 
-    await pool.query(
-      `UPDATE admin_users
-       SET status = 'deactivated'
+    // Snapshot other active supers (e.g. local bootstrap) and restore after —
+    // never leave shared DATABASE_URL admins permanently deactivated.
+    const priorActiveSupers = await pool.query<{ id: string }>(
+      `SELECT id FROM admin_users
        WHERE role = 'super_admin'
+         AND status = 'active'
          AND id NOT IN ($1, $2)`,
       [id, actorId],
     );
+    const priorActiveSuperIds = priorActiveSupers.rows.map((row) => row.id);
 
-    const deactivateTarget = await http(app)
-      .patch(`/api/admin/v1/administrators/${id}`)
-      .set(authHeaders(actorLogin.sessionToken!, actorLogin.csrfToken!))
-      .send({ status: 'deactivated' });
-    expect(deactivateTarget.status).toBe(200);
+    try {
+      await pool.query(
+        `UPDATE admin_users
+         SET status = 'deactivated'
+         WHERE role = 'super_admin'
+           AND id NOT IN ($1, $2)`,
+        [id, actorId],
+      );
 
-    const deactivateSelfLast = await http(app)
-      .patch(`/api/admin/v1/administrators/${actorId}`)
-      .set(authHeaders(actorLogin.sessionToken!, actorLogin.csrfToken!))
-      .send({ status: 'deactivated' });
-    expect(deactivateSelfLast.status).toBe(403);
-    expect(JSON.stringify(deactivateSelfLast.body)).toMatch(
-      /SELF_DEACTIVATION_FORBIDDEN|LAST_SUPER_ADMIN/,
-    );
+      const deactivateTarget = await http(app)
+        .patch(`/api/admin/v1/administrators/${id}`)
+        .set(authHeaders(actorLogin.sessionToken!, actorLogin.csrfToken!))
+        .send({ status: 'deactivated' });
+      expect(deactivateTarget.status).toBe(200);
 
-    const demoteLast = await http(app)
-      .patch(`/api/admin/v1/administrators/${actorId}`)
-      .set(authHeaders(actorLogin.sessionToken!, actorLogin.csrfToken!))
-      .send({ role: 'viewer' });
-    expect(demoteLast.status).toBe(403);
-    expect(JSON.stringify(demoteLast.body)).toMatch(
-      /SELF_DEMOTION_FORBIDDEN|LAST_SUPER_ADMIN/,
-    );
+      const deactivateSelfLast = await http(app)
+        .patch(`/api/admin/v1/administrators/${actorId}`)
+        .set(authHeaders(actorLogin.sessionToken!, actorLogin.csrfToken!))
+        .send({ status: 'deactivated' });
+      expect(deactivateSelfLast.status).toBe(403);
+      expect(JSON.stringify(deactivateSelfLast.body)).toMatch(
+        /SELF_DEACTIVATION_FORBIDDEN|LAST_SUPER_ADMIN/,
+      );
+
+      const demoteLast = await http(app)
+        .patch(`/api/admin/v1/administrators/${actorId}`)
+        .set(authHeaders(actorLogin.sessionToken!, actorLogin.csrfToken!))
+        .send({ role: 'viewer' });
+      expect(demoteLast.status).toBe(403);
+      expect(JSON.stringify(demoteLast.body)).toMatch(
+        /SELF_DEMOTION_FORBIDDEN|LAST_SUPER_ADMIN/,
+      );
+    } finally {
+      if (priorActiveSuperIds.length > 0) {
+        await pool.query(
+          `UPDATE admin_users
+           SET status = 'active', updated_at = now()
+           WHERE id = ANY($1::uuid[])`,
+          [priorActiveSuperIds],
+        );
+      }
+    }
   });
 
   it('redacts audit metadata on read', async () => {
