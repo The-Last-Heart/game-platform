@@ -3,12 +3,18 @@ import 'package:flutter/services.dart';
 
 import '../../../l10n/app_localization.dart';
 import '../../../l10n/translation_catalog.dart';
+import '../../../l10n/translation_resolver.dart';
 import '../../../theme/lh_tokens.dart';
 import '../../identity/data/identity_store.dart';
 import '../../match/protocol/realtime_messages.dart';
 import '../../match/session/match_session_controller.dart';
 import '../../match/state/match_snapshot.dart';
+import '../../match/transport/socket_io_transport.dart';
 import '../../match/ui/match_shell.dart';
+import '../../match/ui/widgets/lh_background.dart';
+import '../../match/ui/widgets/lh_buttons.dart';
+import '../../match/ui/widgets/lh_heart_logo.dart';
+import '../../match/ui/widgets/lh_ui_sound.dart';
 import 'onboarding_identity_screens.dart';
 
 enum _EntryPhase {
@@ -28,6 +34,7 @@ class AppEntryScreen extends StatefulWidget {
     required this.controller,
     this.identityStore,
     this.entryPreferences,
+    this.appVersionLabel,
     super.key,
   });
 
@@ -35,11 +42,15 @@ class AppEntryScreen extends StatefulWidget {
   final IdentityStore? identityStore;
   final EntryPreferencesStore? entryPreferences;
 
+  /// Optional override for tests / splash footer (defaults to pubspec version).
+  final String? appVersionLabel;
+
   @override
   State<AppEntryScreen> createState() => _AppEntryScreenState();
 }
 
-class _AppEntryScreenState extends State<AppEntryScreen> {
+class _AppEntryScreenState extends State<AppEntryScreen>
+    with SingleTickerProviderStateMixin {
   late final IdentityStore _identityStore;
   late final EntryPreferencesStore _entryPreferences;
   _EntryPhase _phase = _EntryPhase.loading;
@@ -47,13 +58,23 @@ class _AppEntryScreenState extends State<AppEntryScreen> {
   String? _queueError;
   int _queueSeats = 0;
   String? _ticketId;
+  String _versionLabel = '0.0.1';
   final TextEditingController _roomCodeController = TextEditingController();
+  late final AnimationController _splashPulse;
+  late final Animation<double> _splashScale;
 
   @override
   void initState() {
     super.initState();
     _identityStore = widget.identityStore ?? IdentityStore();
     _entryPreferences = widget.entryPreferences ?? EntryPreferencesStore();
+    _splashPulse = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 1100),
+    )..repeat(reverse: true);
+    _splashScale = Tween<double>(begin: 0.94, end: 1.06).animate(
+      CurvedAnimation(parent: _splashPulse, curve: Curves.easeInOut),
+    );
     widget.controller.state.addListener(_onMatchState);
     _bootstrapEntry();
   }
@@ -62,6 +83,7 @@ class _AppEntryScreenState extends State<AppEntryScreen> {
   void dispose() {
     widget.controller.state.removeListener(_onMatchState);
     _roomCodeController.dispose();
+    _splashPulse.dispose();
     super.dispose();
   }
 
@@ -77,14 +99,61 @@ class _AppEntryScreenState extends State<AppEntryScreen> {
           _phase = _EntryPhase.home;
         }
       });
+      return;
+    }
+
+    final String? err = s.connectionError;
+    if (err == null || err.isEmpty) return;
+
+    final String mapped = err.startsWith('errors.')
+        ? err
+        : TranslationKeys.errorsServiceUnavailable;
+    debugPrint('AppEntryScreen connectionError=$err mapped=$mapped');
+
+    if (_phase == _EntryPhase.matchmaking) {
+      setState(() {
+        _phase = _EntryPhase.home;
+        _queueError = mapped;
+        _ticketId = null;
+        _queueSeats = 0;
+      });
+    } else if (_phase == _EntryPhase.home ||
+        _phase == _EntryPhase.privateAccess) {
+      setState(() => _queueError = mapped);
     }
   }
 
+  String _mapConnectError(Object error) {
+    if (error is RealtimeConnectException) {
+      return switch (error.failure) {
+        RealtimeConnectFailure.timeout =>
+          TranslationKeys.errorsConnectionTimeout,
+        RealtimeConnectFailure.failed =>
+          TranslationKeys.errorsConnectionFailed,
+      };
+    }
+    return TranslationKeys.errorsServiceUnavailable;
+  }
+
+  /// Prefer a catalog string; if missing, keep the raw key so the banner is honest.
+  static String displayEntryError(TranslationResolver resolver, String key) {
+    final String text = resolver.resolve(key);
+    final String fallback = resolver.resolve(
+      TranslationKeys.errorsContentUnavailable,
+    );
+    if (text == fallback && key != TranslationKeys.errorsContentUnavailable) {
+      return 'خطأ: $key';
+    }
+    return text;
+  }
+
   Future<void> _bootstrapEntry() async {
+    final String versionLabel = widget.appVersionLabel ?? '0.0.1';
     final bool onboarded = await _entryPreferences.isOnboardingCompleted();
     final PlayerIdentity? identity = await _identityStore.load();
     if (!mounted) return;
     setState(() {
+      _versionLabel = versionLabel;
       _identity = identity;
       if (!onboarded) {
         _phase = _EntryPhase.onboarding;
@@ -127,11 +196,11 @@ class _AppEntryScreenState extends State<AppEntryScreen> {
       );
       if (!mounted) return;
       setState(() => _ticketId = ticketId);
-    } catch (_) {
+    } catch (error) {
       if (!mounted) return;
       setState(() {
         _phase = _EntryPhase.home;
-        _queueError = TranslationKeys.errorsServiceUnavailable;
+        _queueError = _mapConnectError(error);
       });
     }
   }
@@ -151,9 +220,9 @@ class _AppEntryScreenState extends State<AppEntryScreen> {
     if (identity == null) return;
     try {
       await widget.controller.createPrivateRoom(identity);
-    } catch (_) {
+    } catch (error) {
       if (!mounted) return;
-      setState(() => _queueError = TranslationKeys.errorsServiceUnavailable);
+      setState(() => _queueError = _mapConnectError(error));
     }
   }
 
@@ -167,20 +236,45 @@ class _AppEntryScreenState extends State<AppEntryScreen> {
     }
     try {
       await widget.controller.joinPrivateRoom(identity, code);
-    } catch (_) {
+    } catch (error) {
       if (!mounted) return;
-      setState(() => _queueError = TranslationKeys.privateInvalidCode);
+      setState(() {
+        _queueError = error is RealtimeConnectException
+            ? _mapConnectError(error)
+            : TranslationKeys.privateInvalidCode;
+      });
     }
   }
 
   Future<void> _startTraining() async {
     final PlayerIdentity? identity = _identity;
     if (identity == null) return;
+    setState(() => _queueError = null);
     try {
       await widget.controller.startTraining(identity);
-    } catch (_) {
+      for (int i = 0; i < 40; i++) {
+        await Future<void>.delayed(const Duration(milliseconds: 100));
+        if (!mounted) return;
+        if (widget.controller.state.value.inMatch) return;
+        final String? err = widget.controller.state.value.connectionError;
+        if (err != null && err.isNotEmpty) {
+          setState(() {
+            _queueError = err.startsWith('errors.')
+                ? err
+                : TranslationKeys.errorsServiceUnavailable;
+          });
+          return;
+        }
+      }
       if (!mounted) return;
-      setState(() => _queueError = TranslationKeys.errorsServiceUnavailable);
+      if (!widget.controller.state.value.inMatch) {
+        setState(
+          () => _queueError = TranslationKeys.errorsServiceUnavailable,
+        );
+      }
+    } catch (error) {
+      if (!mounted) return;
+      setState(() => _queueError = _mapConnectError(error));
     }
   }
 
@@ -206,9 +300,9 @@ class _AppEntryScreenState extends State<AppEntryScreen> {
         }
 
         return switch (_phase) {
-          _EntryPhase.loading => const Scaffold(
-            backgroundColor: LhColors.bg,
-            body: Center(child: CircularProgressIndicator()),
+          _EntryPhase.loading => _SplashView(
+            versionLabel: _versionLabel,
+            scale: _splashScale,
           ),
           _EntryPhase.onboarding || _EntryPhase.onboardingReplay =>
             OnboardingScreen(
@@ -224,6 +318,7 @@ class _AppEntryScreenState extends State<AppEntryScreen> {
             seats: matchState.matchmakingAcceptedSeats > 0
                 ? matchState.matchmakingAcceptedSeats
                 : _queueSeats,
+            identity: _identity,
             onCancel: _cancelQueue,
           ),
           _EntryPhase.privateAccess => _PrivateAccessView(
@@ -255,6 +350,67 @@ class _AppEntryScreenState extends State<AppEntryScreen> {
   }
 }
 
+class _SplashView extends StatelessWidget {
+  const _SplashView({required this.versionLabel, required this.scale});
+
+  final String versionLabel;
+  final Animation<double> scale;
+
+  @override
+  Widget build(BuildContext context) {
+    final TranslationResolver resolver = AppLocalization.of(context);
+    return LhBackground(
+      child: SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 24),
+          child: Column(
+            children: <Widget>[
+              const Spacer(flex: 2),
+              ScaleTransition(
+                scale: scale,
+                child: const LhHeartLogo(size: 120),
+              ),
+              const SizedBox(height: 28),
+              Text(
+                resolver.resolve(TranslationKeys.appTitle),
+                style: Theme.of(context).textTheme.displayLarge?.copyWith(
+                  shadows: const <Shadow>[
+                    Shadow(color: LhColors.primary, blurRadius: 18),
+                  ],
+                ),
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: 12),
+              Text(
+                resolver.resolve(TranslationKeys.splashTagline),
+                style: Theme.of(context).textTheme.titleMedium,
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: 28),
+              const ClipRRect(
+                borderRadius: LhRadii.pillAll,
+                child: LinearProgressIndicator(
+                  minHeight: 6,
+                  backgroundColor: LhColors.border,
+                  color: LhColors.primary,
+                ),
+              ),
+              const Spacer(flex: 3),
+              Text(
+                resolver.resolve(
+                  TranslationKeys.splashVersion,
+                  params: <String, String>{'version': versionLabel},
+                ),
+                style: Theme.of(context).textTheme.bodySmall,
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 class _HomeView extends StatelessWidget {
   const _HomeView({
     required this.identity,
@@ -276,7 +432,7 @@ class _HomeView extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final resolver = AppLocalization.of(context);
+    final TranslationResolver resolver = AppLocalization.of(context);
     final String name = identity?.displayName ?? '';
     final Color avatar = identity != null
         ? Color(
@@ -285,11 +441,10 @@ class _HomeView extends StatelessWidget {
           )
         : LhColors.primary;
 
-    return Scaffold(
-      backgroundColor: LhColors.bg,
-      body: SafeArea(
+    return LhBackground(
+      child: SafeArea(
         child: Padding(
-          padding: const EdgeInsets.fromLTRB(20, 16, 20, 24),
+          padding: const EdgeInsets.fromLTRB(20, 12, 20, 20),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: <Widget>[
@@ -304,73 +459,169 @@ class _HomeView extends StatelessWidget {
                   ),
                   const SizedBox(width: 12),
                   Expanded(
-                    child: Text(
-                      name.isEmpty
-                          ? resolver.resolve(TranslationKeys.appTitle)
-                          : name,
-                      style: Theme.of(context).textTheme.headlineMedium,
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: <Widget>[
+                        Text(
+                          name.isEmpty
+                              ? resolver.resolve(TranslationKeys.appTitle)
+                              : resolver.resolve(
+                                  TranslationKeys.homeGreeting,
+                                  params: <String, String>{'name': name},
+                                ),
+                          style: Theme.of(context).textTheme.headlineMedium,
+                        ),
+                        Text(
+                          resolver.resolve(TranslationKeys.homeTagline),
+                          style: Theme.of(context).textTheme.bodySmall,
+                        ),
+                      ],
                     ),
                   ),
                   TextButton(
-                    onPressed: onEditIdentity,
+                    onPressed: () async {
+                      await LhUiSound.instance.playTap();
+                      onEditIdentity();
+                    },
                     child: Text(
                       resolver.resolve(TranslationKeys.homeEditIdentity),
                     ),
                   ),
                 ],
               ),
-              const SizedBox(height: 12),
-              Text(
-                resolver.resolve(TranslationKeys.homeTagline),
-                style: Theme.of(context).textTheme.titleMedium,
-              ),
               if (errorKey != null) ...<Widget>[
-                const SizedBox(height: 12),
-                Text(
-                  resolver.resolve(errorKey!),
-                  style: Theme.of(
-                    context,
-                  ).textTheme.bodyMedium?.copyWith(color: LhColors.primary),
+                const SizedBox(height: 10),
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: LhColors.surface,
+                    borderRadius: LhRadii.mdAll,
+                    border: Border.all(color: LhColors.primary.withValues(alpha: 0.5)),
+                  ),
+                  child: Text(
+                    _AppEntryScreenState.displayEntryError(resolver, errorKey!),
+                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                      color: LhColors.primaryBright,
+                    ),
+                  ),
                 ),
               ],
-              const Spacer(),
-              SizedBox(
-                height: 56,
-                child: ElevatedButton(
-                  onPressed: onPlayNow,
-                  child: Text(resolver.resolve(TranslationKeys.homePlayNow)),
-                ),
-              ),
-              const SizedBox(height: 12),
-              _ModeCard(
-                title: resolver.resolve(TranslationKeys.homeQuickSurvival),
-                subtitle: resolver.resolve(
-                  TranslationKeys.homeQuickSurvivalDesc,
-                ),
-                onTap: onPlayNow,
-              ),
-              const SizedBox(height: 10),
-              _ModeCard(
-                title: resolver.resolve(TranslationKeys.homePrivateRoom),
-                subtitle: resolver.resolve(TranslationKeys.homePrivateRoomDesc),
-                onTap: onPrivate,
-              ),
-              const SizedBox(height: 10),
-              _ModeCard(
-                title: resolver.resolve(TranslationKeys.homeTraining),
-                subtitle: resolver.resolve(TranslationKeys.homeTrainingDesc),
-                onTap: onTraining,
-              ),
               const SizedBox(height: 16),
-              TextButton(
-                onPressed: onHelp,
-                child: Text(
-                  resolver.resolve(TranslationKeys.homeHelpOnboarding),
+              Expanded(
+                child: SingleChildScrollView(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: <Widget>[
+                      _HeroCard(resolver: resolver),
+                      const SizedBox(height: 16),
+                      LhPrimaryButton(
+                        label: resolver.resolve(TranslationKeys.homePlayNow),
+                        icon: Icons.play_arrow_rounded,
+                        onPressed: onPlayNow,
+                      ),
+                      const SizedBox(height: 20),
+                      Text(
+                        resolver.resolve(TranslationKeys.homeModesTitle),
+                        style: Theme.of(context).textTheme.headlineMedium,
+                      ),
+                      const SizedBox(height: 10),
+                      _ModeCard(
+                        icon: Icons.bolt,
+                        accent: LhColors.primary,
+                        title: resolver.resolve(
+                          TranslationKeys.homeQuickSurvival,
+                        ),
+                        subtitle: resolver.resolve(
+                          TranslationKeys.homeQuickSurvivalDesc,
+                        ),
+                        onTap: onPlayNow,
+                      ),
+                      const SizedBox(height: 10),
+                      _ModeCard(
+                        icon: Icons.groups_rounded,
+                        accent: LhColors.success,
+                        title: resolver.resolve(
+                          TranslationKeys.homePrivateRoom,
+                        ),
+                        subtitle: resolver.resolve(
+                          TranslationKeys.homePrivateRoomDesc,
+                        ),
+                        onTap: onPrivate,
+                      ),
+                      const SizedBox(height: 10),
+                      _ModeCard(
+                        icon: Icons.center_focus_strong,
+                        accent: LhColors.warning,
+                        title: resolver.resolve(TranslationKeys.homeTraining),
+                        subtitle: resolver.resolve(
+                          TranslationKeys.homeTrainingDesc,
+                        ),
+                        onTap: onTraining,
+                      ),
+                      const SizedBox(height: 12),
+                      TextButton(
+                        onPressed: () async {
+                          await LhUiSound.instance.playTap();
+                          onHelp();
+                        },
+                        child: Text(
+                          resolver.resolve(TranslationKeys.homeHelpOnboarding),
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
               ),
             ],
           ),
         ),
+      ),
+    );
+  }
+}
+
+class _HeroCard extends StatelessWidget {
+  const _HeroCard({required this.resolver});
+
+  final TranslationResolver resolver;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.fromLTRB(20, 24, 20, 20),
+      decoration: BoxDecoration(
+        color: LhColors.surface.withValues(alpha: 0.92),
+        borderRadius: LhRadii.lgAll,
+        border: Border.all(color: LhColors.primary.withValues(alpha: 0.65), width: 1.4),
+        boxShadow: <BoxShadow>[
+          BoxShadow(
+            color: LhColors.primary.withValues(alpha: 0.28),
+            blurRadius: 28,
+            spreadRadius: 1,
+          ),
+        ],
+      ),
+      child: Column(
+        children: <Widget>[
+          const LhHeartLogo(size: 72),
+          const SizedBox(height: 14),
+          Text(
+            resolver.resolve(TranslationKeys.appTitle),
+            style: Theme.of(context).textTheme.displayLarge?.copyWith(
+              fontSize: 32,
+              shadows: const <Shadow>[
+                Shadow(color: LhColors.primary, blurRadius: 14),
+              ],
+            ),
+            textAlign: TextAlign.center,
+          ),
+          const SizedBox(height: 6),
+          Text(
+            resolver.resolve(TranslationKeys.homeHeroSubtitle),
+            style: Theme.of(context).textTheme.titleMedium,
+            textAlign: TextAlign.center,
+          ),
+        ],
       ),
     );
   }
@@ -378,11 +629,15 @@ class _HomeView extends StatelessWidget {
 
 class _ModeCard extends StatelessWidget {
   const _ModeCard({
+    required this.icon,
+    required this.accent,
     required this.title,
     required this.subtitle,
     required this.onTap,
   });
 
+  final IconData icon;
+  final Color accent;
   final String title;
   final String subtitle;
   final VoidCallback onTap;
@@ -390,19 +645,54 @@ class _ModeCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Material(
-      color: LhColors.surface,
+      color: LhColors.elevated.withValues(alpha: 0.95),
       borderRadius: LhRadii.mdAll,
       child: InkWell(
-        onTap: onTap,
+        onTap: () async {
+          await LhUiSound.instance.playTap();
+          onTap();
+        },
         borderRadius: LhRadii.mdAll,
-        child: Padding(
+        child: Container(
           padding: const EdgeInsets.all(16),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
+          decoration: BoxDecoration(
+            borderRadius: LhRadii.mdAll,
+            border: Border.all(color: accent.withValues(alpha: 0.35)),
+          ),
+          child: Row(
             children: <Widget>[
-              Text(title, style: Theme.of(context).textTheme.headlineMedium),
-              const SizedBox(height: 4),
-              Text(subtitle, style: Theme.of(context).textTheme.bodyMedium),
+              Container(
+                width: 48,
+                height: 48,
+                decoration: BoxDecoration(
+                  color: LhColors.surface,
+                  borderRadius: LhRadii.smAll,
+                  boxShadow: <BoxShadow>[
+                    BoxShadow(
+                      color: accent.withValues(alpha: 0.35),
+                      blurRadius: 14,
+                    ),
+                  ],
+                ),
+                child: Icon(icon, color: accent),
+              ),
+              const SizedBox(width: 14),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: <Widget>[
+                    Text(
+                      title,
+                      style: Theme.of(context).textTheme.headlineMedium,
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      subtitle,
+                      style: Theme.of(context).textTheme.bodyMedium,
+                    ),
+                  ],
+                ),
+              ),
             ],
           ),
         ),
@@ -411,47 +701,193 @@ class _ModeCard extends StatelessWidget {
   }
 }
 
-class _MatchmakingView extends StatelessWidget {
-  const _MatchmakingView({required this.seats, required this.onCancel});
+class _MatchmakingView extends StatefulWidget {
+  const _MatchmakingView({
+    required this.seats,
+    required this.onCancel,
+    this.identity,
+  });
 
   final int seats;
   final VoidCallback onCancel;
+  final PlayerIdentity? identity;
+
+  @override
+  State<_MatchmakingView> createState() => _MatchmakingViewState();
+}
+
+class _MatchmakingViewState extends State<_MatchmakingView>
+    with TickerProviderStateMixin {
+  late final AnimationController _ring;
+  late final AnimationController _pulse;
+  late final Animation<double> _ringTurn;
+  late final Animation<double> _heartScale;
+
+  @override
+  void initState() {
+    super.initState();
+    _ring = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 1800),
+    )..repeat();
+    _pulse = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 1100),
+    )..repeat(reverse: true);
+    _ringTurn = Tween<double>(begin: 0, end: 1).animate(_ring);
+    _heartScale = Tween<double>(begin: 0.94, end: 1.06).animate(
+      CurvedAnimation(parent: _pulse, curve: Curves.easeInOut),
+    );
+  }
+
+  @override
+  void dispose() {
+    _ring.dispose();
+    _pulse.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
-    final resolver = AppLocalization.of(context);
-    return Scaffold(
-      backgroundColor: LhColors.bg,
-      body: SafeArea(
+    final TranslationResolver resolver = AppLocalization.of(context);
+    final int seats = widget.seats.clamp(1, 6);
+    final String localLetter =
+        (widget.identity?.displayName.isNotEmpty ?? false)
+        ? widget.identity!.displayName.substring(0, 1)
+        : '?';
+    final Color localColor = widget.identity != null
+        ? Color(
+            int.parse(widget.identity!.avatarColor.substring(1), radix: 16) +
+                0xFF000000,
+          )
+        : kPlayerAvatarColors[0];
+
+    return LhBackground(
+      child: SafeArea(
         child: Padding(
-          padding: const EdgeInsets.all(24),
+          padding: const EdgeInsets.fromLTRB(20, 12, 20, 20),
           child: Column(
             children: <Widget>[
-              Text(
-                resolver.resolve(TranslationKeys.matchmakingTitle),
-                style: Theme.of(context).textTheme.displayLarge,
+              Row(
+                children: <Widget>[
+                  LhChromeIconButton(
+                    icon: Icons.chevron_left,
+                    onPressed: widget.onCancel,
+                  ),
+                  const Spacer(),
+                  const LhHeartLogo(size: 36),
+                  const SizedBox(width: 10),
+                  Text(
+                    resolver.resolve(TranslationKeys.matchmakingTitle),
+                    style: Theme.of(context).textTheme.headlineMedium,
+                  ),
+                ],
               ),
-              const Spacer(),
-              const CircularProgressIndicator(),
-              const SizedBox(height: 16),
-              Text(resolver.resolve(TranslationKeys.matchmakingSearching)),
+              const Spacer(flex: 2),
+              SizedBox(
+                width: 200,
+                height: 200,
+                child: Stack(
+                  alignment: Alignment.center,
+                  children: <Widget>[
+                    RotationTransition(
+                      turns: _ringTurn,
+                      child: SizedBox(
+                        width: 200,
+                        height: 200,
+                        child: CircularProgressIndicator(
+                          value: 0.72,
+                          strokeWidth: 4,
+                          color: LhColors.primary,
+                          backgroundColor: LhColors.border.withValues(
+                            alpha: 0.45,
+                          ),
+                        ),
+                      ),
+                    ),
+                    ScaleTransition(
+                      scale: _heartScale,
+                      child: const LhHeartLogo(size: 96),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 28),
+              Text(
+                resolver.resolve(TranslationKeys.matchmakingSearching),
+                style: Theme.of(context).textTheme.headlineLarge,
+                textAlign: TextAlign.center,
+              ),
               const SizedBox(height: 8),
               Text(
                 resolver.resolve(
                   TranslationKeys.matchmakingSeats,
                   params: <String, String>{'count': '$seats'},
                 ),
+                style: Theme.of(context).textTheme.titleMedium,
+                textAlign: TextAlign.center,
               ),
-              const Spacer(),
-              SizedBox(
-                width: double.infinity,
-                height: 52,
-                child: OutlinedButton(
-                  onPressed: onCancel,
-                  child: Text(
-                    resolver.resolve(TranslationKeys.matchmakingCancel),
-                  ),
-                ),
+              const SizedBox(height: 28),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: List<Widget>.generate(6, (int index) {
+                  final bool filled = index < seats;
+                  if (!filled) {
+                    return Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 4),
+                      child: Container(
+                        width: 44,
+                        height: 44,
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          border: Border.all(
+                            color: LhColors.border,
+                            width: 1.5,
+                          ),
+                        ),
+                        child: const Icon(
+                          Icons.add,
+                          size: 18,
+                          color: LhColors.textMuted,
+                        ),
+                      ),
+                    );
+                  }
+                  final bool isLocal = index == 0;
+                  final Color color = isLocal
+                      ? localColor
+                      : kPlayerAvatarColors[index % kPlayerAvatarColors.length];
+                  return Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 4),
+                    child: Container(
+                      width: 44,
+                      height: 44,
+                      alignment: Alignment.center,
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        color: color,
+                        boxShadow: <BoxShadow>[
+                          BoxShadow(
+                            color: color.withValues(alpha: 0.4),
+                            blurRadius: 10,
+                          ),
+                        ],
+                      ),
+                      child: Text(
+                        isLocal ? localLetter : '',
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                    ),
+                  );
+                }),
+              ),
+              const Spacer(flex: 3),
+              LhSecondaryButton(
+                label: resolver.resolve(TranslationKeys.matchmakingCancel),
+                onPressed: widget.onCancel,
               ),
             ],
           ),
@@ -478,33 +914,47 @@ class _PrivateAccessView extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final resolver = AppLocalization.of(context);
-    return Scaffold(
-      backgroundColor: LhColors.bg,
-      body: SafeArea(
+    final TranslationResolver resolver = AppLocalization.of(context);
+    return LhBackground(
+      child: SafeArea(
         child: Padding(
           padding: const EdgeInsets.all(24),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: <Widget>[
-              Align(
-                alignment: AlignmentDirectional.centerStart,
-                child: TextButton(
-                  onPressed: onBack,
-                  child: Text(resolver.resolve(TranslationKeys.commonBack)),
-                ),
+              Row(
+                children: <Widget>[
+                  LhChromeIconButton(
+                    icon: Icons.chevron_left,
+                    onPressed: onBack,
+                  ),
+                  const SizedBox(width: 12),
+                  const LhHeartLogo(size: 36),
+                  const SizedBox(width: 10),
+                  Text(
+                    resolver.resolve(TranslationKeys.homePrivateRoom),
+                    style: Theme.of(context).textTheme.headlineMedium,
+                  ),
+                ],
               ),
+              const SizedBox(height: 16),
               Text(
-                resolver.resolve(TranslationKeys.homePrivateRoom),
-                style: Theme.of(context).textTheme.displayLarge,
+                resolver.resolve(TranslationKeys.homePrivateRoomDesc),
+                style: Theme.of(context).textTheme.titleMedium,
               ),
               const SizedBox(height: 24),
-              SizedBox(
-                height: 52,
-                child: ElevatedButton(
-                  onPressed: onCreate,
-                  child: Text(resolver.resolve(TranslationKeys.privateCreate)),
+              if (errorKey != null) ...<Widget>[
+                Text(
+                  _AppEntryScreenState.displayEntryError(resolver, errorKey!),
+                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                    color: LhColors.primaryBright,
+                  ),
                 ),
+                const SizedBox(height: 12),
+              ],
+              LhPrimaryButton(
+                label: resolver.resolve(TranslationKeys.privateCreate),
+                onPressed: onCreate,
               ),
               const SizedBox(height: 24),
               TextField(
@@ -516,22 +966,14 @@ class _PrivateAccessView extends StatelessWidget {
                 ],
                 decoration: InputDecoration(
                   labelText: resolver.resolve(TranslationKeys.privateCodeLabel),
+                  filled: true,
+                  fillColor: LhColors.surface,
                 ),
               ),
-              if (errorKey != null) ...<Widget>[
-                const SizedBox(height: 8),
-                Text(
-                  resolver.resolve(errorKey!),
-                  style: const TextStyle(color: LhColors.primary),
-                ),
-              ],
               const SizedBox(height: 12),
-              SizedBox(
-                height: 52,
-                child: OutlinedButton(
-                  onPressed: onJoin,
-                  child: Text(resolver.resolve(TranslationKeys.privateJoin)),
-                ),
+              LhSecondaryButton(
+                label: resolver.resolve(TranslationKeys.privateJoin),
+                onPressed: onJoin,
               ),
             ],
           ),

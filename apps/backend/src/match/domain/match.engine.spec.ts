@@ -1103,4 +1103,63 @@ describe('Challenge definition pinning and validation', () => {
       ),
     ).toThrow(DomainError);
   });
+
+  it('training failure does not crown the sole survivor as winner', () => {
+    const { clock, engine } = setup();
+    let match = engine.createMatch('train-fail', {
+      mode: 'training',
+      playerCapacity: 1,
+    });
+    match = engine.joinPlayer(match, {
+      playerId: 'trainee',
+      resumeTokenHash: 'hash',
+      displayName: 'وجدي',
+      avatarColor: '#FF3045',
+    }).match;
+    match = engine.acceptJoin(match, 'trainee').match;
+    match = engine.startChallenge(match, createWaitForSignalDefinition()).match;
+
+    // Early wrong tap → failure, still 2 hearts, still sole survivor.
+    match = engine.submitAnswer(match, {
+      playerId: 'trainee',
+      challengeInstanceId: match.currentChallenge!.challengeInstanceId,
+      commandId: 'early',
+      answer: {},
+    }).match;
+
+    expect(match.currentChallenge?.status).toBe('resolved');
+    expect(match.players.get('trainee')!.hearts).toBe(2);
+    expect(match.phase).not.toBe('completed');
+    expect(match.winnerId).toBeNull();
+    expect(match.status).toBe('waiting');
+  });
+
+  it('training success crowns the trainee as winner', () => {
+    const { clock, engine } = setup();
+    let match = engine.createMatch('train-ok', {
+      mode: 'training',
+      playerCapacity: 1,
+    });
+    match = engine.joinPlayer(match, {
+      playerId: 'trainee',
+      resumeTokenHash: 'hash',
+      displayName: 'وجدي',
+      avatarColor: '#FF3045',
+    }).match;
+    match = engine.acceptJoin(match, 'trainee').match;
+    match = engine.startChallenge(match, createWaitForSignalDefinition()).match;
+    const token = match.currentChallenge!.signalToken!;
+
+    clock.advance(1500);
+    match = engine.activateSignal(match).match;
+    match = engine.submitAnswer(match, {
+      playerId: 'trainee',
+      challengeInstanceId: match.currentChallenge!.challengeInstanceId,
+      commandId: 'ok',
+      answer: { signalToken: token },
+    }).match;
+
+    expect(match.phase).toBe('completed');
+    expect(match.winnerId).toBe('trainee');
+  });
 });

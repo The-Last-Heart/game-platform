@@ -4,11 +4,27 @@ import 'package:socket_io_client/socket_io_client.dart' as io;
 
 import 'realtime_transport.dart';
 
+/// Why a realtime connect attempt failed (for localized UI mapping).
+enum RealtimeConnectFailure { timeout, failed }
+
+class RealtimeConnectException implements Exception {
+  RealtimeConnectException(this.failure);
+
+  final RealtimeConnectFailure failure;
+
+  @override
+  String toString() => 'RealtimeConnectException($failure)';
+}
+
 /// Production [RealtimeTransport] using Socket.IO.
 class SocketIoTransport implements RealtimeTransport {
-  SocketIoTransport({required this.url});
+  SocketIoTransport({
+    required this.url,
+    this.connectTimeout = const Duration(seconds: 8),
+  });
 
   final String url;
+  final Duration connectTimeout;
   io.Socket? _socket;
   final StreamController<Map<String, dynamic>> _eventController =
       StreamController<Map<String, dynamic>>.broadcast();
@@ -62,7 +78,9 @@ class SocketIoTransport implements RealtimeTransport {
       _connected = false;
       _connectionController.add(false);
       if (!completer.isCompleted) {
-        completer.completeError(Exception('Socket.IO connection failed'));
+        completer.completeError(
+          RealtimeConnectException(RealtimeConnectFailure.failed),
+        );
       }
     });
 
@@ -73,7 +91,15 @@ class SocketIoTransport implements RealtimeTransport {
     });
 
     _socket!.connect();
-    return completer.future;
+    try {
+      await completer.future.timeout(connectTimeout);
+    } on TimeoutException {
+      _connected = false;
+      _connectionController.add(false);
+      _socket?.dispose();
+      _socket = null;
+      throw RealtimeConnectException(RealtimeConnectFailure.timeout);
+    }
   }
 
   @override

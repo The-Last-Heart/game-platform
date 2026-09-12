@@ -1023,18 +1023,31 @@ export class MatchEngine {
     ];
 
     if (survivors.length === 1) {
-      match.status = 'completed';
-      match.phase = 'completed';
-      match.winnerId = survivors[0]!.playerId;
-      match.currentChallenge = challenge;
-      const finishBump = this.bump(match);
-      events.push(finishBump, {
-        kind: 'match_finished',
-        sequence: match.sequence,
-        revision: match.revision,
-        serverTimestampMs: finishBump.serverTimestampMs,
-        winnerId: match.winnerId,
-      });
+      const sole = survivors[0]!;
+      const soleResolution = resolutions.find((r) => r.playerId === sole.playerId);
+      // Training is capacity-1: "one survivor" is always true after any round.
+      // Only crown a winner on an authoritative success; failure/timeout must
+      // surface as round feedback (precise practice), not a false victory.
+      const trainingFalseVictory =
+        match.mode === 'training' && soleResolution?.outcome !== 'success';
+      if (trainingFalseVictory) {
+        match.status = 'waiting';
+        match.phase = 'challenge_active';
+        match.currentChallenge = challenge;
+      } else {
+        match.status = 'completed';
+        match.phase = 'completed';
+        match.winnerId = sole.playerId;
+        match.currentChallenge = challenge;
+        const finishBump = this.bump(match);
+        events.push(finishBump, {
+          kind: 'match_finished',
+          sequence: match.sequence,
+          revision: match.revision,
+          serverTimestampMs: finishBump.serverTimestampMs,
+          winnerId: match.winnerId,
+        });
+      }
     } else if (survivors.length === 0) {
       // Do not invent a winner. Halt safely after resolution broadcast.
       match.status = 'resolving';

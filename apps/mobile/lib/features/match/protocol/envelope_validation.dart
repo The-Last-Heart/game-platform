@@ -53,6 +53,13 @@ const Set<String> _matchPhases = <String>{
   'halted',
 };
 
+const Set<String> _matchModes = <String>{
+  'quick_survival',
+  'private',
+  'training',
+  'dev',
+};
+
 const Set<String> _matchStatuses = <String>{
   'waiting',
   'challenge_active',
@@ -112,6 +119,11 @@ EnvelopeValidation? _validatePlayerPublic(
     'status',
     'presence',
     'submittedForCurrentChallenge',
+    'displayName',
+    'avatarColor',
+    'ready',
+    'isBot',
+    'isHost',
   }, label);
   if (extra != null) return extra;
   if (!_isUuidLike(json['playerId'])) {
@@ -136,6 +148,24 @@ EnvelopeValidation? _validatePlayerPublic(
     return EnvelopeValidation.invalid(
       '$label.submittedForCurrentChallenge invalid',
     );
+  }
+  if (json.containsKey('displayName') && json['displayName'] != null) {
+    final Object? name = json['displayName'];
+    if (name is! String || name.trim().length < 2 || name.trim().length > 24) {
+      return EnvelopeValidation.invalid('$label.displayName invalid');
+    }
+  }
+  if (json.containsKey('avatarColor') && json['avatarColor'] != null) {
+    final Object? color = json['avatarColor'];
+    if (color is! String ||
+        !RegExp(r'^#[0-9A-Fa-f]{6}$').hasMatch(color)) {
+      return EnvelopeValidation.invalid('$label.avatarColor invalid');
+    }
+  }
+  for (final String key in <String>['ready', 'isBot', 'isHost']) {
+    if (json.containsKey(key) && json[key] != null && !_isBool(json[key])) {
+      return EnvelopeValidation.invalid('$label.$key invalid');
+    }
   }
   return null;
 }
@@ -320,6 +350,9 @@ EnvelopeValidation _validateMatchSnapshot(Map<String, dynamic> payload) {
     'players',
     'winnerId',
     'currentChallenge',
+    'mode',
+    'hostPlayerId',
+    'roomCode',
   }, 'match.snapshot');
   if (extra != null) return extra;
   if (!_isUuidLike(payload['matchId'])) {
@@ -384,6 +417,30 @@ EnvelopeValidation _validateMatchSnapshot(Map<String, dynamic> payload) {
   final Object? winnerId = payload['winnerId'];
   if (winnerId != null && !_isUuidLike(winnerId)) {
     return const EnvelopeValidation.invalid('match.snapshot.winnerId invalid');
+  }
+  if (payload.containsKey('mode') && payload['mode'] != null) {
+    final Object? mode = payload['mode'];
+    if (mode is! String || !_matchModes.contains(mode)) {
+      return const EnvelopeValidation.invalid('match.snapshot.mode invalid');
+    }
+  }
+  if (payload.containsKey('hostPlayerId') && payload['hostPlayerId'] != null) {
+    if (!_isUuidLike(payload['hostPlayerId'])) {
+      return const EnvelopeValidation.invalid(
+        'match.snapshot.hostPlayerId invalid',
+      );
+    }
+  }
+  if (payload.containsKey('roomCode') && payload['roomCode'] != null) {
+    final Object? code = payload['roomCode'];
+    if (code is! String ||
+        code.length < 4 ||
+        code.length > 8 ||
+        !RegExp(r'^[A-Za-z0-9]+$').hasMatch(code)) {
+      return const EnvelopeValidation.invalid(
+        'match.snapshot.roomCode invalid',
+      );
+    }
   }
   final Object? challenge = payload['currentChallenge'];
   if (challenge != null) {

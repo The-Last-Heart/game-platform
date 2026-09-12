@@ -148,6 +148,20 @@ export class MatchmakingService implements OnModuleDestroy {
       acceptedSeats: this.tickets.size,
     });
     this.emit(status);
+    // Fan-out seat count so every waiting ticket sees 2/6… progress.
+    if (this.tickets.size > 1) {
+      const seats = this.tickets.size;
+      for (const other of this.tickets.values()) {
+        if (other.ticketId === ticket.ticketId) {
+          continue;
+        }
+        this.emit(
+          this.toStatus(other, 'queued', {
+            acceptedSeats: seats,
+          }),
+        );
+      }
+    }
     const assigned = await this.tryMatch();
     const forTicket = assigned.get(ticket.ticketId);
     if (forTicket) {

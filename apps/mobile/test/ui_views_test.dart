@@ -194,6 +194,26 @@ void main() {
         playerId: 'p2',
         winnerId: 'p1',
         phase: MatchPhase.completed,
+        players: <PlayerPublic>[
+          PlayerPublic(
+            playerId: 'p1',
+            hearts: 2,
+            energy: 0,
+            status: PlayerStatus.active,
+            presence: Presence.connected,
+            submittedForCurrentChallenge: false,
+            displayName: 'وجدي',
+          ),
+          PlayerPublic(
+            playerId: 'p2',
+            hearts: 0,
+            energy: 0,
+            status: PlayerStatus.spectator,
+            presence: Presence.connected,
+            submittedForCurrentChallenge: false,
+            displayName: 'خصم',
+          ),
+        ],
       );
 
       await tester.pumpWidget(
@@ -209,13 +229,41 @@ void main() {
         find.text(
           resolver.resolve(
             TranslationKeys.winnerPlayerWins,
-            params: const <String, String>{'name': 'p1'},
+            params: const <String, String>{'name': 'وجدي'},
           ),
         ),
         findsOneWidget,
       );
+      expect(find.textContaining('p1'), findsNothing);
       expect(find.textContaining('٨٥٠'), findsNothing);
       expect(find.textContaining('850'), findsNothing);
+    });
+
+    testWidgets('does not show truncated playerId as winner name', (
+      WidgetTester tester,
+    ) async {
+      const MatchViewState state = MatchViewState(
+        playerId: 'p2',
+        winnerId: '1a5b6c4d-dead-beef-cafe-000000000001',
+        phase: MatchPhase.completed,
+        players: <PlayerPublic>[
+          PlayerPublic(
+            playerId: '1a5b6c4d-dead-beef-cafe-000000000001',
+            hearts: 3,
+            energy: 0,
+            status: PlayerStatus.active,
+            presence: Presence.connected,
+            submittedForCurrentChallenge: false,
+          ),
+        ],
+      );
+
+      await tester.pumpWidget(
+        wrapWithL10n(WinnerView(state: state, onBackHome: () {})),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.textContaining('1a5b6c4d'), findsNothing);
     });
   });
 

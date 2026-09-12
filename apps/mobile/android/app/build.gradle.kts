@@ -27,9 +27,10 @@ android {
 
     buildTypes {
         release {
-            // Release signing is intentionally unconfigured for this milestone.
-            // Do not assign the debug keystore to release builds.
-            // Store signing will be configured in a dedicated release milestone.
+            // Local/LAN sideload only: unsigned release APKs fail install with a
+            // blank "App not installed" dialog. Debug keystore is fine until the
+            // store-signing milestone; do not ship this signing to Play/App Store.
+            signingConfig = signingConfigs.getByName("debug")
         }
     }
 }

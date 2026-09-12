@@ -4,7 +4,9 @@ import '../../../l10n/app_localization.dart';
 import '../../../l10n/translation_catalog.dart';
 import '../../../l10n/translation_resolver.dart';
 import '../../../theme/lh_tokens.dart';
+import '../protocol/realtime_messages.dart';
 import '../state/match_snapshot.dart';
+import 'widgets/lh_buttons.dart';
 import 'widgets/lh_heart_logo.dart';
 
 /// Match completion view showing the authoritative winner only.
@@ -27,7 +29,7 @@ class WinnerView extends StatelessWidget {
   Widget build(BuildContext context) {
     final TranslationResolver resolver = AppLocalization.of(context);
     final bool isWinner = state.winnerId == state.playerId;
-    final String winnerLabel = _shortId(state.winnerId);
+    final String winnerLabel = _winnerDisplayName(state);
 
     return SingleChildScrollView(
       padding: const EdgeInsets.symmetric(horizontal: 20),
@@ -66,6 +68,15 @@ class WinnerView extends StatelessWidget {
                 color: isWinner ? LhColors.warning : LhColors.textMuted,
                 width: 3,
               ),
+              boxShadow: isWinner
+                  ? <BoxShadow>[
+                      BoxShadow(
+                        color: LhColors.warning.withValues(alpha: 0.35),
+                        blurRadius: 28,
+                        spreadRadius: 2,
+                      ),
+                    ]
+                  : null,
             ),
             child: Icon(
               Icons.emoji_events,
@@ -118,33 +129,20 @@ class WinnerView extends StatelessWidget {
               ),
             ),
           const SizedBox(height: 32),
-          SizedBox(
-            width: double.infinity,
-            height: 56,
-            child: ElevatedButton.icon(
-              onPressed: onRematch ?? onBackHome,
-              icon: const Icon(Icons.play_arrow, size: 24),
-              label: Text(
-                resolver.resolve(
-                  onRematch != null
-                      ? TranslationKeys.rematchRequest
-                      : TranslationKeys.winnerPlayAgain,
-                ),
-                style: const TextStyle(
-                  fontSize: 20,
-                  fontWeight: FontWeight.w700,
-                ),
-              ),
+          LhPrimaryButton(
+            label: resolver.resolve(
+              onRematch != null
+                  ? TranslationKeys.rematchRequest
+                  : TranslationKeys.winnerPlayAgain,
             ),
+            icon: Icons.play_arrow,
+            onPressed: onRematch ?? onBackHome,
           ),
           if (onRematch != null) ...<Widget>[
             const SizedBox(height: 10),
-            SizedBox(
-              width: double.infinity,
-              child: OutlinedButton(
-                onPressed: onBackHome,
-                child: Text(resolver.resolve(TranslationKeys.winnerBackHome)),
-              ),
+            LhSecondaryButton(
+              label: resolver.resolve(TranslationKeys.winnerBackHome),
+              onPressed: onBackHome,
             ),
           ],
           const SizedBox(height: 20),
@@ -153,8 +151,20 @@ class WinnerView extends StatelessWidget {
     );
   }
 
-  static String _shortId(String? id) {
-    if (id == null || id.isEmpty) return '';
-    return id.length > 8 ? id.substring(0, 8) : id;
+  /// Prefer server-provided displayName; never show a truncated playerId.
+  static String _winnerDisplayName(MatchViewState state) {
+    final String? winnerId = state.winnerId;
+    if (winnerId == null || winnerId.isEmpty) return '';
+    for (final PlayerPublic player in state.players) {
+      if (player.playerId != winnerId) continue;
+      final String? name = player.displayName?.trim();
+      if (name != null && name.isNotEmpty) return name;
+      break;
+    }
+    final String? local = state.localPlayer?.displayName?.trim();
+    if (state.playerId == winnerId && local != null && local.isNotEmpty) {
+      return local;
+    }
+    return '';
   }
 }

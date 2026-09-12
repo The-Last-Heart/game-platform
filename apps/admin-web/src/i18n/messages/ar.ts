@@ -197,6 +197,14 @@ const ar: Record<MessageKey, string> = {
   'system.check.postgres': 'PostgreSQL',
   'system.check.redis': 'Redis',
 
+  'liveOps.botFillTitle': 'ملء المقاعد بالروبوتات',
+  'liveOps.botFillSubtitle':
+    'عند التفعيل، تُملأ مقاعد النجاة السريعة المتبقية بروبوتات بعد الانتظار.',
+  'liveOps.botFillEnabled': 'تفعيل ملء الروبوتات',
+  'liveOps.botFillWaitMs': 'الانتظار قبل الملء (مللي ثانية)',
+  'liveOps.botFillSave': 'حفظ سياسة الملء',
+  'liveOps.botFillSaved': 'تم تحديث سياسة ملء الروبوتات',
+
   'profile.title': 'الملف الشخصي',
   'profile.subtitle': 'حساب المسؤول الخاص بك',
   'profile.displayName': 'اسم العرض',

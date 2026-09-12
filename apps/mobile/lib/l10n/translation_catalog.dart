@@ -182,6 +182,17 @@ abstract final class TranslationKeys {
   static const String trainingExplain = 'training.explain';
   static const String rematchRequest = 'rematch.request';
   static const String errorsServiceUnavailable = 'errors.service_unavailable';
+  static const String errorsConnectionTimeout = 'errors.connection_timeout';
+  static const String errorsQueueTimeout = 'errors.queue_timeout';
+  static const String errorsQueueFailed = 'errors.queue_failed';
+  static const String errorsProtocolUnauthorized = 'errors.protocol.unauthorized';
+  static const String splashTagline = 'splash.tagline';
+  static const String splashVersion = 'splash.version';
+  static const String homeHeroSubtitle = 'home.hero_subtitle';
+  static const String homeModesTitle = 'home.modes_title';
+  static const String homeGreeting = 'home.greeting';
+  static const String onboardingStepOf = 'onboarding.step_of';
+  static const String onboardingHowToPlay = 'onboarding.how_to_play';
 }
 
 /// Shared normalization for catalog create/lookup/resolve.

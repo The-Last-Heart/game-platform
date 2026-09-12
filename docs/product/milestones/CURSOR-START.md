@@ -28,6 +28,8 @@ Execute LH-005 through LH-014 in order. For each milestone:
 8. Record the full hash, evidence, and checks.
 9. Confirm the working tree is clean before continuing.
 
+**Hard gate (Product Owner):** A milestone is closed only after acceptance journeys are observed on the real path that matters, verification bugs are fixed, required evidence exists, the focused commit is done, and `git status` is clean. Do not start the next milestone on partial green tests or a dirty tree. Track live status in [DELIVERY-STATUS.md](./DELIVERY-STATUS.md).
+
 Do not stop after providing a plan. Do not ask the Product Owner to repeat decisions already locked in RELEASE-BOUNDARY.md. Escalate only a genuinely missing external credential or a contradiction among higher-authority sources.
 
 If one context window cannot finish the work, update a durable delivery-status file with:

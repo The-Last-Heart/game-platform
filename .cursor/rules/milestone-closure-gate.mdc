@@ -1,0 +1,35 @@
+---
+description: Hard gate — never start next milestone until current one is truly closed
+alwaysApply: true
+---
+
+# Milestone closure gate
+
+Last closed baseline: **LH-004A**. Current open work: **LH-005** until proven closed.
+
+## Never do
+
+- Do not start LH-N+1 because code “mostly works”, tests are green, or a delivery note was drafted early.
+- Do not treat a commit message like `complete …` as closure by itself.
+- Do not leave a dirty tree and call a milestone done.
+
+## A milestone is closed only when ALL are true
+
+1. **Acceptance journeys** in that milestone file were observed on the real path that matters (for mobile: device/LAN APK against the live backend), not only unit/integration/simulate.
+2. **Bugs found during verification are fixed** and re-checked (including contract↔client allowlist parity).
+3. **Required evidence** listed in the milestone file exists (captures, traces, commands/results).
+4. **One focused conventional local commit** for that milestone (or an explicit follow-up fix commit that finishes it).
+5. **`git status` is clean**.
+6. **Delivery note updated** with full hash, checks run, journeys observed, and honest gaps = none for in-scope items.
+7. **Roadmap/status docs** say the milestone is closed; the next file is the new “first incomplete”.
+
+## Before saying “done” or starting the next milestone
+
+- Re-read that milestone’s Acceptance criteria + Required evidence + Completion rule.
+- Run `git status` — must be empty.
+- State explicitly: closed milestone id + hash, next milestone id.
+- If anything in-scope failed on device or evidence is missing: report **blocked**, list exact failed journey, do not advance.
+
+## LH-005 reminder (until closed)
+
+Entry/match access is not closed while Training cannot enter reliably, winner/name/training outcome bugs remain, admin bot-fill UI/evidence is incomplete, or the tree is dirty.

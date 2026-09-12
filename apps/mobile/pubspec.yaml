@@ -17,9 +17,7 @@ dependencies:
 
   # Secure storage for resume token persistence across app restarts.
   flutter_secure_storage: 9.2.4
-
-  # Noto Sans Arabic via Google Fonts for consistent Arabic typography.
-  google_fonts: 6.2.1
+  audioplayers: ^6.8.1
 
 dev_dependencies:
   flutter_test:
@@ -31,3 +29,16 @@ flutter:
   uses-material-design: true
   assets:
     - assets/backgrounds/app-background.png
+    - assets/sfx/ui_tap.mp3
+  fonts:
+    # Bundled Noto Sans Arabic (OFL) — matches design-tokens.json; offline-safe in release APK.
+    - family: NotoSansArabic
+      fonts:
+        - asset: assets/fonts/NotoSansArabic-Regular.ttf
+          weight: 400
+        - asset: assets/fonts/NotoSansArabic-Medium.ttf
+          weight: 500
+        - asset: assets/fonts/NotoSansArabic-SemiBold.ttf
+          weight: 600
+        - asset: assets/fonts/NotoSansArabic-Bold.ttf
+          weight: 700

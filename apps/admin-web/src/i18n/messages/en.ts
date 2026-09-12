@@ -197,6 +197,14 @@ const en = {
   'system.check.postgres': 'PostgreSQL',
   'system.check.redis': 'Redis',
 
+  'liveOps.botFillTitle': 'Matchmaking bot-fill',
+  'liveOps.botFillSubtitle':
+    'When enabled, Quick Survival queues fill remaining seats with bots after the wait.',
+  'liveOps.botFillEnabled': 'Enable bot-fill',
+  'liveOps.botFillWaitMs': 'Wait before fill (ms)',
+  'liveOps.botFillSave': 'Save bot-fill policy',
+  'liveOps.botFillSaved': 'Bot-fill policy updated',
+
   'profile.title': 'Profile',
   'profile.subtitle': 'Your administrator account',
   'profile.displayName': 'Display name',

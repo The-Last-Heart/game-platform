@@ -39,15 +39,18 @@ const List<Color> kPlayerAvatarColors = <Color>[
   Color(0xFFFF3045),
 ];
 
+/// Bundled family matching `docs/ui-reference/design-tokens.json`
+/// (`Noto Sans Arabic Variable` → static weights for Flutter).
+const String lhFontFamily = 'NotoSansArabic';
+
 /// Constructs the app [ThemeData] using LH design tokens.
 ///
 /// Typography follows the Noto Sans Arabic design-tokens scale
 /// (display 38, title 26, section 20, body 16, caption 13).
-/// The actual Noto Sans Arabic font is loaded at runtime via google_fonts
-/// when available; these styles define the scale and weight.
 ThemeData buildLhTheme() {
   return ThemeData(
     brightness: Brightness.dark,
+    fontFamily: lhFontFamily,
     scaffoldBackgroundColor: LhColors.bg,
     colorScheme: const ColorScheme.dark(
       primary: LhColors.primary,
@@ -64,34 +67,52 @@ ThemeData buildLhTheme() {
     disabledColor: LhColors.disabled,
     textTheme: const TextTheme(
       displayLarge: TextStyle(
+        fontFamily: lhFontFamily,
         color: LhColors.text,
         fontSize: 38,
         fontWeight: FontWeight.w700,
       ),
       headlineLarge: TextStyle(
+        fontFamily: lhFontFamily,
         color: LhColors.text,
         fontSize: 26,
         fontWeight: FontWeight.w700,
       ),
       headlineMedium: TextStyle(
+        fontFamily: lhFontFamily,
         color: LhColors.text,
         fontSize: 20,
         fontWeight: FontWeight.w700,
       ),
       titleLarge: TextStyle(
+        fontFamily: lhFontFamily,
         color: LhColors.text,
         fontSize: 20,
         fontWeight: FontWeight.w600,
       ),
       titleMedium: TextStyle(
+        fontFamily: lhFontFamily,
         color: LhColors.textMuted,
         fontSize: 16,
         fontWeight: FontWeight.w500,
       ),
-      bodyLarge: TextStyle(color: LhColors.text, fontSize: 16),
-      bodyMedium: TextStyle(color: LhColors.text, fontSize: 14),
-      bodySmall: TextStyle(color: LhColors.textMuted, fontSize: 13),
+      bodyLarge: TextStyle(
+        fontFamily: lhFontFamily,
+        color: LhColors.text,
+        fontSize: 16,
+      ),
+      bodyMedium: TextStyle(
+        fontFamily: lhFontFamily,
+        color: LhColors.text,
+        fontSize: 14,
+      ),
+      bodySmall: TextStyle(
+        fontFamily: lhFontFamily,
+        color: LhColors.textMuted,
+        fontSize: 13,
+      ),
       labelLarge: TextStyle(
+        fontFamily: lhFontFamily,
         color: LhColors.text,
         fontSize: 16,
         fontWeight: FontWeight.w600,
@@ -101,6 +122,11 @@ ThemeData buildLhTheme() {
       style: ElevatedButton.styleFrom(
         backgroundColor: LhColors.primary,
         foregroundColor: LhColors.text,
+        textStyle: const TextStyle(
+          fontFamily: lhFontFamily,
+          fontSize: 16,
+          fontWeight: FontWeight.w600,
+        ),
         shape: const RoundedRectangleBorder(borderRadius: LhRadii.mdAll),
         padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 16),
       ),
@@ -109,6 +135,11 @@ ThemeData buildLhTheme() {
       style: FilledButton.styleFrom(
         backgroundColor: LhColors.primary,
         foregroundColor: LhColors.text,
+        textStyle: const TextStyle(
+          fontFamily: lhFontFamily,
+          fontSize: 16,
+          fontWeight: FontWeight.w600,
+        ),
         shape: const RoundedRectangleBorder(borderRadius: LhRadii.mdAll),
         padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 16),
       ),

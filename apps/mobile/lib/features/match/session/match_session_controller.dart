@@ -43,6 +43,7 @@ class _PendingHandshake {
     required this.commandId,
     this.expectedMatchId,
     this.expectedPlayerId,
+    this.allowUncorrelatedAccept = false,
   });
 
   final _HandshakeKind kind;
@@ -51,6 +52,9 @@ class _PendingHandshake {
   String? expectedPlayerId;
   bool accepted = false;
   bool tokenPersisted = false;
+
+  /// Async matchmaking assign may emit session.accepted without commandId.
+  bool allowUncorrelatedAccept;
 }
 
 /// Contract `protocol.error.code` values that definitively reject resume
@@ -102,6 +106,10 @@ class MatchSessionController {
   Completer<String?>? _matchmakingWaiter;
   bool _cleaningUp = false;
   bool _disposed = false;
+
+  /// Bumped after an intentional disconnect so stale queued
+  /// `_handleConnectionChange(false)` jobs cannot clear a fresh join handshake.
+  int _connectionEpoch = 0;
 
   /// Ordered async work queue. Exceptions are caught so one bad job cannot
   /// permanently stall subsequent events.
@@ -160,10 +168,10 @@ class MatchSessionController {
     _eventSub = transport.events.listen(
       (Map<String, dynamic> e) => _enqueue(() => _processEvent(e)),
     );
-    _connectionSub = transport.connectionState.listen(
-      (bool connected) =>
-          _enqueue(() async => _handleConnectionChange(connected)),
-    );
+    _connectionSub = transport.connectionState.listen((bool connected) {
+      final int epoch = _connectionEpoch;
+      _enqueue(() async => _handleConnectionChange(connected, epoch));
+    });
   }
 
   /// Cold-start bootstrap: check session store; if session exists → resume.
@@ -227,10 +235,22 @@ class MatchSessionController {
 
   /// Enqueue Quick Survival. Returns ticketId when status arrives, else null.
   Future<String?> enqueueMatchmaking(PlayerIdentity identity) async {
+    await _prepareFreshJoinSocket();
     await _ensureConnected();
     final String commandId = generateSecureId();
     final Completer<String?> completer = Completer<String?>();
     _matchmakingWaiter = completer;
+    // Join handshake so session.accepted after queue assign can bind.
+    // allowUncorrelatedAccept covers delayed bot-fill (no commandId on accept).
+    _handshake = _PendingHandshake(
+      kind: _HandshakeKind.join,
+      commandId: commandId,
+      allowUncorrelatedAccept: true,
+    );
+    state.value = state.value.copyWith(
+      matchmakingAcceptedSeats: 1,
+      connectionError: () => null,
+    );
     _sendCommandWithId(
       commandId,
       MessageTypes.matchmakingEnqueue,
@@ -247,12 +267,44 @@ class MatchSessionController {
 
   Future<void> cancelMatchmaking(String? ticketId) async {
     if (!state.value.isConnected) return;
+    final _PendingHandshake? handshake = _handshake;
+    if (handshake != null && handshake.allowUncorrelatedAccept) {
+      _handshake = null;
+    }
     _sendCommand(MessageTypes.matchmakingCancel, <String, dynamic>{
       if (ticketId != null) 'ticketId': ticketId,
     });
   }
 
+  /// Clear local session and drop the live socket so the server is unbound.
+  ///
+  /// Required before training / queue / private join: a prior resume or failed
+  /// bind can leave `matchId`/`playerId` on the server socket, and
+  /// `training.start` then returns `errors.protocol.unauthorized`.
+  Future<void> _prepareFreshJoinSocket() async {
+    _handshake = null;
+    _matchmakingWaiter = null;
+    await sessionStore.clear();
+    if (transport.isConnected || state.value.isConnected) {
+      await transport.disconnect();
+    }
+    // Invalidate disconnect handlers already queued from the dispose above.
+    // Otherwise they run after we set the join handshake and wipe it, so
+    // session.accepted is ignored and the UI shows service unavailable.
+    _connectionEpoch++;
+    state.value = state.value.copyWith(
+      lifecycle: SessionLifecycle.disconnected,
+      matchId: () => null,
+      playerId: () => null,
+      inMatch: false,
+      isConnected: false,
+      connectionError: () => null,
+      matchmakingAcceptedSeats: 0,
+    );
+  }
+
   Future<void> createPrivateRoom(PlayerIdentity identity) async {
+    await _prepareFreshJoinSocket();
     await _ensureConnected();
     final String commandId = generateSecureId();
     _handshake = _PendingHandshake(
@@ -267,6 +319,7 @@ class MatchSessionController {
   }
 
   Future<void> joinPrivateRoom(PlayerIdentity identity, String roomCode) async {
+    await _prepareFreshJoinSocket();
     await _ensureConnected();
     final String commandId = generateSecureId();
     _handshake = _PendingHandshake(
@@ -280,6 +333,7 @@ class MatchSessionController {
   }
 
   Future<void> startTraining(PlayerIdentity identity) async {
+    await _prepareFreshJoinSocket();
     await _ensureConnected();
     final String commandId = generateSecureId();
     _handshake = _PendingHandshake(
@@ -513,6 +567,10 @@ class MatchSessionController {
   Future<void> _ensureResumeSent() async {
     if (state.value.lifecycle != SessionLifecycle.resuming) return;
     if (!transport.isConnected) return;
+    // Never clobber an in-flight join / matchmaking / createDev handshake.
+    if (_handshake != null && _handshake!.kind != _HandshakeKind.resume) {
+      return;
+    }
     if (_handshake != null &&
         _handshake!.kind == _HandshakeKind.resume &&
         !_handshake!.accepted) {
@@ -531,6 +589,9 @@ class MatchSessionController {
     }
     if (state.value.lifecycle != SessionLifecycle.resuming) return;
     if (!transport.isConnected) return;
+    if (_handshake != null && _handshake!.kind != _HandshakeKind.resume) {
+      return;
+    }
     if (_handshake != null &&
         _handshake!.kind == _HandshakeKind.resume &&
         !_handshake!.accepted) {
@@ -594,6 +655,12 @@ class MatchSessionController {
     // by the controller after durable save only.
     if (type == MessageTypes.sessionAccepted) {
       await _handleSessionAccepted(raw);
+      return;
+    }
+
+    // Queue updates arrive before seat credentials exist.
+    if (type == MessageTypes.matchmakingStatus) {
+      _handleMatchmakingStatus(raw);
       return;
     }
 
@@ -701,22 +768,6 @@ class MatchSessionController {
       );
     } else if (type == MessageTypes.challengeSubmissionAck) {
       _handleSubmissionAck(raw);
-    } else if (type == MessageTypes.matchmakingStatus) {
-      final MatchmakingStatusPayload status =
-          MatchmakingStatusPayload.fromJson(
-        Map<String, dynamic>.from(raw['payload'] as Map<dynamic, dynamic>),
-      );
-      final Completer<String?>? waiter = _matchmakingWaiter;
-      if (waiter != null && !waiter.isCompleted) {
-        waiter.complete(status.ticketId);
-        _matchmakingWaiter = null;
-      }
-      state.value = state.value.copyWith(
-        matchmakingAcceptedSeats: status.acceptedSeats,
-        inMatch: status.state == 'assigned' && status.matchId != null
-            ? true
-            : state.value.inMatch,
-      );
     } else if (type == MessageTypes.protocolError) {
       await _handleProtocolError(raw);
     } else if (type == MessageTypes.matchFinished ||
@@ -827,6 +878,50 @@ class MatchSessionController {
   }
 
   /// Validate and apply session.accepted. Identity mutates only after durable save.
+  void _handleMatchmakingStatus(Map<String, dynamic> raw) {
+    final Object? payloadRaw = raw['payload'];
+    if (payloadRaw is! Map) {
+      return;
+    }
+    final MatchmakingStatusPayload status = MatchmakingStatusPayload.fromJson(
+      Map<String, dynamic>.from(payloadRaw),
+    );
+    final Completer<String?>? waiter = _matchmakingWaiter;
+    if (waiter != null && !waiter.isCompleted) {
+      waiter.complete(status.ticketId);
+      _matchmakingWaiter = null;
+    }
+
+    if (status.state == 'queued' || status.state == 'assigned') {
+      final _PendingHandshake? handshake = _handshake;
+      if (handshake != null &&
+          handshake.allowUncorrelatedAccept &&
+          status.matchId != null) {
+        handshake.expectedMatchId = status.matchId;
+      }
+      state.value = state.value.copyWith(
+        matchmakingAcceptedSeats: status.acceptedSeats,
+        connectionError: () => null,
+      );
+      return;
+    }
+
+    // Terminal queue states — clear matchmaking handshake and surface recovery.
+    if (_handshake != null && _handshake!.allowUncorrelatedAccept) {
+      _handshake = null;
+    }
+    final String? errorKey = switch (status.state) {
+      'timed_out' => 'errors.queue_timeout',
+      'failed' => 'errors.queue_failed',
+      'cancelled' => null,
+      _ => 'errors.queue_failed',
+    };
+    state.value = state.value.copyWith(
+      matchmakingAcceptedSeats: 0,
+      connectionError: () => errorKey,
+    );
+  }
+
   Future<void> _handleSessionAccepted(Map<String, dynamic> raw) async {
     final Map<String, dynamic>? payload =
         raw['payload'] as Map<String, dynamic>?;
@@ -851,8 +946,14 @@ class MatchSessionController {
     if (handshake == null) {
       return;
     }
-    // commandId must be non-null and exact match — never apply uncorrelated accepts.
-    if (envelopeCommandId == null || envelopeCommandId != handshake.commandId) {
+    final bool correlated =
+        envelopeCommandId != null && envelopeCommandId == handshake.commandId;
+    final bool asyncMatchmakingAccept =
+        handshake.allowUncorrelatedAccept &&
+        handshake.kind == _HandshakeKind.join &&
+        envelopeCommandId == null;
+    // Prefer correlated accepts; allow null commandId only for queued matchmaking.
+    if (!correlated && !asyncMatchmakingAccept) {
       return;
     }
 
@@ -1135,6 +1236,31 @@ class MatchSessionController {
         _resumeCredentialRejectCodes.contains(code);
     if (resumeRejected) {
       await _clearStaleSessionAfterRejectedResume();
+      return;
+    }
+
+    // Correlated join / create failures (training, private, queue) must surface
+    // on the entry home instead of timing out as "service unavailable".
+    final String? messageKey = payload['messageKey'] as String?;
+    if (handshake != null &&
+        (handshake.kind == _HandshakeKind.join ||
+            handshake.kind == _HandshakeKind.createDev) &&
+        errorCommandId != null &&
+        errorCommandId.isNotEmpty &&
+        errorCommandId == handshake.commandId) {
+      _handshake = null;
+      if (_matchmakingWaiter != null && !_matchmakingWaiter!.isCompleted) {
+        _matchmakingWaiter!.complete(null);
+        _matchmakingWaiter = null;
+      }
+      state.value = state.value.copyWith(
+        connectionError: () =>
+            (messageKey != null && messageKey.startsWith('errors.'))
+            ? messageKey
+            : 'errors.protocol',
+        canRetry: true,
+        matchmakingAcceptedSeats: 0,
+      );
     }
   }
 
@@ -1268,15 +1394,18 @@ class MatchSessionController {
     }
   }
 
-  Future<void> _handleConnectionChange(bool connected) async {
+  Future<void> _handleConnectionChange(bool connected, int epoch) async {
     if (_cleaningUp || _disposed) return;
-    state.value = state.value.copyWith(isConnected: connected);
+    if (epoch != _connectionEpoch) return;
     if (!connected) {
       // Cancel recovery timers/in-flight; keep watermark + needsSnapshot for resume.
       _finishSnapshotRequestInFlight();
       final SessionLifecycle current = state.value.lifecycle;
       if (current == SessionLifecycle.terminal) {
         // Terminal disconnect must not attempt match.resume.
+        if (epoch == _connectionEpoch) {
+          state.value = state.value.copyWith(isConnected: false);
+        }
         return;
       }
 
@@ -1288,6 +1417,9 @@ class MatchSessionController {
           (handshake.kind == _HandshakeKind.join ||
               handshake.kind == _HandshakeKind.resume);
       final SessionData? stored = await sessionStore.load();
+      if (_disposed || _cleaningUp || epoch != _connectionEpoch) {
+        return;
+      }
 
       // Bound, or credentials durable but not yet bound → resume path.
       if (current == SessionLifecycle.bound ||
@@ -1300,6 +1432,7 @@ class MatchSessionController {
             ? state.value.inMatch
             : false;
         state.value = state.value.copyWith(
+          isConnected: false,
           lifecycle: SessionLifecycle.resuming,
           canRetry: true,
           inMatch: keepInMatch,
@@ -1321,6 +1454,10 @@ class MatchSessionController {
       );
       return;
     }
+
+    if (epoch != _connectionEpoch) return;
+
+    state.value = state.value.copyWith(isConnected: true);
 
     // Connected: send resume only when handshake is null (reconnect / race
     // with tryResume enqueue). Whichever path runs first wins; the other no-ops.

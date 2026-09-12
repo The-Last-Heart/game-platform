@@ -78,10 +78,19 @@ TranslationCatalog createBootstrapCatalog() {
         TranslationKeys.winnerBackHome: 'العودة للرئيسية',
 
         // ── Connection errors ──
-        TranslationKeys.errorsConnectionFailed: 'فشل الاتصال بالخادم',
+        TranslationKeys.errorsConnectionFailed:
+            'تعذّر الاتصال بالخادم. تأكد أن الجهاز على نفس الشبكة وأن الخادم يعمل.',
         TranslationKeys.errorsConnectionRetry: 'إعادة الاتصال...',
         TranslationKeys.errorsMatchFull: 'المباراة ممتلئة',
         TranslationKeys.errorsProtocol: 'خطأ في البروتوكول',
+        TranslationKeys.errorsConnectionTimeout:
+            'انتهت مهلة الاتصال بالخادم. تحقق من الشبكة وإعدادات المنفذ.',
+        TranslationKeys.errorsQueueTimeout:
+            'انتهت مهلة البحث عن مباراة. حاول مرة أخرى.',
+        TranslationKeys.errorsQueueFailed:
+            'تعذّر إكمال البحث عن مباراة. حاول مرة أخرى.',
+        TranslationKeys.errorsProtocolUnauthorized:
+            'انتهت الجلسة السابقة. أعد المحاولة.',
 
         // ── LH-003 Home Chrome ──
         TranslationKeys.homePlayNow: 'العب الآن',
@@ -186,9 +195,9 @@ TranslationCatalog createBootstrapCatalog() {
         TranslationKeys.homeEditIdentity: 'تعديل الهوية',
         TranslationKeys.homeTraining: 'تدريب',
         TranslationKeys.homeTrainingDesc: 'تمرّن على التحديات دون تأثير تنافسي',
-        TranslationKeys.matchmakingTitle: 'البحث عن مباراة',
-        TranslationKeys.matchmakingSearching: 'جارٍ البحث عن لاعبين…',
-        TranslationKeys.matchmakingSeats: '{count} من ٦ مقاعد',
+        TranslationKeys.matchmakingTitle: 'مباراة سريعة',
+        TranslationKeys.matchmakingSearching: 'جارٍ العثور على لاعبين',
+        TranslationKeys.matchmakingSeats: '{count} من ٦ لاعبين',
         TranslationKeys.matchmakingCancel: 'إلغاء البحث',
         TranslationKeys.privateCreate: 'إنشاء غرفة',
         TranslationKeys.privateJoin: 'انضم برمز',
@@ -203,6 +212,13 @@ TranslationCatalog createBootstrapCatalog() {
         TranslationKeys.trainingExplain: 'انتظر الأزرق ثم اضغط. لا مكافآت تنافسية.',
         TranslationKeys.rematchRequest: 'إعادة المباراة',
         TranslationKeys.errorsServiceUnavailable: 'الخدمة غير متاحة الآن',
+        TranslationKeys.splashTagline: 'اركض مع الوقت واحمِ آخر قلب',
+        TranslationKeys.splashVersion: 'الإصدار {version}',
+        TranslationKeys.homeHeroSubtitle: 'سرعة، تركيز، ونجاة',
+        TranslationKeys.homeModesTitle: 'أنماط اللعب',
+        TranslationKeys.homeGreeting: 'مرحبًا، {name}',
+        TranslationKeys.onboardingStepOf: 'الخطوة {current} من {total}',
+        TranslationKeys.onboardingHowToPlay: 'كيف تلعب',
       },
       'en': <String, String>{
         // ── Foundation ──
@@ -265,10 +281,19 @@ TranslationCatalog createBootstrapCatalog() {
         TranslationKeys.winnerBackHome: 'Back to home',
 
         // ── Connection errors ──
-        TranslationKeys.errorsConnectionFailed: 'Connection failed',
+        TranslationKeys.errorsConnectionFailed:
+            'Could not reach the server. Stay on the same Wi-Fi and keep the backend running.',
         TranslationKeys.errorsConnectionRetry: 'Reconnecting...',
         TranslationKeys.errorsMatchFull: 'Match is full',
         TranslationKeys.errorsProtocol: 'Protocol error',
+        TranslationKeys.errorsConnectionTimeout:
+            'Connection timed out. Check the network and port forwarding.',
+        TranslationKeys.errorsQueueTimeout:
+            'Match search timed out. Try again.',
+        TranslationKeys.errorsQueueFailed:
+            'Could not complete match search. Try again.',
+        TranslationKeys.errorsProtocolUnauthorized:
+            'Previous session expired. Try again.',
 
         // ── LH-003 Home Chrome ──
         TranslationKeys.homePlayNow: 'Play Now',
@@ -378,9 +403,9 @@ TranslationCatalog createBootstrapCatalog() {
         TranslationKeys.homeTraining: 'Training',
         TranslationKeys.homeTrainingDesc:
             'Practice challenges with no competitive impact',
-        TranslationKeys.matchmakingTitle: 'Finding a match',
-        TranslationKeys.matchmakingSearching: 'Searching for players…',
-        TranslationKeys.matchmakingSeats: '{count} of 6 seats',
+        TranslationKeys.matchmakingTitle: 'Quick Match',
+        TranslationKeys.matchmakingSearching: 'Finding players',
+        TranslationKeys.matchmakingSeats: '{count} of 6 players',
         TranslationKeys.matchmakingCancel: 'Cancel search',
         TranslationKeys.privateCreate: 'Create room',
         TranslationKeys.privateJoin: 'Join with code',
@@ -396,6 +421,13 @@ TranslationCatalog createBootstrapCatalog() {
             'Wait for blue, then tap. No competitive rewards.',
         TranslationKeys.rematchRequest: 'Rematch',
         TranslationKeys.errorsServiceUnavailable: 'Service unavailable',
+        TranslationKeys.splashTagline: 'Race the clock and protect the last heart',
+        TranslationKeys.splashVersion: 'Version {version}',
+        TranslationKeys.homeHeroSubtitle: 'Speed, focus, and survival',
+        TranslationKeys.homeModesTitle: 'Game modes',
+        TranslationKeys.homeGreeting: 'Hello, {name}',
+        TranslationKeys.onboardingStepOf: 'Step {current} of {total}',
+        TranslationKeys.onboardingHowToPlay: 'How to play',
       },
     },
   );
