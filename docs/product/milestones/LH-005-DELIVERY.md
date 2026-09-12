@@ -2,7 +2,8 @@
 
 **Status:** CLOSED  
 **Commit message:** `fix(lh-005): close player entry and match access on real path`  
-**Verify:** `git log -1 --format=%H` on `main` after this commit; `git status` empty.
+**Verify hash:** `9d3cfdeca422076cff49b2d6b7993da7270bacd4`
+**Follow-up cleanups:** closure-gate wording + remaining ui-reference screens (same session).
 
 ## Why a follow-up close commit
 

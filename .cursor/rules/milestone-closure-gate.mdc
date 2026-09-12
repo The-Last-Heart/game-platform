@@ -5,7 +5,7 @@ alwaysApply: true
 
 # Milestone closure gate
 
-Last closed baseline: **LH-004A**. Current open work: **LH-005** until proven closed.
+Last closed: **LH-005**. Next: **LH-006** only after a clean tree on the LH-005 close commit.
 
 ## Never do
 
@@ -30,6 +30,4 @@ Last closed baseline: **LH-004A**. Current open work: **LH-005** until proven cl
 - State explicitly: closed milestone id + hash, next milestone id.
 - If anything in-scope failed on device or evidence is missing: report **blocked**, list exact failed journey, do not advance.
 
-## LH-005 reminder (until closed)
-
-Entry/match access is not closed while Training cannot enter reliably, winner/name/training outcome bugs remain, admin bot-fill UI/evidence is incomplete, or the tree is dirty.
+Track live status in `docs/product/milestones/DELIVERY-STATUS.md`.
