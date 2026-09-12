@@ -14,9 +14,10 @@ Previously closed baseline: **LH-001 → LH-004A**.
 
 ## LH-005 close summary
 
-- Follow-up close commit after `43f4b06` fixed real-path blockers (snapshot allowlist, join socket race, training false-win, winner displayName, admin bot-fill UI, LAN entry hardening).
-- Evidence: [LH-005-DELIVERY.md](./LH-005-DELIVERY.md).
-- Known unrelated: admin integration `idempotent logout` CSRF-without-session expects 200, gets 403 (pre-existing outside this milestone).
+- Close commit: `9d3cfdeca422076cff49b2d6b7993da7270bacd4` — `fix(lh-005): close player entry and match access on real path`
+- Cleanup commit: `4fbb3dd6d47e3d0c558e1223bafadc09d78f3085` — docs/reference pack + closure-gate wording
+- Evidence: [LH-005-DELIVERY.md](./LH-005-DELIVERY.md)
+- Known unrelated: admin integration `idempotent logout` CSRF-without-session expects 200, gets 403 (pre-existing outside this milestone)
 
 ## Closure rule (product owner lock)
 
