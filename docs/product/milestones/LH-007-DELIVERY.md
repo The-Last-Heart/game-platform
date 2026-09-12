@@ -2,8 +2,9 @@
 
 ## Close
 
-- Commit: _(filled after commit)_
+- Feature commit: `11d7203069b7e6a5ae62e023b16e165f9ed21b19` — `feat(gameplay): ship core challenge engine pack`
 - Milestone: LH-007 — Core Challenge Pack and Match Presentation
+- Formal gate close: blocked until device/LAN visual evidence matrix is captured
 
 ## What shipped
 
