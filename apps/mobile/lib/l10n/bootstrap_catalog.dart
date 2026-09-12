@@ -39,7 +39,7 @@ TranslationCatalog createBootstrapCatalog() {
         TranslationKeys.lobbyTitle: 'غرفة الانتظار',
         TranslationKeys.lobbyPlayersCount: '{count} / 6',
         TranslationKeys.lobbyWaiting: 'في انتظار اللاعبين...',
-        TranslationKeys.lobbyMatchId: 'المباراة: {matchId}',
+        TranslationKeys.lobbyMatchId: 'التحدي: {matchId}',
 
         // ── Countdown ──
         TranslationKeys.countdownGetReady: 'استعد!',
@@ -69,10 +69,10 @@ TranslationCatalog createBootstrapCatalog() {
 
         // ── Spectator ──
         TranslationKeys.spectatorTitle: 'مشاهد',
-        TranslationKeys.spectatorMessage: 'أنت الآن تشاهد المباراة',
+        TranslationKeys.spectatorMessage: 'أنت الآن تشاهد التحدي',
 
         // ── Winner ──
-        TranslationKeys.winnerTitle: 'انتهت المباراة!',
+        TranslationKeys.winnerTitle: 'انتهى التحدي!',
         TranslationKeys.winnerYou: 'أنت الفائز! 🏆',
         TranslationKeys.winnerOther: 'الفائز: {name}',
         TranslationKeys.winnerBackHome: 'العودة للرئيسية',
@@ -81,14 +81,14 @@ TranslationCatalog createBootstrapCatalog() {
         TranslationKeys.errorsConnectionFailed:
             'تعذّر الاتصال بالخادم. تأكد أن الجهاز على نفس الشبكة وأن الخادم يعمل.',
         TranslationKeys.errorsConnectionRetry: 'إعادة الاتصال...',
-        TranslationKeys.errorsMatchFull: 'المباراة ممتلئة',
+        TranslationKeys.errorsMatchFull: 'التحدي ممتلئ',
         TranslationKeys.errorsProtocol: 'خطأ في البروتوكول',
         TranslationKeys.errorsConnectionTimeout:
             'انتهت مهلة الاتصال بالخادم. تحقق من الشبكة وإعدادات المنفذ.',
         TranslationKeys.errorsQueueTimeout:
-            'انتهت مهلة البحث عن مباراة. حاول مرة أخرى.',
+            'انتهت مهلة البحث عن تحدي. حاول مرة أخرى.',
         TranslationKeys.errorsQueueFailed:
-            'تعذّر إكمال البحث عن مباراة. حاول مرة أخرى.',
+            'تعذّر إكمال البحث عن تحدي. حاول مرة أخرى.',
         TranslationKeys.errorsProtocolUnauthorized:
             'انتهت الجلسة السابقة. أعد المحاولة.',
 
@@ -122,7 +122,7 @@ TranslationCatalog createBootstrapCatalog() {
 
         // ── LH-003 Countdown Chrome ──
         TranslationKeys.countdownAllReady: 'الجميع جاهز',
-        TranslationKeys.countdownMatchStarts: 'تبدأ المباراة الآن',
+        TranslationKeys.countdownMatchStarts: 'يبدأ التحدي الآن',
         TranslationKeys.countdownChallengesStarting: 'التحديات على وشك البدء',
         TranslationKeys.countdownChallengesStartingSub:
             'استعد — العداد بدأ',
@@ -160,24 +160,24 @@ TranslationCatalog createBootstrapCatalog() {
         TranslationKeys.resultPowerEnergy: 'طاقة القوة',
 
         // ── LH-003 Spectator Chrome ──
-        TranslationKeys.spectatorMatchOngoing: 'المباراة مستمرة',
+        TranslationKeys.spectatorMatchOngoing: 'التحدي مستمر',
         TranslationKeys.spectatorLostLastHeart: 'خسرت آخر قلب',
         TranslationKeys.spectatorEliminatedMsg:
-            'خرجت من المنافسة، لكن يمكنك متابعة المباراة',
+            'خرجت من المنافسة، لكن يمكنك متابعة التحدي',
         TranslationKeys.spectatorCurrentStandings: 'الترتيب الحالي',
         TranslationKeys.spectatorRemainingPlayers: 'بقي {count} لاعبين',
         TranslationKeys.spectatorEliminatedBadge: 'خرج',
 
         // ── LH-003 Winner Chrome ──
-        TranslationKeys.winnerMatchEnded: 'انتهت المباراة',
+        TranslationKeys.winnerMatchEnded: 'انتهى التحدي',
         TranslationKeys.winnerFirstPlace: 'المركز الأول',
         TranslationKeys.winnerYouLastHeart: 'أنت آخر قلب!',
-        TranslationKeys.winnerPlayerWins: '{name} يفوز بالمباراة',
+        TranslationKeys.winnerPlayerWins: '{name} يفوز بالتحدي',
         TranslationKeys.winnerHeartsLeft: 'قلوب متبقية',
         TranslationKeys.winnerPlayAgain: 'العب مجددًا',
 
         TranslationKeys.sessionReconnecting: 'جارٍ إعادة الاتصال…',
-        TranslationKeys.sessionRecoveringState: 'جارٍ استعادة حالة المباراة…',
+        TranslationKeys.sessionRecoveringState: 'جارٍ استعادة حالة التحدي…',
         TranslationKeys.challengeAnswerWaiting:
             'تم الإرسال — بانتظار نتيجة الجولة',
         TranslationKeys.winnerStandings: 'الترتيب',
@@ -240,7 +240,7 @@ TranslationCatalog createBootstrapCatalog() {
         TranslationKeys.homeEditIdentity: 'تعديل الهوية',
         TranslationKeys.homeTraining: 'تدريب',
         TranslationKeys.homeTrainingDesc: 'تمرّن على التحديات دون تأثير تنافسي',
-        TranslationKeys.matchmakingTitle: 'مباراة سريعة',
+        TranslationKeys.matchmakingTitle: 'تحدي سريع',
         TranslationKeys.matchmakingSearching: 'جارٍ العثور على لاعبين',
         TranslationKeys.matchmakingSeats: '{count} من ٦ لاعبين',
         TranslationKeys.matchmakingCancel: 'إلغاء البحث',
@@ -255,7 +255,7 @@ TranslationCatalog createBootstrapCatalog() {
         TranslationKeys.trainingTitle: 'وضع التدريب',
         TranslationKeys.trainingRetry: 'أعد المحاولة',
         TranslationKeys.trainingExplain: 'انتظر الأزرق ثم اضغط. لا مكافآت تنافسية.',
-        TranslationKeys.rematchRequest: 'إعادة المباراة',
+        TranslationKeys.rematchRequest: 'إعادة التحدي',
         TranslationKeys.errorsServiceUnavailable: 'الخدمة غير متاحة الآن',
         TranslationKeys.splashTagline: 'اركض مع الوقت واحمِ آخر قلب',
         TranslationKeys.splashVersion: 'الإصدار {version}',
@@ -288,7 +288,7 @@ TranslationCatalog createBootstrapCatalog() {
         TranslationKeys.lobbyTitle: 'Lobby',
         TranslationKeys.lobbyPlayersCount: '{count} / 6',
         TranslationKeys.lobbyWaiting: 'Waiting for players...',
-        TranslationKeys.lobbyMatchId: 'Match: {matchId}',
+        TranslationKeys.lobbyMatchId: 'Challenge: {matchId}',
 
         // ── Countdown ──
         TranslationKeys.countdownGetReady: 'Get ready!',
@@ -321,7 +321,7 @@ TranslationCatalog createBootstrapCatalog() {
         TranslationKeys.spectatorMessage: 'You are now watching',
 
         // ── Winner ──
-        TranslationKeys.winnerTitle: 'Match over!',
+        TranslationKeys.winnerTitle: 'Challenge over!',
         TranslationKeys.winnerYou: 'You win! 🏆',
         TranslationKeys.winnerOther: 'Winner: {name}',
         TranslationKeys.winnerBackHome: 'Back to home',
@@ -330,14 +330,14 @@ TranslationCatalog createBootstrapCatalog() {
         TranslationKeys.errorsConnectionFailed:
             'Could not reach the server. Stay on the same Wi-Fi and keep the backend running.',
         TranslationKeys.errorsConnectionRetry: 'Reconnecting...',
-        TranslationKeys.errorsMatchFull: 'Match is full',
+        TranslationKeys.errorsMatchFull: 'Challenge is full',
         TranslationKeys.errorsProtocol: 'Protocol error',
         TranslationKeys.errorsConnectionTimeout:
             'Connection timed out. Check the network and port forwarding.',
         TranslationKeys.errorsQueueTimeout:
-            'Match search timed out. Try again.',
+            'Challenge search timed out. Try again.',
         TranslationKeys.errorsQueueFailed:
-            'Could not complete match search. Try again.',
+            'Could not complete challenge search. Try again.',
         TranslationKeys.errorsProtocolUnauthorized:
             'Previous session expired. Try again.',
 
@@ -372,7 +372,7 @@ TranslationCatalog createBootstrapCatalog() {
 
         // ── LH-003 Countdown Chrome ──
         TranslationKeys.countdownAllReady: 'All Ready',
-        TranslationKeys.countdownMatchStarts: 'Match starts now',
+        TranslationKeys.countdownMatchStarts: 'Challenge starts now',
         TranslationKeys.countdownChallengesStarting:
             'Challenges are about to start',
         TranslationKeys.countdownChallengesStartingSub:
@@ -413,24 +413,24 @@ TranslationCatalog createBootstrapCatalog() {
         TranslationKeys.resultPowerEnergy: 'Power Energy',
 
         // ── LH-003 Spectator Chrome ──
-        TranslationKeys.spectatorMatchOngoing: 'Match ongoing',
+        TranslationKeys.spectatorMatchOngoing: 'Challenge ongoing',
         TranslationKeys.spectatorLostLastHeart: 'Lost last heart',
         TranslationKeys.spectatorEliminatedMsg:
-            'You are out, but can keep watching',
+            'You are out, but can keep watching the challenge',
         TranslationKeys.spectatorCurrentStandings: 'Current Standings',
         TranslationKeys.spectatorRemainingPlayers: '{count} players left',
         TranslationKeys.spectatorEliminatedBadge: 'Out',
 
         // ── LH-003 Winner Chrome ──
-        TranslationKeys.winnerMatchEnded: 'Match Over',
+        TranslationKeys.winnerMatchEnded: 'Challenge Over',
         TranslationKeys.winnerFirstPlace: 'First Place',
         TranslationKeys.winnerYouLastHeart: 'You are the Last Heart!',
-        TranslationKeys.winnerPlayerWins: '{name} wins the match',
+        TranslationKeys.winnerPlayerWins: '{name} wins the challenge',
         TranslationKeys.winnerHeartsLeft: 'Hearts left',
         TranslationKeys.winnerPlayAgain: 'Play Again',
 
         TranslationKeys.sessionReconnecting: 'Reconnecting…',
-        TranslationKeys.sessionRecoveringState: 'Recovering match state…',
+        TranslationKeys.sessionRecoveringState: 'Recovering challenge state…',
         TranslationKeys.challengeAnswerWaiting:
             'Submitted — waiting for round result',
         TranslationKeys.winnerStandings: 'Standings',
@@ -495,7 +495,7 @@ TranslationCatalog createBootstrapCatalog() {
         TranslationKeys.homeTraining: 'Training',
         TranslationKeys.homeTrainingDesc:
             'Practice challenges with no competitive impact',
-        TranslationKeys.matchmakingTitle: 'Quick Match',
+        TranslationKeys.matchmakingTitle: 'Quick Challenge',
         TranslationKeys.matchmakingSearching: 'Finding players',
         TranslationKeys.matchmakingSeats: '{count} of 6 players',
         TranslationKeys.matchmakingCancel: 'Cancel search',
@@ -511,7 +511,7 @@ TranslationCatalog createBootstrapCatalog() {
         TranslationKeys.trainingRetry: 'Try again',
         TranslationKeys.trainingExplain:
             'Wait for blue, then tap. No competitive rewards.',
-        TranslationKeys.rematchRequest: 'Rematch',
+        TranslationKeys.rematchRequest: 'Retry challenge',
         TranslationKeys.errorsServiceUnavailable: 'Service unavailable',
         TranslationKeys.splashTagline: 'Race the clock and protect the last heart',
         TranslationKeys.splashVersion: 'Version {version}',

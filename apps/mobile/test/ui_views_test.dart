@@ -192,6 +192,7 @@ void main() {
       expect(find.textContaining('12'), findsNothing);
       expect(find.text('Watch Match'), findsNothing);
       expect(find.text('تابع المباراة'), findsNothing);
+      expect(find.text('تابع التحدي'), findsNothing);
     });
   });
 
