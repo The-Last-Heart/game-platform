@@ -2,7 +2,7 @@
 
 **Status:** CLOSED  
 **Commit message:** `feat(content): add versioned game content releases`  
-**Verify hash:** 22067b9dc16a8c66e286c1afc7d5a8445aa01da2
+**Verify hash:** c1fd844079d13a75a766f9910504db403b9e7dfb
 
 ## Product outcome
 

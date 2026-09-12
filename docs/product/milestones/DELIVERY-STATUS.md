@@ -14,7 +14,7 @@ Previously closed: **LH-001 → LH-005**.
 
 ## LH-006 close summary
 
-- Close commit: 22067b9dc16a8c66e286c1afc7d5a8445aa01da2 — `feat(content): add versioned game content releases`
+- Close commit: c1fd844079d13a75a766f9910504db403b9e7dfb — `feat(content): add versioned game content releases`
 - Evidence: [LH-006-DELIVERY.md](./LH-006-DELIVERY.md)
 - Migrations: `003_versioned_game_content` applied once; second run skips
 - Known unrelated: admin-web `proxy.test` https secure-cookie expectation (pre-existing)
