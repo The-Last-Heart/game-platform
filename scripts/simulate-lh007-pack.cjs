@@ -1,24 +1,38 @@
 #!/usr/bin/env node
 /**
- * LH-007 smoke simulation: finite six-engine playlist ends in draw when
- * hearts remain tied (no cycling).
+ * LH-007 automated evidence entrypoint (no device).
+ *
+ * Runs the MatchEngine simulation matrix:
+ *   apps/backend/src/match/domain/engines/lh007-pack.simulation.spec.ts
+ *
+ * Matrix coverage (per engine unless noted):
+ *   - reaction.wait_for_signal: success / early-fail / timeout
+ *   - trap.no_touch: absence success / touch fail
+ *   - gesture.reverse_swipe: success / fail / timeout
+ *   - tap.precision: success / fail / timeout
+ *   - memory.sequence: success / fail / timeout
+ *   - hold.multitouch: success / fail / timeout
+ *   - finite playlist of 2 defs → equal hearts → phase draw
  */
-const assert = require('node:assert/strict');
+const { spawnSync } = require('node:child_process');
+const path = require('node:path');
 
-function simulateFinitePlaylistEnd() {
-  const playlistLength = 6;
-  let roundNumber = 0;
-  const hearts = { a: 3, b: 3 };
-  while (roundNumber < playlistLength) {
-    // Both succeed — no heart loss
-    roundNumber += 1;
-  }
-  const next = roundNumber < playlistLength ? roundNumber : null;
-  assert.equal(next, null);
-  assert.equal(hearts.a, hearts.b);
-  const result = hearts.a === hearts.b ? 'draw' : 'winner';
-  assert.equal(result, 'draw');
-  console.log('OK finite playlist → draw when hearts tied');
+const root = path.resolve(__dirname, '..');
+const spec =
+  'src/match/domain/engines/lh007-pack.simulation.spec.ts';
+
+const result = spawnSync(
+  'pnpm',
+  ['exec', 'jest', spec, '--runInBand'],
+  {
+    cwd: path.join(root, 'apps/backend'),
+    stdio: 'inherit',
+    shell: process.platform === 'win32',
+  },
+);
+
+if (result.error) {
+  console.error(result.error);
+  process.exit(1);
 }
-
-simulateFinitePlaylistEnd();
+process.exit(result.status ?? 1);

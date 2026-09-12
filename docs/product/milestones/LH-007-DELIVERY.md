@@ -4,7 +4,7 @@
 
 - Feature commit: `11d7203069b7e6a5ae62e023b16e165f9ed21b19` — `feat(gameplay): ship core challenge engine pack`
 - Milestone: LH-007 — Core Challenge Pack and Match Presentation
-- Formal gate close: blocked until device/LAN visual evidence matrix is captured
+- Formal gate close: **blocked** — device/LAN visual matrix not yet operator-confirmed (no adb device attached)
 
 ## What shipped
 
@@ -19,16 +19,18 @@
 
 - `pnpm --filter @thelastheart/contracts build`
 - Backend jest: launch evaluators, completeByStandings/draw, rematch, finite playlist draw
-- `node scripts/simulate-lh007-pack.cjs`
+- `pnpm exec jest src/match/domain/engines/lh007-pack.simulation.spec.ts` — **18/18 PASS** (per-engine success/failure/timeout-or-absence + 2-def → draw)
+- `node scripts/simulate-lh007-pack.cjs` (delegates to that suite)
 - `pnpm run db:migrate` → applied `004_lh007_core_challenge_pack`
 - Flutter `dart analyze` on new engines / draw / shell
+- LAN APK rebuilt: `apps/mobile/build/app/outputs/flutter-apk/app-release.apk` → `http://192.168.100.74:3000`
 
 ## Journeys observed
 
-- Unit/sim: catalog exhaustion with equal hearts → draw
-- Device/LAN visual matrix for all six engines: **pending operator capture** (rebuild APK + Nest restart required)
+- Unit/sim matrix: all six engines + finite equal-hearts draw — **done**
+- Device/LAN visual: intro, every engine, success, loss, elimination, spectator, winner/draw, memory reconnect, hold reconnect — **pending operator** (install APK; Nest on `:3000`)
 
 ## Gaps
 
-- Full device visual evidence matrix for intro/every engine/spectator/winner/draw still needs operator capture after APK rebuild against live backend
-- Weighted cooldown selection beyond finite ordered playlist is deferred to catalog pin order + cooldown metadata in release entries
+- Visual evidence matrix still needs operator capture on a real device/LAN APK
+- Weighted cooldown selection beyond finite ordered playlist remains catalog-pin ordered + metadata
