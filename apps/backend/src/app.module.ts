@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { AdminModule } from './admin/admin.module';
+import { ContentModule } from './content/content.module';
 import { validateEnv } from './config/env.validation';
 import { DatabaseModule } from './database/database.module';
 import { HealthModule } from './health/health.module';
@@ -15,6 +16,7 @@ import { MatchModule } from './match/match.module';
     }),
     DatabaseModule,
     HealthModule,
+    ContentModule,
     MatchModule,
     AdminModule,
   ],

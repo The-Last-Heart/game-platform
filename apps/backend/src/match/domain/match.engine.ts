@@ -272,6 +272,10 @@ export class MatchEngine {
       createdAtMs: now,
       updatedAtMs: now,
       commandAcks: new Map(),
+      releasePins: options?.releasePins ?? null,
+      pinnedPlaylist: options?.pinnedPlaylist
+        ? [...options.pinnedPlaylist]
+        : [],
     };
   }
 
@@ -1331,6 +1335,7 @@ export class MatchEngine {
       isHost: boolean;
     }>;
     currentChallenge: PublicChallengeView | null;
+    releasePins: MatchState['releasePins'];
   } {
     const now = this.clock.nowMs();
     return {
@@ -1370,6 +1375,7 @@ export class MatchEngine {
         match.currentChallenge && match.currentChallenge.status === 'active'
           ? toPublicChallengeView(match.currentChallenge, now)
           : null,
+      releasePins: match.releasePins,
     };
   }
 
@@ -1378,6 +1384,8 @@ export class MatchEngine {
       ...match,
       players: clonePlayers(match.players),
       commandAcks: new Map(match.commandAcks),
+      pinnedPlaylist: [...match.pinnedPlaylist],
+      releasePins: match.releasePins ? { ...match.releasePins } : null,
       lastRoundResult: match.lastRoundResult
         ? {
             ...match.lastRoundResult,

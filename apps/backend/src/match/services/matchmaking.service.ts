@@ -160,10 +160,19 @@ export class MatchmakingService implements OnModuleDestroy {
   }
 
   async enqueue(identity: PlayerIdentityInput): Promise<MatchmakingStatusEvent> {
+    if (this.matches.isMatchmakingPaused()) {
+      throw new DomainError(
+        'MATCHMAKING_PAUSED',
+        'matchmaking is paused by live ops',
+      );
+    }
     try {
       return await this.withSeatingLock(() => this.seatUnderLock(identity));
     } catch (error) {
       if (error instanceof DomainError && error.code === 'ALREADY_IN_QUEUE') {
+        throw error;
+      }
+      if (error instanceof DomainError && error.code === 'MATCHMAKING_PAUSED') {
         throw error;
       }
       this.logger.error({

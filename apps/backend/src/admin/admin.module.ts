@@ -1,10 +1,15 @@
-import { Module } from '@nestjs/common';
+import { Module, forwardRef } from '@nestjs/common';
 import { APP_FILTER } from '@nestjs/core';
+import { ContentModule } from '../content/content.module';
 import { HealthModule } from '../health/health.module';
 import { MatchModule } from '../match/match.module';
 import { AdminAdministratorsController } from './controllers/admin-administrators.controller';
 import { AdminAuditLogsController } from './controllers/admin-audit-logs.controller';
 import { AdminAuthController } from './controllers/admin-auth.controller';
+import {
+  AdminContentController,
+  AdminEmergencyController,
+} from './controllers/admin-content.controller';
 import { AdminDashboardController } from './controllers/admin-dashboard.controller';
 import { AdminMatchmakingController } from './controllers/admin-matchmaking.controller';
 import { AdminHttpExceptionFilter } from './filters/admin-http-exception.filter';
@@ -19,13 +24,19 @@ import { AdminAuthService } from './services/admin-auth.service';
 import { AdminDashboardService } from './services/admin-dashboard.service';
 
 @Module({
-  imports: [MatchModule, HealthModule],
+  imports: [
+    forwardRef(() => MatchModule),
+    HealthModule,
+    forwardRef(() => ContentModule),
+  ],
   controllers: [
     AdminAuthController,
     AdminAdministratorsController,
     AdminDashboardController,
     AdminMatchmakingController,
     AdminAuditLogsController,
+    AdminContentController,
+    AdminEmergencyController,
   ],
   providers: [
     AdminAuthService,
@@ -42,5 +53,6 @@ import { AdminDashboardService } from './services/admin-dashboard.service';
       useClass: AdminHttpExceptionFilter,
     },
   ],
+  exports: [AdminAuditService],
 })
 export class AdminModule {}

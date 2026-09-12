@@ -1,7 +1,19 @@
-import { Injectable, Logger, OnModuleDestroy } from '@nestjs/common';
+import {
+  Inject,
+  Injectable,
+  Logger,
+  OnModuleDestroy,
+  OnModuleInit,
+  Optional,
+} from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { randomUUID } from 'node:crypto';
 import type { AppConfig } from '../../config/env.validation';
+import {
+  BOOTSTRAP_PINS,
+  ReleaseResolverService,
+} from '../../content/services/release-resolver.service';
+import { EmergencyControlsService } from '../../content/services/emergency-controls.service';
 import { MatchEngine } from '../domain/match.engine';
 import {
   ChallengeEvaluatorRegistryImpl,
@@ -16,6 +28,7 @@ import {
 import type {
   ChallengeDefinition,
   Clock,
+  CreateMatchOptions,
   DomainEvent,
   MatchMode,
   MatchState,
@@ -116,7 +129,7 @@ export type FinalizeJoinResult = {
 };
 
 @Injectable()
-export class MatchService implements OnModuleDestroy {
+export class MatchService implements OnModuleDestroy, OnModuleInit {
   private readonly logger = new Logger(MatchService.name);
   private readonly store: MatchStore;
   private readonly tokens: ResumeTokenService;
@@ -133,6 +146,7 @@ export class MatchService implements OnModuleDestroy {
   private readonly rematchParties = new Map<string, RematchParty>();
   private botFillEnabled: boolean;
   private botFillWaitMs: number;
+  private matchmakingPaused = false;
   /** Test-only barriers after match mutation, before identity ops return. */
   private identityBarrierHooks: {
     afterJoinMutated?: () => Promise<void>;
@@ -141,7 +155,15 @@ export class MatchService implements OnModuleDestroy {
     afterFinalizeJoin?: (playerId: string) => Promise<void>;
   } = {};
 
-  constructor(config: ConfigService<AppConfig, true>) {
+  constructor(
+    config: ConfigService<AppConfig, true>,
+    @Optional()
+    @Inject(ReleaseResolverService)
+    private readonly releases: ReleaseResolverService | null = null,
+    @Optional()
+    @Inject(EmergencyControlsService)
+    private readonly emergency: EmergencyControlsService | null = null,
+  ) {
     this.nodeEnv = config.get('NODE_ENV', { infer: true });
     this.store = new InMemoryMatchStore();
     this.tokens = new ResumeTokenService();
@@ -161,6 +183,23 @@ export class MatchService implements OnModuleDestroy {
     this.botFillWaitMs = config.get('MATCHMAKING_BOT_FILL_WAIT_MS', {
       infer: true,
     });
+  }
+
+  async onModuleInit(): Promise<void> {
+    if (!this.emergency) {
+      return;
+    }
+    try {
+      const controls = await this.emergency.getControls();
+      this.botFillEnabled = controls.botFillEnabled;
+      this.botFillWaitMs = controls.botFillWaitMs;
+      this.matchmakingPaused = controls.matchmakingPaused;
+    } catch (error) {
+      this.logger.warn({
+        event: 'emergency_controls_load_failed',
+        category: error instanceof Error ? error.name : 'UnknownError',
+      });
+    }
   }
 
   static forTests(options: {
@@ -185,6 +224,9 @@ export class MatchService implements OnModuleDestroy {
       rematchParties: new Map(),
       botFillEnabled: options.botFillEnabled ?? false,
       botFillWaitMs: options.botFillWaitMs ?? 15_000,
+      matchmakingPaused: false,
+      releases: null,
+      emergency: null,
       identityBarrierHooks: {},
     });
     // wait_for_signal always registered
@@ -216,8 +258,7 @@ export class MatchService implements OnModuleDestroy {
     snapshot: ReturnType<MatchEngine['toPublicSnapshot']>;
   }> {
     this.assertDevAllowed();
-    const match = this.engine.createMatch(undefined, { mode: 'dev' });
-    await this.store.save(match);
+    const match = await this.createPinnedMatch({ mode: 'dev' });
     return {
       matchId: match.matchId,
       snapshot: this.engine.toPublicSnapshot(match),
@@ -626,6 +667,73 @@ export class MatchService implements OnModuleDestroy {
     }
   }
 
+  isMatchmakingPaused(): boolean {
+    return this.matchmakingPaused;
+  }
+
+  setMatchmakingPaused(paused: boolean): void {
+    this.matchmakingPaused = paused;
+  }
+
+  /**
+   * Refresh in-memory emergency flags from durable controls (after admin patch).
+   */
+  async refreshEmergencyControlsFromStore(): Promise<void> {
+    if (!this.emergency) {
+      return;
+    }
+    const controls = await this.emergency.getControls();
+    this.botFillEnabled = controls.botFillEnabled;
+    this.botFillWaitMs = controls.botFillWaitMs;
+    this.matchmakingPaused = controls.matchmakingPaused;
+  }
+
+  /**
+   * Resolve current releases once, attach pins + playlist, persist match_pins.
+   */
+  private async createPinnedMatch(
+    options: CreateMatchOptions,
+  ): Promise<MatchState> {
+    let releasePins = options.releasePins ?? { ...BOOTSTRAP_PINS };
+    let pinnedPlaylist =
+      options.pinnedPlaylist != null
+        ? [...options.pinnedPlaylist]
+        : [...this.challengeProvider.getPlaylist()];
+
+    if (this.releases) {
+      try {
+        releasePins = await this.releases.resolveCurrentPins();
+        pinnedPlaylist = await this.releases.getPlaylistForCatalogRelease(
+          releasePins.challengeCatalogReleaseId,
+        );
+      } catch (error) {
+        this.logger.warn({
+          event: 'release_pin_resolve_failed',
+          category: error instanceof Error ? error.name : 'UnknownError',
+        });
+      }
+    }
+
+    const match = this.engine.createMatch(undefined, {
+      ...options,
+      releasePins,
+      pinnedPlaylist,
+    });
+    await this.store.save(match);
+    if (this.releases) {
+      try {
+        await this.releases.persistMatchPins(match.matchId, releasePins);
+      } catch (error) {
+        this.logger.warn({
+          event: 'match_pins_persist_failed',
+          matchId: match.matchId,
+          category: error instanceof Error ? error.name : 'UnknownError',
+        });
+      }
+    }
+    return match;
+  }
+
   private async fillBotsInternal(
     matchId: string,
     _options: { requireDevOnly: boolean },
@@ -680,7 +788,10 @@ export class MatchService implements OnModuleDestroy {
     if (!match) {
       return false;
     }
+    // Only Quick Survival open lobbies free seats on disconnect. Dev / private /
+    // training keep markDisconnected so resume tokens remain valid in lobby.
     return (
+      match.mode === 'quick_survival' &&
       match.status === 'waiting' &&
       (match.phase === 'lobby' || match.phase === 'ready_countdown')
     );
@@ -781,12 +892,11 @@ export class MatchService implements OnModuleDestroy {
   > {
     const now = this.clock.nowMs();
     const roomCode = this.roomCodes.generate(now);
-    const match = this.engine.createMatch(undefined, {
+    const match = await this.createPinnedMatch({
       mode: 'private',
       roomCode,
       playerCapacity: MATCH_PLAYER_CAPACITY,
     });
-    await this.store.save(match);
     this.roomCodes.register(roomCode, match.matchId, now);
 
     const seated = await this.joinMatch(match.matchId, identity);
@@ -854,11 +964,10 @@ export class MatchService implements OnModuleDestroy {
     identity: PlayerIdentityInput,
     progress?: { hearts: number; energy: number },
   ): Promise<SeatCredentials> {
-    const match = this.engine.createMatch(undefined, {
+    const match = await this.createPinnedMatch({
       mode: 'training',
       playerCapacity: 1,
     });
-    await this.store.save(match);
     const seated = await this.joinMatch(match.matchId, identity, progress);
     return {
       matchId: match.matchId,
@@ -967,13 +1076,12 @@ export class MatchService implements OnModuleDestroy {
           ? this.roomCodes.generate(now)
           : null;
 
-    const next = this.engine.createMatch(undefined, {
+    const next = await this.createPinnedMatch({
       mode: source.mode,
       playerCapacity: source.playerCapacity,
       roomCode,
       hostPlayerId: source.mode === 'private' ? null : source.hostPlayerId,
     });
-    await this.store.save(next);
     if (roomCode) {
       this.roomCodes.register(roomCode, next.matchId, now);
     }
@@ -1024,11 +1132,10 @@ export class MatchService implements OnModuleDestroy {
     if (seats.length === 0 || seats.length > MATCH_PLAYER_CAPACITY) {
       throw new DomainError('NOT_ENOUGH_PLAYERS', 'invalid seat count');
     }
-    const match = this.engine.createMatch(undefined, {
+    const match = await this.createPinnedMatch({
       mode: 'quick_survival',
       playerCapacity: MATCH_PLAYER_CAPACITY,
     });
-    await this.store.save(match);
     const assignments: Array<{
       playerId: string;
       resumeToken: string;
@@ -1622,7 +1729,10 @@ export class MatchService implements OnModuleDestroy {
   private definitionForNextRound(
     match: MatchState,
   ): ChallengeDefinition | null {
-    const playlist = this.challengeProvider.getPlaylist();
+    const playlist =
+      match.pinnedPlaylist.length > 0
+        ? match.pinnedPlaylist
+        : this.challengeProvider.getPlaylist();
     return playlist[match.roundNumber] ?? null;
   }
 

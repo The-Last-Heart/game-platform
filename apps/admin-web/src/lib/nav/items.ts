@@ -5,6 +5,7 @@ export type NavItemId =
   | 'dashboard'
   | 'administrators'
   | 'audit-log'
+  | 'content'
   | 'system'
   | 'profile'
   | 'profile-security';
@@ -42,6 +43,13 @@ export const ADMIN_NAV_ITEMS: readonly NavItem[] = [
     href: '/audit-log',
     labelKey: 'nav.auditLog',
     permission: 'audit:read',
+    group: 'main',
+  },
+  {
+    id: 'content',
+    href: '/content',
+    labelKey: 'nav.content',
+    permission: 'content:read',
     group: 'main',
   },
   {

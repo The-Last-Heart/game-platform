@@ -1,9 +1,11 @@
-import { Module } from '@nestjs/common';
+import { Module, forwardRef } from '@nestjs/common';
+import { ContentModule } from '../content/content.module';
 import { MatchGateway } from './gateway/match.gateway';
 import { MatchService } from './services/match.service';
 import { MatchmakingService } from './services/matchmaking.service';
 
 @Module({
+  imports: [forwardRef(() => ContentModule)],
   providers: [MatchService, MatchmakingService, MatchGateway],
   exports: [MatchService, MatchmakingService],
 })

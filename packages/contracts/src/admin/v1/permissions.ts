@@ -14,6 +14,12 @@ export const ADMIN_PERMISSIONS = [
   'audit:read',
   'matchmaking:read',
   'matchmaking:write',
+  'content:read',
+  'content:draft',
+  'content:review',
+  'content:publish',
+  'emergency:write',
+  'matches:read',
 ] as const;
 
 export const adminPermissionSchema = z.enum(ADMIN_PERMISSIONS);
@@ -27,18 +33,35 @@ const ALL_PERMISSIONS: readonly AdminPermission[] = ADMIN_PERMISSIONS;
  */
 export const ADMIN_ROLE_PERMISSIONS = {
   super_admin: ALL_PERMISSIONS,
-  content_manager: ['dashboard:read', 'system:read'] as const satisfies readonly AdminPermission[],
+  content_manager: [
+    'dashboard:read',
+    'system:read',
+    'content:read',
+    'content:draft',
+    'content:review',
+    'content:publish',
+    'matches:read',
+  ] as const satisfies readonly AdminPermission[],
   live_ops: [
     'dashboard:read',
     'system:read',
     'audit:read',
     'matchmaking:read',
     'matchmaking:write',
+    'emergency:write',
+    'content:read',
+    'matches:read',
   ] as const satisfies readonly AdminPermission[],
-  translator: ['dashboard:read'] as const satisfies readonly AdminPermission[],
+  translator: [
+    'dashboard:read',
+    'content:read',
+    'content:draft',
+  ] as const satisfies readonly AdminPermission[],
   viewer: [
     'dashboard:read',
     'system:read',
+    'content:read',
+    'matches:read',
   ] as const satisfies readonly AdminPermission[],
 } as const satisfies Record<AdminRole, readonly AdminPermission[]>;
 

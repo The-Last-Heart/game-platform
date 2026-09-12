@@ -37,6 +37,7 @@ const ICONS: Record<NavItemId, ReactNode> = {
   dashboard: <LayoutDashboard size={18} aria-hidden />,
   administrators: <Users size={18} aria-hidden />,
   'audit-log': <ClipboardList size={18} aria-hidden />,
+  content: <ClipboardList size={18} aria-hidden />,
   system: <Server size={18} aria-hidden />,
   profile: <User size={18} aria-hidden />,
   'profile-security': <Shield size={18} aria-hidden />,

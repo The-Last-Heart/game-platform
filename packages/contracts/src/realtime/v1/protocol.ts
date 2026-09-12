@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { matchReleasePinsSchema } from '../../content/v1/releases';
 
 export const REALTIME_SCHEMA_VERSION = '1' as const;
 
@@ -372,6 +373,8 @@ export const matchSnapshotPayloadSchema = z
     mode: matchModeSchema.optional(),
     hostPlayerId: uuidLike.nullable().optional(),
     roomCode: z.string().min(4).max(8).nullable().optional(),
+    /** Immutable content pins for this match; required for new matches (LH-006). */
+    releasePins: matchReleasePinsSchema.nullable().optional(),
   })
   .strict();
 

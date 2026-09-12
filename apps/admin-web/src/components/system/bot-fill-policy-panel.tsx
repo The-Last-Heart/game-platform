@@ -22,6 +22,7 @@ export function BotFillPolicyPanel({ locale }: { locale: Locale }) {
   const [error, setError] = useState<string | null>(null);
   const [enabled, setEnabled] = useState(false);
   const [waitMs, setWaitMs] = useState(15000);
+  const [reason, setReason] = useState('bot-fill policy update');
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -51,7 +52,7 @@ export function BotFillPolicyPanel({ locale }: { locale: Locale }) {
       '/matchmaking/bot-fill-policy',
       {
         method: 'PATCH',
-        body: JSON.stringify({ enabled, waitMs }),
+        body: JSON.stringify({ enabled, waitMs, reason }),
       },
     );
     setSaving(false);
@@ -118,6 +119,13 @@ export function BotFillPolicyPanel({ locale }: { locale: Locale }) {
               onChange={(event) =>
                 setWaitMs(Number.parseInt(event.target.value || '0', 10))
               }
+            />
+          </label>
+          <label className="field">
+            <span>{t(locale, 'liveOps.botFillReason')}</span>
+            <input
+              value={reason}
+              onChange={(event) => setReason(event.target.value)}
             />
           </label>
           <div>

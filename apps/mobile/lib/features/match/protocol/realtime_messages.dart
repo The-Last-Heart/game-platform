@@ -390,6 +390,7 @@ class MatchSnapshotPayload {
     this.mode,
     this.hostPlayerId,
     this.roomCode,
+    this.releasePins,
   });
 
   final String matchId;
@@ -409,10 +410,12 @@ class MatchSnapshotPayload {
   final MatchMode? mode;
   final String? hostPlayerId;
   final String? roomCode;
+  final Map<String, String>? releasePins;
 
   factory MatchSnapshotPayload.fromJson(Map<String, dynamic> json) {
     final dynamic lastRound = json['lastRoundResult'];
     final dynamic challenge = json['currentChallenge'];
+    final dynamic pins = json['releasePins'];
     return MatchSnapshotPayload(
       matchId: json['matchId'] as String,
       status: json['status'] as String,
@@ -445,6 +448,14 @@ class MatchSnapshotPayload {
       mode: MatchMode.tryParse(json['mode'] as String?),
       hostPlayerId: json['hostPlayerId'] as String?,
       roomCode: json['roomCode'] as String?,
+      releasePins: pins is Map
+          ? pins.map(
+              (dynamic key, dynamic value) => MapEntry(
+                key.toString(),
+                value.toString(),
+              ),
+            )
+          : null,
     );
   }
 }

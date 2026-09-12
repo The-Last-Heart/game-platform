@@ -4,21 +4,26 @@ Updated: 2026-09-12
 
 ## Last closed milestone
 
-**LH-005 — Complete Player Entry and Match Access**
+**LH-006 — Versioned Game Content and Release Platform**
 
-Previously closed baseline: **LH-001 → LH-004A**.
+Previously closed: **LH-001 → LH-005**.
 
 ## Current milestone
 
-**LH-006** is the first incomplete milestone (versioned content releases). Tree is clean after the LH-005 live-path follow-up.
+**LH-007** is the first incomplete milestone (next challenge engines / content expansion per roadmap). Tree must be clean on the LH-006 close commit before starting it.
 
-## LH-005 close summary
+## LH-006 close summary
 
-- Close commit: `9d3cfdeca422076cff49b2d6b7993da7270bacd4` — `fix(lh-005): close player entry and match access on real path`
-- Cleanup commit: `4fbb3dd6d47e3d0c558e1223bafadc09d78f3085` — docs/reference pack + closure-gate wording
-- Live-path follow-up: `278d8566ee6bc060a3b7efdaa44042f7b08b58e1` — `fix(match): harden live lobby, host start, and finite playlist`
+- Close commit: 22067b9dc16a8c66e286c1afc7d5a8445aa01da2 — `feat(content): add versioned game content releases`
+- Evidence: [LH-006-DELIVERY.md](./LH-006-DELIVERY.md)
+- Migrations: `003_versioned_game_content` applied once; second run skips
+- Known unrelated: admin-web `proxy.test` https secure-cookie expectation (pre-existing)
+
+## LH-005 close summary (prior)
+
+- Close commit: `9d3cfdeca422076cff49b2d6b7993da7270bacd4`
+- Live-path follow-up: `278d8566ee6bc060a3b7efdaa44042f7b08b58e1`
 - Evidence: [LH-005-DELIVERY.md](./LH-005-DELIVERY.md)
-- Known unrelated: admin integration `idempotent logout` CSRF-without-session expects 200, gets 403 (pre-existing outside this milestone)
 
 ## Closure rule (product owner lock)
 

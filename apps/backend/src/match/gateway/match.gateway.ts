@@ -740,6 +740,21 @@ export class MatchGateway
       this.queueSockets.delete(ticketId);
     }
     state.ticketId = undefined;
+    // Assignment binds the socket to the lobby seat; cancel must clear that
+    // binding so the same socket can enqueue again.
+    if (state.matchId || state.playerId) {
+      const matchId = state.matchId;
+      const playerId = state.playerId;
+      if (matchId && playerId) {
+        const key = this.leaseKey(matchId, playerId);
+        if (this.connectionLeases.get(key) === client.id) {
+          this.connectionLeases.delete(key);
+        }
+        void client.leave(this.room(matchId));
+      }
+      state.matchId = undefined;
+      state.playerId = undefined;
+    }
     if (status) {
       this.emitMatchmakingStatus(client, status, { commandId, correlationId });
     }

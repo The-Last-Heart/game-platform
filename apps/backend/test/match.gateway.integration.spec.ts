@@ -1323,7 +1323,8 @@ describe('MatchGateway integration', () => {
       const started = Date.now();
       for (;;) {
         const current = await store.get(matchId);
-        if (!current!.players.has(orphanId)) {
+        // Emptied matches are deleted; either outcome means the orphan is gone.
+        if (!current || !current.players.has(orphanId)) {
           break;
         }
         if (Date.now() - started > 5000) {
@@ -1334,7 +1335,7 @@ describe('MatchGateway integration', () => {
     }
 
     const after = await store.get(matchId);
-    expect(after!.players.size).toBe(0);
+    expect(after == null || after.players.size === 0).toBe(true);
     expect(matchGateway.hasLeaseForSocketForTests(socketId)).toBe(false);
     expect(
       matchGateway.getLeaseOwnerForTests(matchId, orphanId),

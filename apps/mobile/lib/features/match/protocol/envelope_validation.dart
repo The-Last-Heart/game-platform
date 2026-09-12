@@ -362,6 +362,7 @@ EnvelopeValidation _validateMatchSnapshot(Map<String, dynamic> payload) {
     'mode',
     'hostPlayerId',
     'roomCode',
+    'releasePins',
   }, 'match.snapshot');
   if (extra != null) return extra;
   if (!_isUuidLike(payload['matchId'])) {
@@ -455,6 +456,28 @@ EnvelopeValidation _validateMatchSnapshot(Map<String, dynamic> payload) {
       return const EnvelopeValidation.invalid(
         'match.snapshot.roomCode invalid',
       );
+    }
+  }
+  if (payload.containsKey('releasePins') && payload['releasePins'] != null) {
+    final Object? pins = payload['releasePins'];
+    if (pins is! Map) {
+      return const EnvelopeValidation.invalid(
+        'match.snapshot.releasePins invalid',
+      );
+    }
+    final Map<String, dynamic> map = Map<String, dynamic>.from(pins);
+    const List<String> keys = <String>[
+      'challengeCatalogReleaseId',
+      'gameModeRuleReleaseId',
+      'localizationReleaseId',
+      'powerConfigurationReleaseId',
+    ];
+    for (final String key in keys) {
+      if (!_isUuidLike(map[key])) {
+        return EnvelopeValidation.invalid(
+          'match.snapshot.releasePins.$key invalid',
+        );
+      }
     }
   }
   final Object? challenge = payload['currentChallenge'];

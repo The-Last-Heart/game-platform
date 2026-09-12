@@ -20,3 +20,4 @@ export const contractsPackageMeta: ContractsPackageMeta = {
 
 export * from './realtime/v1/protocol';
 export * from './admin/v1';
+export * from './content/v1';

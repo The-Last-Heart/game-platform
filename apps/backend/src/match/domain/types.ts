@@ -43,11 +43,22 @@ export type PlayerIdentity = {
   avatarColor?: string;
 };
 
+export type MatchReleasePinsState = {
+  challengeCatalogReleaseId: string;
+  gameModeRuleReleaseId: string;
+  localizationReleaseId: string;
+  powerConfigurationReleaseId: string;
+};
+
 export type CreateMatchOptions = {
   mode: MatchMode;
   hostPlayerId?: string | null;
   roomCode?: string | null;
   playerCapacity?: number;
+  /** Four release pins frozen at match create. */
+  releasePins?: MatchReleasePinsState | null;
+  /** Playlist resolved from the pinned catalog (never re-reads "current"). */
+  pinnedPlaylist?: readonly ChallengeDefinition[];
 };
 
 export type Clock = {
@@ -221,6 +232,10 @@ export type MatchState = {
   updatedAtMs: number;
   /** commandId -> last acknowledgement payload */
   commandAcks: Map<string, unknown>;
+  /** Frozen at create; active matches never re-resolve current releases. */
+  releasePins: MatchReleasePinsState | null;
+  /** Ordered definitions from the pinned catalog release. */
+  pinnedPlaylist: ChallengeDefinition[];
 };
 
 export type DomainEvent =

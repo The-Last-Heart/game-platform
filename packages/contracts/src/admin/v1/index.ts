@@ -8,3 +8,5 @@ export * from './dashboard';
 export * from './system';
 export * from './audit';
 export * from './matchmaking';
+export * from './content';
+export * from './emergency-controls';

@@ -14,6 +14,7 @@ export const adminBotFillPolicyPatchRequestSchema = z
   .object({
     enabled: z.boolean().optional(),
     waitMs: z.number().int().min(0).max(600_000).optional(),
+    reason: z.string().min(3).max(500).optional(),
   })
   .strict()
   .refine(
