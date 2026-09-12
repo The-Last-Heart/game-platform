@@ -593,8 +593,11 @@ export class MatchService implements OnModuleDestroy, OnModuleInit {
       await this.store.save(result.match);
       if (result.events.length > 0) {
         this.clearTimer(input.matchId);
-        this.emit(result.match, result.events);
-        await this.maybeContinue(result.match);
+        await this.publishResolveAndMaybeRoundResult(
+          result.match,
+          result.events,
+        );
+        await this.maybeContinue(await this.requireMatch(input.matchId));
       }
       const latest = await this.requireMatch(input.matchId);
       return {
@@ -1409,8 +1412,11 @@ export class MatchService implements OnModuleDestroy, OnModuleInit {
       await this.store.save(result.match);
       if (result.events.length > 0) {
         this.clearTimer(matchId);
-        this.emit(result.match, result.events);
-        await this.maybeContinue(result.match);
+        await this.publishResolveAndMaybeRoundResult(
+          result.match,
+          result.events,
+        );
+        await this.maybeContinue(await this.requireMatch(matchId));
         return;
       }
       // Inclusive deadline boundary: accept at equality; timeout only when
@@ -1510,8 +1516,10 @@ export class MatchService implements OnModuleDestroy, OnModuleInit {
         match = timeoutResult.match;
         await this.store.save(match);
         this.clearTimer(matchId);
-        this.emit(match, timeoutResult.events);
-        await this.maybeContinueAfterResolve(match);
+        await this.publishResolveAndMaybeRoundResult(
+          match,
+          timeoutResult.events,
+        );
         match = await this.requireMatch(matchId);
       }
     }
@@ -1795,6 +1803,8 @@ export class MatchService implements OnModuleDestroy, OnModuleInit {
     if (match.status === 'completed' || match.winnerId != null) return;
 
     // After resolve with survivors: enter the result-hold phase (server-timed).
+    // Prefer publishResolveAndMaybeRoundResult at the emit site so clients never
+    // observe the intermediate challenge_active + null-challenge snapshot.
     if (
       match.status === 'waiting' &&
       match.currentChallenge?.status === 'resolved'
@@ -1842,21 +1852,50 @@ export class MatchService implements OnModuleDestroy, OnModuleInit {
     }
   }
 
-  private async maybeContinueAfterResolve(match: MatchState): Promise<void> {
-    if (match.status === 'completed' || match.winnerId != null) return;
+  /**
+   * Emit resolve events together with the round-result hold when applicable so
+   * clients never apply an intermediate snapshot of challenge_active with a
+   * null currentChallenge (that used to flash the lobby player list).
+   */
+  private async publishResolveAndMaybeRoundResult(
+    match: MatchState,
+    resolveEvents: DomainEvent[],
+  ): Promise<void> {
+    if (resolveEvents.length === 0) {
+      return;
+    }
+    if (
+      match.status === 'completed' ||
+      match.winnerId != null ||
+      match.phase === 'halted' ||
+      match.phase === 'draw' ||
+      match.currentChallenge?.status !== 'resolved'
+    ) {
+      this.emit(match, resolveEvents);
+      return;
+    }
 
     const survivors = [...match.players.values()].filter(
       (p) => p.status === 'active',
     );
-    if (survivors.length >= 2) {
-      await this.enterRoundResult(match);
+    const shouldHold =
+      survivors.length >= 2 ||
+      (match.mode === 'training' && survivors.length <= 1);
+    if (!shouldHold) {
+      this.emit(match, resolveEvents);
       return;
     }
-    // Training (capacity-1): show round feedback after failure/timeout —
-    // including last-heart wipe — so retry can carry or reset hearts.
-    if (match.mode === 'training' && survivors.length <= 1) {
-      await this.enterRoundResult(match);
-    }
+
+    const lastChallenge = match.currentChallenge;
+    const result = this.engine.beginRoundResult(
+      match,
+      lastChallenge.resolutions,
+      lastChallenge.challengeInstanceId,
+      ROUND_RESULT_MS,
+    );
+    await this.store.save(result.match);
+    this.emit(result.match, [...resolveEvents, ...result.events]);
+    this.schedulePhaseTimer(match.matchId, ROUND_RESULT_MS);
   }
 
   private async enterRoundResult(match: MatchState): Promise<void> {

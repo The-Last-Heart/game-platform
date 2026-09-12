@@ -24,6 +24,7 @@ const Set<String> _knownServerEventTypes = <String>{
   MessageTypes.challengeResolved,
   MessageTypes.matchStateChanged,
   MessageTypes.matchFinished,
+  MessageTypes.matchDrawn,
   MessageTypes.protocolError,
 };
 
@@ -51,6 +52,7 @@ const Set<String> _matchPhases = <String>{
   'challenge_active',
   'round_result',
   'completed',
+  'draw',
   'halted',
 };
 
@@ -72,6 +74,8 @@ const Set<String> _roundPhases = <String>{
   'waiting_signal',
   'signal_active',
   'signal_expired',
+  'preview',
+  'answer',
   'resolved',
 };
 
@@ -184,6 +188,8 @@ EnvelopeValidation? _validateResolution(
     'heartsAfter',
     'energyAfter',
     'statusAfter',
+    'reasonKey',
+    'measureMs',
   }, label);
   if (extra != null) return extra;
   if (!_isUuidLike(json['playerId'])) {
@@ -209,6 +215,16 @@ EnvelopeValidation? _validateResolution(
   if (json['statusAfter'] is! String ||
       !_playerStatuses.contains(json['statusAfter'] as String)) {
     return EnvelopeValidation.invalid('$label.statusAfter invalid');
+  }
+  if (json.containsKey('reasonKey') &&
+      json['reasonKey'] != null &&
+      !_isNonEmpty(json['reasonKey'])) {
+    return EnvelopeValidation.invalid('$label.reasonKey invalid');
+  }
+  if (json.containsKey('measureMs') &&
+      json['measureMs'] != null &&
+      !_isNonNegInt(json['measureMs'])) {
+    return EnvelopeValidation.invalid('$label.measureMs invalid');
   }
   return null;
 }
@@ -676,6 +692,16 @@ EnvelopeValidation _validateMatchFinished(Map<String, dynamic> payload) {
   return const EnvelopeValidation.valid();
 }
 
+EnvelopeValidation _validateMatchDrawn(Map<String, dynamic> payload) {
+  final EnvelopeValidation? extra = _rejectExtraKeys(
+    payload,
+    <String>{},
+    'match.drawn',
+  );
+  if (extra != null) return extra;
+  return const EnvelopeValidation.valid();
+}
+
 EnvelopeValidation _validateProtocolError(Map<String, dynamic> payload) {
   final EnvelopeValidation? extra = _rejectExtraKeys(payload, <String>{
     'code',
@@ -806,6 +832,8 @@ EnvelopeValidation validateServerEnvelope(Map<String, dynamic> raw) {
         return _validateMatchStateChanged(payload);
       case MessageTypes.matchFinished:
         return _validateMatchFinished(payload);
+      case MessageTypes.matchDrawn:
+        return _validateMatchDrawn(payload);
       case MessageTypes.protocolError:
         return _validateProtocolError(payload);
       default:

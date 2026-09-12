@@ -91,6 +91,9 @@ class _MatchShellState extends State<MatchShell> {
               widget.controller.serverClock.estimateServerNowMs,
         );
       case MatchPhase.challengeIntro:
+        if (state.currentChallenge == null) {
+          return const Center(child: CircularProgressIndicator());
+        }
         return ChallengeIntroView(
           state: state,
           estimateServerNowMs:
@@ -114,21 +117,22 @@ class _MatchShellState extends State<MatchShell> {
             },
           );
         }
-        return LobbyView(
-          state: state,
-          onReady: () {
-            widget.controller.setReady();
-          },
-          onLeave: widget.onBackHome,
-          onExtendLobbyFill: () {
-            widget.controller.extendLobbyFill();
-          },
-          onStartLobby: () {
-            widget.controller.startLobbyNow();
-          },
-          estimateServerNowMs:
-              widget.controller.serverClock.estimateServerNowMs,
-        );
+        // Never fall back to lobby mid-match — waiting for round_result /
+        // snapshot after resolve can briefly clear currentChallenge.
+        if (state.lastRoundResult != null) {
+          return RoundResultView(
+            state: state,
+            estimateServerNowMs:
+                widget.controller.serverClock.estimateServerNowMs,
+            onBackHome: widget.onBackHome,
+            onRetry: state.mode == MatchMode.training
+                ? () {
+                    widget.controller.retryTraining();
+                  }
+                : null,
+          );
+        }
+        return const Center(child: CircularProgressIndicator());
       case MatchPhase.roundResult:
         return RoundResultView(
           state: state,

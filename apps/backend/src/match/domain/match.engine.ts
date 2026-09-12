@@ -1459,15 +1459,31 @@ export class MatchEngine {
     releasePins: MatchState['releasePins'];
   } {
     const now = this.clock.nowMs();
+    // Resolve briefly leaves phase=challenge_active with a resolved round still
+    // attached so the service can copy resolutions into lastRoundResult. Public
+    // clients must never see challenge_active + null currentChallenge (mobile
+    // used to render that as the lobby player list).
+    const resolvedPendingHold =
+      match.phase === 'challenge_active' &&
+      match.currentChallenge != null &&
+      match.currentChallenge.status === 'resolved';
+    const lastRoundResult =
+      match.lastRoundResult ??
+      (resolvedPendingHold
+        ? {
+            challengeInstanceId: match.currentChallenge!.challengeInstanceId,
+            resolutions: [...match.currentChallenge!.resolutions],
+          }
+        : null);
     return {
       matchId: match.matchId,
       status: match.status,
-      phase: match.phase,
+      phase: resolvedPendingHold ? 'round_result' : match.phase,
       phaseDeadlineAtMs: match.phaseDeadlineAtMs,
       lobbyFillDeadlineAtMs: match.lobbyFillDeadlineAtMs,
       roundNumber: match.roundNumber,
       serverNowMs: now,
-      lastRoundResult: match.lastRoundResult,
+      lastRoundResult,
       nextPhaseAtMs: match.nextPhaseAtMs,
       revision: match.revision,
       sequence: match.sequence,

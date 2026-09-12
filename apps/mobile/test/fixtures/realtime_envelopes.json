@@ -194,7 +194,9 @@
           "energyDelta": 10,
           "heartsAfter": 3,
           "energyAfter": 10,
-          "statusAfter": "active"
+          "statusAfter": "active",
+          "reasonKey": "challenge.outcome.success",
+          "measureMs": 420
         },
         {
           "playerId": "player-2",

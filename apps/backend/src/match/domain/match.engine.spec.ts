@@ -919,6 +919,17 @@ describe('WaitForSignal engine', () => {
 
     // After auto-resolve, status is waiting with challenge retained for hold.
     expect(match.status).toBe('waiting');
+    expect(match.phase).toBe('challenge_active');
+    expect(match.currentChallenge?.status).toBe('resolved');
+
+    // Public snapshot must not expose challenge_active + null challenge
+    // (clients historically rendered that as the lobby roster).
+    const pendingSnap = engine.toPublicSnapshot(match);
+    expect(pendingSnap.phase).toBe('round_result');
+    expect(pendingSnap.currentChallenge).toBeNull();
+    expect(pendingSnap.lastRoundResult).not.toBeNull();
+    expect(pendingSnap.lastRoundResult!.challengeInstanceId).toBe(cid);
+    expect(pendingSnap.lastRoundResult!.resolutions.length).toBe(6);
 
     const resolutions = match.currentChallenge!.resolutions;
     const result = engine.beginRoundResult(match, resolutions, cid, 2500);
