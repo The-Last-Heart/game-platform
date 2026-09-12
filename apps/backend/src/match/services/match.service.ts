@@ -1018,13 +1018,10 @@ export class MatchService implements OnModuleDestroy, OnModuleInit {
   /**
    * Rematch behavior:
    * - Allowed when the source match is completed or halted.
-   * - Creates a new match with the same mode (capacity preserved).
-   * - Calling player is seated in the new match with fresh credentials.
-   * - Private: if the caller is the host, the room code is preserved on the
-   *   new match and re-registered; other private rematches join the party
-   *   match when one exists within REMATCH_WINDOW_MS.
-   * - Party players who call rematch within the window join the rematch lobby
-   *   instead of creating another match.
+   * - First caller opens a new lobby of the same mode and becomes host.
+   * - Later callers from the same source match (within REMATCH_WINDOW_MS) join
+   *   that rematch lobby instead of creating another room.
+   * - Private: room code is preserved on the rematch lobby when possible.
    */
   async rematch(
     matchId: string,
@@ -1067,10 +1064,8 @@ export class MatchService implements OnModuleDestroy, OnModuleInit {
       }
     }
 
-    const isHost =
-      source.hostPlayerId != null && source.hostPlayerId === playerId;
     const roomCode =
-      source.mode === 'private' && isHost && source.roomCode
+      source.mode === 'private' && source.roomCode
         ? source.roomCode
         : source.mode === 'private'
           ? this.roomCodes.generate(now)
@@ -1080,20 +1075,19 @@ export class MatchService implements OnModuleDestroy, OnModuleInit {
       mode: source.mode,
       playerCapacity: source.playerCapacity,
       roomCode,
-      hostPlayerId: source.mode === 'private' ? null : source.hostPlayerId,
+      hostPlayerId: null,
     });
     if (roomCode) {
       this.roomCodes.register(roomCode, next.matchId, now);
     }
 
     const seated = await this.joinMatch(next.matchId, identity);
-    if (source.mode === 'private') {
-      await this.enqueue(next.matchId, async () => {
-        const current = await this.requireMatch(next.matchId);
-        const updated = this.engine.setHostPlayerId(current, seated.playerId);
-        await this.store.save(updated);
-      });
-    }
+    // First rematch clicker is always the new host.
+    await this.enqueue(next.matchId, async () => {
+      const current = await this.requireMatch(next.matchId);
+      const updated = this.engine.setHostPlayerId(current, seated.playerId);
+      await this.store.save(updated);
+    });
 
     this.rematchParties.set(matchId, {
       newMatchId: next.matchId,
@@ -1707,7 +1701,8 @@ export class MatchService implements OnModuleDestroy, OnModuleInit {
 
     const definition = this.definitionForNextRound(match);
     if (!definition) {
-      // Playlist exhausted — crown by standings; do not replay the same challenge.
+      // Empty catalog only — never crown by standings while survivors remain
+      // and the playlist still has playable entries (those cycle).
       const finished = this.engine.completeByStandings(match);
       await this.store.save(finished.match);
       this.emit(finished.match, finished.events);
@@ -1724,7 +1719,10 @@ export class MatchService implements OnModuleDestroy, OnModuleInit {
 
   /**
    * Next playlist entry for this match. `roundNumber` is how many challenges
-   * have already been introduced; index that into the ordered playlist.
+   * have already been introduced.
+   *
+   * Survival keeps cycling the pinned catalog until only one active player
+   * remains — a short catalog must not invent a winner while hearts are tied.
    */
   private definitionForNextRound(
     match: MatchState,
@@ -1733,7 +1731,10 @@ export class MatchService implements OnModuleDestroy, OnModuleInit {
       match.pinnedPlaylist.length > 0
         ? match.pinnedPlaylist
         : this.challengeProvider.getPlaylist();
-    return playlist[match.roundNumber] ?? null;
+    if (playlist.length === 0) {
+      return null;
+    }
+    return playlist[match.roundNumber % playlist.length] ?? null;
   }
 
   private async startDevRoundLocked(

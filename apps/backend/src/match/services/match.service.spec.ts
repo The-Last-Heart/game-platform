@@ -668,7 +668,7 @@ describe('MatchService', () => {
     service.onModuleDestroy();
   });
 
-  it('rematch returns a new matchId', async () => {
+  it('rematch returns a new matchId with the caller as host', async () => {
     const clock = new FakeClock(5_000_000);
     const service = MatchService.forTests({ clock, nodeEnv: 'test' });
     const started = await service.startTraining({
@@ -687,6 +687,37 @@ describe('MatchService', () => {
     expect(rematched.matchId).not.toBe(started.matchId);
     expect(rematched.snapshot.mode).toBe('training');
     expect(rematched.snapshot.players).toHaveLength(1);
+    expect(rematched.snapshot.hostPlayerId).toBe(rematched.playerId);
+
+    service.onModuleDestroy();
+  });
+
+  it('rematch party joins the same lobby; first clicker is host', async () => {
+    const clock = new FakeClock(5_000_000);
+    const service = MatchService.forTests({ clock, nodeEnv: 'test' });
+    const created = await service.createQuickSurvivalMatch([
+      { displayName: 'Host', avatarColor: '#111111' },
+      { displayName: 'Guest', avatarColor: '#222222' },
+    ]);
+    const a = created.assignments[0]!;
+    const b = created.assignments[1]!;
+    for (const seat of created.assignments) {
+      await service.finalizeJoin(created.matchId, seat.playerId);
+    }
+
+    const store = service.getStoreForTests();
+    const match = await store.get(created.matchId);
+    match!.phase = 'completed';
+    match!.status = 'completed';
+    match!.winnerId = a.playerId;
+    await store.save(match!);
+
+    const first = await service.rematch(created.matchId, a.playerId);
+    const second = await service.rematch(created.matchId, b.playerId);
+    expect(second.matchId).toBe(first.matchId);
+    expect(first.snapshot.hostPlayerId).toBe(first.playerId);
+    expect(second.snapshot.players).toHaveLength(2);
+    expect(second.snapshot.hostPlayerId).toBe(first.playerId);
 
     service.onModuleDestroy();
   });
@@ -734,7 +765,7 @@ describe('MatchService', () => {
     service.onModuleDestroy();
   });
 
-  it('after the only playlist challenge, round_result finishes by standings', async () => {
+  it('after a playlist round, survivors continue with a cycled challenge', async () => {
     const clock = new FakeClock(5_000_000);
     const service = MatchService.forTests({ clock, nodeEnv: 'test' });
     const created = await service.createQuickSurvivalMatch([
@@ -750,20 +781,21 @@ describe('MatchService', () => {
     const store = service.getStoreForTests();
     const match = await store.get(created.matchId);
     expect(match).toBeTruthy();
-    // Simulate completed first (and only) playlist round awaiting hold expiry.
+    // Simulate completed first playlist round awaiting hold expiry — both still alive.
     match!.phase = 'round_result';
     match!.status = 'waiting';
     match!.roundNumber = 1;
     match!.phaseDeadlineAtMs = clock.nowMs();
     match!.phaseDeadlineMonoMs = clock.monoMs();
-    match!.players.get(hostId)!.hearts = 3;
+    match!.players.get(hostId)!.hearts = 2;
     match!.players.get(guestId)!.hearts = 2;
     await store.save(match!);
 
     await service.tickDue(created.matchId);
     const after = await store.get(created.matchId);
-    expect(after?.phase).toBe('completed');
-    expect(after?.winnerId).toBe(hostId);
+    expect(after?.phase).toBe('challenge_active');
+    expect(after?.winnerId).toBeNull();
+    expect(after?.currentChallenge).toBeTruthy();
 
     service.onModuleDestroy();
   });

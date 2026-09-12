@@ -364,7 +364,8 @@ class _AppEntryScreenState extends State<AppEntryScreen>
       child: ValueListenableBuilder<MatchViewState>(
         valueListenable: widget.controller.state,
         builder: (BuildContext context, MatchViewState matchState, _) {
-          final bool soloQuickSearch = matchState.inMatch &&
+          final bool soloQuickSearch = !widget.controller.isRematchLobby &&
+              matchState.inMatch &&
               matchState.mode == MatchMode.quickSurvival &&
               matchState.phase == MatchPhase.lobby &&
               matchState.players.length < 2;

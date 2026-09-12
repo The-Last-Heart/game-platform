@@ -260,7 +260,12 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(
-        find.text(resolver.resolve(TranslationKeys.winnerOther)),
+        find.text(
+          resolver.resolve(
+            TranslationKeys.winnerOther,
+            params: const <String, String>{'name': 'وجدي'},
+          ),
+        ),
         findsOneWidget,
       );
       expect(

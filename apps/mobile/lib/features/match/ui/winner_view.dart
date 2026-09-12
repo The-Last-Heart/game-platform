@@ -90,7 +90,12 @@ class WinnerView extends StatelessWidget {
           Text(
             isWinner
                 ? resolver.resolve(TranslationKeys.winnerYouLastHeart)
-                : resolver.resolve(TranslationKeys.winnerOther),
+                : resolver.resolve(
+                    TranslationKeys.winnerOther,
+                    params: <String, String>{
+                      'name': winnerLabel.isNotEmpty ? winnerLabel : '—',
+                    },
+                  ),
             style: Theme.of(context).textTheme.displayLarge?.copyWith(
               color: isWinner ? LhColors.warning : LhColors.text,
             ),

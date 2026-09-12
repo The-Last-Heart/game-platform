@@ -926,7 +926,7 @@ describe('WaitForSignal engine', () => {
     expect(match.nextPhaseAtMs).toBeTruthy();
   });
 
-  it('completeByStandings crowns the highest hearts then energy', () => {
+  it('completeByStandings crowns only a unique hearts leader', () => {
     const { engine } = setup();
     let match = fillSix(engine);
     match = engine.startChallenge(
@@ -954,6 +954,25 @@ describe('WaitForSignal engine', () => {
     expect(finished.match.phase).toBe('completed');
     expect(finished.match.winnerId).toBe('p0');
     expect(finished.events.some((e) => e.kind === 'match_finished')).toBe(true);
+  });
+
+  it('completeByStandings does not invent a winner on equal hearts', () => {
+    const { engine } = setup();
+    let match = fillSix(engine);
+    for (const player of match.players.values()) {
+      player.hearts = 2;
+      player.energy = 0;
+      player.status = 'active';
+    }
+    // Energy must not break a hearts tie.
+    match.players.get('p0')!.energy = 9;
+    match.players.get('p1')!.energy = 0;
+    const finished = engine.completeByStandings(match);
+    expect(finished.match.phase).toBe('halted');
+    expect(finished.match.winnerId).toBeNull();
+    expect(finished.events.some((e) => e.kind === 'match_finished')).toBe(
+      false,
+    );
   });
 });
 

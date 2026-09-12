@@ -27,9 +27,8 @@ export class DevFixtureProvider implements ChallengeDefinitionProvider {
   }
 
   /**
-   * Live playlist for the current content pin. One wait-for-signal round until
-   * LH-007 ships a multi-engine pack — do not silently repeat the same
-   * definition across rounds.
+   * Live playlist for the current content pin. With a single wait-for-signal
+   * definition the match service cycles this list until last-heart victory.
    */
   getPlaylist(): readonly ChallengeDefinition[] {
     return [this.getDefaultDev()];

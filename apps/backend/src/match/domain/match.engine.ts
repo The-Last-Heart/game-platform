@@ -959,8 +959,9 @@ export class MatchEngine {
   }
 
   /**
-   * End a live match when the challenge playlist is exhausted while multiple
-   * players remain active. Winner: most hearts, then most energy, then playerId.
+   * Fallback end when no playable catalog remains. Live survival crowns only a
+   * unique hearts leader — equal remaining hearts never invents a winner
+   * (energy / playerId must not break a hearts tie).
    */
   completeByStandings(match: MatchState): {
     match: MatchState;
@@ -970,14 +971,10 @@ export class MatchEngine {
       return { match, events: [] };
     }
     const next = this.cloneMatch(match);
-    const ranked = [...next.players.values()]
-      .filter((p) => p.status === 'active')
-      .sort((a, b) => {
-        if (b.hearts !== a.hearts) return b.hearts - a.hearts;
-        if (b.energy !== a.energy) return b.energy - a.energy;
-        return a.playerId.localeCompare(b.playerId);
-      });
-    if (ranked.length === 0) {
+    const alive = [...next.players.values()].filter(
+      (p) => p.status === 'active' && p.hearts > 0,
+    );
+    if (alive.length === 0) {
       next.status = 'resolving';
       next.phase = 'halted';
       next.currentChallenge = null;
@@ -995,9 +992,33 @@ export class MatchEngine {
         ],
       };
     }
+    const topHearts = Math.max(...alive.map((p) => p.hearts));
+    const leaders = alive.filter((p) => p.hearts === topHearts);
+    if (leaders.length !== 1) {
+      // Shared remaining hearts — do not invent a winner.
+      next.status = 'resolving';
+      next.phase = 'halted';
+      next.currentChallenge = null;
+      next.phaseDeadlineAtMs = null;
+      next.phaseDeadlineMonoMs = null;
+      next.nextPhaseAtMs = null;
+      const haltBump = this.bump(next);
+      return {
+        match: next,
+        events: [
+          haltBump,
+          {
+            kind: 'unsafe_zero_survivors',
+            sequence: next.sequence,
+            revision: next.revision,
+            serverTimestampMs: haltBump.serverTimestampMs,
+          },
+        ],
+      };
+    }
     next.status = 'completed';
     next.phase = 'completed';
-    next.winnerId = ranked[0]!.playerId;
+    next.winnerId = leaders[0]!.playerId;
     next.currentChallenge = null;
     next.phaseDeadlineAtMs = null;
     next.phaseDeadlineMonoMs = null;

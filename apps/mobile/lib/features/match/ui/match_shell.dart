@@ -149,7 +149,11 @@ class _MatchShellState extends State<MatchShell> {
           onRematch: widget.onRematch,
         );
       case MatchPhase.halted:
-        return HaltedView(state: state, onBackHome: widget.onBackHome);
+        return HaltedView(
+          state: state,
+          onBackHome: widget.onBackHome,
+          onRematch: widget.onRematch,
+        );
     }
   }
 }

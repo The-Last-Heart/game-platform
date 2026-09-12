@@ -118,6 +118,9 @@ class MatchSessionController {
   PendingSubmission? _pending;
   _PendingHandshake? _handshake;
 
+  /// Waiting in a rematch lobby from the end screen (not matchmaking search).
+  bool _rematchLobbyActive = false;
+
   String? _snapshotRequestCommandId;
   Timer? _snapshotRetryTimer;
   int _snapshotRetryAttempt = 0;
@@ -142,6 +145,12 @@ class MatchSessionController {
 
   /// Visible for tests: in-flight snapshot request command id.
   String? get snapshotRequestCommandIdForTest => _snapshotRequestCommandId;
+
+  /// True while seated in a rematch lobby opened from match.rematch.
+  bool get isRematchLobby =>
+      _rematchLobbyActive &&
+      state.value.inMatch &&
+      state.value.phase == MatchPhase.lobby;
 
   void _enqueue(Future<void> Function() job) {
     _queue = _queue.catchError((Object _) {}).then((_) async {
@@ -426,10 +435,19 @@ class MatchSessionController {
     final String? matchId = state.value.matchId;
     if (matchId == null) return;
     final String commandId = generateSecureId();
+    _rematchLobbyActive = true;
     _handshake = _PendingHandshake(
       kind: _HandshakeKind.join,
       commandId: commandId,
     );
+    // Leave terminal chrome immediately so the lobby can paint after accept.
+    if (state.value.lifecycle == SessionLifecycle.terminal) {
+      state.value = state.value.copyWith(
+        lifecycle: SessionLifecycle.connecting,
+        winnerId: () => null,
+        phase: MatchPhase.lobby,
+      );
+    }
     _sendCommandWithId(commandId, MessageTypes.matchRematch, <String, dynamic>{
       'matchId': matchId,
     });
@@ -1087,6 +1105,8 @@ class MatchSessionController {
         currentChallenge: switchedMatch ? () => null : null,
         answerStatus: switchedMatch ? AnswerSubmissionStatus.idle : null,
         answerChallengeInstanceId: switchedMatch ? () => null : null,
+        players: switchedMatch ? const <PlayerPublic>[] : null,
+        hostPlayerId: switchedMatch ? () => null : null,
         connectionError: () => null,
       );
       if (switchedMatch) {
@@ -1185,6 +1205,11 @@ class MatchSessionController {
 
     // Already bound: update answer confirmation from snapshot.
     if (view.lifecycle == SessionLifecycle.bound) {
+      if (view.phase != MatchPhase.lobby &&
+          view.phase != MatchPhase.completed &&
+          view.phase != MatchPhase.halted) {
+        _rematchLobbyActive = false;
+      }
       _updateAnswerFromSnapshot();
       if (recoveryJustConverged) {
         _reconcilePendingAfterRecovery();
@@ -1326,6 +1351,7 @@ class MatchSessionController {
         _matchmakingWaiter!.complete(null);
         _matchmakingWaiter = null;
       }
+      _rematchLobbyActive = false;
       state.value = state.value.copyWith(
         connectionError: () =>
             (messageKey != null && messageKey.startsWith('errors.'))
@@ -1570,6 +1596,7 @@ class MatchSessionController {
       await sessionStore.clear();
       _pending = null;
       _handshake = null;
+      _rematchLobbyActive = false;
       _devMatchStarting = false;
       _pendingRetriedThisEpisode = false;
       _clearRecoveryState(clearWatermark: true);

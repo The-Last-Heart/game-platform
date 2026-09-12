@@ -74,7 +74,7 @@ TranslationCatalog createBootstrapCatalog() {
         // ── Winner ──
         TranslationKeys.winnerTitle: 'انتهت المباراة!',
         TranslationKeys.winnerYou: 'أنت الفائز! 🏆',
-        TranslationKeys.winnerOther: 'الفائز: لاعب آخر',
+        TranslationKeys.winnerOther: 'الفائز: {name}',
         TranslationKeys.winnerBackHome: 'العودة للرئيسية',
 
         // ── Connection errors ──
@@ -289,7 +289,7 @@ TranslationCatalog createBootstrapCatalog() {
         // ── Winner ──
         TranslationKeys.winnerTitle: 'Match over!',
         TranslationKeys.winnerYou: 'You win! 🏆',
-        TranslationKeys.winnerOther: 'Winner: another player',
+        TranslationKeys.winnerOther: 'Winner: {name}',
         TranslationKeys.winnerBackHome: 'Back to home',
 
         // ── Connection errors ──
