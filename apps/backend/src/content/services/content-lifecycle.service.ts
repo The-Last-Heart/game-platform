@@ -6,7 +6,19 @@ import {
 } from '@nestjs/common';
 import {
   challengeDefinitionSchema,
+  validateEngineConfigs,
+  ENGINE_RUNTIME_READINESS,
   type ChallengeDefinitionContract,
+  type ContentLifecycleStatus,
+  type AdminStudioHomeSummary,
+  type AdminContentTemplateListQuery,
+  type AdminContentTemplateListResponse,
+  type AdminContentTemplateDetail,
+  type AdminCatalogProofReport,
+  type AdminChallengeAnalyticsQuery,
+  type AdminChallengeAnalyticsResponse,
+  type AdminContentDiffResponse,
+  type LaunchEngineId,
 } from '@thelastheart/contracts';
 import { createHash, randomUUID } from 'node:crypto';
 import { DatabaseService } from '../../database/database.service';
@@ -18,6 +30,8 @@ export class ContentLifecycleService {
     private readonly db: DatabaseService,
     private readonly audit: AdminAuditService,
   ) {}
+
+  // ── Existing methods ─────────────────────────────────────────────────────
 
   async listTemplates() {
     const result = await this.db.query<{
@@ -122,6 +136,22 @@ export class ContentLifecycleService {
         },
       });
     }
+
+    // Cross-validate engine configs
+    try {
+      validateEngineConfigs(def.engineId, def.clientConfig, def.serverConfig);
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Engine config validation failed';
+      throw new BadRequestException({
+        ok: false,
+        error: {
+          code: 'CONTENT_VALIDATION_FAILED',
+          message: 'Engine config validation failed',
+          details: [{ path: 'engineId', message, code: 'engine_config_invalid' }],
+        },
+      });
+    }
+
     return def;
   }
 
@@ -188,21 +218,6 @@ export class ContentLifecycleService {
     templateVersionId: string,
     notes?: string,
   ) {
-    return this.transitionVersion(
-      actorAdminId,
-      templateVersionId,
-      'draft',
-      'submitted',
-      'content.version.submit',
-      { notes },
-    );
-  }
-
-  async approve(
-    actorAdminId: string,
-    templateVersionId: string,
-    notes?: string,
-  ) {
     return this.db.tx(async (client) => {
       const row = await client.query<{ status: string }>(
         `SELECT status FROM content_template_versions WHERE id = $1::uuid FOR UPDATE`,
@@ -211,9 +226,69 @@ export class ContentLifecycleService {
       if (!row.rows[0]) {
         throw new NotFoundException('Template version not found');
       }
-      if (row.rows[0].status !== 'submitted') {
-        throw new ConflictException('Only submitted versions can be approved');
+      if (row.rows[0].status !== 'draft') {
+        throw new ConflictException('Only draft versions can be submitted');
       }
+      await client.query(
+        `UPDATE content_template_versions
+         SET status = 'submitted',
+             submitted_at = now(),
+             submitted_by_admin_id = $2::uuid,
+             validation_notes = COALESCE($3, validation_notes)
+         WHERE id = $1::uuid`,
+        [templateVersionId, actorAdminId, notes ?? null],
+      );
+      await this.audit.write(
+        {
+          actorAdminId,
+          action: 'content.version.submit',
+          entityType: 'content_template_version',
+          entityId: templateVersionId,
+          outcome: 'success',
+          metadata: { notes },
+        },
+        client,
+      );
+      return { templateVersionId, status: 'submitted' as const };
+    });
+  }
+
+  async approve(
+    actorAdminId: string,
+    templateVersionId: string,
+    notes?: string,
+  ) {
+    return this.db.tx(async (client) => {
+      const row = await client.query<{
+        status: string;
+        submitted_by_admin_id: string | null;
+      }>(
+        `SELECT status, submitted_by_admin_id
+         FROM content_template_versions WHERE id = $1::uuid FOR UPDATE`,
+        [templateVersionId],
+      );
+      if (!row.rows[0]) {
+        throw new NotFoundException('Template version not found');
+      }
+      if (
+        row.rows[0].status !== 'submitted' &&
+        row.rows[0].status !== 'in_review'
+      ) {
+        throw new ConflictException(
+          'Only submitted or in_review versions can be approved',
+        );
+      }
+
+      // Separation of Duties: approver cannot be the submitter
+      if (
+        row.rows[0].submitted_by_admin_id &&
+        row.rows[0].submitted_by_admin_id === actorAdminId
+      ) {
+        throw new ConflictException(
+          'Approver must be different from the submitter (Separation of Duties)',
+        );
+      }
+
       await client.query(
         `UPDATE content_template_versions
          SET status = 'approved',
@@ -427,6 +502,645 @@ export class ContentLifecycleService {
       );
       return { releaseId, versionLabel: input.versionLabel };
     });
+  }
+
+  // ── LH-010 Studio methods ───────────────────────────────────────────────
+
+  async getStudioHomeSummary(): Promise<AdminStudioHomeSummary> {
+    const statusCounts = await this.db.query<{ status: string; cnt: string }>(
+      `SELECT status, count(*)::text AS cnt
+       FROM content_template_versions
+       GROUP BY status`,
+    );
+    const counts = {
+      drafts: 0,
+      submitted: 0,
+      inReview: 0,
+      approved: 0,
+      scheduled: 0,
+      published: 0,
+      paused: 0,
+    };
+    for (const row of statusCounts.rows) {
+      const n = parseInt(row.cnt, 10);
+      switch (row.status) {
+        case 'draft': counts.drafts = n; break;
+        case 'submitted': counts.submitted = n; break;
+        case 'in_review': counts.inReview = n; break;
+        case 'approved': counts.approved = n; break;
+        case 'scheduled': counts.scheduled = n; break;
+        case 'published': counts.published = n; break;
+        case 'paused': counts.paused = n; break;
+      }
+    }
+
+    const recent = await this.db.query<{
+      id: string;
+      kind: string;
+      version_label: string;
+      published_at: Date;
+    }>(
+      `SELECT id::text, kind, version_label, published_at
+       FROM content_releases
+       ORDER BY published_at DESC
+       LIMIT 10`,
+    );
+
+    return {
+      counts,
+      recentPublishes: recent.rows.map((r) => ({
+        releaseId: r.id,
+        kind: r.kind as AdminStudioHomeSummary['recentPublishes'][number]['kind'],
+        versionLabel: r.version_label,
+        publishedAt: r.published_at.toISOString(),
+      })),
+    };
+  }
+
+  async listTemplatesFiltered(
+    query: AdminContentTemplateListQuery,
+  ): Promise<AdminContentTemplateListResponse> {
+    const conditions: string[] = [];
+    const params: unknown[] = [];
+    let paramIdx = 0;
+
+    if (query.status) {
+      paramIdx++;
+      conditions.push(`t.status = $${paramIdx}`);
+      params.push(query.status);
+    }
+    if (query.familyId) {
+      paramIdx++;
+      conditions.push(`t.family_id = $${paramIdx}`);
+      params.push(query.familyId);
+    }
+    if (query.search) {
+      paramIdx++;
+      conditions.push(`t.internal_title ILIKE $${paramIdx}`);
+      params.push(`%${query.search}%`);
+    }
+
+    const where = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
+    const countResult = await this.db.query<{ cnt: string }>(
+      `SELECT count(*)::text AS cnt FROM content_templates t ${where}`,
+      params,
+    );
+    const total = parseInt(countResult.rows[0]?.cnt ?? '0', 10);
+
+    const offset = (query.page - 1) * query.pageSize;
+    paramIdx++;
+    const limitParam = paramIdx;
+    params.push(query.pageSize);
+    paramIdx++;
+    const offsetParam = paramIdx;
+    params.push(offset);
+
+    const rows = await this.db.query<{
+      id: string;
+      slug: string;
+      internal_title: string;
+      family_id: string;
+      category_id: string;
+      status: string;
+      latest_version: number | null;
+      engine_id: string | null;
+      difficulty: string | null;
+      updated_at: Date;
+      latest_approved_version_id: string | null;
+    }>(
+      `SELECT t.id::text, t.slug, t.internal_title, t.family_id, t.category_id,
+              t.status, t.updated_at,
+              (SELECT max(v.version) FROM content_template_versions v WHERE v.template_id = t.id) AS latest_version,
+              (SELECT v.definition->>'engineId' FROM content_template_versions v WHERE v.template_id = t.id ORDER BY v.version DESC LIMIT 1) AS engine_id,
+              (SELECT v.definition->>'difficulty' FROM content_template_versions v WHERE v.template_id = t.id ORDER BY v.version DESC LIMIT 1) AS difficulty,
+              (SELECT v.id::text FROM content_template_versions v
+                WHERE v.template_id = t.id AND v.status IN ('approved','published')
+                ORDER BY v.version DESC LIMIT 1) AS latest_approved_version_id
+       FROM content_templates t
+       ${where}
+       ORDER BY t.updated_at DESC
+       LIMIT $${limitParam} OFFSET $${offsetParam}`,
+      params,
+    );
+
+    return {
+      page: query.page,
+      pageSize: query.pageSize,
+      total,
+      items: rows.rows.map((r) => ({
+        templateId: r.id,
+        slug: r.slug,
+        internalTitle: r.internal_title,
+        familyId: r.family_id,
+        categoryId: r.category_id,
+        status: r.status as ContentLifecycleStatus,
+        latestVersion: r.latest_version,
+        publishedReleaseId: null,
+        engineId: r.engine_id,
+        difficulty: r.difficulty as 'easy' | 'medium' | 'hard' | null,
+        updatedAt: r.updated_at.toISOString(),
+        latestApprovedVersionId: r.latest_approved_version_id,
+      })),
+    };
+  }
+
+  async getTemplateDetail(templateId: string): Promise<AdminContentTemplateDetail> {
+    const tmpl = await this.db.query<{
+      id: string;
+      slug: string;
+      internal_title: string;
+      family_id: string;
+      category_id: string;
+      status: string;
+    }>(
+      `SELECT id::text, slug, internal_title, family_id, category_id, status
+       FROM content_templates WHERE id = $1::uuid`,
+      [templateId],
+    );
+    if (!tmpl.rows[0]) {
+      throw new NotFoundException('Template not found');
+    }
+    const t = tmpl.rows[0];
+
+    const versions = await this.db.query<{
+      id: string;
+      template_id: string;
+      version: number;
+      status: string;
+      definition: unknown;
+      validation_notes: string | null;
+      created_at: Date;
+      approved_at: Date | null;
+      approved_by_admin_id: string | null;
+    }>(
+      `SELECT id::text, template_id::text, version, status, definition,
+              validation_notes, created_at, approved_at, approved_by_admin_id::text
+       FROM content_template_versions
+       WHERE template_id = $1::uuid
+       ORDER BY version DESC`,
+      [templateId],
+    );
+
+    return {
+      templateId: t.id,
+      slug: t.slug,
+      internalTitle: t.internal_title,
+      familyId: t.family_id,
+      categoryId: t.category_id,
+      status: t.status as ContentLifecycleStatus,
+      versions: versions.rows.map((v) => ({
+        templateVersionId: v.id,
+        templateId: v.template_id,
+        version: v.version,
+        status: v.status as ContentLifecycleStatus,
+        definition: challengeDefinitionSchema.parse(v.definition),
+        validationNotes: v.validation_notes,
+        createdAt: v.created_at.toISOString(),
+        approvedAt: v.approved_at?.toISOString() ?? null,
+        approvedByAdminId: v.approved_by_admin_id,
+      })),
+    };
+  }
+
+  async updateDraft(
+    actorAdminId: string,
+    templateVersionId: string,
+    definition: unknown,
+  ) {
+    const def = this.validateDefinition(definition);
+    const hash = createHash('sha256')
+      .update(JSON.stringify(def))
+      .digest('hex');
+
+    return this.db.tx(async (client) => {
+      const row = await client.query<{ status: string }>(
+        `SELECT status FROM content_template_versions WHERE id = $1::uuid FOR UPDATE`,
+        [templateVersionId],
+      );
+      if (!row.rows[0]) {
+        throw new NotFoundException('Template version not found');
+      }
+      if (row.rows[0].status !== 'draft') {
+        throw new ConflictException('Only draft versions can be updated in-place');
+      }
+      await client.query(
+        `UPDATE content_template_versions
+         SET definition = $2::jsonb,
+             validation_hash = $3
+         WHERE id = $1::uuid`,
+        [templateVersionId, JSON.stringify(def), hash],
+      );
+      await this.audit.write(
+        {
+          actorAdminId,
+          action: 'content.draft.update',
+          entityType: 'content_template_version',
+          entityId: templateVersionId,
+          outcome: 'success',
+          metadata: {},
+        },
+        client,
+      );
+      return { templateVersionId, status: 'draft' as const };
+    });
+  }
+
+  async reject(
+    actorAdminId: string,
+    templateVersionId: string,
+    notes?: string,
+  ) {
+    return this.db.tx(async (client) => {
+      const row = await client.query<{ status: string }>(
+        `SELECT status FROM content_template_versions WHERE id = $1::uuid FOR UPDATE`,
+        [templateVersionId],
+      );
+      if (!row.rows[0]) {
+        throw new NotFoundException('Template version not found');
+      }
+      if (
+        row.rows[0].status !== 'submitted' &&
+        row.rows[0].status !== 'in_review'
+      ) {
+        throw new ConflictException(
+          'Only submitted or in_review versions can be rejected to draft',
+        );
+      }
+      await client.query(
+        `UPDATE content_template_versions
+         SET status = 'draft',
+             validation_notes = COALESCE($2, validation_notes)
+         WHERE id = $1::uuid`,
+        [templateVersionId, notes ?? null],
+      );
+      await this.audit.write(
+        {
+          actorAdminId,
+          action: 'content.version.reject',
+          entityType: 'content_template_version',
+          entityId: templateVersionId,
+          outcome: 'success',
+          metadata: { notes },
+        },
+        client,
+      );
+      return { templateVersionId, status: 'draft' as const };
+    });
+  }
+
+  async markInReview(actorAdminId: string, templateVersionId: string) {
+    return this.transitionVersion(
+      actorAdminId,
+      templateVersionId,
+      'submitted',
+      'in_review',
+      'content.version.in_review',
+      {},
+    );
+  }
+
+  async retire(
+    actorAdminId: string,
+    input: { templateId?: string; templateVersionId?: string },
+  ) {
+    return this.db.tx(async (client) => {
+      if (input.templateVersionId) {
+        await client.query(
+          `UPDATE content_template_versions SET status = 'retired' WHERE id = $1::uuid`,
+          [input.templateVersionId],
+        );
+      }
+      if (input.templateId) {
+        await client.query(
+          `UPDATE content_templates SET status = 'retired' WHERE id = $1::uuid`,
+          [input.templateId],
+        );
+        await client.query(
+          `UPDATE content_template_versions SET status = 'retired'
+           WHERE template_id = $1::uuid AND status NOT IN ('retired')`,
+          [input.templateId],
+        );
+      }
+      await this.audit.write(
+        {
+          actorAdminId,
+          action: 'content.retire',
+          entityType: input.templateId ? 'content_template' : 'content_template_version',
+          entityId: input.templateId ?? input.templateVersionId ?? null,
+          outcome: 'success',
+          metadata: {},
+        },
+        client,
+      );
+      return { status: 'retired' as const };
+    });
+  }
+
+  async publishCatalogCompose(
+    actorAdminId: string,
+    input: {
+      versionLabel: string;
+      changelog?: string;
+      immediate: boolean;
+      scheduleAt?: string;
+      entries: Array<{
+        templateVersionId: string;
+        definitionId: string;
+        weight: number;
+        repetitionCooldownRounds: number;
+        roundMin?: number;
+        roundMax?: number;
+        paused?: boolean;
+      }>;
+    },
+  ) {
+    // Reject entries whose engine is schema_only for live catalogs
+    for (const entry of input.entries) {
+      const versionRow = await this.db.query<{ definition: { engineId: string } }>(
+        `SELECT definition FROM content_template_versions WHERE id = $1::uuid`,
+        [entry.templateVersionId],
+      );
+      const engineId = versionRow.rows[0]?.definition?.engineId;
+      if (
+        engineId &&
+        ENGINE_RUNTIME_READINESS[engineId as LaunchEngineId] === 'schema_only'
+      ) {
+        throw new BadRequestException({
+          ok: false,
+          error: {
+            code: 'SCHEMA_ONLY_ENGINE',
+            message: `Engine "${engineId}" is schema_only and cannot be included in a live catalog`,
+          },
+        });
+      }
+    }
+
+    if (!input.immediate && input.scheduleAt) {
+      const releaseId = randomUUID();
+      const payload = {
+        releaseId,
+        versionLabel: input.versionLabel,
+        entries: input.entries,
+        changelog: input.changelog,
+      };
+      await this.db.query(
+        `INSERT INTO content_scheduled_publishes (id, kind, payload, publish_at, created_by)
+         VALUES ($1::uuid, 'challenge_catalog', $2::jsonb, $3::timestamptz, $4::uuid)`,
+        [releaseId, JSON.stringify(payload), input.scheduleAt, actorAdminId],
+      );
+      await this.audit.write({
+        actorAdminId,
+        action: 'content.catalog.schedule',
+        entityType: 'content_scheduled_publish',
+        entityId: releaseId,
+        outcome: 'success',
+        metadata: { scheduleAt: input.scheduleAt },
+      });
+      return { releaseId, scheduled: true, versionLabel: input.versionLabel };
+    }
+
+    return this.db.tx(async (client) => {
+      await client.query('SELECT pg_advisory_xact_lock($1)', [606006]);
+      const releaseId = randomUUID();
+      const payload = {
+        releaseId,
+        versionLabel: input.versionLabel,
+        entries: input.entries,
+        changelog: input.changelog,
+      };
+      await client.query(
+        `INSERT INTO content_releases (id, kind, version_label, payload, changelog, published_by_admin_id)
+         VALUES ($1::uuid, 'challenge_catalog', $2, $3::jsonb, $4, $5::uuid)`,
+        [
+          releaseId,
+          input.versionLabel,
+          JSON.stringify(payload),
+          input.changelog ?? null,
+          actorAdminId,
+        ],
+      );
+      await client.query(
+        `INSERT INTO content_current_releases (kind, release_id, updated_at)
+         VALUES ('challenge_catalog', $1::uuid, now())
+         ON CONFLICT (kind) DO UPDATE
+           SET release_id = EXCLUDED.release_id, updated_at = now()`,
+        [releaseId],
+      );
+      await this.audit.write(
+        {
+          actorAdminId,
+          action: 'content.catalog.compose',
+          entityType: 'content_release',
+          entityId: releaseId,
+          outcome: 'success',
+          metadata: { versionLabel: input.versionLabel, entries: input.entries.length },
+        },
+        client,
+      );
+      return { releaseId, scheduled: false, versionLabel: input.versionLabel };
+    });
+  }
+
+  async publishKindRelease(
+    actorAdminId: string,
+    kind: 'localization' | 'power_configuration' | 'game_mode_rules' | 'daily_goals',
+    input: {
+      versionLabel: string;
+      payload: unknown;
+      changelog?: string;
+      immediate: boolean;
+      scheduleAt?: string;
+    },
+  ) {
+    if (!input.immediate && input.scheduleAt) {
+      const releaseId = randomUUID();
+      await this.db.query(
+        `INSERT INTO content_scheduled_publishes (id, kind, payload, publish_at, created_by)
+         VALUES ($1::uuid, $2, $3::jsonb, $4::timestamptz, $5::uuid)`,
+        [releaseId, kind, JSON.stringify(input.payload), input.scheduleAt, actorAdminId],
+      );
+      return { releaseId, scheduled: true, versionLabel: input.versionLabel };
+    }
+
+    return this.db.tx(async (client) => {
+      const releaseId = randomUUID();
+      const payload =
+        typeof input.payload === 'object' && input.payload !== null
+          ? { ...input.payload as Record<string, unknown>, releaseId, versionLabel: input.versionLabel }
+          : { releaseId, versionLabel: input.versionLabel };
+      await client.query(
+        `INSERT INTO content_releases (id, kind, version_label, payload, changelog, published_by_admin_id)
+         VALUES ($1::uuid, $2, $3, $4::jsonb, $5, $6::uuid)`,
+        [releaseId, kind, input.versionLabel, JSON.stringify(payload), input.changelog ?? null, actorAdminId],
+      );
+      await client.query(
+        `INSERT INTO content_current_releases (kind, release_id, updated_at)
+         VALUES ($1, $2::uuid, now())
+         ON CONFLICT (kind) DO UPDATE
+           SET release_id = EXCLUDED.release_id, updated_at = now()`,
+        [kind, releaseId],
+      );
+      await this.audit.write(
+        {
+          actorAdminId,
+          action: `content.${kind}.publish`,
+          entityType: 'content_release',
+          entityId: releaseId,
+          outcome: 'success',
+          metadata: { versionLabel: input.versionLabel },
+        },
+        client,
+      );
+      return { releaseId, scheduled: false, versionLabel: input.versionLabel };
+    });
+  }
+
+  computeCatalogProof(
+    entries: Array<{ definitionId: string; engineId?: string }>,
+    _localizationKeys?: string[],
+  ): AdminCatalogProofReport {
+    const missingArKeys: string[] = [];
+    const schemaOnlyEngines: string[] = [];
+
+    for (const entry of entries) {
+      if (
+        entry.engineId &&
+        ENGINE_RUNTIME_READINESS[entry.engineId as LaunchEngineId] === 'schema_only'
+      ) {
+        schemaOnlyEngines.push(entry.engineId);
+      }
+    }
+    const eligible = entries.filter(
+      (e) =>
+        !e.engineId ||
+        ENGINE_RUNTIME_READINESS[e.engineId as LaunchEngineId] !== 'schema_only',
+    );
+    const emptyPlaylist = eligible.length === 0;
+    return {
+      missingArKeys,
+      schemaOnlyEngines,
+      emptyPlaylist,
+      valid: schemaOnlyEngines.length === 0 && !emptyPlaylist,
+    };
+  }
+
+  async getVersionDiff(
+    versionIdA: string,
+    versionIdB: string,
+  ): Promise<AdminContentDiffResponse> {
+    const [a, b] = await Promise.all([
+      this.db.query<{ version: number; definition: Record<string, unknown> }>(
+        `SELECT version, definition FROM content_template_versions WHERE id = $1::uuid`,
+        [versionIdA],
+      ),
+      this.db.query<{ version: number; definition: Record<string, unknown> }>(
+        `SELECT version, definition FROM content_template_versions WHERE id = $1::uuid`,
+        [versionIdB],
+      ),
+    ]);
+    if (!a.rows[0] || !b.rows[0]) {
+      throw new NotFoundException('Version not found');
+    }
+    const defA = a.rows[0].definition;
+    const defB = b.rows[0].definition;
+    const changes: Array<{ path: string; before?: unknown; after?: unknown }> = [];
+    const allKeys = new Set([...Object.keys(defA), ...Object.keys(defB)]);
+    for (const key of allKeys) {
+      const av = JSON.stringify(defA[key]);
+      const bv = JSON.stringify(defB[key]);
+      if (av !== bv) {
+        changes.push({ path: key, before: defA[key], after: defB[key] });
+      }
+    }
+    return {
+      versionA: a.rows[0].version,
+      versionB: b.rows[0].version,
+      changes,
+    };
+  }
+
+  async listChallengeAnalytics(
+    query: AdminChallengeAnalyticsQuery,
+  ): Promise<AdminChallengeAnalyticsResponse> {
+    const conditions: string[] = [];
+    const params: unknown[] = [];
+    let paramIdx = 0;
+
+    if (query.engineId) {
+      paramIdx++;
+      conditions.push(`engine_id = $${paramIdx}`);
+      params.push(query.engineId);
+    }
+    if (query.definitionId) {
+      paramIdx++;
+      conditions.push(`definition_id = $${paramIdx}`);
+      params.push(query.definitionId);
+    }
+    if (query.fromDate) {
+      paramIdx++;
+      conditions.push(`created_at >= $${paramIdx}::timestamptz`);
+      params.push(query.fromDate);
+    }
+    if (query.toDate) {
+      paramIdx++;
+      conditions.push(`created_at <= $${paramIdx}::timestamptz`);
+      params.push(query.toDate);
+    }
+
+    const where = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
+
+    const countResult = await this.db.query<{ cnt: string }>(
+      `SELECT count(DISTINCT (definition_id, engine_id))::text AS cnt
+       FROM challenge_attempt_events ${where}`,
+      params,
+    );
+    const total = parseInt(countResult.rows[0]?.cnt ?? '0', 10);
+
+    const offset = (query.page - 1) * query.pageSize;
+    paramIdx++;
+    const limitP = paramIdx;
+    params.push(query.pageSize);
+    paramIdx++;
+    const offsetP = paramIdx;
+    params.push(offset);
+
+    const rows = await this.db.query<{
+      definition_id: string;
+      engine_id: string;
+      total_attempts: string;
+      success_count: string;
+      failure_count: string;
+      timeout_count: string;
+      avg_measure_ms: number | null;
+    }>(
+      `SELECT definition_id, engine_id,
+              count(*)::text AS total_attempts,
+              count(*) FILTER (WHERE outcome = 'success')::text AS success_count,
+              count(*) FILTER (WHERE outcome = 'failure')::text AS failure_count,
+              count(*) FILTER (WHERE outcome = 'timeout')::text AS timeout_count,
+              avg(measure_ms) AS avg_measure_ms
+       FROM challenge_attempt_events
+       ${where}
+       GROUP BY definition_id, engine_id
+       ORDER BY count(*) DESC
+       LIMIT $${limitP} OFFSET $${offsetP}`,
+      params,
+    );
+
+    return {
+      page: query.page,
+      pageSize: query.pageSize,
+      total,
+      items: rows.rows.map((r) => ({
+        definitionId: r.definition_id,
+        engineId: r.engine_id,
+        totalAttempts: parseInt(r.total_attempts, 10),
+        successCount: parseInt(r.success_count, 10),
+        failureCount: parseInt(r.failure_count, 10),
+        timeoutCount: parseInt(r.timeout_count, 10),
+        avgMeasureMs: r.avg_measure_ms,
+      })),
+    };
   }
 
   private async transitionVersion(

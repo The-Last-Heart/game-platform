@@ -10,7 +10,11 @@ Previously closed: **LH-001 → LH-007**.
 
 ## Current milestone
 
-**LH-009 — Advanced Challenge Pack** — first incomplete (see [LH-009.md](./LH-009.md)).
+**LH-010 — Full Challenge Studio and Content Operations** — in progress (see [LH-010.md](./LH-010.md)).
+
+## Deferred
+
+**LH-009 — Advanced Challenge Pack** — deferred by product owner until Challenge Studio ships; Studio registers schema-only forms for those families now.
 
 ## LH-008 close summary
 

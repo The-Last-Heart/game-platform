@@ -814,6 +814,7 @@ export class MatchService implements OnModuleDestroy, OnModuleInit {
         releasePins = await this.releases.resolveCurrentPins();
         pinnedPlaylist = await this.releases.getPlaylistForCatalogRelease(
           releasePins.challengeCatalogReleaseId,
+          { mode: options.mode },
         );
       } catch (error) {
         this.logger.warn({
@@ -2089,6 +2090,31 @@ export class MatchService implements OnModuleDestroy, OnModuleInit {
     if (resolveEvents.length === 0) {
       return;
     }
+
+    // Best-effort challenge attempt analytics write
+    if (
+      match.currentChallenge?.status === 'resolved' &&
+      this.releases
+    ) {
+      const challenge = match.currentChallenge;
+      for (const resolution of challenge.resolutions ?? []) {
+        const player = match.players.get(resolution.playerId);
+        if (!player || player.isBot) continue;
+        void this.releases.writeChallengeAttempt({
+          matchId: match.matchId,
+          definitionId: challenge.definitionId,
+          definitionVersion: challenge.definitionVersion,
+          engineId: challenge.engineId,
+          outcome: resolution.outcome === 'skipped_spectator' ? 'timeout' : resolution.outcome,
+          heartDelta: resolution.heartsDelta,
+          energyDelta: resolution.energyDelta,
+          measureMs: resolution.measureMs,
+          mode: match.mode,
+          roundNumber: match.roundNumber,
+        });
+      }
+    }
+
     if (
       match.status === 'completed' ||
       match.winnerId != null ||

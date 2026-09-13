@@ -8,6 +8,12 @@ export const LAUNCH_ENGINE_IDS = [
   'tap.precision',
   'memory.sequence',
   'hold.multitouch',
+  // LH-009 schema-only engines (Studio forms only — no runtime evaluator yet)
+  'motion.shake',
+  'motion.tilt_balance',
+  'audio.cue',
+  'social.pair_sync',
+  'tactical.risk_choice',
 ] as const;
 
 export const launchEngineIdSchema = z.enum(LAUNCH_ENGINE_IDS);
@@ -393,8 +399,184 @@ export function parseHoldMultitouchAnswer(input: unknown) {
 }
 
 // ---------------------------------------------------------------------------
+// 7. motion.shake (schema_only)
+// ---------------------------------------------------------------------------
+
+export const motionShakeClientConfigSchema = z
+  .object({
+    categoryKey: translationKey,
+    promptKey: translationKey,
+    progressKey: translationKey,
+  })
+  .strict();
+export type MotionShakeClientConfig = z.infer<typeof motionShakeClientConfigSchema>;
+
+export const motionShakeServerConfigSchema = z
+  .object({
+    requiredShakeCount: z.number().int().positive().max(100),
+    noiseThreshold: z.number().min(0).max(100).default(5),
+  })
+  .strict();
+export type MotionShakeServerConfig = z.infer<typeof motionShakeServerConfigSchema>;
+
+export const motionShakeAnswerSchema = z
+  .object({
+    shakeCount: z.number().int().nonnegative().max(200),
+  })
+  .strict();
+export type MotionShakeAnswer = z.infer<typeof motionShakeAnswerSchema>;
+
+// ---------------------------------------------------------------------------
+// 8. motion.tilt_balance (schema_only)
+// ---------------------------------------------------------------------------
+
+export const motionTiltBalanceClientConfigSchema = z
+  .object({
+    categoryKey: translationKey,
+    promptKey: translationKey,
+  })
+  .strict();
+export type MotionTiltBalanceClientConfig = z.infer<typeof motionTiltBalanceClientConfigSchema>;
+
+export const motionTiltBalanceServerConfigSchema = z
+  .object({
+    targetX: z.number().min(-1).max(1),
+    targetY: z.number().min(-1).max(1),
+    holdMs: positiveMs,
+    varianceTolerance: z.number().min(0).max(1).default(0.15),
+  })
+  .strict();
+export type MotionTiltBalanceServerConfig = z.infer<typeof motionTiltBalanceServerConfigSchema>;
+
+export const motionTiltBalanceAnswerSchema = z
+  .object({
+    finalX: z.number().finite(),
+    finalY: z.number().finite(),
+    heldMs: nonNegMs,
+  })
+  .strict();
+export type MotionTiltBalanceAnswer = z.infer<typeof motionTiltBalanceAnswerSchema>;
+
+// ---------------------------------------------------------------------------
+// 9. audio.cue (schema_only)
+// ---------------------------------------------------------------------------
+
+export const audioCueClientConfigSchema = z
+  .object({
+    categoryKey: translationKey,
+    promptKey: translationKey,
+    visualFallbackKey: translationKey,
+    hapticFallbackKey: translationKey,
+  })
+  .strict();
+export type AudioCueClientConfig = z.infer<typeof audioCueClientConfigSchema>;
+
+export const audioCueServerConfigSchema = z
+  .object({
+    pulseCount: z.number().int().positive().max(20),
+  })
+  .strict();
+export type AudioCueServerConfig = z.infer<typeof audioCueServerConfigSchema>;
+
+export const audioCueAnswerSchema = z
+  .object({
+    reportedPulseCount: z.number().int().nonnegative().max(30),
+  })
+  .strict();
+export type AudioCueAnswer = z.infer<typeof audioCueAnswerSchema>;
+
+// ---------------------------------------------------------------------------
+// 10. social.pair_sync (schema_only)
+// ---------------------------------------------------------------------------
+
+export const socialPairSyncClientConfigSchema = z
+  .object({
+    categoryKey: translationKey,
+    promptKey: translationKey,
+    partnerRoleKeys: z.array(translationKey).min(1).max(4),
+  })
+  .strict();
+export type SocialPairSyncClientConfig = z.infer<typeof socialPairSyncClientConfigSchema>;
+
+export const socialPairSyncServerConfigSchema = z
+  .object({
+    partnerRoleKeys: z.array(translationKey).min(1).max(4),
+    syncWindowMs: positiveMs,
+  })
+  .strict();
+export type SocialPairSyncServerConfig = z.infer<typeof socialPairSyncServerConfigSchema>;
+
+export const socialPairSyncAnswerSchema = z
+  .object({
+    synced: z.boolean(),
+  })
+  .strict();
+export type SocialPairSyncAnswer = z.infer<typeof socialPairSyncAnswerSchema>;
+
+// ---------------------------------------------------------------------------
+// 11. tactical.risk_choice (schema_only)
+// ---------------------------------------------------------------------------
+
+export const tacticalRiskChoiceClientConfigSchema = z
+  .object({
+    categoryKey: translationKey,
+    promptKey: translationKey,
+    optionKeys: z.array(optionKey).min(2).max(4),
+  })
+  .strict()
+  .superRefine((value, ctx) => {
+    if (new Set(value.optionKeys).size !== value.optionKeys.length) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'optionKeys must be unique',
+        path: ['optionKeys'],
+      });
+    }
+  });
+export type TacticalRiskChoiceClientConfig = z.infer<typeof tacticalRiskChoiceClientConfigSchema>;
+
+export const tacticalRiskChoiceServerConfigSchema = z
+  .object({
+    optionKeys: z.array(optionKey).min(2).max(4),
+    riskWeights: z.array(z.number().int().min(0).max(10_000)).min(2).max(4),
+  })
+  .strict()
+  .superRefine((value, ctx) => {
+    if (value.optionKeys.length !== value.riskWeights.length) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'riskWeights length must match optionKeys length',
+        path: ['riskWeights'],
+      });
+    }
+  });
+export type TacticalRiskChoiceServerConfig = z.infer<typeof tacticalRiskChoiceServerConfigSchema>;
+
+export const tacticalRiskChoiceAnswerSchema = z
+  .object({
+    chosenOptionKey: optionKey,
+  })
+  .strict();
+export type TacticalRiskChoiceAnswer = z.infer<typeof tacticalRiskChoiceAnswerSchema>;
+
+// ---------------------------------------------------------------------------
 // Cross-engine validators
 // ---------------------------------------------------------------------------
+
+/** Runtime readiness for each engine: 'live' engines have evaluators; 'schema_only' have schemas but no runtime. */
+export const ENGINE_RUNTIME_READINESS: Record<LaunchEngineId, 'live' | 'schema_only'> = {
+  'reaction.wait_for_signal': 'live',
+  'trap.no_touch': 'live',
+  'gesture.reverse_swipe': 'live',
+  'tap.precision': 'live',
+  'memory.sequence': 'live',
+  'hold.multitouch': 'live',
+  'motion.shake': 'schema_only',
+  'motion.tilt_balance': 'schema_only',
+  'audio.cue': 'schema_only',
+  'social.pair_sync': 'schema_only',
+  'tactical.risk_choice': 'schema_only',
+};
 
 type EngineSchemaPair = {
   client: z.ZodType;
@@ -433,6 +615,31 @@ const ENGINE_SCHEMAS: Record<LaunchEngineId, EngineSchemaPair> = {
     server: holdMultitouchServerConfigSchema,
     answer: holdMultitouchAnswerSchema,
   },
+  'motion.shake': {
+    client: motionShakeClientConfigSchema,
+    server: motionShakeServerConfigSchema,
+    answer: motionShakeAnswerSchema,
+  },
+  'motion.tilt_balance': {
+    client: motionTiltBalanceClientConfigSchema,
+    server: motionTiltBalanceServerConfigSchema,
+    answer: motionTiltBalanceAnswerSchema,
+  },
+  'audio.cue': {
+    client: audioCueClientConfigSchema,
+    server: audioCueServerConfigSchema,
+    answer: audioCueAnswerSchema,
+  },
+  'social.pair_sync': {
+    client: socialPairSyncClientConfigSchema,
+    server: socialPairSyncServerConfigSchema,
+    answer: socialPairSyncAnswerSchema,
+  },
+  'tactical.risk_choice': {
+    client: tacticalRiskChoiceClientConfigSchema,
+    server: tacticalRiskChoiceServerConfigSchema,
+    answer: tacticalRiskChoiceAnswerSchema,
+  },
 };
 
 export type ValidatedEngineConfigs =
@@ -465,6 +672,31 @@ export type ValidatedEngineConfigs =
       engineId: 'hold.multitouch';
       clientConfig: HoldMultitouchClientConfig;
       serverConfig: HoldMultitouchServerConfig;
+    }
+  | {
+      engineId: 'motion.shake';
+      clientConfig: MotionShakeClientConfig;
+      serverConfig: MotionShakeServerConfig;
+    }
+  | {
+      engineId: 'motion.tilt_balance';
+      clientConfig: MotionTiltBalanceClientConfig;
+      serverConfig: MotionTiltBalanceServerConfig;
+    }
+  | {
+      engineId: 'audio.cue';
+      clientConfig: AudioCueClientConfig;
+      serverConfig: AudioCueServerConfig;
+    }
+  | {
+      engineId: 'social.pair_sync';
+      clientConfig: SocialPairSyncClientConfig;
+      serverConfig: SocialPairSyncServerConfig;
+    }
+  | {
+      engineId: 'tactical.risk_choice';
+      clientConfig: TacticalRiskChoiceClientConfig;
+      serverConfig: TacticalRiskChoiceServerConfig;
     };
 
 export type ValidatedEngineAnswer =
@@ -479,7 +711,12 @@ export type ValidatedEngineAnswer =
     }
   | { engineId: 'tap.precision'; answer: TapPrecisionAnswer }
   | { engineId: 'memory.sequence'; answer: MemorySequenceAnswer }
-  | { engineId: 'hold.multitouch'; answer: HoldMultitouchAnswer };
+  | { engineId: 'hold.multitouch'; answer: HoldMultitouchAnswer }
+  | { engineId: 'motion.shake'; answer: MotionShakeAnswer }
+  | { engineId: 'motion.tilt_balance'; answer: MotionTiltBalanceAnswer }
+  | { engineId: 'audio.cue'; answer: AudioCueAnswer }
+  | { engineId: 'social.pair_sync'; answer: SocialPairSyncAnswer }
+  | { engineId: 'tactical.risk_choice'; answer: TacticalRiskChoiceAnswer };
 
 function assertKnownEngineId(engineId: string): LaunchEngineId {
   return launchEngineIdSchema.parse(engineId);
@@ -579,6 +816,44 @@ export function validateEngineConfigs(
           code: z.ZodIssueCode.custom,
           message: 'client and server holdMs must match',
           path: ['serverConfig', 'holdMs'],
+        },
+      ]);
+    }
+  }
+
+  if (id === 'social.pair_sync') {
+    const c = client as SocialPairSyncClientConfig;
+    const s = server as SocialPairSyncServerConfig;
+    const cKeys = new Set(c.partnerRoleKeys);
+    const sKeys = new Set(s.partnerRoleKeys);
+    if (
+      cKeys.size !== sKeys.size ||
+      [...cKeys].some((k) => !sKeys.has(k))
+    ) {
+      throw new z.ZodError([
+        {
+          code: z.ZodIssueCode.custom,
+          message: 'client and server partnerRoleKeys must be the same set',
+          path: ['serverConfig', 'partnerRoleKeys'],
+        },
+      ]);
+    }
+  }
+
+  if (id === 'tactical.risk_choice') {
+    const c = client as TacticalRiskChoiceClientConfig;
+    const s = server as TacticalRiskChoiceServerConfig;
+    const cOpts = new Set(c.optionKeys);
+    const sOpts = new Set(s.optionKeys);
+    if (
+      cOpts.size !== sOpts.size ||
+      [...cOpts].some((k) => !sOpts.has(k))
+    ) {
+      throw new z.ZodError([
+        {
+          code: z.ZodIssueCode.custom,
+          message: 'client and server optionKeys must be the same set',
+          path: ['serverConfig', 'optionKeys'],
         },
       ]);
     }

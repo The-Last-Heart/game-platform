@@ -1,8 +1,10 @@
 import { Injectable } from '@nestjs/common';
 import {
   challengeDefinitionSchema,
+  ENGINE_RUNTIME_READINESS,
   powerConfigurationReleasePayloadSchema,
   type ChallengeDefinitionContract,
+  type LaunchEngineId,
   type MatchReleasePins,
   type PowerConfigurationReleasePayload,
 } from '@thelastheart/contracts';
@@ -143,6 +145,7 @@ export class ReleaseResolverService implements ChallengeDefinitionProvider {
 
   async getPlaylistForCatalogRelease(
     catalogReleaseId: string,
+    options?: { mode?: string },
   ): Promise<ChallengeDefinition[]> {
     const release = await this.db.query<{ payload: unknown }>(
       `SELECT payload FROM content_releases
@@ -165,6 +168,7 @@ export class ReleaseResolverService implements ChallengeDefinitionProvider {
 
     const defs: ChallengeDefinition[] = [];
     for (const entry of payload.entries) {
+      // Skip paused entries (entry-level or override)
       if (entry.paused || paused.has(entry.definitionId)) continue;
       const version = await this.db.query<{ definition: unknown }>(
         `SELECT definition FROM content_template_versions WHERE id = $1::uuid`,
@@ -174,6 +178,21 @@ export class ReleaseResolverService implements ChallengeDefinitionProvider {
       if (!raw) continue;
       const parsed = challengeDefinitionSchema.safeParse(raw);
       if (!parsed.success) continue;
+
+      // Skip engines that are schema_only (no runtime evaluator)
+      const engineId = parsed.data.engineId as LaunchEngineId;
+      if (ENGINE_RUNTIME_READINESS[engineId] === 'schema_only') continue;
+
+      // Filter by eligible modes if a match mode is provided
+      if (
+        options?.mode &&
+        parsed.data.eligibleModes &&
+        parsed.data.eligibleModes.length > 0 &&
+        !parsed.data.eligibleModes.includes(options.mode as ChallengeDefinitionContract['eligibleModes'][number])
+      ) {
+        continue;
+      }
+
       defs.push(this.toRuntimeDefinition(parsed.data));
     }
     return defs.length > 0 ? defs : [this.getDefaultDev()];
@@ -244,5 +263,45 @@ export class ReleaseResolverService implements ChallengeDefinitionProvider {
       clientConfig: def.clientConfig,
       serverConfig: def.serverConfig,
     };
+  }
+
+  /**
+   * Best-effort insert into challenge_attempt_events for analytics.
+   * Privacy-conscious: no display names or player identifiers beyond matchId.
+   */
+  async writeChallengeAttempt(input: {
+    matchId: string;
+    definitionId: string;
+    definitionVersion: number;
+    engineId: string;
+    outcome: 'success' | 'failure' | 'timeout';
+    heartDelta: number;
+    energyDelta: number;
+    measureMs?: number;
+    mode?: string;
+    roundNumber?: number;
+  }): Promise<void> {
+    try {
+      await this.db.query(
+        `INSERT INTO challenge_attempt_events
+           (match_id, definition_id, definition_version, engine_id,
+            outcome, heart_delta, energy_delta, measure_ms, mode, round_number)
+         VALUES ($1::uuid, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
+        [
+          input.matchId,
+          input.definitionId,
+          input.definitionVersion,
+          input.engineId,
+          input.outcome,
+          input.heartDelta,
+          input.energyDelta,
+          input.measureMs ?? null,
+          input.mode ?? null,
+          input.roundNumber ?? null,
+        ],
+      );
+    } catch {
+      // Best-effort: don't fail the match on analytics write errors
+    }
   }
 }

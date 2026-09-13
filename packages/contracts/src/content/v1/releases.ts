@@ -8,6 +8,7 @@ export const releaseKindSchema = z.enum([
   'game_mode_rules',
   'localization',
   'power_configuration',
+  'daily_goals',
 ]);
 export type ReleaseKind = z.infer<typeof releaseKindSchema>;
 
@@ -21,6 +22,7 @@ export const matchReleasePinsSchema = z
     gameModeRuleReleaseId: releaseIdSchema,
     localizationReleaseId: releaseIdSchema,
     powerConfigurationReleaseId: releaseIdSchema,
+    dailyGoalsReleaseId: releaseIdSchema.optional(),
   })
   .strict();
 export type MatchReleasePins = z.infer<typeof matchReleasePinsSchema>;
@@ -28,7 +30,9 @@ export type MatchReleasePins = z.infer<typeof matchReleasePinsSchema>;
 export const contentLifecycleStatusSchema = z.enum([
   'draft',
   'submitted',
+  'in_review',
   'approved',
+  'scheduled',
   'published',
   'paused',
   'retired',
@@ -178,4 +182,39 @@ export const powerConfigurationReleasePayloadSchema = z
   .strict();
 export type PowerConfigurationReleasePayload = z.infer<
   typeof powerConfigurationReleasePayloadSchema
+>;
+
+// ── Daily goals ────────────────────────────────────────────────────────────
+
+export const dailyGoalScheduleSchema = z
+  .object({
+    startAt: z.string().datetime().optional(),
+    endAt: z.string().datetime().optional(),
+    repeat: z.enum(['once', 'daily', 'weekly']),
+    enabled: z.boolean().default(true),
+  })
+  .strict();
+
+export const dailyGoalEntrySchema = z
+  .object({
+    id: z.string().min(1).max(128),
+    copyKeyAr: z.string().min(2).max(500),
+    eligibleModes: z.array(matchModeEligibilitySchema).min(1),
+    targetCount: z.number().int().positive().max(1000),
+    rewardType: z.enum(['energy', 'cosmetic', 'badge']),
+    rewardValue: z.number().int().nonnegative().max(10_000),
+    schedule: dailyGoalScheduleSchema,
+  })
+  .strict();
+
+export const dailyGoalsReleasePayloadSchema = z
+  .object({
+    releaseId: releaseIdSchema,
+    versionLabel: z.string().min(1).max(64),
+    goals: z.array(dailyGoalEntrySchema).min(1),
+    changelog: z.string().max(4000).optional(),
+  })
+  .strict();
+export type DailyGoalsReleasePayload = z.infer<
+  typeof dailyGoalsReleasePayloadSchema
 >;

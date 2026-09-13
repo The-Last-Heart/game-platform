@@ -6,17 +6,28 @@ import {
   Param,
   Patch,
   Post,
+  Query,
   UseGuards,
 } from '@nestjs/common';
 import {
+  adminCatalogComposeRequestSchema,
+  adminChallengeAnalyticsQuerySchema,
   adminContentApproveRequestSchema,
   adminContentDraftUpsertRequestSchema,
   adminContentPauseRequestSchema,
   adminContentPublishCatalogRequestSchema,
+  adminContentRejectRequestSchema,
+  adminContentRetireRequestSchema,
   adminContentRollbackRequestSchema,
   adminContentSubmitRequestSchema,
+  adminContentTemplateListQuerySchema,
+  adminContentUpdateDraftRequestSchema,
+  adminDailyGoalsUpsertRequestSchema,
   adminEmergencyControlsPatchRequestSchema,
   adminEmergencyControlsSchema,
+  adminGameModeRulesUpsertRequestSchema,
+  adminLocalizationUpsertRequestSchema,
+  adminPowerConfigUpsertRequestSchema,
   adminSuccessEnvelopeSchema,
 } from '@thelastheart/contracts';
 import { CurrentAdmin } from '../decorators/current-admin.decorator';
@@ -42,10 +53,28 @@ export class AdminContentController {
     private readonly releases: ReleaseResolverService,
   ) {}
 
+  // ── Read endpoints ───────────────────────────────────────────────────────
+
+  @Get('studio/home')
+  @RequirePermissions('content:read')
+  async studioHome() {
+    return ok(await this.content.getStudioHomeSummary());
+  }
+
   @Get('templates')
   @RequirePermissions('content:read')
-  async listTemplates() {
-    return ok(await this.content.listTemplates());
+  async listTemplates(@Query() query: Record<string, unknown>) {
+    const parsed = adminContentTemplateListQuerySchema.safeParse(query);
+    if (!parsed.success) {
+      return ok(await this.content.listTemplates());
+    }
+    return ok(await this.content.listTemplatesFiltered(parsed.data));
+  }
+
+  @Get('templates/:templateId')
+  @RequirePermissions('content:read')
+  async getTemplateDetail(@Param('templateId') templateId: string) {
+    return ok(await this.content.getTemplateDetail(templateId));
   }
 
   @Get('releases')
@@ -53,6 +82,43 @@ export class AdminContentController {
   async listReleases() {
     return ok(await this.content.listReleases());
   }
+
+  @Get('analytics')
+  @RequirePermissions('content:read')
+  async listAnalytics(@Query() query: Record<string, unknown>) {
+    const parsed = adminChallengeAnalyticsQuerySchema.safeParse(query);
+    if (!parsed.success) {
+      throw new BadRequestException({
+        ok: false,
+        error: { code: 'VALIDATION_ERROR', message: 'Invalid analytics query' },
+      });
+    }
+    return ok(await this.content.listChallengeAnalytics(parsed.data));
+  }
+
+  @Get('diff/:versionIdA/:versionIdB')
+  @RequirePermissions('content:read')
+  async getVersionDiff(
+    @Param('versionIdA') versionIdA: string,
+    @Param('versionIdB') versionIdB: string,
+  ) {
+    return ok(await this.content.getVersionDiff(versionIdA, versionIdB));
+  }
+
+  @Post('proof')
+  @RequirePermissions('content:read')
+  async computeProof(@Body() body: unknown) {
+    const entries = Array.isArray(body) ? body : (body as Record<string, unknown>)?.entries;
+    if (!Array.isArray(entries)) {
+      throw new BadRequestException({
+        ok: false,
+        error: { code: 'VALIDATION_ERROR', message: 'entries array required' },
+      });
+    }
+    return ok(this.content.computeCatalogProof(entries));
+  }
+
+  // ── Draft endpoints ──────────────────────────────────────────────────────
 
   @Post('drafts')
   @RequirePermissions('content:draft')
@@ -72,6 +138,28 @@ export class AdminContentController {
       });
     }
     return ok(await this.content.upsertDraft(admin.user.id, parsed.data));
+  }
+
+  @Post('drafts/update')
+  @RequirePermissions('content:draft')
+  async updateDraft(
+    @CurrentAdmin() admin: AdminAuthContext,
+    @Body() body: unknown,
+  ) {
+    const parsed = adminContentUpdateDraftRequestSchema.safeParse(body);
+    if (!parsed.success) {
+      throw new BadRequestException({
+        ok: false,
+        error: { code: 'VALIDATION_ERROR', message: 'Invalid update draft payload' },
+      });
+    }
+    return ok(
+      await this.content.updateDraft(
+        admin.user.id,
+        parsed.data.templateVersionId,
+        parsed.data.definition,
+      ),
+    );
   }
 
   @Post('submit')
@@ -96,6 +184,46 @@ export class AdminContentController {
     );
   }
 
+  @Post('reject')
+  @RequirePermissions('content:draft')
+  async reject(
+    @CurrentAdmin() admin: AdminAuthContext,
+    @Body() body: unknown,
+  ) {
+    const parsed = adminContentRejectRequestSchema.safeParse(body);
+    if (!parsed.success) {
+      throw new BadRequestException({
+        ok: false,
+        error: { code: 'VALIDATION_ERROR', message: 'Invalid reject payload' },
+      });
+    }
+    return ok(
+      await this.content.reject(
+        admin.user.id,
+        parsed.data.templateVersionId,
+        parsed.data.notes,
+      ),
+    );
+  }
+
+  // ── Review endpoints ─────────────────────────────────────────────────────
+
+  @Post('in-review')
+  @RequirePermissions('content:review')
+  async markInReview(
+    @CurrentAdmin() admin: AdminAuthContext,
+    @Body() body: unknown,
+  ) {
+    const parsed = adminContentSubmitRequestSchema.safeParse(body);
+    if (!parsed.success) {
+      throw new BadRequestException({
+        ok: false,
+        error: { code: 'VALIDATION_ERROR', message: 'Invalid in-review payload' },
+      });
+    }
+    return ok(await this.content.markInReview(admin.user.id, parsed.data.templateVersionId));
+  }
+
   @Post('approve')
   @RequirePermissions('content:review')
   async approve(
@@ -118,6 +246,8 @@ export class AdminContentController {
     );
   }
 
+  // ── Publish endpoints ────────────────────────────────────────────────────
+
   @Post('catalog/publish')
   @RequirePermissions('content:publish')
   async publishCatalog(
@@ -132,6 +262,22 @@ export class AdminContentController {
       });
     }
     return ok(await this.content.publishCatalog(admin.user.id, parsed.data));
+  }
+
+  @Post('catalog/compose')
+  @RequirePermissions('content:publish')
+  async composeCatalog(
+    @CurrentAdmin() admin: AdminAuthContext,
+    @Body() body: unknown,
+  ) {
+    const parsed = adminCatalogComposeRequestSchema.safeParse(body);
+    if (!parsed.success) {
+      throw new BadRequestException({
+        ok: false,
+        error: { code: 'VALIDATION_ERROR', message: 'Invalid compose payload' },
+      });
+    }
+    return ok(await this.content.publishCatalogCompose(admin.user.id, parsed.data));
   }
 
   @Post('pause')
@@ -164,6 +310,118 @@ export class AdminContentController {
       });
     }
     return ok(await this.content.rollbackCatalog(admin.user.id, parsed.data));
+  }
+
+  @Post('retire')
+  @RequirePermissions('content:publish')
+  async retire(
+    @CurrentAdmin() admin: AdminAuthContext,
+    @Body() body: unknown,
+  ) {
+    const parsed = adminContentRetireRequestSchema.safeParse(body);
+    if (!parsed.success) {
+      throw new BadRequestException({
+        ok: false,
+        error: { code: 'VALIDATION_ERROR', message: 'Invalid retire payload' },
+      });
+    }
+    return ok(await this.content.retire(admin.user.id, parsed.data));
+  }
+
+  @Post('localization/publish')
+  @RequirePermissions('content:publish')
+  async publishLocalization(
+    @CurrentAdmin() admin: AdminAuthContext,
+    @Body() body: unknown,
+  ) {
+    const parsed = adminLocalizationUpsertRequestSchema.safeParse(body);
+    if (!parsed.success) {
+      throw new BadRequestException({
+        ok: false,
+        error: { code: 'VALIDATION_ERROR', message: 'Invalid localization payload' },
+      });
+    }
+    const { versionLabel, immediate, ...rest } = parsed.data;
+    return ok(
+      await this.content.publishKindRelease(admin.user.id, 'localization', {
+        versionLabel,
+        payload: rest,
+        changelog: rest.changelog,
+        immediate,
+      }),
+    );
+  }
+
+  @Post('power/publish')
+  @RequirePermissions('content:publish')
+  async publishPowerConfig(
+    @CurrentAdmin() admin: AdminAuthContext,
+    @Body() body: unknown,
+  ) {
+    const parsed = adminPowerConfigUpsertRequestSchema.safeParse(body);
+    if (!parsed.success) {
+      throw new BadRequestException({
+        ok: false,
+        error: { code: 'VALIDATION_ERROR', message: 'Invalid power config payload' },
+      });
+    }
+    const { versionLabel, immediate, ...rest } = parsed.data;
+    return ok(
+      await this.content.publishKindRelease(admin.user.id, 'power_configuration', {
+        versionLabel,
+        payload: rest,
+        changelog: rest.changelog,
+        immediate,
+      }),
+    );
+  }
+
+  @Post('mode-rules/publish')
+  @RequirePermissions('content:publish')
+  async publishModeRules(
+    @CurrentAdmin() admin: AdminAuthContext,
+    @Body() body: unknown,
+  ) {
+    const parsed = adminGameModeRulesUpsertRequestSchema.safeParse(body);
+    if (!parsed.success) {
+      throw new BadRequestException({
+        ok: false,
+        error: { code: 'VALIDATION_ERROR', message: 'Invalid game mode rules payload' },
+      });
+    }
+    const { versionLabel, immediate, ...rest } = parsed.data;
+    return ok(
+      await this.content.publishKindRelease(admin.user.id, 'game_mode_rules', {
+        versionLabel,
+        payload: rest,
+        changelog: rest.changelog,
+        immediate,
+      }),
+    );
+  }
+
+  @Post('daily-goals/publish')
+  @RequirePermissions('content:publish')
+  async publishDailyGoals(
+    @CurrentAdmin() admin: AdminAuthContext,
+    @Body() body: unknown,
+  ) {
+    const parsed = adminDailyGoalsUpsertRequestSchema.safeParse(body);
+    if (!parsed.success) {
+      throw new BadRequestException({
+        ok: false,
+        error: { code: 'VALIDATION_ERROR', message: 'Invalid daily goals payload' },
+      });
+    }
+    const { versionLabel, immediate, ...rest } = parsed.data;
+    return ok(
+      await this.content.publishKindRelease(admin.user.id, 'daily_goals', {
+        versionLabel,
+        payload: rest,
+        changelog: rest.changelog,
+        immediate,
+      }),
+    );
   }
 
   @Get('matches/:matchId/pins')
