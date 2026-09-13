@@ -2,7 +2,7 @@
 
 ## Status
 
-- Implementation commit: _(filled after `feat(gameplay): ship advanced challenge engine pack`)_
+- Implementation commit: `e2b3728439d531f31975cb4df9a47024de05a827`_
 - Milestone: LH-009 — Advanced Challenge Pack (mobile-first; Studio paused)
 - Formal gate close: **pending operator device/LAN confirmation** — do not advance to LH-010 until journeys below are confirmed
 
