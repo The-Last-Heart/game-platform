@@ -3,7 +3,7 @@
 ## Status
 
 - Milestone: LH-008 — Complete Energy and Tactical Powers Loop
-- Feature commit: *(filled after commit)*
+- Feature commit: `7be53f2807e29b85028a1cbd1456394dcc0d56b3` — `feat(gameplay): complete energy and tactical powers`
 - Formal close: **blocked** on operator device journeys (screens 24–28, reconnect matrix, audit demo)
 
 ## What shipped
