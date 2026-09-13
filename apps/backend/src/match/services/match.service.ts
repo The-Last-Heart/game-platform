@@ -619,6 +619,103 @@ export class MatchService implements OnModuleDestroy, OnModuleInit {
     });
   }
 
+  async usePower(input: {
+    matchId: string;
+    playerId: string;
+    powerId: 'danger_pulse';
+    targetPlayerId: string;
+  }): Promise<{ snapshot: ReturnType<MatchEngine['toPublicSnapshot']> }> {
+    return this.enqueue(input.matchId, async () => {
+      const match = await this.requireMatch(input.matchId);
+      const disabled =
+        (await this.emergency?.areOffensivePowersDisabled()) === true;
+      const result = this.engine.useDangerPulse(match, {
+        attackerId: input.playerId,
+        targetPlayerId: input.targetPlayerId,
+        offensivePowersDisabled: disabled,
+      });
+      await this.store.save(result.match);
+      this.emit(result.match, result.events);
+      this.logger.log(
+        JSON.stringify({
+          analytics: 'power.used',
+          matchId: input.matchId,
+          powerId: 'danger_pulse',
+          phase: result.match.phase,
+          offensiveDisabled: disabled,
+        }),
+      );
+      if (result.match.phase === 'power_defense' && result.match.pendingAttack) {
+        const windowMs =
+          result.match.pendingAttack.defenseDeadlineAtMs - this.clock.nowMs();
+        this.schedulePhaseTimer(input.matchId, Math.max(1, windowMs));
+      }
+      return { snapshot: this.engine.toPublicSnapshot(result.match) };
+    });
+  }
+
+  async defendPower(input: {
+    matchId: string;
+    playerId: string;
+    attackId: string;
+    choice: 'none' | 'shield' | 'reflect';
+  }): Promise<{ snapshot: ReturnType<MatchEngine['toPublicSnapshot']> }> {
+    return this.enqueue(input.matchId, async () => {
+      const match = await this.requireMatch(input.matchId);
+      const result = this.engine.defendPowerAttack(match, {
+        defenderId: input.playerId,
+        attackId: input.attackId,
+        choice: input.choice,
+      });
+      await this.store.save(result.match);
+      this.emit(result.match, result.events);
+      this.logger.log(
+        JSON.stringify({
+          analytics: 'power.defense',
+          matchId: input.matchId,
+          choice: input.choice,
+          phase: result.match.phase,
+        }),
+      );
+      if (result.match.phase === 'power_defense' && result.match.pendingAttack) {
+        const windowMs =
+          result.match.pendingAttack.defenseDeadlineAtMs - this.clock.nowMs();
+        this.schedulePhaseTimer(input.matchId, Math.max(1, windowMs));
+      } else if (result.match.phase === 'round_result') {
+        await this.startNextChallengeAfterPowers(input.matchId, result.match);
+      }
+      const latest = await this.requireMatch(input.matchId);
+      return { snapshot: this.engine.toPublicSnapshot(latest) };
+    });
+  }
+
+  async skipPower(input: {
+    matchId: string;
+    playerId: string;
+  }): Promise<{ snapshot: ReturnType<MatchEngine['toPublicSnapshot']> }> {
+    return this.enqueue(input.matchId, async () => {
+      const match = await this.requireMatch(input.matchId);
+      const result = this.engine.skipPowerAction(match, input.playerId);
+      await this.store.save(result.match);
+      this.emit(result.match, result.events);
+      this.logger.log(
+        JSON.stringify({
+          analytics: 'power.skipped',
+          matchId: input.matchId,
+          phase: result.match.phase,
+        }),
+      );
+      if (
+        result.match.phase === 'round_result' ||
+        result.match.powerActionActorIds.length === 0
+      ) {
+        await this.startNextChallengeAfterPowers(input.matchId, result.match);
+      }
+      const latest = await this.requireMatch(input.matchId);
+      return { snapshot: this.engine.toPublicSnapshot(latest) };
+    });
+  }
+
   async fillDevBots(matchId: string): Promise<{
     snapshot: ReturnType<MatchEngine['toPublicSnapshot']>;
     botIds: string[];
@@ -724,10 +821,43 @@ export class MatchService implements OnModuleDestroy, OnModuleInit {
       }
     }
 
+    let powerConfig = options.powerConfig ?? undefined;
+    if (this.releases && !powerConfig) {
+      try {
+        const payload = await this.releases.getPowerConfigurationForRelease(
+          releasePins.powerConfigurationReleaseId,
+        );
+        powerConfig = {
+          releaseId: payload.releaseId,
+          versionLabel: payload.versionLabel,
+          energyThreshold: 4,
+          inventoryMaxTotal: 3,
+          inventoryMaxPerPower: 1,
+          actionWindowMs: payload.actionWindowMs,
+          defenseWindowMs: payload.defenseWindowMs,
+          powers: payload.powers.map((p) => ({
+            powerId: p.powerId,
+            enabled: p.enabled,
+            grantWeight: p.grantWeight,
+            eligibleModes: [...p.eligibleModes],
+            nameKey: p.nameKey,
+            explanationKey: p.explanationKey,
+            assetIds: [...p.assetIds],
+          })),
+        };
+      } catch (error) {
+        this.logger.warn({
+          event: 'power_config_resolve_failed',
+          category: error instanceof Error ? error.name : 'UnknownError',
+        });
+      }
+    }
+
     const match = this.engine.createMatch(undefined, {
       ...options,
       releasePins,
       pinnedPlaylist,
+      powerConfig: powerConfig ?? null,
     });
     await this.store.save(match);
     if (this.releases) {
@@ -1535,6 +1665,10 @@ export class MatchService implements OnModuleDestroy, OnModuleInit {
         await this.advanceFromIntro(matchId);
       } else if (match.phase === 'round_result') {
         await this.advanceFromRoundResult(matchId);
+      } else if (match.phase === 'power_action') {
+        await this.advanceFromPowerAction(matchId);
+      } else if (match.phase === 'power_defense') {
+        await this.advanceFromPowerDefense(matchId);
       }
     }
   }
@@ -1734,16 +1868,66 @@ export class MatchService implements OnModuleDestroy, OnModuleInit {
     // Training is capacity-1: stay on round_result until retry/leave.
     if (survivors.length < 2) return;
 
-    const definition = this.definitionForNextRound(match);
+    // Between-round tactical window when anyone can fire Danger Pulse.
+    const offered = this.engine.beginPowerAction(match);
+    if (offered.events.length > 0) {
+      await this.store.save(offered.match);
+      this.emit(offered.match, offered.events);
+      const windowMs =
+        offered.match.powerConfig?.actionWindowMs ??
+        offered.match.phaseDeadlineAtMs! - this.clock.nowMs();
+      this.schedulePhaseTimer(matchId, Math.max(1, windowMs));
+      return;
+    }
+
+    await this.startNextChallengeAfterPowers(matchId, offered.match);
+  }
+
+  private async advanceFromPowerAction(matchId: string): Promise<void> {
+    let match = await this.requireMatch(matchId);
+    if (match.phase !== 'power_action') return;
+    const events: DomainEvent[] = [];
+    for (const id of [...match.powerActionActorIds]) {
+      const skipped = this.engine.skipPowerAction(match, id);
+      match = skipped.match;
+      events.push(...skipped.events);
+    }
+    await this.store.save(match);
+    if (events.length > 0) {
+      this.emit(match, events);
+    }
+    await this.startNextChallengeAfterPowers(matchId, match);
+  }
+
+  private async advanceFromPowerDefense(matchId: string): Promise<void> {
+    const match = await this.requireMatch(matchId);
+    if (match.phase !== 'power_defense') return;
+    const expired = this.engine.expirePowerDefense(match);
+    if (expired.events.length === 0) return;
+    await this.store.save(expired.match);
+    this.emit(expired.match, expired.events);
+    if (expired.match.phase === 'round_result') {
+      await this.startNextChallengeAfterPowers(matchId, expired.match);
+    } else if (expired.match.phase === 'power_defense') {
+      const windowMs =
+        expired.match.pendingAttack!.defenseDeadlineAtMs - this.clock.nowMs();
+      this.schedulePhaseTimer(matchId, Math.max(1, windowMs));
+    }
+  }
+
+  private async startNextChallengeAfterPowers(
+    _matchId: string,
+    match: MatchState,
+  ): Promise<void> {
+    const cleared = this.engine.clearExpiredProtection(match);
+    const definition = this.definitionForNextRound(cleared);
     if (!definition) {
-      // Empty catalog only — never crown by standings while survivors remain
-      // and the playlist still has playable entries (those cycle).
-      const finished = this.engine.completeByStandings(match);
+      const finished = this.engine.completeByStandings(cleared);
       await this.store.save(finished.match);
       this.emit(finished.match, finished.events);
       return;
     }
-    const intro = this.engine.beginChallengeIntro(match, 0, definition, {
+    const intro = this.engine.beginChallengeIntro(cleared, 0, definition, {
       deferSequenceBump: true,
     });
     const result = this.engine.startChallenge(intro.match);
@@ -2095,7 +2279,9 @@ export class MatchService implements OnModuleDestroy, OnModuleInit {
           if (
             (match.phase === 'ready_countdown' ||
               match.phase === 'challenge_intro' ||
-              match.phase === 'round_result') &&
+              match.phase === 'round_result' ||
+              match.phase === 'power_action' ||
+              match.phase === 'power_defense') &&
             this.clock.monoMs() < match.phaseDeadlineMonoMs
           ) {
             const remaining = match.phaseDeadlineMonoMs - this.clock.monoMs();

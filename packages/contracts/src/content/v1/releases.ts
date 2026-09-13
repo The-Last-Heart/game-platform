@@ -53,7 +53,7 @@ export const challengeDefinitionSchema = z
     engineId: z.string().min(1).max(128),
     durationMs: z.number().int().min(3000).max(8000),
     heartPenaltyOnFailure: z.union([z.literal(0), z.literal(1)]),
-    energyRewardOnSuccess: z.number().int().min(0).max(4),
+    energyRewardOnSuccess: z.number().int().min(0).max(3),
     promptKey: z.string().min(1).max(256),
     choiceKeys: z.array(z.string().min(1).max(128)).optional(),
     clientConfig: z.record(z.unknown()),
@@ -143,17 +143,39 @@ export const localizationReleasePayloadSchema = z
   })
   .strict();
 
+export const powerIdSchema = z.enum([
+  'danger_pulse',
+  'shield',
+  'reflection',
+]);
+export type PowerId = z.infer<typeof powerIdSchema>;
+
+export const powerDefinitionSchema = z
+  .object({
+    powerId: powerIdSchema,
+    enabled: z.boolean().default(true),
+    grantWeight: z.number().int().min(0).max(10_000).default(100),
+    eligibleModes: z.array(matchModeEligibilitySchema).min(1),
+    nameKey: z.string().min(1).max(256),
+    explanationKey: z.string().min(1).max(256),
+    assetIds: z.array(z.string().min(1).max(128)).default([]),
+  })
+  .strict();
+
 export const powerConfigurationReleasePayloadSchema = z
   .object({
     releaseId: releaseIdSchema,
     versionLabel: z.string().min(1).max(64),
-    powers: z
-      .object({
-        dangerPulseEnabled: z.boolean().default(true),
-        shieldEnabled: z.boolean().default(true),
-        reflectionEnabled: z.boolean().default(true),
-      })
-      .strict(),
+    /** Segments required to convert into one power grant. */
+    energyThreshold: z.literal(4),
+    inventoryMaxTotal: z.literal(3),
+    inventoryMaxPerPower: z.literal(1),
+    actionWindowMs: z.number().int().min(3_000).max(30_000).default(8_000),
+    defenseWindowMs: z.number().int().min(2_000).max(15_000).default(5_000),
+    powers: z.array(powerDefinitionSchema).min(1).max(3),
     changelog: z.string().max(4000).optional(),
   })
   .strict();
+export type PowerConfigurationReleasePayload = z.infer<
+  typeof powerConfigurationReleasePayloadSchema
+>;

@@ -26,10 +26,64 @@ export type MatchPhase =
   | 'challenge_intro'
   | 'challenge_active'
   | 'round_result'
+  | 'power_action'
+  | 'power_defense'
   | 'completed'
   | 'draw'
   | 'halted';
 
+export type PowerId = 'danger_pulse' | 'shield' | 'reflection';
+
+export type PlayerPowerInventory = {
+  danger_pulse: 0 | 1;
+  shield: 0 | 1;
+  reflection: 0 | 1;
+};
+
+export const EMPTY_INVENTORY: PlayerPowerInventory = {
+  danger_pulse: 0,
+  shield: 0,
+  reflection: 0,
+};
+
+export const ENERGY_THRESHOLD = 4;
+
+export type PowerDefinitionRuntime = {
+  powerId: PowerId;
+  enabled: boolean;
+  grantWeight: number;
+  eligibleModes: MatchMode[];
+  nameKey: string;
+  explanationKey: string;
+  assetIds: string[];
+};
+
+export type PowerConfigurationRuntime = {
+  releaseId: string;
+  versionLabel: string;
+  energyThreshold: 4;
+  inventoryMaxTotal: 3;
+  inventoryMaxPerPower: 1;
+  actionWindowMs: number;
+  defenseWindowMs: number;
+  powers: PowerDefinitionRuntime[];
+};
+
+export type PendingPowerAttack = {
+  attackId: string;
+  attackerId: string;
+  targetId: string;
+  powerId: 'danger_pulse';
+  reflected: boolean;
+  defenseDeadlineAtMs: number;
+  defenseDeadlineMonoMs: number;
+};
+
+export type LastPowerGrant = {
+  playerId: string;
+  powerId: PowerId | null;
+  outcome: 'granted' | 'inventory_full';
+};
 export type RoundPhase =
   | 'waiting_signal'
   | 'signal_active'
@@ -62,6 +116,8 @@ export type CreateMatchOptions = {
   releasePins?: MatchReleasePinsState | null;
   /** Playlist resolved from the pinned catalog (never re-reads "current"). */
   pinnedPlaylist?: readonly ChallengeDefinition[];
+  /** Power configuration frozen at match create. */
+  powerConfig?: PowerConfigurationRuntime | null;
 };
 
 export type Clock = {
@@ -157,6 +213,12 @@ export type PlayerState = {
    * lease + credentials. Bots are accepted immediately on server fill.
    */
   joinAccepted: boolean;
+  inventory: PlayerPowerInventory;
+  /** Protected through the end of this round number (inclusive). */
+  protectedThroughRound: number | null;
+  lastDangerPulseTargetId: string | null;
+  /** Players who already skipped/acted in the current power_action window. */
+  powerActionResolved: boolean;
 };
 
 export type PlayerChallengeResolution = {
@@ -245,6 +307,12 @@ export type MatchState = {
   releasePins: MatchReleasePinsState | null;
   /** Ordered definitions from the pinned catalog release. */
   pinnedPlaylist: ChallengeDefinition[];
+  /** Frozen power rules for this match (LH-008). */
+  powerConfig: PowerConfigurationRuntime | null;
+  pendingAttack: PendingPowerAttack | null;
+  lastPowerGrant: LastPowerGrant | null;
+  /** Player ids that still may act in power_action (have charge and not resolved). */
+  powerActionActorIds: string[];
 };
 
 export type DomainEvent =
@@ -323,6 +391,70 @@ export type DomainEvent =
       sequence: number;
       revision: number;
       serverTimestampMs: number;
+    }
+  | {
+      kind: 'power_granted';
+      sequence: number;
+      revision: number;
+      serverTimestampMs: number;
+      playerId: string;
+      powerId: PowerId;
+      energyAfter: number;
+    }
+  | {
+      kind: 'power_inventory_full';
+      sequence: number;
+      revision: number;
+      serverTimestampMs: number;
+      playerId: string;
+      energyAfter: number;
+    }
+  | {
+      kind: 'power_offered';
+      sequence: number;
+      revision: number;
+      serverTimestampMs: number;
+      actorsWithOffensiveCharge: string[];
+      actionDeadlineAtMs: number;
+    }
+  | {
+      kind: 'power_used';
+      sequence: number;
+      revision: number;
+      serverTimestampMs: number;
+      attackId: string;
+      attackerId: string;
+      targetId: string;
+    }
+  | {
+      kind: 'power_defense_required';
+      sequence: number;
+      revision: number;
+      serverTimestampMs: number;
+      attackId: string;
+      attackerId: string;
+      targetId: string;
+      reflected: boolean;
+      defenseDeadlineAtMs: number;
+    }
+  | {
+      kind: 'power_resolved';
+      sequence: number;
+      revision: number;
+      serverTimestampMs: number;
+      attackId: string;
+      attackerId: string;
+      targetId: string;
+      outcome:
+        | 'hit'
+        | 'shielded'
+        | 'reflected_hit'
+        | 'reflected_shielded'
+        | 'expired'
+        | 'cancelled';
+      heartsDeltaTarget: number;
+      heartsAfterTarget: number;
+      statusAfterTarget: PlayerStatus;
     };
 
 export class DomainError extends Error {
@@ -357,7 +489,12 @@ export class DomainError extends Error {
       | 'REMATCH_UNAVAILABLE'
       | 'MATCHMAKING_PAUSED'
       | 'TRAINING_UNAVAILABLE'
-      | 'NOT_LOBBY',
+      | 'NOT_LOBBY'
+      | 'POWER_NOT_AVAILABLE'
+      | 'POWER_PHASE_INVALID'
+      | 'ILLEGAL_POWER_TARGET'
+      | 'POWER_ATTACK_NOT_FOUND'
+      | 'OFFENSIVE_POWERS_DISABLED',
     message: string,
   ) {
     super(message);

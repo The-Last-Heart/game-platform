@@ -364,6 +364,42 @@ export class MatchGateway
             ),
           );
           break;
+        case MessageTypes.PowerUse:
+          await this.enqueueIdentity(client, () =>
+            this.handlePowerUse(
+              client,
+              commandId!,
+              command.messageId,
+              command.payload as {
+                powerId: 'danger_pulse';
+                targetPlayerId: string;
+              },
+            ),
+          );
+          break;
+        case MessageTypes.PowerDefend:
+          await this.enqueueIdentity(client, () =>
+            this.handlePowerDefend(
+              client,
+              commandId!,
+              command.messageId,
+              command.payload as {
+                attackId: string;
+                choice: 'none' | 'shield' | 'reflect';
+              },
+            ),
+          );
+          break;
+        case MessageTypes.PowerSkip:
+          await this.enqueueIdentity(client, () =>
+            this.handlePowerSkip(
+              client,
+              commandId!,
+              command.messageId,
+              command.payload as { matchId: string },
+            ),
+          );
+          break;
         default:
           this.emitError(
             client,
@@ -1034,6 +1070,103 @@ export class MatchGateway
     );
   }
 
+  private async handlePowerUse(
+    client: Socket,
+    commandId: string,
+    correlationId: string,
+    payload: { powerId: 'danger_pulse'; targetPlayerId: string },
+  ): Promise<void> {
+    const state = client.data as SocketState;
+    if (!state.matchId || !state.playerId) {
+      this.emitError(client, 'UNAUTHORIZED', 'errors.protocol.unauthorized', {
+        commandId,
+      });
+      return;
+    }
+    if (!this.ownsLease(client, state.matchId, state.playerId)) {
+      this.emitError(client, 'UNAUTHORIZED', 'errors.protocol.unauthorized', {
+        commandId,
+      });
+      return;
+    }
+    const result = await this.matches.usePower({
+      matchId: state.matchId,
+      playerId: state.playerId,
+      powerId: payload.powerId,
+      targetPlayerId: payload.targetPlayerId,
+    });
+    this.emitToClient(client, MessageTypes.MatchSnapshot, result.snapshot, {
+      commandId,
+      correlationId,
+      matchId: state.matchId,
+      sequence: result.snapshot.sequence,
+    });
+  }
+
+  private async handlePowerDefend(
+    client: Socket,
+    commandId: string,
+    correlationId: string,
+    payload: { attackId: string; choice: 'none' | 'shield' | 'reflect' },
+  ): Promise<void> {
+    const state = client.data as SocketState;
+    if (!state.matchId || !state.playerId) {
+      this.emitError(client, 'UNAUTHORIZED', 'errors.protocol.unauthorized', {
+        commandId,
+      });
+      return;
+    }
+    if (!this.ownsLease(client, state.matchId, state.playerId)) {
+      this.emitError(client, 'UNAUTHORIZED', 'errors.protocol.unauthorized', {
+        commandId,
+      });
+      return;
+    }
+    const result = await this.matches.defendPower({
+      matchId: state.matchId,
+      playerId: state.playerId,
+      attackId: payload.attackId,
+      choice: payload.choice,
+    });
+    this.emitToClient(client, MessageTypes.MatchSnapshot, result.snapshot, {
+      commandId,
+      correlationId,
+      matchId: state.matchId,
+      sequence: result.snapshot.sequence,
+    });
+  }
+
+  private async handlePowerSkip(
+    client: Socket,
+    commandId: string,
+    correlationId: string,
+    payload: { matchId: string },
+  ): Promise<void> {
+    const state = client.data as SocketState;
+    if (!state.matchId || !state.playerId || state.matchId !== payload.matchId) {
+      this.emitError(client, 'UNAUTHORIZED', 'errors.protocol.unauthorized', {
+        commandId,
+      });
+      return;
+    }
+    if (!this.ownsLease(client, state.matchId, state.playerId)) {
+      this.emitError(client, 'UNAUTHORIZED', 'errors.protocol.unauthorized', {
+        commandId,
+      });
+      return;
+    }
+    const result = await this.matches.skipPower({
+      matchId: state.matchId,
+      playerId: state.playerId,
+    });
+    this.emitToClient(client, MessageTypes.MatchSnapshot, result.snapshot, {
+      commandId,
+      correlationId,
+      matchId: state.matchId,
+      sequence: result.snapshot.sequence,
+    });
+  }
+
   private async handleMatchmakingStatus(
     event: MatchmakingStatusEvent,
   ): Promise<void> {
@@ -1264,6 +1397,95 @@ export class MatchGateway
           serverTimestampMs: event.serverTimestampMs,
           payload: {},
         });
+      } else if (event.kind === 'power_granted') {
+        this.server.to(this.room(broadcast.matchId)).emit('event', {
+          schemaVersion: REALTIME_SCHEMA_VERSION,
+          type: MessageTypes.PowerGranted,
+          messageId: randomUUID(),
+          matchId: broadcast.matchId,
+          serverSequence: event.sequence,
+          serverTimestampMs: event.serverTimestampMs,
+          payload: {
+            playerId: event.playerId,
+            powerId: event.powerId,
+            energyAfter: event.energyAfter,
+          },
+        });
+      } else if (event.kind === 'power_inventory_full') {
+        this.server.to(this.room(broadcast.matchId)).emit('event', {
+          schemaVersion: REALTIME_SCHEMA_VERSION,
+          type: MessageTypes.PowerInventoryFull,
+          messageId: randomUUID(),
+          matchId: broadcast.matchId,
+          serverSequence: event.sequence,
+          serverTimestampMs: event.serverTimestampMs,
+          payload: {
+            playerId: event.playerId,
+            energyAfter: event.energyAfter,
+          },
+        });
+      } else if (event.kind === 'power_offered') {
+        this.server.to(this.room(broadcast.matchId)).emit('event', {
+          schemaVersion: REALTIME_SCHEMA_VERSION,
+          type: MessageTypes.PowerOffered,
+          messageId: randomUUID(),
+          matchId: broadcast.matchId,
+          serverSequence: event.sequence,
+          serverTimestampMs: event.serverTimestampMs,
+          payload: {
+            actorsWithOffensiveCharge: event.actorsWithOffensiveCharge,
+            actionDeadlineAtMs: event.actionDeadlineAtMs,
+          },
+        });
+      } else if (event.kind === 'power_used') {
+        this.server.to(this.room(broadcast.matchId)).emit('event', {
+          schemaVersion: REALTIME_SCHEMA_VERSION,
+          type: MessageTypes.PowerUsed,
+          messageId: randomUUID(),
+          matchId: broadcast.matchId,
+          serverSequence: event.sequence,
+          serverTimestampMs: event.serverTimestampMs,
+          payload: {
+            attackId: event.attackId,
+            attackerId: event.attackerId,
+            targetId: event.targetId,
+            powerId: 'danger_pulse',
+          },
+        });
+      } else if (event.kind === 'power_defense_required') {
+        this.server.to(this.room(broadcast.matchId)).emit('event', {
+          schemaVersion: REALTIME_SCHEMA_VERSION,
+          type: MessageTypes.PowerDefenseRequired,
+          messageId: randomUUID(),
+          matchId: broadcast.matchId,
+          serverSequence: event.sequence,
+          serverTimestampMs: event.serverTimestampMs,
+          payload: {
+            attackId: event.attackId,
+            attackerId: event.attackerId,
+            targetId: event.targetId,
+            reflected: event.reflected,
+            defenseDeadlineAtMs: event.defenseDeadlineAtMs,
+          },
+        });
+      } else if (event.kind === 'power_resolved') {
+        this.server.to(this.room(broadcast.matchId)).emit('event', {
+          schemaVersion: REALTIME_SCHEMA_VERSION,
+          type: MessageTypes.PowerResolved,
+          messageId: randomUUID(),
+          matchId: broadcast.matchId,
+          serverSequence: event.sequence,
+          serverTimestampMs: event.serverTimestampMs,
+          payload: {
+            attackId: event.attackId,
+            attackerId: event.attackerId,
+            targetId: event.targetId,
+            outcome: event.outcome,
+            heartsDeltaTarget: event.heartsDeltaTarget,
+            heartsAfterTarget: event.heartsAfterTarget,
+            statusAfterTarget: event.statusAfterTarget,
+          },
+        });
       } else if (
         event.kind === 'player_joined' ||
         event.kind === 'presence_changed'
@@ -1423,6 +1645,26 @@ export class MatchGateway
         key: 'errors.training.unavailable',
       },
       NOT_LOBBY: { code: 'MATCH_NOT_JOINABLE', key: 'errors.match.not_lobby' },
+      POWER_NOT_AVAILABLE: {
+        code: 'POWER_NOT_AVAILABLE',
+        key: 'errors.power.not_available',
+      },
+      POWER_PHASE_INVALID: {
+        code: 'POWER_PHASE_INVALID',
+        key: 'errors.power.phase_invalid',
+      },
+      ILLEGAL_POWER_TARGET: {
+        code: 'ILLEGAL_POWER_TARGET',
+        key: 'errors.power.illegal_target',
+      },
+      POWER_ATTACK_NOT_FOUND: {
+        code: 'POWER_ATTACK_NOT_FOUND',
+        key: 'errors.power.attack_not_found',
+      },
+      OFFENSIVE_POWERS_DISABLED: {
+        code: 'OFFENSIVE_POWERS_DISABLED',
+        key: 'errors.power.offensive_disabled',
+      },
     };
     const mapped = map[error.code] ?? {
       code: 'INTERNAL_ERROR',

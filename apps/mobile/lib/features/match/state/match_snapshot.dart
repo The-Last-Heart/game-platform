@@ -37,6 +37,7 @@ class MatchViewState {
     this.hostPlayerId,
     this.roomCode,
     this.matchmakingAcceptedSeats = 0,
+    this.tactical,
   });
 
   final String? matchId;
@@ -70,6 +71,9 @@ class MatchViewState {
   final String? hostPlayerId;
   final String? roomCode;
   final int matchmakingAcceptedSeats;
+
+  /// Between-round tactical window (LH-008). Null when absent from snapshot.
+  final MatchTacticalState? tactical;
 
   /// Whether the session is gameplay-ready.
   bool get isBound => lifecycle == SessionLifecycle.bound;
@@ -124,6 +128,7 @@ class MatchViewState {
     String? Function()? hostPlayerId,
     String? Function()? roomCode,
     int? matchmakingAcceptedSeats,
+    MatchTacticalState? Function()? tactical,
   }) {
     return MatchViewState(
       // Explicit nullable setters: omit = unchanged; () => null = clear.
@@ -169,6 +174,7 @@ class MatchViewState {
       roomCode: roomCode != null ? roomCode() : this.roomCode,
       matchmakingAcceptedSeats:
           matchmakingAcceptedSeats ?? this.matchmakingAcceptedSeats,
+      tactical: tactical != null ? tactical() : this.tactical,
     );
   }
 }

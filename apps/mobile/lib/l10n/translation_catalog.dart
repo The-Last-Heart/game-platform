@@ -206,6 +206,19 @@ abstract final class TranslationKeys {
   static const String onboardingStepOf = 'onboarding.step_of';
   static const String onboardingHowToPlay = 'onboarding.how_to_play';
   static const String appPressBackAgainToExit = 'app.press_back_again_to_exit';
+
+  // ── LH-008 Powers ──
+  static const String powerActionTitle = 'power.action.title';
+  static const String powerActionChooseTarget = 'power.action.choose_target';
+  static const String powerActionSkip = 'power.action.skip';
+  static const String powerActionWaiting = 'power.action.waiting';
+  static const String powerDefenseTitle = 'power.defense.title';
+  static const String powerDefenseIncoming = 'power.defense.incoming';
+  static const String powerDefenseReflectedIncoming =
+      'power.defense.reflected_incoming';
+  static const String powerDefenseWaiting = 'power.defense.waiting';
+  static const String powerDefenseNone = 'power.defense.none';
+  static const String powerDefenseFrom = 'power.defense.from';
 }
 
 /// Shared normalization for catalog create/lookup/resolve.

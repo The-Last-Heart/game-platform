@@ -191,9 +191,9 @@
           "playerId": "player-1",
           "outcome": "success",
           "heartsDelta": 0,
-          "energyDelta": 10,
+          "energyDelta": 1,
           "heartsAfter": 3,
-          "energyAfter": 10,
+          "energyAfter": 1,
           "statusAfter": "active",
           "reasonKey": "challenge.outcome.success",
           "measureMs": 420
@@ -289,7 +289,7 @@
         {
           "playerId": "player-1",
           "hearts": 1,
-          "energy": 20,
+          "energy": 2,
           "status": "active",
           "presence": "connected",
           "submittedForCurrentChallenge": false
@@ -321,7 +321,7 @@
         {
           "playerId": "player-1",
           "hearts": 2,
-          "energy": 30,
+          "energy": 3,
           "status": "active",
           "presence": "connected",
           "submittedForCurrentChallenge": false
@@ -329,7 +329,7 @@
         {
           "playerId": "player-2",
           "hearts": 0,
-          "energy": 5,
+          "energy": 4,
           "status": "spectator",
           "presence": "connected",
           "submittedForCurrentChallenge": false

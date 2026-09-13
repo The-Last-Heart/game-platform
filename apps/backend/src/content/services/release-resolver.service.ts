@@ -1,8 +1,10 @@
 import { Injectable } from '@nestjs/common';
 import {
   challengeDefinitionSchema,
+  powerConfigurationReleasePayloadSchema,
   type ChallengeDefinitionContract,
   type MatchReleasePins,
+  type PowerConfigurationReleasePayload,
 } from '@thelastheart/contracts';
 import { DatabaseService } from '../../database/database.service';
 import type { ChallengeDefinition } from '../../match/domain/types';
@@ -14,6 +16,49 @@ export const BOOTSTRAP_PINS: MatchReleasePins = {
   gameModeRuleReleaseId: '22222222-2222-4222-8222-222222222222',
   localizationReleaseId: '33333333-3333-4333-8333-333333333333',
   powerConfigurationReleaseId: '44444444-4444-4444-8444-444444444444',
+};
+
+/** LH-008 published power pack (005 migration); preferred when current. */
+export const LH008_POWER_RELEASE_ID =
+  '44444444-4444-4444-8444-444444444008';
+
+export const DEFAULT_POWER_CONFIGURATION: PowerConfigurationReleasePayload = {
+  releaseId: LH008_POWER_RELEASE_ID,
+  versionLabel: 'bootstrap.powers.v1',
+  energyThreshold: 4,
+  inventoryMaxTotal: 3,
+  inventoryMaxPerPower: 1,
+  actionWindowMs: 8000,
+  defenseWindowMs: 5000,
+  powers: [
+    {
+      powerId: 'danger_pulse',
+      enabled: true,
+      grantWeight: 100,
+      eligibleModes: ['quick_survival', 'private', 'training', 'dev'],
+      nameKey: 'power.danger_pulse.name',
+      explanationKey: 'power.danger_pulse.explanation',
+      assetIds: [],
+    },
+    {
+      powerId: 'shield',
+      enabled: true,
+      grantWeight: 100,
+      eligibleModes: ['quick_survival', 'private', 'training', 'dev'],
+      nameKey: 'power.shield.name',
+      explanationKey: 'power.shield.explanation',
+      assetIds: [],
+    },
+    {
+      powerId: 'reflection',
+      enabled: true,
+      grantWeight: 100,
+      eligibleModes: ['quick_survival', 'private', 'training', 'dev'],
+      nameKey: 'power.reflection.name',
+      explanationKey: 'power.reflection.explanation',
+      assetIds: [],
+    },
+  ],
 };
 
 @Injectable()
@@ -166,6 +211,22 @@ export class ReleaseResolverService implements ChallengeDefinitionProvider {
 
   getPlaylist(): readonly ChallengeDefinition[] {
     return [this.getDefaultDev()];
+  }
+
+  async getPowerConfigurationForRelease(
+    releaseId: string,
+  ): Promise<PowerConfigurationReleasePayload> {
+    const release = await this.db.query<{ payload: unknown }>(
+      `SELECT payload FROM content_releases
+       WHERE id = $1::uuid AND kind = 'power_configuration'`,
+      [releaseId],
+    );
+    const raw = release.rows[0]?.payload;
+    const parsed = powerConfigurationReleasePayloadSchema.safeParse(raw);
+    if (parsed.success) {
+      return parsed.data;
+    }
+    return DEFAULT_POWER_CONFIGURATION;
   }
 
   private toRuntimeDefinition(

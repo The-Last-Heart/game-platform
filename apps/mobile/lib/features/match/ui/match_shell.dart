@@ -10,6 +10,8 @@ import 'challenge_play_view.dart';
 import 'draw_view.dart';
 import 'halted_view.dart';
 import 'lobby_view.dart';
+import 'power_action_view.dart';
+import 'power_defense_view.dart';
 import 'ready_countdown_view.dart';
 import 'round_result_view.dart';
 import 'spectator_view.dart';
@@ -63,7 +65,9 @@ class _MatchShellState extends State<MatchShell> {
     // last-heart miss can still show the fail screen for the hold window.
     if (state.isSpectator &&
         (state.phase == MatchPhase.challengeIntro ||
-            state.phase == MatchPhase.challengeActive)) {
+            state.phase == MatchPhase.challengeActive ||
+            state.phase == MatchPhase.powerAction ||
+            state.phase == MatchPhase.powerDefense)) {
       return SpectatorView(state: state);
     }
 
@@ -146,6 +150,27 @@ class _MatchShellState extends State<MatchShell> {
                   widget.controller.retryTraining();
                 }
               : null,
+        );
+      case MatchPhase.powerAction:
+        return PowerActionView(
+          state: state,
+          estimateServerNowMs:
+              widget.controller.serverClock.estimateServerNowMs,
+          onUseDangerPulse: (String targetPlayerId) {
+            widget.controller.useDangerPulse(targetPlayerId);
+          },
+          onSkip: () {
+            widget.controller.skipPowerAction();
+          },
+        );
+      case MatchPhase.powerDefense:
+        return PowerDefenseView(
+          state: state,
+          estimateServerNowMs:
+              widget.controller.serverClock.estimateServerNowMs,
+          onDefend: (PowerDefenseChoice choice) {
+            widget.controller.defendPower(choice);
+          },
         );
       case MatchPhase.completed:
         return WinnerView(

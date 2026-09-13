@@ -24,6 +24,9 @@ abstract final class MessageTypes {
   static const String trainingStart = 'training.start';
   static const String trainingRetry = 'training.retry';
   static const String matchRematch = 'match.rematch';
+  static const String powerUse = 'power.use';
+  static const String powerDefend = 'power.defend';
+  static const String powerSkip = 'power.skip';
   // Server events
   static const String sessionAccepted = 'session.accepted';
   static const String matchSnapshot = 'match.snapshot';
@@ -37,7 +40,35 @@ abstract final class MessageTypes {
   static const String matchFinished = 'match.finished';
   static const String matchDrawn = 'match.drawn';
   static const String matchmakingStatus = 'matchmaking.status';
+  static const String powerGranted = 'power.granted';
+  static const String powerInventoryFull = 'power.inventory_full';
+  static const String powerOffered = 'power.offered';
+  static const String powerUsed = 'power.used';
+  static const String powerDefenseRequired = 'power.defense_required';
+  static const String powerResolved = 'power.resolved';
   static const String protocolError = 'protocol.error';
+}
+
+/// Launch power ids matching packages/contracts powerIdSchema.
+abstract final class PowerIds {
+  static const String dangerPulse = 'danger_pulse';
+  static const String shield = 'shield';
+  static const String reflection = 'reflection';
+}
+
+/// Defense choice for power.defend.
+enum PowerDefenseChoice {
+  none,
+  shield,
+  reflect;
+
+  String toWire() {
+    return switch (this) {
+      PowerDefenseChoice.none => 'none',
+      PowerDefenseChoice.shield => 'shield',
+      PowerDefenseChoice.reflect => 'reflect',
+    };
+  }
 }
 
 /// Base envelope shared by all realtime messages.
@@ -102,6 +133,8 @@ enum MatchPhase {
   challengeIntro,
   challengeActive,
   roundResult,
+  powerAction,
+  powerDefense,
   completed,
   draw,
   halted;
@@ -113,6 +146,8 @@ enum MatchPhase {
       'challenge_intro' => MatchPhase.challengeIntro,
       'challenge_active' => MatchPhase.challengeActive,
       'round_result' => MatchPhase.roundResult,
+      'power_action' => MatchPhase.powerAction,
+      'power_defense' => MatchPhase.powerDefense,
       'completed' => MatchPhase.completed,
       'draw' => MatchPhase.draw,
       'halted' => MatchPhase.halted,
@@ -127,10 +162,151 @@ enum MatchPhase {
       MatchPhase.challengeIntro => 'challenge_intro',
       MatchPhase.challengeActive => 'challenge_active',
       MatchPhase.roundResult => 'round_result',
+      MatchPhase.powerAction => 'power_action',
+      MatchPhase.powerDefense => 'power_defense',
       MatchPhase.completed => 'completed',
       MatchPhase.draw => 'draw',
       MatchPhase.halted => 'halted',
     };
+  }
+}
+
+/// Per-player power inventory charges (0 or 1 each).
+class PlayerPowerInventory {
+  const PlayerPowerInventory({
+    this.dangerPulse = 0,
+    this.shield = 0,
+    this.reflection = 0,
+  });
+
+  final int dangerPulse;
+  final int shield;
+  final int reflection;
+
+  factory PlayerPowerInventory.fromJson(Map<String, dynamic> json) {
+    return PlayerPowerInventory(
+      dangerPulse: json['danger_pulse'] as int? ?? 0,
+      shield: json['shield'] as int? ?? 0,
+      reflection: json['reflection'] as int? ?? 0,
+    );
+  }
+
+  PlayerPowerInventory copyWith({
+    int? dangerPulse,
+    int? shield,
+    int? reflection,
+  }) {
+    return PlayerPowerInventory(
+      dangerPulse: dangerPulse ?? this.dangerPulse,
+      shield: shield ?? this.shield,
+      reflection: reflection ?? this.reflection,
+    );
+  }
+}
+
+/// Pending Danger Pulse attack in the defense window.
+class PendingPowerAttack {
+  const PendingPowerAttack({
+    required this.attackId,
+    required this.attackerId,
+    required this.targetId,
+    required this.powerId,
+    required this.reflected,
+    required this.defenseDeadlineAtMs,
+  });
+
+  final String attackId;
+  final String attackerId;
+  final String targetId;
+  final String powerId;
+  final bool reflected;
+  final int defenseDeadlineAtMs;
+
+  factory PendingPowerAttack.fromJson(Map<String, dynamic> json) {
+    return PendingPowerAttack(
+      attackId: json['attackId'] as String,
+      attackerId: json['attackerId'] as String,
+      targetId: json['targetId'] as String,
+      powerId: json['powerId'] as String,
+      reflected: json['reflected'] as bool,
+      defenseDeadlineAtMs: json['defenseDeadlineAtMs'] as int,
+    );
+  }
+}
+
+/// Last energy→power grant outcome for brief UI feedback.
+class PowerGrantInfo {
+  const PowerGrantInfo({
+    required this.playerId,
+    required this.outcome,
+    this.powerId,
+  });
+
+  final String playerId;
+  final String? powerId;
+  final String outcome;
+
+  factory PowerGrantInfo.fromJson(Map<String, dynamic> json) {
+    return PowerGrantInfo(
+      playerId: json['playerId'] as String,
+      powerId: json['powerId'] as String?,
+      outcome: json['outcome'] as String,
+    );
+  }
+}
+
+/// Between-round tactical window state (LH-008).
+class MatchTacticalState {
+  const MatchTacticalState({
+    this.pendingAttack,
+    this.eligibleTargetIds = const <String>[],
+    this.actorsWithOffensiveCharge = const <String>[],
+    this.lastGrant,
+  });
+
+  final PendingPowerAttack? pendingAttack;
+  final List<String> eligibleTargetIds;
+  final List<String> actorsWithOffensiveCharge;
+  final PowerGrantInfo? lastGrant;
+
+  factory MatchTacticalState.fromJson(Map<String, dynamic> json) {
+    final dynamic pending = json['pendingAttack'];
+    final dynamic grant = json['lastGrant'];
+    final dynamic eligible = json['eligibleTargetIds'];
+    final dynamic actors = json['actorsWithOffensiveCharge'];
+    return MatchTacticalState(
+      pendingAttack: pending is Map
+          ? PendingPowerAttack.fromJson(
+              Map<String, dynamic>.from(pending),
+            )
+          : null,
+      eligibleTargetIds: eligible is List
+          ? eligible.cast<String>()
+          : const <String>[],
+      actorsWithOffensiveCharge: actors is List
+          ? actors.cast<String>()
+          : const <String>[],
+      lastGrant: grant is Map
+          ? PowerGrantInfo.fromJson(Map<String, dynamic>.from(grant))
+          : null,
+    );
+  }
+
+  MatchTacticalState copyWith({
+    PendingPowerAttack? Function()? pendingAttack,
+    List<String>? eligibleTargetIds,
+    List<String>? actorsWithOffensiveCharge,
+    PowerGrantInfo? Function()? lastGrant,
+  }) {
+    return MatchTacticalState(
+      pendingAttack: pendingAttack != null
+          ? pendingAttack()
+          : this.pendingAttack,
+      eligibleTargetIds: eligibleTargetIds ?? this.eligibleTargetIds,
+      actorsWithOffensiveCharge:
+          actorsWithOffensiveCharge ?? this.actorsWithOffensiveCharge,
+      lastGrant: lastGrant != null ? lastGrant() : this.lastGrant,
+    );
   }
 }
 
@@ -221,6 +397,9 @@ class PlayerPublic {
     required this.status,
     required this.presence,
     required this.submittedForCurrentChallenge,
+    this.inventory,
+    this.protectedThroughRound,
+    this.lastDangerPulseTargetId,
     this.displayName,
     this.avatarColor,
     this.ready,
@@ -234,6 +413,9 @@ class PlayerPublic {
   final PlayerStatus status;
   final Presence presence;
   final bool submittedForCurrentChallenge;
+  final PlayerPowerInventory? inventory;
+  final int? protectedThroughRound;
+  final String? lastDangerPulseTargetId;
   final String? displayName;
   final String? avatarColor;
   final bool? ready;
@@ -241,6 +423,7 @@ class PlayerPublic {
   final bool? isHost;
 
   factory PlayerPublic.fromJson(Map<String, dynamic> json) {
+    final dynamic inv = json['inventory'];
     return PlayerPublic(
       playerId: json['playerId'] as String,
       hearts: json['hearts'] as int,
@@ -249,11 +432,56 @@ class PlayerPublic {
       presence: Presence.fromString(json['presence'] as String),
       submittedForCurrentChallenge:
           json['submittedForCurrentChallenge'] as bool,
+      inventory: inv is Map
+          ? PlayerPowerInventory.fromJson(
+              Map<String, dynamic>.from(inv),
+            )
+          : null,
+      protectedThroughRound: json['protectedThroughRound'] as int?,
+      lastDangerPulseTargetId: json['lastDangerPulseTargetId'] as String?,
       displayName: json['displayName'] as String?,
       avatarColor: json['avatarColor'] as String?,
       ready: json['ready'] as bool?,
       isBot: json['isBot'] as bool?,
       isHost: json['isHost'] as bool?,
+    );
+  }
+
+  PlayerPublic copyWith({
+    int? hearts,
+    int? energy,
+    PlayerStatus? status,
+    Presence? presence,
+    bool? submittedForCurrentChallenge,
+    PlayerPowerInventory? Function()? inventory,
+    int? Function()? protectedThroughRound,
+    String? Function()? lastDangerPulseTargetId,
+    String? Function()? displayName,
+    String? Function()? avatarColor,
+    bool? Function()? ready,
+    bool? Function()? isBot,
+    bool? Function()? isHost,
+  }) {
+    return PlayerPublic(
+      playerId: playerId,
+      hearts: hearts ?? this.hearts,
+      energy: energy ?? this.energy,
+      status: status ?? this.status,
+      presence: presence ?? this.presence,
+      submittedForCurrentChallenge:
+          submittedForCurrentChallenge ?? this.submittedForCurrentChallenge,
+      inventory: inventory != null ? inventory() : this.inventory,
+      protectedThroughRound: protectedThroughRound != null
+          ? protectedThroughRound()
+          : this.protectedThroughRound,
+      lastDangerPulseTargetId: lastDangerPulseTargetId != null
+          ? lastDangerPulseTargetId()
+          : this.lastDangerPulseTargetId,
+      displayName: displayName != null ? displayName() : this.displayName,
+      avatarColor: avatarColor != null ? avatarColor() : this.avatarColor,
+      ready: ready != null ? ready() : this.ready,
+      isBot: isBot != null ? isBot() : this.isBot,
+      isHost: isHost != null ? isHost() : this.isHost,
     );
   }
 }
@@ -405,6 +633,7 @@ class MatchSnapshotPayload {
     this.hostPlayerId,
     this.roomCode,
     this.releasePins,
+    this.tactical,
   });
 
   final String matchId;
@@ -425,11 +654,13 @@ class MatchSnapshotPayload {
   final String? hostPlayerId;
   final String? roomCode;
   final Map<String, String>? releasePins;
+  final MatchTacticalState? tactical;
 
   factory MatchSnapshotPayload.fromJson(Map<String, dynamic> json) {
     final dynamic lastRound = json['lastRoundResult'];
     final dynamic challenge = json['currentChallenge'];
     final dynamic pins = json['releasePins'];
+    final dynamic tactical = json['tactical'];
     return MatchSnapshotPayload(
       matchId: json['matchId'] as String,
       status: json['status'] as String,
@@ -468,6 +699,11 @@ class MatchSnapshotPayload {
                 key.toString(),
                 value.toString(),
               ),
+            )
+          : null,
+      tactical: tactical is Map
+          ? MatchTacticalState.fromJson(
+              Map<String, dynamic>.from(tactical),
             )
           : null,
     );
@@ -707,6 +943,150 @@ class MatchDrawnPayload {
 
   factory MatchDrawnPayload.fromJson(Map<String, dynamic> json) {
     return const MatchDrawnPayload();
+  }
+}
+
+/// power.granted payload.
+class PowerGrantedPayload {
+  const PowerGrantedPayload({
+    required this.playerId,
+    required this.powerId,
+    required this.energyAfter,
+  });
+
+  final String playerId;
+  final String powerId;
+  final int energyAfter;
+
+  factory PowerGrantedPayload.fromJson(Map<String, dynamic> json) {
+    return PowerGrantedPayload(
+      playerId: json['playerId'] as String,
+      powerId: json['powerId'] as String,
+      energyAfter: json['energyAfter'] as int,
+    );
+  }
+}
+
+/// power.inventory_full payload.
+class PowerInventoryFullPayload {
+  const PowerInventoryFullPayload({
+    required this.playerId,
+    required this.energyAfter,
+  });
+
+  final String playerId;
+  final int energyAfter;
+
+  factory PowerInventoryFullPayload.fromJson(Map<String, dynamic> json) {
+    return PowerInventoryFullPayload(
+      playerId: json['playerId'] as String,
+      energyAfter: json['energyAfter'] as int,
+    );
+  }
+}
+
+/// power.offered payload.
+class PowerOfferedPayload {
+  const PowerOfferedPayload({
+    required this.actorsWithOffensiveCharge,
+    required this.actionDeadlineAtMs,
+  });
+
+  final List<String> actorsWithOffensiveCharge;
+  final int actionDeadlineAtMs;
+
+  factory PowerOfferedPayload.fromJson(Map<String, dynamic> json) {
+    return PowerOfferedPayload(
+      actorsWithOffensiveCharge:
+          (json['actorsWithOffensiveCharge'] as List<dynamic>).cast<String>(),
+      actionDeadlineAtMs: json['actionDeadlineAtMs'] as int,
+    );
+  }
+}
+
+/// power.used payload.
+class PowerUsedPayload {
+  const PowerUsedPayload({
+    required this.attackId,
+    required this.attackerId,
+    required this.targetId,
+    required this.powerId,
+  });
+
+  final String attackId;
+  final String attackerId;
+  final String targetId;
+  final String powerId;
+
+  factory PowerUsedPayload.fromJson(Map<String, dynamic> json) {
+    return PowerUsedPayload(
+      attackId: json['attackId'] as String,
+      attackerId: json['attackerId'] as String,
+      targetId: json['targetId'] as String,
+      powerId: json['powerId'] as String,
+    );
+  }
+}
+
+/// power.defense_required payload.
+class PowerDefenseRequiredPayload {
+  const PowerDefenseRequiredPayload({
+    required this.attackId,
+    required this.attackerId,
+    required this.targetId,
+    required this.reflected,
+    required this.defenseDeadlineAtMs,
+  });
+
+  final String attackId;
+  final String attackerId;
+  final String targetId;
+  final bool reflected;
+  final int defenseDeadlineAtMs;
+
+  factory PowerDefenseRequiredPayload.fromJson(Map<String, dynamic> json) {
+    return PowerDefenseRequiredPayload(
+      attackId: json['attackId'] as String,
+      attackerId: json['attackerId'] as String,
+      targetId: json['targetId'] as String,
+      reflected: json['reflected'] as bool,
+      defenseDeadlineAtMs: json['defenseDeadlineAtMs'] as int,
+    );
+  }
+}
+
+/// power.resolved payload.
+class PowerResolvedPayload {
+  const PowerResolvedPayload({
+    required this.attackId,
+    required this.attackerId,
+    required this.targetId,
+    required this.outcome,
+    required this.heartsDeltaTarget,
+    required this.heartsAfterTarget,
+    required this.statusAfterTarget,
+  });
+
+  final String attackId;
+  final String attackerId;
+  final String targetId;
+  final String outcome;
+  final int heartsDeltaTarget;
+  final int heartsAfterTarget;
+  final PlayerStatus statusAfterTarget;
+
+  factory PowerResolvedPayload.fromJson(Map<String, dynamic> json) {
+    return PowerResolvedPayload(
+      attackId: json['attackId'] as String,
+      attackerId: json['attackerId'] as String,
+      targetId: json['targetId'] as String,
+      outcome: json['outcome'] as String,
+      heartsDeltaTarget: json['heartsDeltaTarget'] as int,
+      heartsAfterTarget: json['heartsAfterTarget'] as int,
+      statusAfterTarget: PlayerStatus.fromString(
+        json['statusAfterTarget'] as String,
+      ),
+    );
   }
 }
 

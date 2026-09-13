@@ -96,7 +96,7 @@ void main() {
       expect(result.state.winnerId, 'player-1');
       expect(result.state.players.length, 2);
       expect(result.state.players[0].hearts, 2);
-      expect(result.state.players[0].energy, 30);
+      expect(result.state.players[0].energy, 3);
       expect(result.state.players[1].status, PlayerStatus.spectator);
       expect(result.requestSnapshot, isFalse);
     });
@@ -147,7 +147,7 @@ void main() {
       final ReducerResult result = reducer.reduce(first.state, snapSameSeq);
       expect(result.disposition, ReducerDisposition.applied);
       expect(result.state.players[0].hearts, 2);
-      expect(result.state.players[0].energy, 30);
+      expect(result.state.players[0].energy, 3);
       expect(result.state.players[1].status, PlayerStatus.spectator);
     });
 

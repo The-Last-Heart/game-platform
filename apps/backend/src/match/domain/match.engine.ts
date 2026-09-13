@@ -23,6 +23,20 @@ import {
   MIN_LIVE_MATCH_PLAYERS,
 } from './types';
 import { WAIT_FOR_SIGNAL_ENGINE_ID } from './wait-for-signal.evaluator';
+import {
+  cloneInventory,
+  convertEnergyForPlayer,
+  defaultPowerConfig,
+  eligibleDangerPulseTargets,
+  grantEventsFromConversion,
+  makeAttackId,
+  playersWithOffensiveCharge,
+  applyHeartLoss,
+} from './match.powers';
+import {
+  EMPTY_INVENTORY,
+  ENERGY_THRESHOLD,
+} from './types';
 
 /**
  * Inclusive deadline boundary (LH-003B / LH-003C):
@@ -43,7 +57,13 @@ function clonePlayers(
   players: Map<string, PlayerState>,
 ): Map<string, PlayerState> {
   return new Map(
-    [...players.entries()].map(([id, player]) => [id, { ...player }]),
+    [...players.entries()].map(([id, player]) => [
+      id,
+      {
+        ...player,
+        inventory: cloneInventory(player.inventory ?? EMPTY_INVENTORY),
+      },
+    ]),
   );
 }
 
@@ -276,6 +296,10 @@ export class MatchEngine {
       pinnedPlaylist: options?.pinnedPlaylist
         ? [...options.pinnedPlaylist]
         : [],
+      powerConfig: options?.powerConfig ?? defaultPowerConfig(),
+      pendingAttack: null,
+      lastPowerGrant: null,
+      powerActionActorIds: [],
     };
   }
 
@@ -313,7 +337,7 @@ export class MatchEngine {
     ) {
       throw new DomainError('INVALID_DEFINITION', 'hearts out of range');
     }
-    if (!Number.isInteger(energy) || energy < 0) {
+    if (!Number.isInteger(energy) || energy < 0 || energy > ENERGY_THRESHOLD) {
       throw new DomainError('INVALID_DEFINITION', 'energy out of range');
     }
 
@@ -336,6 +360,10 @@ export class MatchEngine {
       // Bots are server-controlled fills — accepted immediately. Humans require
       // gateway finalizeJoin after live lease + credentials.
       joinAccepted: isBot,
+      inventory: { ...EMPTY_INVENTORY },
+      protectedThroughRound: null,
+      lastDangerPulseTargetId: null,
+      powerActionResolved: false,
     });
     const bump = this.bump(next);
     return {
@@ -1300,6 +1328,22 @@ export class MatchEngine {
       if (outcome === 'success') {
         energyDelta = challenge.definition.energyRewardOnSuccess;
         player.energy += energyDelta;
+        const config = match.powerConfig ?? defaultPowerConfig();
+        const { grant } = convertEnergyForPlayer(
+          player,
+          match.mode,
+          config,
+          () => Math.random(),
+        );
+        if (grant) {
+          // Defer event emission until after sequence bump below.
+          (player as PlayerState & { __pendingGrant?: typeof grant }).__pendingGrant =
+            grant;
+        }
+        // Cap public energy at threshold (segments remaining after convert).
+        if (player.energy > ENERGY_THRESHOLD) {
+          player.energy = ENERGY_THRESHOLD;
+        }
       } else {
         heartsDelta = -challenge.definition.heartPenaltyOnFailure;
         player.hearts = Math.max(0, player.hearts + heartsDelta);
@@ -1313,7 +1357,7 @@ export class MatchEngine {
         heartsDelta,
         energyDelta,
         heartsAfter: player.hearts,
-        energyAfter: player.energy,
+        energyAfter: Math.min(ENERGY_THRESHOLD, player.energy),
         statusAfter: player.status,
         reasonKey,
         measureMs,
@@ -1341,6 +1385,32 @@ export class MatchEngine {
         resolutions,
       },
     ];
+
+    for (const p of match.players.values()) {
+      const pending = (
+        p as PlayerState & {
+          __pendingGrant?: {
+            outcome: 'granted' | 'inventory_full';
+            powerId: import('./types').PowerId | null;
+          };
+        }
+      ).__pendingGrant;
+      if (pending) {
+        events.push(
+          ...grantEventsFromConversion(
+            match,
+            p.playerId,
+            pending,
+            match.sequence,
+            match.revision,
+            bump.serverTimestampMs,
+          ),
+        );
+        delete (
+          p as PlayerState & { __pendingGrant?: unknown }
+        ).__pendingGrant;
+      }
+    }
 
     if (survivors.length === 1) {
       const sole = survivors[0]!;
@@ -1457,6 +1527,19 @@ export class MatchEngine {
     }>;
     currentChallenge: PublicChallengeView | null;
     releasePins: MatchState['releasePins'];
+    tactical: {
+      pendingAttack: {
+        attackId: string;
+        attackerId: string;
+        targetId: string;
+        powerId: 'danger_pulse';
+        reflected: boolean;
+        defenseDeadlineAtMs: number;
+      } | null;
+      eligibleTargetIds?: string[];
+      actorsWithOffensiveCharge?: string[];
+      lastGrant: MatchState['lastPowerGrant'];
+    } | null;
   } {
     const now = this.clock.nowMs();
     // Resolve briefly leaves phase=challenge_active with a resolved round still
@@ -1475,6 +1558,10 @@ export class MatchEngine {
             resolutions: [...match.currentChallenge!.resolutions],
           }
         : null);
+    const localPlayerForTargets =
+      match.phase === 'power_action'
+        ? match.powerActionActorIds[0]
+        : null;
     return {
       matchId: match.matchId,
       status: match.status,
@@ -1494,10 +1581,13 @@ export class MatchEngine {
       players: [...match.players.values()].map((p) => ({
         playerId: p.playerId,
         hearts: p.hearts,
-        energy: p.energy,
+        energy: Math.min(ENERGY_THRESHOLD, p.energy),
         status: p.status,
         presence: p.presence,
         submittedForCurrentChallenge: p.submittedForCurrentChallenge,
+        inventory: cloneInventory(p.inventory ?? EMPTY_INVENTORY),
+        protectedThroughRound: p.protectedThroughRound,
+        lastDangerPulseTargetId: p.lastDangerPulseTargetId,
         ...(p.displayName !== undefined
           ? { displayName: p.displayName }
           : {}),
@@ -1513,7 +1603,333 @@ export class MatchEngine {
           ? toPublicChallengeView(match.currentChallenge, now)
           : null,
       releasePins: match.releasePins,
+      tactical: {
+        pendingAttack: match.pendingAttack
+          ? {
+              attackId: match.pendingAttack.attackId,
+              attackerId: match.pendingAttack.attackerId,
+              targetId: match.pendingAttack.targetId,
+              powerId: 'danger_pulse' as const,
+              reflected: match.pendingAttack.reflected,
+              defenseDeadlineAtMs: match.pendingAttack.defenseDeadlineAtMs,
+            }
+          : null,
+        eligibleTargetIds:
+          match.phase === 'power_action' && localPlayerForTargets
+            ? eligibleDangerPulseTargets(match, localPlayerForTargets)
+            : match.phase === 'power_action'
+              ? []
+              : undefined,
+        actorsWithOffensiveCharge:
+          match.phase === 'power_action'
+            ? [...match.powerActionActorIds]
+            : undefined,
+        lastGrant: match.lastPowerGrant,
+      },
     };
+  }
+
+  beginPowerAction(
+    match: MatchState,
+    holdMs?: number,
+  ): { match: MatchState; events: DomainEvent[] } {
+    const next = this.cloneMatch(match);
+    const config = next.powerConfig ?? defaultPowerConfig();
+    for (const p of next.players.values()) {
+      p.powerActionResolved = false;
+    }
+    const actors = playersWithOffensiveCharge(next).filter((id) => {
+      return eligibleDangerPulseTargets(next, id).length > 0;
+    });
+    if (actors.length === 0) {
+      return { match: next, events: [] };
+    }
+    const windowMs = holdMs ?? config.actionWindowMs;
+    const nowWall = this.clock.nowMs();
+    const nowMono = this.clock.monoMs();
+    next.status = 'waiting';
+    next.phase = 'power_action';
+    next.phaseDeadlineAtMs = nowWall + windowMs;
+    next.phaseDeadlineMonoMs = nowMono + windowMs;
+    next.nextPhaseAtMs = nowWall + windowMs;
+    next.powerActionActorIds = actors;
+    next.pendingAttack = null;
+    const bump = this.bump(next);
+    return {
+      match: next,
+      events: [
+        bump,
+        {
+          kind: 'power_offered',
+          sequence: next.sequence,
+          revision: next.revision,
+          serverTimestampMs: bump.serverTimestampMs,
+          actorsWithOffensiveCharge: actors,
+          actionDeadlineAtMs: next.phaseDeadlineAtMs!,
+        },
+      ],
+    };
+  }
+
+  useDangerPulse(
+    match: MatchState,
+    input: {
+      attackerId: string;
+      targetPlayerId: string;
+      offensivePowersDisabled?: boolean;
+    },
+  ): { match: MatchState; events: DomainEvent[] } {
+    if (match.phase !== 'power_action') {
+      throw new DomainError('POWER_PHASE_INVALID', 'not in power action');
+    }
+    if (input.offensivePowersDisabled) {
+      throw new DomainError(
+        'OFFENSIVE_POWERS_DISABLED',
+        'offensive powers disabled',
+      );
+    }
+    const next = this.cloneMatch(match);
+    const attacker = next.players.get(input.attackerId);
+    if (!attacker || attacker.status !== 'active') {
+      throw new DomainError('POWER_NOT_AVAILABLE', 'attacker unavailable');
+    }
+    if (attacker.inventory.danger_pulse < 1) {
+      throw new DomainError('POWER_NOT_AVAILABLE', 'no danger pulse charge');
+    }
+    if (attacker.powerActionResolved) {
+      throw new DomainError('POWER_PHASE_INVALID', 'already acted');
+    }
+    const eligible = eligibleDangerPulseTargets(next, input.attackerId);
+    if (!eligible.includes(input.targetPlayerId)) {
+      throw new DomainError('ILLEGAL_POWER_TARGET', 'illegal target');
+    }
+    const config = next.powerConfig ?? defaultPowerConfig();
+    const nowWall = this.clock.nowMs();
+    const nowMono = this.clock.monoMs();
+    attacker.inventory.danger_pulse = 0;
+    attacker.powerActionResolved = true;
+    attacker.lastDangerPulseTargetId = input.targetPlayerId;
+    const attackId = makeAttackId();
+    next.pendingAttack = {
+      attackId,
+      attackerId: input.attackerId,
+      targetId: input.targetPlayerId,
+      powerId: 'danger_pulse',
+      reflected: false,
+      defenseDeadlineAtMs: nowWall + config.defenseWindowMs,
+      defenseDeadlineMonoMs: nowMono + config.defenseWindowMs,
+    };
+    next.phase = 'power_defense';
+    next.phaseDeadlineAtMs = next.pendingAttack.defenseDeadlineAtMs;
+    next.phaseDeadlineMonoMs = next.pendingAttack.defenseDeadlineMonoMs;
+    next.nextPhaseAtMs = next.pendingAttack.defenseDeadlineAtMs;
+    next.powerActionActorIds = [];
+    const bump = this.bump(next);
+    return {
+      match: next,
+      events: [
+        bump,
+        {
+          kind: 'power_used',
+          sequence: next.sequence,
+          revision: next.revision,
+          serverTimestampMs: bump.serverTimestampMs,
+          attackId,
+          attackerId: input.attackerId,
+          targetId: input.targetPlayerId,
+        },
+        {
+          kind: 'power_defense_required',
+          sequence: next.sequence,
+          revision: next.revision,
+          serverTimestampMs: bump.serverTimestampMs,
+          attackId,
+          attackerId: input.attackerId,
+          targetId: input.targetPlayerId,
+          reflected: false,
+          defenseDeadlineAtMs: next.pendingAttack.defenseDeadlineAtMs,
+        },
+      ],
+    };
+  }
+
+  skipPowerAction(
+    match: MatchState,
+    playerId: string,
+  ): { match: MatchState; events: DomainEvent[] } {
+    if (match.phase !== 'power_action') {
+      throw new DomainError('POWER_PHASE_INVALID', 'not in power action');
+    }
+    const next = this.cloneMatch(match);
+    const player = next.players.get(playerId);
+    if (!player) {
+      throw new DomainError('PLAYER_NOT_FOUND', 'player not found');
+    }
+    player.powerActionResolved = true;
+    next.powerActionActorIds = next.powerActionActorIds.filter(
+      (id) => id !== playerId,
+    );
+    const bump = this.bump(next);
+    if (next.powerActionActorIds.length === 0) {
+      next.phase = 'round_result';
+      next.phaseDeadlineAtMs = this.clock.nowMs();
+      next.phaseDeadlineMonoMs = this.clock.monoMs();
+    }
+    return { match: next, events: [bump] };
+  }
+
+  defendPowerAttack(
+    match: MatchState,
+    input: {
+      defenderId: string;
+      attackId: string;
+      choice: 'none' | 'shield' | 'reflect';
+    },
+  ): { match: MatchState; events: DomainEvent[] } {
+    if (match.phase !== 'power_defense' || !match.pendingAttack) {
+      throw new DomainError('POWER_PHASE_INVALID', 'not in defense');
+    }
+    if (match.pendingAttack.attackId !== input.attackId) {
+      throw new DomainError('POWER_ATTACK_NOT_FOUND', 'attack mismatch');
+    }
+    if (match.pendingAttack.targetId !== input.defenderId) {
+      throw new DomainError('POWER_PHASE_INVALID', 'not the target');
+    }
+    return this.resolvePendingAttack(match, input.choice);
+  }
+
+  expirePowerDefense(
+    match: MatchState,
+  ): { match: MatchState; events: DomainEvent[] } {
+    if (match.phase !== 'power_defense' || !match.pendingAttack) {
+      return { match, events: [] };
+    }
+    if (this.clock.monoMs() <= match.pendingAttack.defenseDeadlineMonoMs) {
+      return { match, events: [] };
+    }
+    return this.resolvePendingAttack(match, 'none');
+  }
+
+  private resolvePendingAttack(
+    match: MatchState,
+    choice: 'none' | 'shield' | 'reflect',
+  ): { match: MatchState; events: DomainEvent[] } {
+    const next = this.cloneMatch(match);
+    const attack = next.pendingAttack!;
+    const target = next.players.get(attack.targetId);
+    const attacker = next.players.get(attack.attackerId);
+    if (!target || !attacker) {
+      throw new DomainError('POWER_ATTACK_NOT_FOUND', 'participants missing');
+    }
+
+    let outcome:
+      | 'hit'
+      | 'shielded'
+      | 'reflected_hit'
+      | 'reflected_shielded'
+      | 'expired'
+      | 'cancelled' = 'hit';
+    let heartsDelta = 0;
+    let resolvedTarget = target;
+
+    if (choice === 'shield') {
+      if (target.inventory.shield < 1) {
+        throw new DomainError('POWER_NOT_AVAILABLE', 'no shield');
+      }
+      target.inventory.shield = 0;
+      outcome = attack.reflected ? 'reflected_shielded' : 'shielded';
+    } else if (choice === 'reflect') {
+      if (attack.reflected) {
+        throw new DomainError('POWER_NOT_AVAILABLE', 'already reflected');
+      }
+      if (target.inventory.reflection < 1) {
+        throw new DomainError('POWER_NOT_AVAILABLE', 'no reflection');
+      }
+      target.inventory.reflection = 0;
+      const config = next.powerConfig ?? defaultPowerConfig();
+      const nowWall = this.clock.nowMs();
+      const nowMono = this.clock.monoMs();
+      next.pendingAttack = {
+        attackId: makeAttackId(),
+        attackerId: attack.targetId,
+        targetId: attack.attackerId,
+        powerId: 'danger_pulse',
+        reflected: true,
+        defenseDeadlineAtMs: nowWall + config.defenseWindowMs,
+        defenseDeadlineMonoMs: nowMono + config.defenseWindowMs,
+      };
+      next.phase = 'power_defense';
+      next.phaseDeadlineAtMs = next.pendingAttack.defenseDeadlineAtMs;
+      next.phaseDeadlineMonoMs = next.pendingAttack.defenseDeadlineMonoMs;
+      next.nextPhaseAtMs = next.pendingAttack.defenseDeadlineAtMs;
+      const bump = this.bump(next);
+      return {
+        match: next,
+        events: [
+          bump,
+          {
+            kind: 'power_defense_required',
+            sequence: next.sequence,
+            revision: next.revision,
+            serverTimestampMs: bump.serverTimestampMs,
+            attackId: next.pendingAttack.attackId,
+            attackerId: next.pendingAttack.attackerId,
+            targetId: next.pendingAttack.targetId,
+            reflected: true,
+            defenseDeadlineAtMs: next.pendingAttack.defenseDeadlineAtMs,
+          },
+        ],
+      };
+    } else {
+      heartsDelta = -1;
+      applyHeartLoss(target, heartsDelta);
+      target.protectedThroughRound = next.roundNumber + 1;
+      outcome = attack.reflected ? 'reflected_hit' : 'hit';
+      if (choice === 'none' && this.clock.monoMs() > attack.defenseDeadlineMonoMs) {
+        outcome = 'expired';
+      }
+      resolvedTarget = target;
+    }
+
+    next.pendingAttack = null;
+    next.phase = 'round_result';
+    next.phaseDeadlineAtMs = this.clock.nowMs();
+    next.phaseDeadlineMonoMs = this.clock.monoMs();
+    next.nextPhaseAtMs = next.phaseDeadlineAtMs;
+    const bump = this.bump(next);
+    return {
+      match: next,
+      events: [
+        bump,
+        {
+          kind: 'power_resolved',
+          sequence: next.sequence,
+          revision: next.revision,
+          serverTimestampMs: bump.serverTimestampMs,
+          attackId: attack.attackId,
+          attackerId: attack.attackerId,
+          targetId: resolvedTarget.playerId,
+          outcome,
+          heartsDeltaTarget: heartsDelta,
+          heartsAfterTarget: resolvedTarget.hearts,
+          statusAfterTarget: resolvedTarget.status,
+        },
+      ],
+    };
+  }
+
+  /** Clear protection that has expired relative to the upcoming challenge round. */
+  clearExpiredProtection(match: MatchState): MatchState {
+    const next = this.cloneMatch(match);
+    for (const p of next.players.values()) {
+      if (
+        p.protectedThroughRound != null &&
+        p.protectedThroughRound < next.roundNumber
+      ) {
+        p.protectedThroughRound = null;
+      }
+    }
+    return next;
   }
 
   private cloneMatch(match: MatchState): MatchState {
@@ -1523,6 +1939,23 @@ export class MatchEngine {
       commandAcks: new Map(match.commandAcks),
       pinnedPlaylist: [...match.pinnedPlaylist],
       releasePins: match.releasePins ? { ...match.releasePins } : null,
+      powerConfig: match.powerConfig
+        ? {
+            ...match.powerConfig,
+            powers: match.powerConfig.powers.map((p) => ({
+              ...p,
+              eligibleModes: [...p.eligibleModes],
+              assetIds: [...p.assetIds],
+            })),
+          }
+        : null,
+      pendingAttack: match.pendingAttack
+        ? { ...match.pendingAttack }
+        : null,
+      lastPowerGrant: match.lastPowerGrant
+        ? { ...match.lastPowerGrant }
+        : null,
+      powerActionActorIds: [...(match.powerActionActorIds ?? [])],
       lastRoundResult: match.lastRoundResult
         ? {
             ...match.lastRoundResult,

@@ -10,7 +10,7 @@ Previously closed: **LH-001 → LH-006**.
 
 ## Current milestone
 
-**LH-008 — Complete Energy and Tactical Powers Loop** — first incomplete (see [LH-008.md](./LH-008.md)).
+**LH-008 — Complete Energy and Tactical Powers Loop** — feature implemented; formal close pending operator device evidence (see [LH-008.md](./LH-008.md), [LH-008-DELIVERY.md](./LH-008-DELIVERY.md)).
 
 ## LH-007 close summary
 

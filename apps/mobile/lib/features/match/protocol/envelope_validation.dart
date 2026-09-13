@@ -25,6 +25,12 @@ const Set<String> _knownServerEventTypes = <String>{
   MessageTypes.matchStateChanged,
   MessageTypes.matchFinished,
   MessageTypes.matchDrawn,
+  MessageTypes.powerGranted,
+  MessageTypes.powerInventoryFull,
+  MessageTypes.powerOffered,
+  MessageTypes.powerUsed,
+  MessageTypes.powerDefenseRequired,
+  MessageTypes.powerResolved,
   MessageTypes.protocolError,
 };
 
@@ -43,6 +49,11 @@ const Set<String> protocolErrorCodes = <String>{
   'DUPLICATE_COMMAND',
   'INTERNAL_ERROR',
   'DEV_ONLY_FORBIDDEN',
+  'POWER_NOT_AVAILABLE',
+  'POWER_PHASE_INVALID',
+  'ILLEGAL_POWER_TARGET',
+  'POWER_ATTACK_NOT_FOUND',
+  'OFFENSIVE_POWERS_DISABLED',
 };
 
 const Set<String> _matchPhases = <String>{
@@ -51,6 +62,8 @@ const Set<String> _matchPhases = <String>{
   'challenge_intro',
   'challenge_active',
   'round_result',
+  'power_action',
+  'power_defense',
   'completed',
   'draw',
   'halted',
@@ -87,6 +100,24 @@ const Set<String> _outcomes = <String>{
   'timeout',
   'skipped_spectator',
 };
+const Set<String> _powerIds = <String>{
+  PowerIds.dangerPulse,
+  PowerIds.shield,
+  PowerIds.reflection,
+};
+const Set<String> _powerGrantOutcomes = <String>{'granted', 'inventory_full'};
+const Set<String> _powerResolveOutcomes = <String>{
+  'hit',
+  'shielded',
+  'reflected_hit',
+  'reflected_shielded',
+  'expired',
+  'cancelled',
+};
+
+bool _isCharge01(Object? value) => value is int && value >= 0 && value <= 1;
+
+bool _isEnergy(Object? value) => value is int && value >= 0 && value <= 4;
 
 bool _isNonEmptyBounded(Object? value, {required int max}) =>
     value is String && value.isNotEmpty && value.length <= max;
@@ -125,6 +156,9 @@ EnvelopeValidation? _validatePlayerPublic(
     'status',
     'presence',
     'submittedForCurrentChallenge',
+    'inventory',
+    'protectedThroughRound',
+    'lastDangerPulseTargetId',
     'displayName',
     'avatarColor',
     'ready',
@@ -139,7 +173,7 @@ EnvelopeValidation? _validatePlayerPublic(
   if (hearts is! int || hearts < 0 || hearts > 3) {
     return EnvelopeValidation.invalid('$label.hearts invalid');
   }
-  if (!_isNonNegInt(json['energy'])) {
+  if (!_isEnergy(json['energy'])) {
     return EnvelopeValidation.invalid('$label.energy invalid');
   }
   if (json['status'] is! String ||
@@ -153,6 +187,38 @@ EnvelopeValidation? _validatePlayerPublic(
   if (!_isBool(json['submittedForCurrentChallenge'])) {
     return EnvelopeValidation.invalid(
       '$label.submittedForCurrentChallenge invalid',
+    );
+  }
+  if (json.containsKey('inventory') && json['inventory'] != null) {
+    final Object? inv = json['inventory'];
+    if (inv is! Map) {
+      return EnvelopeValidation.invalid('$label.inventory invalid');
+    }
+    final Map<String, dynamic> invMap = Map<String, dynamic>.from(inv);
+    final EnvelopeValidation? invExtra = _rejectExtraKeys(invMap, <String>{
+      'danger_pulse',
+      'shield',
+      'reflection',
+    }, '$label.inventory');
+    if (invExtra != null) return invExtra;
+    if (!_isCharge01(invMap['danger_pulse']) ||
+        !_isCharge01(invMap['shield']) ||
+        !_isCharge01(invMap['reflection'])) {
+      return EnvelopeValidation.invalid('$label.inventory charges invalid');
+    }
+  }
+  if (json.containsKey('protectedThroughRound') &&
+      json['protectedThroughRound'] != null &&
+      !_isNonNegInt(json['protectedThroughRound'])) {
+    return EnvelopeValidation.invalid(
+      '$label.protectedThroughRound invalid',
+    );
+  }
+  if (json.containsKey('lastDangerPulseTargetId') &&
+      json['lastDangerPulseTargetId'] != null &&
+      !_isUuidLike(json['lastDangerPulseTargetId'])) {
+    return EnvelopeValidation.invalid(
+      '$label.lastDangerPulseTargetId invalid',
     );
   }
   if (json.containsKey('displayName') && json['displayName'] != null) {
@@ -171,6 +237,102 @@ EnvelopeValidation? _validatePlayerPublic(
   for (final String key in <String>['ready', 'isBot', 'isHost']) {
     if (json.containsKey(key) && json[key] != null && !_isBool(json[key])) {
       return EnvelopeValidation.invalid('$label.$key invalid');
+    }
+  }
+  return null;
+}
+
+EnvelopeValidation? _validatePendingAttack(
+  Map<String, dynamic> json,
+  String label,
+) {
+  final EnvelopeValidation? extra = _rejectExtraKeys(json, <String>{
+    'attackId',
+    'attackerId',
+    'targetId',
+    'powerId',
+    'reflected',
+    'defenseDeadlineAtMs',
+  }, label);
+  if (extra != null) return extra;
+  if (!_isUuidLike(json['attackId']) ||
+      !_isUuidLike(json['attackerId']) ||
+      !_isUuidLike(json['targetId'])) {
+    return EnvelopeValidation.invalid('$label ids invalid');
+  }
+  if (json['powerId'] != PowerIds.dangerPulse) {
+    return EnvelopeValidation.invalid('$label.powerId invalid');
+  }
+  if (!_isBool(json['reflected'])) {
+    return EnvelopeValidation.invalid('$label.reflected invalid');
+  }
+  if (!_isNonNegInt(json['defenseDeadlineAtMs'])) {
+    return EnvelopeValidation.invalid('$label.defenseDeadlineAtMs invalid');
+  }
+  return null;
+}
+
+EnvelopeValidation? _validateTactical(
+  Map<String, dynamic> json,
+  String label,
+) {
+  final EnvelopeValidation? extra = _rejectExtraKeys(json, <String>{
+    'pendingAttack',
+    'eligibleTargetIds',
+    'actorsWithOffensiveCharge',
+    'lastGrant',
+  }, label);
+  if (extra != null) return extra;
+  final Object? pending = json['pendingAttack'];
+  if (pending != null) {
+    if (pending is! Map) {
+      return EnvelopeValidation.invalid('$label.pendingAttack invalid');
+    }
+    final EnvelopeValidation? err = _validatePendingAttack(
+      Map<String, dynamic>.from(pending),
+      '$label.pendingAttack',
+    );
+    if (err != null) return err;
+  }
+  for (final String key in <String>[
+    'eligibleTargetIds',
+    'actorsWithOffensiveCharge',
+  ]) {
+    if (!json.containsKey(key) || json[key] == null) continue;
+    final Object? list = json[key];
+    if (list is! List) {
+      return EnvelopeValidation.invalid('$label.$key invalid');
+    }
+    for (final Object? item in list) {
+      if (!_isUuidLike(item)) {
+        return EnvelopeValidation.invalid('$label.$key item invalid');
+      }
+    }
+  }
+  if (json.containsKey('lastGrant') && json['lastGrant'] != null) {
+    final Object? grant = json['lastGrant'];
+    if (grant is! Map) {
+      return EnvelopeValidation.invalid('$label.lastGrant invalid');
+    }
+    final Map<String, dynamic> grantMap = Map<String, dynamic>.from(grant);
+    final EnvelopeValidation? grantExtra = _rejectExtraKeys(grantMap, <String>{
+      'playerId',
+      'powerId',
+      'outcome',
+    }, '$label.lastGrant');
+    if (grantExtra != null) return grantExtra;
+    if (!_isUuidLike(grantMap['playerId'])) {
+      return EnvelopeValidation.invalid('$label.lastGrant.playerId invalid');
+    }
+    if (grantMap.containsKey('powerId') &&
+        grantMap['powerId'] != null &&
+        (grantMap['powerId'] is! String ||
+            !_powerIds.contains(grantMap['powerId'] as String))) {
+      return EnvelopeValidation.invalid('$label.lastGrant.powerId invalid');
+    }
+    if (grantMap['outcome'] is! String ||
+        !_powerGrantOutcomes.contains(grantMap['outcome'] as String)) {
+      return EnvelopeValidation.invalid('$label.lastGrant.outcome invalid');
     }
   }
   return null;
@@ -209,7 +371,7 @@ EnvelopeValidation? _validateResolution(
   if (heartsAfter is! int || heartsAfter < 0 || heartsAfter > 3) {
     return EnvelopeValidation.invalid('$label.heartsAfter invalid');
   }
-  if (!_isNonNegInt(json['energyAfter'])) {
+  if (!_isEnergy(json['energyAfter'])) {
     return EnvelopeValidation.invalid('$label.energyAfter invalid');
   }
   if (json['statusAfter'] is! String ||
@@ -379,6 +541,7 @@ EnvelopeValidation _validateMatchSnapshot(Map<String, dynamic> payload) {
     'hostPlayerId',
     'roomCode',
     'releasePins',
+    'tactical',
   }, 'match.snapshot');
   if (extra != null) return extra;
   if (!_isUuidLike(payload['matchId'])) {
@@ -506,6 +669,19 @@ EnvelopeValidation _validateMatchSnapshot(Map<String, dynamic> payload) {
     final EnvelopeValidation? err = _validatePublicChallenge(
       Map<String, dynamic>.from(challenge),
       'match.snapshot.currentChallenge',
+    );
+    if (err != null) return err;
+  }
+  if (payload.containsKey('tactical') && payload['tactical'] != null) {
+    final Object? tactical = payload['tactical'];
+    if (tactical is! Map) {
+      return const EnvelopeValidation.invalid(
+        'match.snapshot.tactical invalid',
+      );
+    }
+    final EnvelopeValidation? err = _validateTactical(
+      Map<String, dynamic>.from(tactical),
+      'match.snapshot.tactical',
     );
     if (err != null) return err;
   }
@@ -702,6 +878,162 @@ EnvelopeValidation _validateMatchDrawn(Map<String, dynamic> payload) {
   return const EnvelopeValidation.valid();
 }
 
+EnvelopeValidation _validatePowerGranted(Map<String, dynamic> payload) {
+  final EnvelopeValidation? extra = _rejectExtraKeys(payload, <String>{
+    'playerId',
+    'powerId',
+    'energyAfter',
+  }, 'power.granted');
+  if (extra != null) return extra;
+  if (!_isUuidLike(payload['playerId'])) {
+    return const EnvelopeValidation.invalid('power.granted.playerId invalid');
+  }
+  if (payload['powerId'] is! String ||
+      !_powerIds.contains(payload['powerId'] as String)) {
+    return const EnvelopeValidation.invalid('power.granted.powerId invalid');
+  }
+  if (!_isEnergy(payload['energyAfter'])) {
+    return const EnvelopeValidation.invalid(
+      'power.granted.energyAfter invalid',
+    );
+  }
+  return const EnvelopeValidation.valid();
+}
+
+EnvelopeValidation _validatePowerInventoryFull(Map<String, dynamic> payload) {
+  final EnvelopeValidation? extra = _rejectExtraKeys(payload, <String>{
+    'playerId',
+    'energyAfter',
+  }, 'power.inventory_full');
+  if (extra != null) return extra;
+  if (!_isUuidLike(payload['playerId'])) {
+    return const EnvelopeValidation.invalid(
+      'power.inventory_full.playerId invalid',
+    );
+  }
+  if (!_isEnergy(payload['energyAfter'])) {
+    return const EnvelopeValidation.invalid(
+      'power.inventory_full.energyAfter invalid',
+    );
+  }
+  return const EnvelopeValidation.valid();
+}
+
+EnvelopeValidation _validatePowerOffered(Map<String, dynamic> payload) {
+  final EnvelopeValidation? extra = _rejectExtraKeys(payload, <String>{
+    'actorsWithOffensiveCharge',
+    'actionDeadlineAtMs',
+  }, 'power.offered');
+  if (extra != null) return extra;
+  final Object? actors = payload['actorsWithOffensiveCharge'];
+  if (actors is! List) {
+    return const EnvelopeValidation.invalid(
+      'power.offered.actorsWithOffensiveCharge invalid',
+    );
+  }
+  for (final Object? item in actors) {
+    if (!_isUuidLike(item)) {
+      return const EnvelopeValidation.invalid(
+        'power.offered.actorsWithOffensiveCharge item invalid',
+      );
+    }
+  }
+  if (!_isNonNegInt(payload['actionDeadlineAtMs'])) {
+    return const EnvelopeValidation.invalid(
+      'power.offered.actionDeadlineAtMs invalid',
+    );
+  }
+  return const EnvelopeValidation.valid();
+}
+
+EnvelopeValidation _validatePowerUsed(Map<String, dynamic> payload) {
+  final EnvelopeValidation? extra = _rejectExtraKeys(payload, <String>{
+    'attackId',
+    'attackerId',
+    'targetId',
+    'powerId',
+  }, 'power.used');
+  if (extra != null) return extra;
+  if (!_isUuidLike(payload['attackId']) ||
+      !_isUuidLike(payload['attackerId']) ||
+      !_isUuidLike(payload['targetId'])) {
+    return const EnvelopeValidation.invalid('power.used ids invalid');
+  }
+  if (payload['powerId'] != PowerIds.dangerPulse) {
+    return const EnvelopeValidation.invalid('power.used.powerId invalid');
+  }
+  return const EnvelopeValidation.valid();
+}
+
+EnvelopeValidation _validatePowerDefenseRequired(Map<String, dynamic> payload) {
+  final EnvelopeValidation? extra = _rejectExtraKeys(payload, <String>{
+    'attackId',
+    'attackerId',
+    'targetId',
+    'reflected',
+    'defenseDeadlineAtMs',
+  }, 'power.defense_required');
+  if (extra != null) return extra;
+  if (!_isUuidLike(payload['attackId']) ||
+      !_isUuidLike(payload['attackerId']) ||
+      !_isUuidLike(payload['targetId'])) {
+    return const EnvelopeValidation.invalid(
+      'power.defense_required ids invalid',
+    );
+  }
+  if (!_isBool(payload['reflected'])) {
+    return const EnvelopeValidation.invalid(
+      'power.defense_required.reflected invalid',
+    );
+  }
+  if (!_isNonNegInt(payload['defenseDeadlineAtMs'])) {
+    return const EnvelopeValidation.invalid(
+      'power.defense_required.defenseDeadlineAtMs invalid',
+    );
+  }
+  return const EnvelopeValidation.valid();
+}
+
+EnvelopeValidation _validatePowerResolved(Map<String, dynamic> payload) {
+  final EnvelopeValidation? extra = _rejectExtraKeys(payload, <String>{
+    'attackId',
+    'attackerId',
+    'targetId',
+    'outcome',
+    'heartsDeltaTarget',
+    'heartsAfterTarget',
+    'statusAfterTarget',
+  }, 'power.resolved');
+  if (extra != null) return extra;
+  if (!_isUuidLike(payload['attackId']) ||
+      !_isUuidLike(payload['attackerId']) ||
+      !_isUuidLike(payload['targetId'])) {
+    return const EnvelopeValidation.invalid('power.resolved ids invalid');
+  }
+  if (payload['outcome'] is! String ||
+      !_powerResolveOutcomes.contains(payload['outcome'] as String)) {
+    return const EnvelopeValidation.invalid('power.resolved.outcome invalid');
+  }
+  if (payload['heartsDeltaTarget'] is! int) {
+    return const EnvelopeValidation.invalid(
+      'power.resolved.heartsDeltaTarget invalid',
+    );
+  }
+  final Object? heartsAfter = payload['heartsAfterTarget'];
+  if (heartsAfter is! int || heartsAfter < 0 || heartsAfter > 3) {
+    return const EnvelopeValidation.invalid(
+      'power.resolved.heartsAfterTarget invalid',
+    );
+  }
+  if (payload['statusAfterTarget'] is! String ||
+      !_playerStatuses.contains(payload['statusAfterTarget'] as String)) {
+    return const EnvelopeValidation.invalid(
+      'power.resolved.statusAfterTarget invalid',
+    );
+  }
+  return const EnvelopeValidation.valid();
+}
+
 EnvelopeValidation _validateProtocolError(Map<String, dynamic> payload) {
   final EnvelopeValidation? extra = _rejectExtraKeys(payload, <String>{
     'code',
@@ -834,6 +1166,18 @@ EnvelopeValidation validateServerEnvelope(Map<String, dynamic> raw) {
         return _validateMatchFinished(payload);
       case MessageTypes.matchDrawn:
         return _validateMatchDrawn(payload);
+      case MessageTypes.powerGranted:
+        return _validatePowerGranted(payload);
+      case MessageTypes.powerInventoryFull:
+        return _validatePowerInventoryFull(payload);
+      case MessageTypes.powerOffered:
+        return _validatePowerOffered(payload);
+      case MessageTypes.powerUsed:
+        return _validatePowerUsed(payload);
+      case MessageTypes.powerDefenseRequired:
+        return _validatePowerDefenseRequired(payload);
+      case MessageTypes.powerResolved:
+        return _validatePowerResolved(payload);
       case MessageTypes.protocolError:
         return _validateProtocolError(payload);
       default:

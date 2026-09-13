@@ -454,6 +454,45 @@ class MatchSessionController {
     });
   }
 
+  /// Use Danger Pulse on an eligible target during power_action.
+  void useDangerPulse(String targetPlayerId) {
+    if (state.value.lifecycle != SessionLifecycle.bound) return;
+    if (!state.value.isConnected) return;
+    if (state.value.needsSnapshot) return;
+    if (state.value.phase != MatchPhase.powerAction) return;
+    _sendCommand(MessageTypes.powerUse, <String, dynamic>{
+      'powerId': PowerIds.dangerPulse,
+      'targetPlayerId': targetPlayerId,
+    });
+  }
+
+  /// Defend against pending Danger Pulse during power_defense.
+  void defendPower(PowerDefenseChoice choice) {
+    if (state.value.lifecycle != SessionLifecycle.bound) return;
+    if (!state.value.isConnected) return;
+    if (state.value.needsSnapshot) return;
+    if (state.value.phase != MatchPhase.powerDefense) return;
+    final String? attackId = state.value.tactical?.pendingAttack?.attackId;
+    if (attackId == null) return;
+    _sendCommand(MessageTypes.powerDefend, <String, dynamic>{
+      'attackId': attackId,
+      'choice': choice.toWire(),
+    });
+  }
+
+  /// Skip offensive power action during power_action.
+  void skipPowerAction() {
+    if (state.value.lifecycle != SessionLifecycle.bound) return;
+    if (!state.value.isConnected) return;
+    if (state.value.needsSnapshot) return;
+    if (state.value.phase != MatchPhase.powerAction) return;
+    final String? matchId = state.value.matchId;
+    if (matchId == null) return;
+    _sendCommand(MessageTypes.powerSkip, <String, dynamic>{
+      'matchId': matchId,
+    });
+  }
+
   /// Submit an answer for the current challenge.
   void submitAnswer(String challengeInstanceId, Map<String, dynamic> answer) {
     if (state.value.lifecycle != SessionLifecycle.bound) return;

@@ -437,8 +437,10 @@ void main() {
     });
 
     test('contract protocol error codes set matches Zod enum size', () {
-      expect(protocolErrorCodes.length, 13);
+      expect(protocolErrorCodes.length, 18);
       expect(protocolErrorCodes.contains('INTERNAL_ERROR'), isTrue);
+      expect(protocolErrorCodes.contains('POWER_NOT_AVAILABLE'), isTrue);
+      expect(protocolErrorCodes.contains('OFFENSIVE_POWERS_DISABLED'), isTrue);
       expect(protocolErrorCodes.contains('SESSION_EXPIRED'), isFalse);
       expect(protocolErrorCodes.contains('MATCH_COMPLETED'), isFalse);
     });

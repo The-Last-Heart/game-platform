@@ -1,5 +1,8 @@
 import { z } from 'zod';
-import { matchReleasePinsSchema } from '../../content/v1/releases';
+import {
+  matchReleasePinsSchema,
+  powerIdSchema,
+} from '../../content/v1/releases';
 
 export const REALTIME_SCHEMA_VERSION = '1' as const;
 
@@ -22,6 +25,9 @@ export const MessageTypes = {
   TrainingStart: 'training.start',
   TrainingRetry: 'training.retry',
   MatchRematch: 'match.rematch',
+  PowerUse: 'power.use',
+  PowerDefend: 'power.defend',
+  PowerSkip: 'power.skip',
   // Server events
   SessionAccepted: 'session.accepted',
   MatchSnapshot: 'match.snapshot',
@@ -35,6 +41,12 @@ export const MessageTypes = {
   MatchFinished: 'match.finished',
   MatchDrawn: 'match.drawn',
   MatchmakingStatus: 'matchmaking.status',
+  PowerGranted: 'power.granted',
+  PowerInventoryFull: 'power.inventory_full',
+  PowerOffered: 'power.offered',
+  PowerUsed: 'power.used',
+  PowerDefenseRequired: 'power.defense_required',
+  PowerResolved: 'power.resolved',
   ProtocolError: 'protocol.error',
 } as const;
 
@@ -195,6 +207,26 @@ export const matchRematchPayloadSchema = z
   })
   .strict();
 
+export const powerUsePayloadSchema = z
+  .object({
+    powerId: z.literal('danger_pulse'),
+    targetPlayerId: uuidLike,
+  })
+  .strict();
+
+export const powerDefendPayloadSchema = z
+  .object({
+    attackId: uuidLike,
+    choice: z.enum(['none', 'shield', 'reflect']),
+  })
+  .strict();
+
+export const powerSkipPayloadSchema = z
+  .object({
+    matchId: uuidLike,
+  })
+  .strict();
+
 export const clientCommandSchema = envelopeBaseSchema
   .extend({
     type: z.enum([
@@ -215,6 +247,9 @@ export const clientCommandSchema = envelopeBaseSchema
       MessageTypes.TrainingStart,
       MessageTypes.TrainingRetry,
       MessageTypes.MatchRematch,
+      MessageTypes.PowerUse,
+      MessageTypes.PowerDefend,
+      MessageTypes.PowerSkip,
     ]),
     commandId: uuidLike,
     payload: z.unknown(),
@@ -238,6 +273,9 @@ export const clientCommandSchema = envelopeBaseSchema
       [MessageTypes.TrainingStart]: trainingStartPayloadSchema,
       [MessageTypes.TrainingRetry]: trainingRetryPayloadSchema,
       [MessageTypes.MatchRematch]: matchRematchPayloadSchema,
+      [MessageTypes.PowerUse]: powerUsePayloadSchema,
+      [MessageTypes.PowerDefend]: powerDefendPayloadSchema,
+      [MessageTypes.PowerSkip]: powerSkipPayloadSchema,
     } as const;
     const schema = map[value.type];
     const parsed = schema.safeParse(value.payload);
@@ -262,6 +300,8 @@ export const matchPhaseSchema = z.enum([
   'challenge_intro',
   'challenge_active',
   'round_result',
+  'power_action',
+  'power_defense',
   'completed',
   'draw',
   'halted',
@@ -280,19 +320,60 @@ export const roundPhaseSchema = z.enum([
 
 export type RoundPhase = z.infer<typeof roundPhaseSchema>;
 
+export const playerPowerInventorySchema = z
+  .object({
+    danger_pulse: z.number().int().min(0).max(1),
+    shield: z.number().int().min(0).max(1),
+    reflection: z.number().int().min(0).max(1),
+  })
+  .strict();
+
 export const playerPublicSchema = z
   .object({
     playerId: uuidLike,
     hearts: z.number().int().min(0).max(3),
-    energy: z.number().int().min(0),
+    /** Current meter segments (0..energyThreshold-1 after convert; 0..4 before). */
+    energy: z.number().int().min(0).max(4),
     status: z.enum(['active', 'spectator']),
     presence: z.enum(['connected', 'disconnected']),
     submittedForCurrentChallenge: z.boolean(),
+    inventory: playerPowerInventorySchema.optional(),
+    /** Protected through the end of this challenge round number (inclusive). */
+    protectedThroughRound: z.number().int().nonnegative().nullable().optional(),
+    lastDangerPulseTargetId: uuidLike.nullable().optional(),
     displayName: displayNameSchema.optional(),
     avatarColor: avatarColorSchema.optional(),
     ready: z.boolean().optional(),
     isBot: z.boolean().optional(),
     isHost: z.boolean().optional(),
+  })
+  .strict();
+
+export const pendingPowerAttackSchema = z
+  .object({
+    attackId: uuidLike,
+    attackerId: uuidLike,
+    targetId: uuidLike,
+    powerId: z.literal('danger_pulse'),
+    reflected: z.boolean(),
+    defenseDeadlineAtMs: z.number().int().nonnegative(),
+  })
+  .strict();
+
+export const matchTacticalStateSchema = z
+  .object({
+    pendingAttack: pendingPowerAttackSchema.nullable(),
+    eligibleTargetIds: z.array(uuidLike).optional(),
+    actorsWithOffensiveCharge: z.array(uuidLike).optional(),
+    lastGrant: z
+      .object({
+        playerId: uuidLike,
+        powerId: powerIdSchema.nullable(),
+        outcome: z.enum(['granted', 'inventory_full']),
+      })
+      .strict()
+      .nullable()
+      .optional(),
   })
   .strict();
 
@@ -342,7 +423,7 @@ export const playerChallengeResolutionSchema = z
     heartsDelta: z.number().int(),
     energyDelta: z.number().int(),
     heartsAfter: z.number().int().min(0).max(3),
-    energyAfter: z.number().int().min(0),
+    energyAfter: z.number().int().min(0).max(4),
     statusAfter: z.enum(['active', 'spectator']),
     /** Translation key explaining the outcome (success/failure/timeout reason). */
     reasonKey: nonEmpty.optional(),
@@ -385,6 +466,8 @@ export const matchSnapshotPayloadSchema = z
     roomCode: z.string().min(4).max(8).nullable().optional(),
     /** Immutable content pins for this match; required for new matches (LH-006). */
     releasePins: matchReleasePinsSchema.nullable().optional(),
+    /** Between-round tactical window state (LH-008). */
+    tactical: matchTacticalStateSchema.nullable().optional(),
   })
   .strict();
 
@@ -503,6 +586,66 @@ export const matchFinishedPayloadSchema = z
 /** Catalog exhausted with tied top hearts — no winner. */
 export const matchDrawnPayloadSchema = z.object({}).strict();
 
+export const powerGrantedPayloadSchema = z
+  .object({
+    playerId: uuidLike,
+    powerId: powerIdSchema,
+    energyAfter: z.number().int().min(0).max(4),
+  })
+  .strict();
+
+export const powerInventoryFullPayloadSchema = z
+  .object({
+    playerId: uuidLike,
+    energyAfter: z.number().int().min(0).max(4),
+  })
+  .strict();
+
+export const powerOfferedPayloadSchema = z
+  .object({
+    actorsWithOffensiveCharge: z.array(uuidLike),
+    actionDeadlineAtMs: z.number().int().nonnegative(),
+  })
+  .strict();
+
+export const powerUsedPayloadSchema = z
+  .object({
+    attackId: uuidLike,
+    attackerId: uuidLike,
+    targetId: uuidLike,
+    powerId: z.literal('danger_pulse'),
+  })
+  .strict();
+
+export const powerDefenseRequiredPayloadSchema = z
+  .object({
+    attackId: uuidLike,
+    attackerId: uuidLike,
+    targetId: uuidLike,
+    reflected: z.boolean(),
+    defenseDeadlineAtMs: z.number().int().nonnegative(),
+  })
+  .strict();
+
+export const powerResolvedPayloadSchema = z
+  .object({
+    attackId: uuidLike,
+    attackerId: uuidLike,
+    targetId: uuidLike,
+    outcome: z.enum([
+      'hit',
+      'shielded',
+      'reflected_hit',
+      'reflected_shielded',
+      'expired',
+      'cancelled',
+    ]),
+    heartsDeltaTarget: z.number().int(),
+    heartsAfterTarget: z.number().int().min(0).max(3),
+    statusAfterTarget: z.enum(['active', 'spectator']),
+  })
+  .strict();
+
 export const protocolErrorPayloadSchema = z
   .object({
     code: z.enum([
@@ -532,6 +675,11 @@ export const protocolErrorPayloadSchema = z
       'REMATCH_UNAVAILABLE',
       'MATCHMAKING_PAUSED',
       'TRAINING_UNAVAILABLE',
+      'POWER_NOT_AVAILABLE',
+      'POWER_PHASE_INVALID',
+      'ILLEGAL_POWER_TARGET',
+      'POWER_ATTACK_NOT_FOUND',
+      'OFFENSIVE_POWERS_DISABLED',
     ]),
     // Translation key for client display — never a product sentence.
     messageKey: nonEmpty,
@@ -596,6 +744,30 @@ export const serverEventSchema = z.discriminatedUnion('type', [
   serverEventBase.extend({
     type: z.literal(MessageTypes.MatchmakingStatus),
     payload: matchmakingStatusPayloadSchema,
+  }),
+  serverEventBase.extend({
+    type: z.literal(MessageTypes.PowerGranted),
+    payload: powerGrantedPayloadSchema,
+  }),
+  serverEventBase.extend({
+    type: z.literal(MessageTypes.PowerInventoryFull),
+    payload: powerInventoryFullPayloadSchema,
+  }),
+  serverEventBase.extend({
+    type: z.literal(MessageTypes.PowerOffered),
+    payload: powerOfferedPayloadSchema,
+  }),
+  serverEventBase.extend({
+    type: z.literal(MessageTypes.PowerUsed),
+    payload: powerUsedPayloadSchema,
+  }),
+  serverEventBase.extend({
+    type: z.literal(MessageTypes.PowerDefenseRequired),
+    payload: powerDefenseRequiredPayloadSchema,
+  }),
+  serverEventBase.extend({
+    type: z.literal(MessageTypes.PowerResolved),
+    payload: powerResolvedPayloadSchema,
   }),
   serverEventBase.extend({
     type: z.literal(MessageTypes.ProtocolError),
@@ -689,7 +861,10 @@ function isClientCommandType(type: string): type is ClientCommand['type'] {
     type === MessageTypes.MatchStartLobby ||
     type === MessageTypes.TrainingStart ||
     type === MessageTypes.TrainingRetry ||
-    type === MessageTypes.MatchRematch
+    type === MessageTypes.MatchRematch ||
+    type === MessageTypes.PowerUse ||
+    type === MessageTypes.PowerDefend ||
+    type === MessageTypes.PowerSkip
   );
 }
 

@@ -8,6 +8,7 @@ import '../../../l10n/translation_resolver.dart';
 import '../../../theme/lh_tokens.dart';
 import '../protocol/realtime_messages.dart';
 import '../state/match_snapshot.dart';
+import 'widgets/energy_display.dart';
 import 'widgets/hearts_display.dart';
 import 'widgets/lh_buttons.dart';
 import 'widgets/lh_heart_logo.dart';
@@ -116,6 +117,11 @@ class _RoundResultViewState extends State<RoundResultView> {
           ),
           const SizedBox(height: 8),
 
+          if (_localGrantBanner(resolver) case final Widget banner) ...<Widget>[
+            banner,
+            const SizedBox(height: 16),
+          ],
+
           if (survived)
             ..._buildSurvivedContent(
               context,
@@ -154,6 +160,51 @@ class _RoundResultViewState extends State<RoundResultView> {
               ),
             ),
           const SizedBox(height: 20),
+        ],
+      ),
+    );
+  }
+
+  Widget? _localGrantBanner(TranslationResolver resolver) {
+    final PowerGrantInfo? grant = widget.state.tactical?.lastGrant;
+    if (grant == null) return null;
+    if (grant.playerId != widget.state.playerId) return null;
+    final bool full = grant.outcome == 'inventory_full';
+    final String title = resolver.resolve(
+      full ? 'power.inventory_full' : 'power.granted',
+    );
+    final String? powerName = grant.powerId == null
+        ? null
+        : resolver.resolve('power.${grant.powerId}.name');
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: LhColors.elevated,
+        borderRadius: LhRadii.mdAll,
+        border: Border.all(
+          color: full
+              ? LhColors.warning.withValues(alpha: 0.7)
+              : LhColors.success.withValues(alpha: 0.7),
+        ),
+      ),
+      child: Column(
+        children: <Widget>[
+          Text(
+            title,
+            style: Theme.of(context).textTheme.titleMedium?.copyWith(
+              color: full ? LhColors.warning : LhColors.success,
+            ),
+            textAlign: TextAlign.center,
+          ),
+          if (powerName != null) ...<Widget>[
+            const SizedBox(height: 4),
+            Text(
+              powerName,
+              style: Theme.of(context).textTheme.bodyMedium,
+              textAlign: TextAlign.center,
+            ),
+          ],
         ],
       ),
     );
@@ -340,15 +391,10 @@ class _RoundResultViewState extends State<RoundResultView> {
               ),
             ],
           ),
-          const SizedBox(height: 8),
-          ClipRRect(
-            borderRadius: LhRadii.pillAll,
-            child: LinearProgressIndicator(
-              value: (energy / 4.0).clamp(0.0, 1.0),
-              minHeight: 8,
-              backgroundColor: LhColors.border,
-              valueColor: const AlwaysStoppedAnimation<Color>(LhColors.success),
-            ),
+          const SizedBox(height: 10),
+          Align(
+            alignment: AlignmentDirectional.centerStart,
+            child: EnergyDisplay(energy: energy),
           ),
         ],
       ),

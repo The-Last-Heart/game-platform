@@ -105,7 +105,13 @@ class MatchReducer {
         type == MessageTypes.matchFinished ||
         type == MessageTypes.playerPresence ||
         type == MessageTypes.matchStateChanged ||
-        type == MessageTypes.challengeSubmissionAck;
+        type == MessageTypes.challengeSubmissionAck ||
+        type == MessageTypes.powerGranted ||
+        type == MessageTypes.powerInventoryFull ||
+        type == MessageTypes.powerOffered ||
+        type == MessageTypes.powerUsed ||
+        type == MessageTypes.powerDefenseRequired ||
+        type == MessageTypes.powerResolved;
   }
 
   ReducerResult _reduceSnapshot(
@@ -185,11 +191,16 @@ class MatchReducer {
     MatchViewState state,
     MatchSnapshotPayload snap,
   ) {
+    // Prefer snapshot challenge only for challenge phases; clear otherwise so
+    // power / result chrome is not blocked by a stale PublicChallenge.
+    final bool keepChallenge =
+        snap.phase == MatchPhase.challengeIntro ||
+        snap.phase == MatchPhase.challengeActive;
     return state.copyWith(
       matchId: () => snap.matchId,
       phase: snap.phase,
       players: snap.players,
-      currentChallenge: () => snap.currentChallenge,
+      currentChallenge: () => keepChallenge ? snap.currentChallenge : null,
       lastRoundResult: () => snap.lastRoundResult,
       winnerId: () => snap.winnerId,
       roundNumber: snap.roundNumber,
@@ -201,6 +212,7 @@ class MatchReducer {
       mode: () => snap.mode,
       hostPlayerId: () => snap.hostPlayerId,
       roomCode: () => snap.roomCode,
+      tactical: () => snap.tactical,
     );
   }
 
@@ -333,19 +345,7 @@ class MatchReducer {
           PlayerPublic p,
         ) {
           if (p.playerId == presence.playerId) {
-            return PlayerPublic(
-              playerId: p.playerId,
-              hearts: p.hearts,
-              energy: p.energy,
-              status: p.status,
-              presence: presence.presence,
-              submittedForCurrentChallenge: p.submittedForCurrentChallenge,
-              displayName: p.displayName,
-              avatarColor: p.avatarColor,
-              ready: p.ready,
-              isBot: p.isBot,
-              isHost: p.isHost,
-            );
+            return p.copyWith(presence: presence.presence);
           }
           return p;
         }).toList();
@@ -372,6 +372,24 @@ class MatchReducer {
       case MessageTypes.challengeSubmissionAck:
         return state;
 
+      case MessageTypes.powerGranted:
+        return _applyPowerGranted(state, envelope);
+
+      case MessageTypes.powerInventoryFull:
+        return _applyPowerInventoryFull(state, envelope);
+
+      case MessageTypes.powerOffered:
+        return _applyPowerOffered(state, envelope);
+
+      case MessageTypes.powerUsed:
+        return _applyPowerUsed(state, envelope);
+
+      case MessageTypes.powerDefenseRequired:
+        return _applyPowerDefenseRequired(state, envelope);
+
+      case MessageTypes.powerResolved:
+        return _applyPowerResolved(state, envelope);
+
       case MessageTypes.protocolError:
         final ProtocolErrorPayload error = ProtocolErrorPayload.fromJson(
           envelope.payload!,
@@ -381,5 +399,168 @@ class MatchReducer {
       default:
         return state;
     }
+  }
+
+  MatchViewState _applyPowerGranted(
+    MatchViewState state,
+    RealtimeEnvelope envelope,
+  ) {
+    final PowerGrantedPayload granted = PowerGrantedPayload.fromJson(
+      envelope.payload!,
+    );
+    final List<PlayerPublic> players = state.players.map((PlayerPublic p) {
+      if (p.playerId != granted.playerId) return p;
+      final PlayerPowerInventory prior =
+          p.inventory ?? const PlayerPowerInventory();
+      final PlayerPowerInventory next = switch (granted.powerId) {
+        PowerIds.dangerPulse => prior.copyWith(dangerPulse: 1),
+        PowerIds.shield => prior.copyWith(shield: 1),
+        PowerIds.reflection => prior.copyWith(reflection: 1),
+        _ => prior,
+      };
+      return p.copyWith(energy: granted.energyAfter, inventory: () => next);
+    }).toList();
+    final MatchTacticalState tactical =
+        (state.tactical ?? const MatchTacticalState()).copyWith(
+          lastGrant: () => PowerGrantInfo(
+            playerId: granted.playerId,
+            powerId: granted.powerId,
+            outcome: 'granted',
+          ),
+        );
+    return state.copyWith(
+      players: players,
+      tactical: () => tactical,
+      currentChallenge: () => null,
+      serverSequence: envelope.serverSequence ?? state.serverSequence,
+    );
+  }
+
+  MatchViewState _applyPowerInventoryFull(
+    MatchViewState state,
+    RealtimeEnvelope envelope,
+  ) {
+    final PowerInventoryFullPayload full = PowerInventoryFullPayload.fromJson(
+      envelope.payload!,
+    );
+    final List<PlayerPublic> players = state.players.map((PlayerPublic p) {
+      if (p.playerId != full.playerId) return p;
+      return p.copyWith(energy: full.energyAfter);
+    }).toList();
+    final MatchTacticalState tactical =
+        (state.tactical ?? const MatchTacticalState()).copyWith(
+          lastGrant: () => PowerGrantInfo(
+            playerId: full.playerId,
+            powerId: null,
+            outcome: 'inventory_full',
+          ),
+        );
+    return state.copyWith(
+      players: players,
+      tactical: () => tactical,
+      currentChallenge: () => null,
+      serverSequence: envelope.serverSequence ?? state.serverSequence,
+    );
+  }
+
+  MatchViewState _applyPowerOffered(
+    MatchViewState state,
+    RealtimeEnvelope envelope,
+  ) {
+    final PowerOfferedPayload offered = PowerOfferedPayload.fromJson(
+      envelope.payload!,
+    );
+    final MatchTacticalState tactical =
+        (state.tactical ?? const MatchTacticalState()).copyWith(
+          pendingAttack: () => null,
+          actorsWithOffensiveCharge: offered.actorsWithOffensiveCharge,
+        );
+    return state.copyWith(
+      phase: MatchPhase.powerAction,
+      phaseDeadlineAtMs: () => offered.actionDeadlineAtMs,
+      nextPhaseAtMs: () => offered.actionDeadlineAtMs,
+      tactical: () => tactical,
+      currentChallenge: () => null,
+      serverSequence: envelope.serverSequence ?? state.serverSequence,
+    );
+  }
+
+  MatchViewState _applyPowerUsed(
+    MatchViewState state,
+    RealtimeEnvelope envelope,
+  ) {
+    final PowerUsedPayload used = PowerUsedPayload.fromJson(envelope.payload!);
+    final List<PlayerPublic> players = state.players.map((PlayerPublic p) {
+      if (p.playerId != used.attackerId) return p;
+      final PlayerPowerInventory prior =
+          p.inventory ?? const PlayerPowerInventory();
+      return p.copyWith(
+        inventory: () => prior.copyWith(dangerPulse: 0),
+        lastDangerPulseTargetId: () => used.targetId,
+      );
+    }).toList();
+    return state.copyWith(
+      players: players,
+      currentChallenge: () => null,
+      serverSequence: envelope.serverSequence ?? state.serverSequence,
+    );
+  }
+
+  MatchViewState _applyPowerDefenseRequired(
+    MatchViewState state,
+    RealtimeEnvelope envelope,
+  ) {
+    final PowerDefenseRequiredPayload required =
+        PowerDefenseRequiredPayload.fromJson(envelope.payload!);
+    final PendingPowerAttack pending = PendingPowerAttack(
+      attackId: required.attackId,
+      attackerId: required.attackerId,
+      targetId: required.targetId,
+      powerId: PowerIds.dangerPulse,
+      reflected: required.reflected,
+      defenseDeadlineAtMs: required.defenseDeadlineAtMs,
+    );
+    final MatchTacticalState tactical =
+        (state.tactical ?? const MatchTacticalState()).copyWith(
+          pendingAttack: () => pending,
+          eligibleTargetIds: const <String>[],
+          actorsWithOffensiveCharge: const <String>[],
+        );
+    return state.copyWith(
+      phase: MatchPhase.powerDefense,
+      phaseDeadlineAtMs: () => required.defenseDeadlineAtMs,
+      nextPhaseAtMs: () => required.defenseDeadlineAtMs,
+      tactical: () => tactical,
+      currentChallenge: () => null,
+      serverSequence: envelope.serverSequence ?? state.serverSequence,
+    );
+  }
+
+  MatchViewState _applyPowerResolved(
+    MatchViewState state,
+    RealtimeEnvelope envelope,
+  ) {
+    final PowerResolvedPayload resolved = PowerResolvedPayload.fromJson(
+      envelope.payload!,
+    );
+    final List<PlayerPublic> players = state.players.map((PlayerPublic p) {
+      if (p.playerId != resolved.targetId) return p;
+      return p.copyWith(
+        hearts: resolved.heartsAfterTarget,
+        status: resolved.statusAfterTarget,
+      );
+    }).toList();
+    final MatchTacticalState tactical =
+        (state.tactical ?? const MatchTacticalState()).copyWith(
+          pendingAttack: () => null,
+          eligibleTargetIds: const <String>[],
+          actorsWithOffensiveCharge: const <String>[],
+        );
+    return state.copyWith(
+      players: players,
+      tactical: () => tactical,
+      currentChallenge: () => null,
+      serverSequence: envelope.serverSequence ?? state.serverSequence,
+    );
   }
 }
