@@ -713,11 +713,18 @@ describe('MatchService', () => {
     await store.save(match!);
 
     const first = await service.rematch(created.matchId, a.playerId);
+    expect(first.lobbyFillWaitMs).toBe(60_000);
+    expect(first.snapshot.lobbyFillDeadlineAtMs).toBe(
+      clock.nowMs() + 60_000,
+    );
     const second = await service.rematch(created.matchId, b.playerId);
     expect(second.matchId).toBe(first.matchId);
     expect(first.snapshot.hostPlayerId).toBe(first.playerId);
     expect(second.snapshot.players).toHaveLength(2);
     expect(second.snapshot.hostPlayerId).toBe(first.playerId);
+    expect(second.snapshot.lobbyFillDeadlineAtMs).toBe(
+      first.snapshot.lobbyFillDeadlineAtMs,
+    );
 
     service.onModuleDestroy();
   });

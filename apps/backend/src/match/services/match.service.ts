@@ -65,6 +65,8 @@ export type SeatCredentials = {
   resumeToken: string;
   snapshot: ReturnType<MatchEngine['toPublicSnapshot']>;
   roomCode?: string | null;
+  /** When set, gateway/matchmaking should (re)arm the open-lobby fill timer. */
+  lobbyFillWaitMs?: number;
 };
 
 type RematchParty = {
@@ -1198,12 +1200,43 @@ export class MatchService implements OnModuleDestroy, OnModuleInit {
         partyMatch.players.size < partyMatch.playerCapacity
       ) {
         const seated = await this.joinMatch(existing.newMatchId, identity);
+        // Heal rematch lobbies that never armed a fill wait (pre-fix state).
+        let lobbyFillWaitMs: number | undefined;
+        if (partyMatch.mode === 'quick_survival') {
+          lobbyFillWaitMs = await this.enqueue(
+            existing.newMatchId,
+            async () => {
+              const current = await this.requireMatch(existing.newMatchId);
+              if (
+                current.phase !== 'lobby' ||
+                current.players.size < MIN_LIVE_MATCH_PLAYERS ||
+                current.players.size >= current.playerCapacity
+              ) {
+                return undefined;
+              }
+              if (
+                current.lobbyFillDeadlineMonoMs != null &&
+                this.clock.monoMs() < current.lobbyFillDeadlineMonoMs
+              ) {
+                return Math.max(
+                  1,
+                  current.lobbyFillDeadlineMonoMs - this.clock.monoMs(),
+                );
+              }
+              this.armLobbyFillWait(current, QUICK_LOBBY_FILL_WAIT_MS);
+              await this.store.save(current);
+              return QUICK_LOBBY_FILL_WAIT_MS;
+            },
+          );
+        }
+        const snap = await this.requestSnapshot(existing.newMatchId);
         return {
           matchId: existing.newMatchId,
           playerId: seated.playerId,
           resumeToken: seated.resumeToken,
-          snapshot: seated.snapshot,
+          snapshot: snap.snapshot,
           roomCode: partyMatch.roomCode,
+          lobbyFillWaitMs,
         };
       }
     }
@@ -1226,10 +1259,17 @@ export class MatchService implements OnModuleDestroy, OnModuleInit {
     }
 
     const seated = await this.joinMatch(next.matchId, identity);
-    // First rematch clicker is always the new host.
+    // First rematch clicker is always the new host. Quick rematch also needs
+    // the same open-lobby fill deadline as matchmaking — otherwise Start now
+    // never appears (mobile gates that chrome on lobbyFillDeadlineAtMs).
+    let lobbyFillWaitMs: number | undefined;
     await this.enqueue(next.matchId, async () => {
       const current = await this.requireMatch(next.matchId);
-      const updated = this.engine.setHostPlayerId(current, seated.playerId);
+      let updated = this.engine.setHostPlayerId(current, seated.playerId);
+      if (updated.mode === 'quick_survival') {
+        this.armLobbyFillWait(updated, QUICK_LOBBY_FILL_WAIT_MS);
+        lobbyFillWaitMs = QUICK_LOBBY_FILL_WAIT_MS;
+      }
       await this.store.save(updated);
     });
 
@@ -1248,6 +1288,7 @@ export class MatchService implements OnModuleDestroy, OnModuleInit {
       resumeToken: seated.resumeToken,
       snapshot: snap.snapshot,
       roomCode,
+      lobbyFillWaitMs,
     };
   }
 

@@ -1058,6 +1058,12 @@ export class MatchGateway
       return;
     }
     const rematched = await this.matches.rematch(matchId, state.playerId);
+    if (rematched.lobbyFillWaitMs != null) {
+      this.matchmaking.onLobbyCompositionChanged(rematched.matchId, {
+        emptied: false,
+        lobbyFillWaitMs: rematched.lobbyFillWaitMs,
+      });
+    }
     await this.clearClientBinding(client);
     await this.finalizeSeatBind(
       client,

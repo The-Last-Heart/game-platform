@@ -12,6 +12,16 @@ const FIXTURE_FILES = [
   'hold.multitouch.v1.json',
 ] as const;
 
+/** Live playlist until Challenge Studio: red/blue heart only (repeated for match length). */
+const PLAYLIST_DEFINITION_IDS = [
+  'reaction.wait_for_signal.dev',
+  'reaction.wait_for_signal.dev',
+  'reaction.wait_for_signal.dev',
+  'reaction.wait_for_signal.dev',
+  'reaction.wait_for_signal.dev',
+  'reaction.wait_for_signal.dev',
+] as const;
+
 /**
  * Loads challenge definitions from JSON fixture files.
  * Development/test only — production uses the pinned catalog release.
@@ -23,6 +33,13 @@ export class DevFixtureProvider implements ChallengeDefinitionProvider {
   constructor() {
     for (const file of FIXTURE_FILES) {
       this.loadFixture(file);
+    }
+    for (const definitionId of PLAYLIST_DEFINITION_IDS) {
+      const def = this.definitions.get(definitionId);
+      if (!def) {
+        throw new Error(`playlist fixture missing: ${definitionId}`);
+      }
+      this.playlist.push(def);
     }
   }
 
@@ -38,7 +55,7 @@ export class DevFixtureProvider implements ChallengeDefinitionProvider {
     return def;
   }
 
-  /** Finite six-engine pack — played in order once (no infinite cycle). */
+  /** Finite red/blue-only pack — played in order once (no infinite cycle). */
   getPlaylist(): readonly ChallengeDefinition[] {
     return this.playlist;
   }
@@ -47,6 +64,5 @@ export class DevFixtureProvider implements ChallengeDefinitionProvider {
     const raw = readFileSync(join(__dirname, 'fixtures', filename), 'utf-8');
     const parsed = JSON.parse(raw) as ChallengeDefinition;
     this.definitions.set(parsed.definitionId, parsed);
-    this.playlist.push(parsed);
   }
 }
