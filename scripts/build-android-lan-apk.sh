@@ -48,7 +48,32 @@ score_ip() {
 }
 
 read_port_from_env_files() {
-  local file line key value
+  # Prefer compose publish port (BACKEND_PORT) over Nest listen PORT so LAN APKs
+  # target Docker apps (e.g. 3010) instead of the in-container/host default 3000.
+  local file line value
+  for file in \
+    "${ROOT}/infra/local/.env" \
+    "${ROOT}/apps/backend/.env"; do
+    [[ -f "$file" ]] || continue
+    while IFS= read -r line || [[ -n "$line" ]]; do
+      line="${line%%#*}"
+      line="$(echo "$line" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')"
+      [[ -z "$line" ]] && continue
+      case "$line" in
+        BACKEND_PORT=*)
+          value="${line#*=}"
+          value="${value%\"}"
+          value="${value#\"}"
+          value="${value%\'}"
+          value="${value#\'}"
+          if [[ "$value" =~ ^[0-9]+$ ]] && ((value > 0 && value < 65536)); then
+            echo "$value"
+            return 0
+          fi
+          ;;
+      esac
+    done <"$file"
+  done
   for file in \
     "${ROOT}/apps/backend/.env" \
     "${ROOT}/infra/local/.env"; do
@@ -58,7 +83,7 @@ read_port_from_env_files() {
       line="$(echo "$line" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')"
       [[ -z "$line" ]] && continue
       case "$line" in
-        PORT=*|BACKEND_PORT=*)
+        PORT=*)
           value="${line#*=}"
           value="${value%\"}"
           value="${value#\"}"
@@ -180,10 +205,15 @@ print_notes() {
   if is_wsl && [[ -n "${DETECT_HOST:-}" ]] && [[ ! "$DETECT_HOST" =~ ^172\. ]]; then
     local guest
     guest="$(wsl_guest_ip || true)"
-    if [[ -n "$guest" && -n "${DETECT_PORT:-}" ]]; then
+    if [[ -n "${DETECT_PORT:-}" ]]; then
       echo
       echo "  4. WSL2 REQUIRED: APK targets the Windows LAN IP. Run once in elevated PowerShell:"
-      echo "     netsh interface portproxy add v4tov4 listenaddress=0.0.0.0 listenport=${DETECT_PORT} connectaddress=${guest} connectport=${DETECT_PORT}"
+      echo "     # Docker apps (BIND_HOST=127.0.0.1): forward LAN → Windows loopback publish port"
+      echo "     netsh interface portproxy add v4tov4 listenaddress=0.0.0.0 listenport=${DETECT_PORT} connectaddress=127.0.0.1 connectport=${DETECT_PORT}"
+      if [[ -n "$guest" ]]; then
+        echo "     # Host Nest on WSL (not Docker): use guest IP instead of 127.0.0.1"
+        echo "     # netsh interface portproxy add v4tov4 listenaddress=0.0.0.0 listenport=${DETECT_PORT} connectaddress=${guest} connectport=${DETECT_PORT}"
+      fi
       echo "     New-NetFirewallRule -DisplayName \"LH backend ${DETECT_PORT}\" -Direction Inbound -Protocol TCP -LocalPort ${DETECT_PORT} -Action Allow"
       echo
       echo "  Verify from WSL that Nest answers locally:"

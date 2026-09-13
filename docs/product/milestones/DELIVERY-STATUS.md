@@ -10,7 +10,7 @@ Previously closed: **LH-001 → LH-005**.
 
 ## Current milestone
 
-**LH-007 — Core Challenge Pack and Match Presentation** — feature commit landed; formal close blocked on device/LAN visual evidence (see [LH-007-DELIVERY.md](./LH-007-DELIVERY.md)).
+**LH-007 — Core Challenge Pack and Match Presentation** — feature commit landed; formal close blocked on device/LAN visual evidence (see [LH-007-DELIVERY.md](./LH-007-DELIVERY.md)). Docker backend `:3010` + LAN APK path prepared; awaiting operator device matrix.
 
 ## LH-006 close summary
 
