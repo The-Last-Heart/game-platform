@@ -3,7 +3,7 @@
 ## Status
 
 - Milestone: LH-010 — Full Challenge Studio and Content Operations
-- Feature commit: *(filled at commit time)*
+- Feature commit: `500c823df431ca076d1404d67e96a905279cb7a3` — `feat(admin): deliver full challenge studio`
 - Formal close: pending operator Studio walkthrough + create→publish→new-match proof on live admin/API
 - LH-009 gameplay pack: **deferred** (schema-only engine forms registered in Studio)
 
