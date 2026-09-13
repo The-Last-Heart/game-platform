@@ -16,8 +16,9 @@ Last closed: **LH-006**. Next: **LH-007** only after a clean tree on the LH-006 
 ## A milestone is closed only when ALL are true
 
 1. **Acceptance journeys** in that milestone file were observed on the real path that matters (for mobile: device/LAN APK against the live backend), not only unit/integration/simulate.
+   - Operator self-install and confirmation counts. Do **not** treat “agent has no adb device” as a milestone block.
 2. **Bugs found during verification are fixed** and re-checked (including contract↔client allowlist parity).
-3. **Required evidence** listed in the milestone file exists (captures, traces, commands/results).
+3. **Required evidence** listed in the milestone file exists (captures, traces, commands/results — operator notes/confirmation are enough when the milestone allows it).
 4. **One focused conventional local commit** for that milestone (or an explicit follow-up fix commit that finishes it).
 5. **`git status` is clean**.
 6. **Delivery note updated** with full hash, checks run, journeys observed, and honest gaps = none for in-scope items.
@@ -28,6 +29,6 @@ Last closed: **LH-006**. Next: **LH-007** only after a clean tree on the LH-006 
 - Re-read that milestone’s Acceptance criteria + Required evidence + Completion rule.
 - Run `git status` — must be empty.
 - State explicitly: closed milestone id + hash, next milestone id.
-- If anything in-scope failed on device or evidence is missing: report **blocked**, list exact failed journey, do not advance.
+- If the operator has not confirmed in-scope device journeys (or reported a failure): wait for that confirmation — do not invent a tooling block, and do not advance.
 
 Track live status in `docs/product/milestones/DELIVERY-STATUS.md`.

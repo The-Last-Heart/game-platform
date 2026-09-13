@@ -4,8 +4,9 @@
 
 - Feature commit: `11d7203069b7e6a5ae62e023b16e165f9ed21b19` — `feat(gameplay): ship core challenge engine pack`
 - Follow-ups through: `a827ff5` — mid-match lobby flash / protocol parity
+- Docs/LAN path: `5c9f9f9` — Docker `:3010` close path
 - Milestone: LH-007 — Core Challenge Pack and Match Presentation
-- Formal gate close: **blocked** — device/LAN visual matrix not yet operator-confirmed (no adb device attached)
+- Formal gate close: **awaiting operator confirmation** of the device/LAN visual matrix (self-install; adb attachment to the agent is not required)
 
 ## What shipped
 
@@ -28,26 +29,21 @@
 - Docker `apps` backend rebuilt healthy on `127.0.0.1:3010` (`lh-local-backend`)
 - LAN APK rebuilt for Docker publish port: `http://192.168.100.74:3010`
 
-## Device / LAN close path (operator)
+## Device / LAN close path (operator self-install)
 
-No adb device was attached from this environment. Operator must:
+Install however you prefer (sideload, Files, `adb`, etc.). Agent does not need an attached device.
 
-1. **Elevated PowerShell** (Docker binds loopback; phone needs LAN → 127.0.0.1:3010):
+1. Ensure Docker backend is up (`pnpm run apps:up` / healthy on `:3010`).
+2. If the phone cannot reach the PC, elevated PowerShell once (Docker publishes loopback):
 
 ```powershell
 netsh interface portproxy add v4tov4 listenaddress=0.0.0.0 listenport=3010 connectaddress=127.0.0.1 connectport=3010
 New-NetFirewallRule -DisplayName "LH backend 3010" -Direction Inbound -Protocol TCP -LocalPort 3010 -Action Allow
 ```
 
-2. Install APK:
-
-```bash
-adb install -r apps/mobile/build/app/outputs/flutter-apk/app-release.apk
-```
-
-3. Confirm reachability from the phone/network to `http://192.168.100.74:3010/health/live`.
-
-4. Capture visual evidence for LH-007 required matrix:
+3. APK: `apps/mobile/build/app/outputs/flutter-apk/app-release.apk` → backend `http://192.168.100.74:3010`
+4. Confirm phone can hit `http://192.168.100.74:3010/health/live`
+5. Walk the visual matrix and confirm (pass/fail notes are enough; screenshots optional unless a bug):
    - Challenge intro
    - Each of six engines: success, loss, elimination where applicable
    - Spectator
@@ -58,9 +54,9 @@ adb install -r apps/mobile/build/app/outputs/flutter-apk/app-release.apk
 ## Journeys observed
 
 - Unit/sim matrix: all six engines + finite equal-hearts draw — **done**
-- Device/LAN visual matrix — **pending operator** (APK + Docker path prepared; no device)
+- Device/LAN visual matrix — **pending operator confirmation** (APK + Docker path ready)
 
 ## Gaps
 
-- Visual evidence matrix still needs operator capture on a real device/LAN APK
+- Operator confirmation of the device/LAN visual matrix (not an adb tooling gap)
 - Weighted cooldown selection beyond finite ordered playlist remains catalog-pin ordered + metadata
