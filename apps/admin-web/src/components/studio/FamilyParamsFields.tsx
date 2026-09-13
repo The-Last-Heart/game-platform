@@ -7,11 +7,29 @@ import type { SwipeDirection } from '@thelastheart/contracts';
 import { t } from '@/i18n/get-dictionary';
 import type { Locale } from '@/i18n/locale';
 import type { MessageKey } from '@/i18n/messages/en';
-import { FieldInput, FieldSelect, FieldGroup, FieldCheckboxGroup } from './Field';
-
-// ---------------------------------------------------------------------------
-// Engine-specific default configs
-// ---------------------------------------------------------------------------
+import { FieldCheckboxGroup, FieldGroup } from './Field';
+import {
+  CatalogKeyField,
+  CollapsibleGroup,
+  DurationSecondsField,
+  FractionPercentField,
+  OrderedChipEditor,
+  PresetChips,
+  SegmentedChoice,
+  TargetPad,
+  ZonePad,
+} from './OperatorControls';
+import {
+  CATEGORY_KEY_OPTIONS,
+  MEMORY_OPTION_PRESETS,
+  PAIR_ROLE_PRESETS,
+  PROMPT_KEY_OPTIONS,
+  RISK_OPTION_PRESETS,
+  SHAKE_SENSITIVITY_PRESETS,
+  SIGNAL_FEEL_PRESETS,
+  SWIPE_DISTANCE_PRESETS,
+  ZONE_PRESETS,
+} from './studio-catalog-options';
 
 export function defaultClientConfig(engineId: LaunchEngineId): Record<string, unknown> {
   switch (engineId) {
@@ -118,10 +136,6 @@ export function defaultServerConfig(engineId: LaunchEngineId): Record<string, un
   }
 }
 
-// ---------------------------------------------------------------------------
-// Props & helper types
-// ---------------------------------------------------------------------------
-
 type FamilyParamsFieldsProps = {
   locale: Locale;
   engineId: LaunchEngineId;
@@ -132,445 +146,622 @@ type FamilyParamsFieldsProps = {
   disabled?: boolean;
 };
 
+function L(locale: Locale, key: string): string {
+  return t(locale, key as MessageKey);
+}
+
 function lbl(locale: Locale, key: string): string {
   return t(locale, `studio.field.${key}` as MessageKey);
 }
 
-// ---------------------------------------------------------------------------
-// Per-engine field panels
-// ---------------------------------------------------------------------------
+function CopyKeysBlock({
+  locale,
+  clientConfig,
+  onClientChange,
+  disabled,
+  keys,
+}: {
+  locale: Locale;
+  clientConfig: Record<string, unknown>;
+  onClientChange: (config: Record<string, unknown>) => void;
+  disabled?: boolean;
+  keys: { field: string; labelKey: string }[];
+}) {
+  return (
+    <CollapsibleGroup title={lbl(locale, 'fp.copyKeysGroup')} defaultOpen={false}>
+      <FieldGroup>
+        <CatalogKeyField
+          id="fp-categoryKey"
+          label={lbl(locale, 'fp.categoryKey')}
+          hint={lbl(locale, 'fp.categoryKeyHint')}
+          value={(clientConfig.categoryKey as string) ?? ''}
+          onChange={(v) => onClientChange({ ...clientConfig, categoryKey: v })}
+          options={CATEGORY_KEY_OPTIONS}
+          localize={(k) => L(locale, k)}
+          disabled={disabled}
+        />
+        {keys.map(({ field, labelKey }) => (
+          <CatalogKeyField
+            key={field}
+            id={`fp-${field}`}
+            label={lbl(locale, labelKey)}
+            value={(clientConfig[field] as string) ?? ''}
+            onChange={(v) => onClientChange({ ...clientConfig, [field]: v })}
+            options={PROMPT_KEY_OPTIONS}
+            localize={(k) => L(locale, k)}
+            disabled={disabled}
+          />
+        ))}
+      </FieldGroup>
+    </CollapsibleGroup>
+  );
+}
 
-function ReactionWaitForSignalFields({ locale, clientConfig, serverConfig, onClientChange, onServerChange, disabled }: FamilyParamsFieldsProps) {
-  const cc = clientConfig as Record<string, string | undefined>;
+function ReactionWaitForSignalFields(props: FamilyParamsFieldsProps) {
+  const { locale, clientConfig, serverConfig, onClientChange, onServerChange, disabled } = props;
   const sc = serverConfig as Record<string, number>;
+  const delay = sc.signalDelayMs ?? 1500;
+  const windowMs = sc.signalWindowMs ?? 750;
+  const activeFeel =
+    SIGNAL_FEEL_PRESETS.find((p) => p.signalDelayMs === delay && p.signalWindowMs === windowMs)?.id ?? null;
 
   return (
     <>
-      <FieldGroup>
-        <FieldInput id="fp-categoryKey" label={lbl(locale, 'fp.categoryKey')} hint={lbl(locale, 'fp.categoryKeyHint')}
-          value={cc.categoryKey ?? ''} onChange={(e) => onClientChange({ ...clientConfig, categoryKey: e.currentTarget.value })} disabled={disabled} />
-        <FieldInput id="fp-waitingPromptKey" label={lbl(locale, 'fp.waitingPromptKey')}
-          value={cc.waitingPromptKey ?? ''} onChange={(e) => onClientChange({ ...clientConfig, waitingPromptKey: e.currentTarget.value })} disabled={disabled} />
-        <FieldInput id="fp-waitingHintKey" label={lbl(locale, 'fp.waitingHintKey')}
-          value={cc.waitingHintKey ?? ''} onChange={(e) => onClientChange({ ...clientConfig, waitingHintKey: e.currentTarget.value })} disabled={disabled} />
-        <FieldInput id="fp-activePromptKey" label={lbl(locale, 'fp.activePromptKey')}
-          value={cc.activePromptKey ?? ''} onChange={(e) => onClientChange({ ...clientConfig, activePromptKey: e.currentTarget.value })} disabled={disabled} />
-        <FieldInput id="fp-actionKey" label={lbl(locale, 'fp.actionKey')}
-          value={cc.actionKey ?? ''} onChange={(e) => onClientChange({ ...clientConfig, actionKey: e.currentTarget.value })} disabled={disabled} />
-        <FieldInput id="fp-shapeKey" label={lbl(locale, 'fp.shapeKey')} hint={lbl(locale, 'fp.shapeKeyHint')}
-          value={(cc.shapeKey as string) ?? ''} onChange={(e) => onClientChange({ ...clientConfig, shapeKey: e.currentTarget.value || undefined })} disabled={disabled} />
-      </FieldGroup>
+      <p className="studio-section-lead">{lbl(locale, 'fp.waitLead')}</p>
+      <SegmentedChoice
+        label={lbl(locale, 'fp.signalFeel')}
+        hint={lbl(locale, 'fp.signalFeelHint')}
+        value={activeFeel ?? 'custom'}
+        options={[
+          ...SIGNAL_FEEL_PRESETS.map((p) => ({ value: p.id, label: L(locale, p.labelKey) })),
+          { value: 'custom', label: L(locale, 'studio.field.customValue') },
+        ]}
+        onChange={(id) => {
+          const preset = SIGNAL_FEEL_PRESETS.find((p) => p.id === id);
+          if (preset) {
+            onServerChange({
+              ...serverConfig,
+              signalDelayMs: preset.signalDelayMs,
+              signalWindowMs: preset.signalWindowMs,
+            });
+          }
+        }}
+        disabled={disabled}
+      />
       <FieldGroup horizontal>
-        <FieldInput id="fp-signalDelayMs" label={lbl(locale, 'fp.signalDelayMs')} type="number" min={0} max={60000} step={100}
-          value={sc.signalDelayMs ?? 1500} onChange={(e) => onServerChange({ ...serverConfig, signalDelayMs: Number(e.currentTarget.value) })} disabled={disabled} />
-        <FieldInput id="fp-signalWindowMs" label={lbl(locale, 'fp.signalWindowMs')} type="number" min={1} max={60000} step={100}
-          value={sc.signalWindowMs ?? 750} onChange={(e) => onServerChange({ ...serverConfig, signalWindowMs: Number(e.currentTarget.value) })} disabled={disabled} />
+        <DurationSecondsField
+          id="fp-signalDelayMs"
+          label={lbl(locale, 'fp.signalDelayMs')}
+          hint={lbl(locale, 'fp.signalDelayHint')}
+          valueMs={delay}
+          onChangeMs={(ms) => onServerChange({ ...serverConfig, signalDelayMs: ms })}
+          minSec={0}
+          maxSec={8}
+          disabled={disabled}
+        />
+        <DurationSecondsField
+          id="fp-signalWindowMs"
+          label={lbl(locale, 'fp.signalWindowMs')}
+          hint={lbl(locale, 'fp.signalWindowHint')}
+          valueMs={windowMs}
+          onChangeMs={(ms) => onServerChange({ ...serverConfig, signalWindowMs: Math.max(1, ms) })}
+          minSec={0.1}
+          maxSec={5}
+          disabled={disabled}
+        />
       </FieldGroup>
+      <CopyKeysBlock
+        locale={locale}
+        clientConfig={clientConfig}
+        onClientChange={onClientChange}
+        disabled={disabled}
+        keys={[
+          { field: 'waitingPromptKey', labelKey: 'fp.waitingPromptKey' },
+          { field: 'waitingHintKey', labelKey: 'fp.waitingHintKey' },
+          { field: 'activePromptKey', labelKey: 'fp.activePromptKey' },
+          { field: 'actionKey', labelKey: 'fp.actionKey' },
+        ]}
+      />
     </>
   );
 }
 
-function TrapNoTouchFields({ locale, clientConfig, serverConfig, onClientChange, onServerChange, disabled }: FamilyParamsFieldsProps) {
-  const cc = clientConfig as Record<string, unknown>;
-  const zone = (cc.zone as { x: number; y: number; width: number; height: number }) ?? { x: 0.1, y: 0.1, width: 0.8, height: 0.8 };
+function TrapNoTouchFields(props: FamilyParamsFieldsProps) {
+  const { locale, clientConfig, serverConfig, onClientChange, onServerChange, disabled } = props;
+  const zone =
+    (clientConfig.zone as { x: number; y: number; width: number; height: number }) ?? {
+      x: 0.1,
+      y: 0.1,
+      width: 0.8,
+      height: 0.8,
+    };
   const sc = serverConfig as Record<string, unknown>;
 
   return (
     <>
-      <FieldGroup>
-        <FieldInput id="fp-nt-categoryKey" label={lbl(locale, 'fp.categoryKey')} hint={lbl(locale, 'fp.categoryKeyHint')}
-          value={(cc.categoryKey as string) ?? ''} onChange={(e) => onClientChange({ ...clientConfig, categoryKey: e.currentTarget.value })} disabled={disabled} />
-        <FieldInput id="fp-nt-promptKey" label={lbl(locale, 'fp.promptKey')}
-          value={(cc.promptKey as string) ?? ''} onChange={(e) => onClientChange({ ...clientConfig, promptKey: e.currentTarget.value })} disabled={disabled} />
-        <FieldInput id="fp-nt-zoneHintKey" label={lbl(locale, 'fp.zoneHintKey')}
-          value={(cc.zoneHintKey as string) ?? ''} onChange={(e) => onClientChange({ ...clientConfig, zoneHintKey: e.currentTarget.value })} disabled={disabled} />
-      </FieldGroup>
-      <FieldGroup horizontal>
-        <FieldInput id="fp-nt-zone-x" label={lbl(locale, 'fp.zoneX')} type="number" min={0} max={1} step={0.01}
-          value={zone.x} onChange={(e) => onClientChange({ ...clientConfig, zone: { ...zone, x: Number(e.currentTarget.value) } })} disabled={disabled} />
-        <FieldInput id="fp-nt-zone-y" label={lbl(locale, 'fp.zoneY')} type="number" min={0} max={1} step={0.01}
-          value={zone.y} onChange={(e) => onClientChange({ ...clientConfig, zone: { ...zone, y: Number(e.currentTarget.value) } })} disabled={disabled} />
-        <FieldInput id="fp-nt-zone-w" label={lbl(locale, 'fp.zoneWidth')} type="number" min={0} max={1} step={0.01}
-          value={zone.width} onChange={(e) => onClientChange({ ...clientConfig, zone: { ...zone, width: Number(e.currentTarget.value) } })} disabled={disabled} />
-        <FieldInput id="fp-nt-zone-h" label={lbl(locale, 'fp.zoneHeight')} type="number" min={0} max={1} step={0.01}
-          value={zone.height} onChange={(e) => onClientChange({ ...clientConfig, zone: { ...zone, height: Number(e.currentTarget.value) } })} disabled={disabled} />
-      </FieldGroup>
-      <FieldGroup>
-        <FieldCheckboxGroup
-          label={lbl(locale, 'fp.allowSystemGestures')}
-          options={[{ value: 'true', label: lbl(locale, 'fp.allowSystemGesturesLabel') }]}
-          selected={sc.allowSystemGestures === true ? ['true'] : []}
-          onChange={(sel) => {
-            if (sel.includes('true')) {
-              onServerChange({ allowSystemGestures: true });
-            } else {
-              onServerChange({});
-            }
-          }}
-        />
-      </FieldGroup>
+      <p className="studio-section-lead">{lbl(locale, 'fp.noTouchLead')}</p>
+      <div className="studio-preset-chips">
+        {ZONE_PRESETS.map((p) => (
+          <button
+            key={p.id}
+            type="button"
+            className="studio-preset-chip"
+            disabled={disabled}
+            onClick={() => onClientChange({ ...clientConfig, zone: p.zone })}
+          >
+            {L(locale, p.labelKey)}
+          </button>
+        ))}
+      </div>
+      <ZonePad
+        label={lbl(locale, 'fp.forbiddenZone')}
+        hint={lbl(locale, 'fp.forbiddenZoneHint')}
+        zone={zone}
+        onChange={(next) => onClientChange({ ...clientConfig, zone: next })}
+        disabled={disabled}
+      />
+      <FieldCheckboxGroup
+        label={lbl(locale, 'fp.allowSystemGestures')}
+        options={[{ value: 'true', label: lbl(locale, 'fp.allowSystemGesturesLabel') }]}
+        selected={sc.allowSystemGestures === true ? ['true'] : []}
+        onChange={(sel) => {
+          if (sel.includes('true')) onServerChange({ allowSystemGestures: true });
+          else onServerChange({});
+        }}
+      />
+      <CopyKeysBlock
+        locale={locale}
+        clientConfig={clientConfig}
+        onClientChange={onClientChange}
+        disabled={disabled}
+        keys={[
+          { field: 'promptKey', labelKey: 'fp.promptKey' },
+          { field: 'zoneHintKey', labelKey: 'fp.zoneHintKey' },
+        ]}
+      />
     </>
   );
 }
 
-function GestureReverseSwipeFields({ locale, clientConfig, serverConfig, onClientChange, onServerChange, disabled }: FamilyParamsFieldsProps) {
-  const cc = clientConfig as Record<string, unknown>;
-  const sc = serverConfig as Record<string, unknown>;
-  const displayedDirection = (cc.displayedDirection as SwipeDirection) ?? 'up';
+function GestureReverseSwipeFields(props: FamilyParamsFieldsProps) {
+  const { locale, clientConfig, serverConfig, onClientChange, onServerChange, disabled } = props;
+  const displayedDirection = (clientConfig.displayedDirection as SwipeDirection) ?? 'up';
+  const minDistancePx = (clientConfig.minDistancePx as number) ?? 100;
+  const maxDurationMs = (serverConfig.maxDurationMs as number) ?? 3000;
 
   return (
     <>
-      <FieldGroup>
-        <FieldInput id="fp-rs-categoryKey" label={lbl(locale, 'fp.categoryKey')} hint={lbl(locale, 'fp.categoryKeyHint')}
-          value={(cc.categoryKey as string) ?? ''} onChange={(e) => onClientChange({ ...clientConfig, categoryKey: e.currentTarget.value })} disabled={disabled} />
-        <FieldInput id="fp-rs-promptKey" label={lbl(locale, 'fp.promptKey')}
-          value={(cc.promptKey as string) ?? ''} onChange={(e) => onClientChange({ ...clientConfig, promptKey: e.currentTarget.value })} disabled={disabled} />
-        <FieldSelect id="fp-rs-displayedDirection" label={lbl(locale, 'fp.displayedDirection')}
-          value={displayedDirection}
-          options={[
-            { value: 'up', label: lbl(locale, 'fp.direction.up') },
-            { value: 'down', label: lbl(locale, 'fp.direction.down') },
-            { value: 'left', label: lbl(locale, 'fp.direction.left') },
-            { value: 'right', label: lbl(locale, 'fp.direction.right') },
-          ]}
-          onChange={(e) => {
-            const dir = e.currentTarget.value as SwipeDirection;
-            onClientChange({ ...clientConfig, displayedDirection: dir });
-            onServerChange({ ...serverConfig, requiredDirection: oppositeSwipeDirection(dir) });
+      <p className="studio-section-lead">{lbl(locale, 'fp.swipeLead')}</p>
+      <SegmentedChoice
+        label={lbl(locale, 'fp.displayedDirection')}
+        hint={lbl(locale, 'fp.displayedDirectionHint')}
+        value={displayedDirection}
+        options={[
+          { value: 'up', label: lbl(locale, 'fp.direction.up') },
+          { value: 'down', label: lbl(locale, 'fp.direction.down') },
+          { value: 'left', label: lbl(locale, 'fp.direction.left') },
+          { value: 'right', label: lbl(locale, 'fp.direction.right') },
+        ]}
+        onChange={(dir) => {
+          const d = dir as SwipeDirection;
+          onClientChange({ ...clientConfig, displayedDirection: d });
+          onServerChange({ ...serverConfig, requiredDirection: oppositeSwipeDirection(d) });
+        }}
+        disabled={disabled}
+      />
+      <p className="studio-inline-hint">
+        {lbl(locale, 'fp.requiredDirection')}:{' '}
+        <strong>{lbl(locale, `fp.direction.${oppositeSwipeDirection(displayedDirection)}`)}</strong>
+      </p>
+      <div>
+        <span className="studio-sublabel">{lbl(locale, 'fp.minDistancePx')}</span>
+        <PresetChips
+          presets={SWIPE_DISTANCE_PRESETS.map((p) => ({
+            value: p.px,
+            label: L(locale, p.labelKey),
+          }))}
+          activeValue={minDistancePx}
+          onSelect={(v) => {
+            const px = Number(v);
+            onClientChange({ ...clientConfig, minDistancePx: px });
+            onServerChange({ ...serverConfig, minDistancePx: px });
           }}
           disabled={disabled}
         />
-        <FieldInput id="fp-rs-minDistancePx" label={lbl(locale, 'fp.minDistancePx')} type="number" min={1} max={2000}
-          value={(cc.minDistancePx as number) ?? 100}
-          onChange={(e) => {
-            const v = Number(e.currentTarget.value);
-            onClientChange({ ...clientConfig, minDistancePx: v });
-            onServerChange({ ...serverConfig, minDistancePx: v });
-          }}
-          disabled={disabled}
-        />
-      </FieldGroup>
-      <FieldGroup horizontal>
-        <FieldInput id="fp-rs-requiredDirection" label={lbl(locale, 'fp.requiredDirection')}
-          value={(sc.requiredDirection as string) ?? oppositeSwipeDirection(displayedDirection)}
-          disabled
-          readOnly
-        />
-        <FieldInput id="fp-rs-maxDurationMs" label={lbl(locale, 'fp.maxDurationMs')} type="number" min={1} max={60000} step={100}
-          value={(sc.maxDurationMs as number) ?? 3000} onChange={(e) => onServerChange({ ...serverConfig, maxDurationMs: Number(e.currentTarget.value) })} disabled={disabled} />
-      </FieldGroup>
+      </div>
+      <DurationSecondsField
+        id="fp-rs-maxDurationMs"
+        label={lbl(locale, 'fp.maxDurationMs')}
+        hint={lbl(locale, 'fp.maxDurationHint')}
+        valueMs={maxDurationMs}
+        onChangeMs={(ms) => onServerChange({ ...serverConfig, maxDurationMs: ms })}
+        minSec={0.5}
+        maxSec={8}
+        disabled={disabled}
+      />
+      <CopyKeysBlock
+        locale={locale}
+        clientConfig={clientConfig}
+        onClientChange={onClientChange}
+        disabled={disabled}
+        keys={[{ field: 'promptKey', labelKey: 'fp.promptKey' }]}
+      />
     </>
   );
 }
 
 type TapTarget = { id: string; x: number; y: number };
 
-function TapPrecisionFields({ locale, clientConfig, serverConfig, onClientChange, onServerChange, disabled }: FamilyParamsFieldsProps) {
-  const cc = clientConfig as Record<string, unknown>;
-  const targets = (cc.targets as TapTarget[]) ?? [{ id: 't1', x: 0.5, y: 0.5 }];
-  const attemptCount = (cc.attemptCount as number) ?? 1;
+function TapPrecisionFields(props: FamilyParamsFieldsProps) {
+  const { locale, clientConfig, serverConfig, onClientChange, onServerChange, disabled } = props;
+  const targets = (clientConfig.targets as TapTarget[]) ?? [{ id: 't1', x: 0.5, y: 0.5 }];
+  const attemptCount = (clientConfig.attemptCount as number) ?? 1;
 
-  function syncServer(newTargets: TapTarget[], newAttemptCount: number) {
-    onServerChange({ targetIds: newTargets.map((t) => t.id), attemptCount: newAttemptCount });
-  }
-
-  function updateTargets(newTargets: TapTarget[]) {
-    onClientChange({ ...clientConfig, targets: newTargets });
-    syncServer(newTargets, attemptCount);
+  function sync(newTargets: TapTarget[], attempts: number) {
+    onClientChange({ ...clientConfig, targets: newTargets, attemptCount: attempts });
+    onServerChange({ targetIds: newTargets.map((t) => t.id), attemptCount: attempts });
   }
 
   return (
     <>
-      <FieldGroup>
-        <FieldInput id="fp-tp-categoryKey" label={lbl(locale, 'fp.categoryKey')} hint={lbl(locale, 'fp.categoryKeyHint')}
-          value={(cc.categoryKey as string) ?? ''} onChange={(e) => onClientChange({ ...clientConfig, categoryKey: e.currentTarget.value })} disabled={disabled} />
-        <FieldInput id="fp-tp-promptKey" label={lbl(locale, 'fp.promptKey')}
-          value={(cc.promptKey as string) ?? ''} onChange={(e) => onClientChange({ ...clientConfig, promptKey: e.currentTarget.value })} disabled={disabled} />
-        <FieldInput id="fp-tp-attemptCount" label={lbl(locale, 'fp.attemptCount')} type="number" min={1} max={12}
-          value={attemptCount}
-          onChange={(e) => {
-            const v = Number(e.currentTarget.value) || 1;
-            onClientChange({ ...clientConfig, attemptCount: v });
-            syncServer(targets, v);
-          }}
-          disabled={disabled}
-        />
-      </FieldGroup>
-      <div style={{ marginTop: '0.5rem' }}>
-        <span style={{ fontWeight: 600, fontSize: '0.9rem' }}>{lbl(locale, 'fp.targets')}</span>
-        {targets.map((target, idx) => (
-          <FieldGroup horizontal key={target.id}>
-            <FieldInput id={`fp-tp-target-id-${idx}`} label={lbl(locale, 'fp.targetId')}
-              value={target.id}
-              onChange={(e) => {
-                const next = targets.map((t, i) => i === idx ? { ...t, id: e.currentTarget.value } : t);
-                updateTargets(next);
-              }}
-              disabled={disabled}
-            />
-            <FieldInput id={`fp-tp-target-x-${idx}`} label="X" type="number" min={0} max={1} step={0.01}
-              value={target.x}
-              onChange={(e) => {
-                const next = targets.map((t, i) => i === idx ? { ...t, x: Number(e.currentTarget.value) } : t);
-                updateTargets(next);
-              }}
-              disabled={disabled}
-            />
-            <FieldInput id={`fp-tp-target-y-${idx}`} label="Y" type="number" min={0} max={1} step={0.01}
-              value={target.y}
-              onChange={(e) => {
-                const next = targets.map((t, i) => i === idx ? { ...t, y: Number(e.currentTarget.value) } : t);
-                updateTargets(next);
-              }}
-              disabled={disabled}
-            />
-            {targets.length > 1 ? (
-              <button type="button" className="btn btn-ghost" style={{ fontSize: '0.8rem', marginTop: '1.4rem' }}
-                onClick={() => updateTargets(targets.filter((_, i) => i !== idx))} disabled={disabled}>
-                ✕
-              </button>
-            ) : null}
-          </FieldGroup>
-        ))}
-        {targets.length < 4 ? (
-          <button type="button" className="btn btn-ghost" style={{ fontSize: '0.85rem', marginTop: '0.25rem' }}
-            onClick={() => updateTargets([...targets, { id: `t${targets.length + 1}`, x: 0.5, y: 0.5 }])} disabled={disabled}>
-            + {lbl(locale, 'fp.addTarget')}
-          </button>
-        ) : null}
+      <p className="studio-section-lead">{lbl(locale, 'fp.precisionLead')}</p>
+      <SegmentedChoice
+        label={lbl(locale, 'fp.attemptCount')}
+        hint={lbl(locale, 'fp.attemptCountHint')}
+        value={String(attemptCount)}
+        options={[1, 2, 3].map((n) => ({ value: String(n), label: String(n) }))}
+        onChange={(v) => sync(targets, Number(v))}
+        disabled={disabled}
+      />
+      <TargetPad
+        label={lbl(locale, 'fp.targets')}
+        hint={lbl(locale, 'fp.targetsHint')}
+        targets={targets}
+        onChange={(next) => sync(next, attemptCount)}
+        disabled={disabled}
+        addLabel={lbl(locale, 'fp.addTarget')}
+        removeLabel={lbl(locale, 'fp.removeTarget')}
+      />
+      <CopyKeysBlock
+        locale={locale}
+        clientConfig={clientConfig}
+        onClientChange={onClientChange}
+        disabled={disabled}
+        keys={[{ field: 'promptKey', labelKey: 'fp.promptKey' }]}
+      />
+    </>
+  );
+}
+
+function MemorySequenceFields(props: FamilyParamsFieldsProps) {
+  const { locale, clientConfig, serverConfig, onClientChange, onServerChange, disabled } = props;
+  const optionKeys = (clientConfig.optionKeys as string[]) ?? [];
+  const sequence = (serverConfig.sequence as string[]) ?? [];
+  const previewMs = (clientConfig.previewMs as number) ?? 2000;
+
+  return (
+    <>
+      <p className="studio-section-lead">{lbl(locale, 'fp.memoryLead')}</p>
+      <OrderedChipEditor
+        label={lbl(locale, 'fp.optionKeys')}
+        hint={lbl(locale, 'fp.optionKeysHint')}
+        values={optionKeys}
+        options={MEMORY_OPTION_PRESETS}
+        onChange={(keys) => {
+          onClientChange({ ...clientConfig, optionKeys: keys });
+          onServerChange({ ...serverConfig, optionKeys: keys });
+        }}
+        localize={(k) => L(locale, k)}
+        disabled={disabled}
+      />
+      <OrderedChipEditor
+        label={lbl(locale, 'fp.sequence')}
+        hint={lbl(locale, 'fp.sequenceHint')}
+        values={sequence}
+        options={MEMORY_OPTION_PRESETS}
+        onChange={(seq) => onServerChange({ ...serverConfig, sequence: seq })}
+        localize={(k) => L(locale, k)}
+        disabled={disabled}
+      />
+      <DurationSecondsField
+        id="fp-ms-previewMs"
+        label={lbl(locale, 'fp.previewMs')}
+        hint={lbl(locale, 'fp.previewMsHint')}
+        valueMs={previewMs}
+        onChangeMs={(ms) => {
+          onClientChange({ ...clientConfig, previewMs: ms });
+          onServerChange({ ...serverConfig, previewMs: ms });
+        }}
+        minSec={0.5}
+        maxSec={8}
+        presets={[
+          { ms: 1500, label: L(locale, 'studio.preset.intro.brief') },
+          { ms: 2000, label: L(locale, 'studio.preset.intro.standard') },
+          { ms: 3000, label: L(locale, 'studio.preset.intro.clear') },
+        ]}
+        disabled={disabled}
+      />
+      <CopyKeysBlock
+        locale={locale}
+        clientConfig={clientConfig}
+        onClientChange={onClientChange}
+        disabled={disabled}
+        keys={[{ field: 'promptKey', labelKey: 'fp.promptKey' }]}
+      />
+    </>
+  );
+}
+
+function HoldMultitouchFields(props: FamilyParamsFieldsProps) {
+  const { locale, clientConfig, serverConfig, onClientChange, onServerChange, disabled } = props;
+  const holdMs = (clientConfig.holdMs as number) ?? 3000;
+  const sc = serverConfig as Record<string, unknown>;
+
+  return (
+    <>
+      <p className="studio-section-lead">{lbl(locale, 'fp.holdLead')}</p>
+      <DurationSecondsField
+        id="fp-hm-holdMs"
+        label={lbl(locale, 'fp.holdMs')}
+        hint={lbl(locale, 'fp.holdMsHint')}
+        valueMs={holdMs}
+        onChangeMs={(ms) => {
+          onClientChange({ ...clientConfig, holdMs: ms, requiredContacts: 2 });
+          onServerChange({ ...serverConfig, holdMs: ms, requiredContacts: 2 });
+        }}
+        minSec={1}
+        maxSec={8}
+        presets={[
+          { ms: 2000, label: L(locale, 'studio.preset.hold.short') },
+          { ms: 3000, label: L(locale, 'studio.preset.hold.standard') },
+          { ms: 4500, label: L(locale, 'studio.preset.hold.long') },
+        ]}
+        disabled={disabled}
+      />
+      <FieldCheckboxGroup
+        label={lbl(locale, 'fp.resetOnLift')}
+        options={[{ value: 'true', label: lbl(locale, 'fp.resetOnLiftLabel') }]}
+        selected={sc.resetOnLift === true ? ['true'] : []}
+        onChange={(sel) => onServerChange({ ...serverConfig, resetOnLift: sel.includes('true') })}
+      />
+      <CopyKeysBlock
+        locale={locale}
+        clientConfig={clientConfig}
+        onClientChange={onClientChange}
+        disabled={disabled}
+        keys={[{ field: 'promptKey', labelKey: 'fp.promptKey' }]}
+      />
+    </>
+  );
+}
+
+function MotionShakeFields(props: FamilyParamsFieldsProps) {
+  const { locale, clientConfig, serverConfig, onClientChange, onServerChange, disabled } = props;
+  const count = (serverConfig.requiredShakeCount as number) ?? 5;
+  const noise = (serverConfig.noiseThreshold as number) ?? 5;
+  const active =
+    SHAKE_SENSITIVITY_PRESETS.find((p) => p.requiredShakeCount === count && p.noiseThreshold === noise)
+      ?.id ?? 'custom';
+
+  return (
+    <>
+      <p className="studio-section-lead">{lbl(locale, 'fp.shakeLead')}</p>
+      <SegmentedChoice
+        label={lbl(locale, 'fp.shakeDifficulty')}
+        hint={lbl(locale, 'fp.shakeDifficultyHint')}
+        value={active}
+        options={[
+          ...SHAKE_SENSITIVITY_PRESETS.map((p) => ({ value: p.id, label: L(locale, p.labelKey) })),
+          { value: 'custom', label: L(locale, 'studio.field.customValue') },
+        ]}
+        onChange={(id) => {
+          const preset = SHAKE_SENSITIVITY_PRESETS.find((p) => p.id === id);
+          if (preset) {
+            onServerChange({
+              ...serverConfig,
+              requiredShakeCount: preset.requiredShakeCount,
+              noiseThreshold: preset.noiseThreshold,
+            });
+          }
+        }}
+        disabled={disabled}
+      />
+      <CopyKeysBlock
+        locale={locale}
+        clientConfig={clientConfig}
+        onClientChange={onClientChange}
+        disabled={disabled}
+        keys={[
+          { field: 'promptKey', labelKey: 'fp.promptKey' },
+          { field: 'progressKey', labelKey: 'fp.progressKey' },
+        ]}
+      />
+    </>
+  );
+}
+
+function MotionTiltBalanceFields(props: FamilyParamsFieldsProps) {
+  const { locale, clientConfig, serverConfig, onClientChange, onServerChange, disabled } = props;
+  const holdMs = (serverConfig.holdMs as number) ?? 2000;
+  const tolerance = (serverConfig.varianceTolerance as number) ?? 0.15;
+
+  return (
+    <>
+      <p className="studio-section-lead">{lbl(locale, 'fp.tiltLead')}</p>
+      <DurationSecondsField
+        id="fp-tb-holdMs"
+        label={lbl(locale, 'fp.holdMs')}
+        hint={lbl(locale, 'fp.tiltHoldHint')}
+        valueMs={holdMs}
+        onChangeMs={(ms) => onServerChange({ ...serverConfig, holdMs: ms })}
+        minSec={0.5}
+        maxSec={8}
+        disabled={disabled}
+      />
+      <FractionPercentField
+        id="fp-tb-tolerance"
+        label={lbl(locale, 'fp.varianceTolerance')}
+        hint={lbl(locale, 'fp.varianceToleranceHint')}
+        value={tolerance}
+        onChange={(v) => onServerChange({ ...serverConfig, varianceTolerance: v })}
+        disabled={disabled}
+      />
+      <SegmentedChoice
+        label={lbl(locale, 'fp.tiltTarget')}
+        hint={lbl(locale, 'fp.tiltTargetHint')}
+        value={
+          (serverConfig.targetX as number) === 0 && (serverConfig.targetY as number) === 0
+            ? 'center'
+            : 'custom'
+        }
+        options={[
+          { value: 'center', label: L(locale, 'studio.preset.tilt.center') },
+          { value: 'custom', label: L(locale, 'studio.field.customValue') },
+        ]}
+        onChange={(v) => {
+          if (v === 'center') onServerChange({ ...serverConfig, targetX: 0, targetY: 0 });
+        }}
+        disabled={disabled}
+      />
+      <CopyKeysBlock
+        locale={locale}
+        clientConfig={clientConfig}
+        onClientChange={onClientChange}
+        disabled={disabled}
+        keys={[{ field: 'promptKey', labelKey: 'fp.promptKey' }]}
+      />
+    </>
+  );
+}
+
+function AudioCueFields(props: FamilyParamsFieldsProps) {
+  const { locale, clientConfig, serverConfig, onClientChange, onServerChange, disabled } = props;
+  const pulseCount = (serverConfig.pulseCount as number) ?? 3;
+
+  return (
+    <>
+      <p className="studio-section-lead">{lbl(locale, 'fp.audioLead')}</p>
+      <SegmentedChoice
+        label={lbl(locale, 'fp.pulseCount')}
+        hint={lbl(locale, 'fp.pulseCountHint')}
+        value={String(pulseCount)}
+        options={[1, 2, 3, 4, 5].map((n) => ({ value: String(n), label: String(n) }))}
+        onChange={(v) => onServerChange({ ...serverConfig, pulseCount: Number(v) })}
+        disabled={disabled}
+      />
+      <CopyKeysBlock
+        locale={locale}
+        clientConfig={clientConfig}
+        onClientChange={onClientChange}
+        disabled={disabled}
+        keys={[
+          { field: 'promptKey', labelKey: 'fp.promptKey' },
+          { field: 'visualFallbackKey', labelKey: 'fp.visualFallbackKey' },
+          { field: 'hapticFallbackKey', labelKey: 'fp.hapticFallbackKey' },
+        ]}
+      />
+    </>
+  );
+}
+
+function SocialPairSyncFields(props: FamilyParamsFieldsProps) {
+  const { locale, clientConfig, serverConfig, onClientChange, onServerChange, disabled } = props;
+  const partnerRoleKeys = (clientConfig.partnerRoleKeys as string[]) ?? [];
+  const syncWindowMs = (serverConfig.syncWindowMs as number) ?? 2000;
+
+  return (
+    <>
+      <p className="studio-section-lead">{lbl(locale, 'fp.pairLead')}</p>
+      <OrderedChipEditor
+        label={lbl(locale, 'fp.partnerRoleKeys')}
+        hint={lbl(locale, 'fp.partnerRoleKeysHint')}
+        values={partnerRoleKeys}
+        options={PAIR_ROLE_PRESETS}
+        onChange={(keys) => {
+          onClientChange({ ...clientConfig, partnerRoleKeys: keys });
+          onServerChange({ ...serverConfig, partnerRoleKeys: keys });
+        }}
+        localize={(k) => L(locale, k)}
+        disabled={disabled}
+      />
+      <DurationSecondsField
+        id="fp-ps-syncWindowMs"
+        label={lbl(locale, 'fp.syncWindowMs')}
+        hint={lbl(locale, 'fp.syncWindowHint')}
+        valueMs={syncWindowMs}
+        onChangeMs={(ms) => onServerChange({ ...serverConfig, syncWindowMs: ms })}
+        minSec={0.5}
+        maxSec={8}
+        disabled={disabled}
+      />
+      <CopyKeysBlock
+        locale={locale}
+        clientConfig={clientConfig}
+        onClientChange={onClientChange}
+        disabled={disabled}
+        keys={[{ field: 'promptKey', labelKey: 'fp.promptKey' }]}
+      />
+    </>
+  );
+}
+
+function TacticalRiskChoiceFields(props: FamilyParamsFieldsProps) {
+  const { locale, clientConfig, serverConfig, onClientChange, onServerChange, disabled } = props;
+  const optionKeys = (clientConfig.optionKeys as string[]) ?? [];
+  const riskWeights = (serverConfig.riskWeights as number[]) ?? [];
+
+  return (
+    <>
+      <p className="studio-section-lead">{lbl(locale, 'fp.riskLead')}</p>
+      <OrderedChipEditor
+        label={lbl(locale, 'fp.optionKeys')}
+        hint={lbl(locale, 'fp.riskOptionsHint')}
+        values={optionKeys}
+        options={RISK_OPTION_PRESETS}
+        onChange={(keys) => {
+          onClientChange({ ...clientConfig, optionKeys: keys });
+          const newWeights = keys.map((_, i) => riskWeights[i] ?? (i === 0 ? 30 : 70));
+          onServerChange({ ...serverConfig, optionKeys: keys, riskWeights: newWeights });
+        }}
+        localize={(k) => L(locale, k)}
+        disabled={disabled}
+      />
+      <div className="studio-risk-weights">
+        {optionKeys.map((key, idx) => {
+          const opt = RISK_OPTION_PRESETS.find((o) => o.value === key);
+          const weight = riskWeights[idx] ?? 50;
+          return (
+            <div key={key} className="studio-slider-block">
+              <span className="studio-sublabel">{opt ? L(locale, opt.labelKey) : key}</span>
+              <div className="studio-slider-row">
+                <input
+                  type="range"
+                  min={0}
+                  max={100}
+                  value={weight}
+                  disabled={disabled}
+                  onChange={(e) => {
+                    const next = [...riskWeights];
+                    next[idx] = Number(e.currentTarget.value);
+                    onServerChange({ ...serverConfig, riskWeights: next });
+                  }}
+                />
+                <span className="studio-unit">{weight}</span>
+              </div>
+            </div>
+          );
+        })}
       </div>
+      <CopyKeysBlock
+        locale={locale}
+        clientConfig={clientConfig}
+        onClientChange={onClientChange}
+        disabled={disabled}
+        keys={[{ field: 'promptKey', labelKey: 'fp.promptKey' }]}
+      />
     </>
   );
 }
-
-function MemorySequenceFields({ locale, clientConfig, serverConfig, onClientChange, onServerChange, disabled }: FamilyParamsFieldsProps) {
-  const cc = clientConfig as Record<string, unknown>;
-  const sc = serverConfig as Record<string, unknown>;
-  const optionKeys = (cc.optionKeys as string[]) ?? [];
-  const sequence = (sc.sequence as string[]) ?? [];
-  const previewMs = (cc.previewMs as number) ?? 2000;
-
-  return (
-    <>
-      <FieldGroup>
-        <FieldInput id="fp-ms-categoryKey" label={lbl(locale, 'fp.categoryKey')} hint={lbl(locale, 'fp.categoryKeyHint')}
-          value={(cc.categoryKey as string) ?? ''} onChange={(e) => onClientChange({ ...clientConfig, categoryKey: e.currentTarget.value })} disabled={disabled} />
-        <FieldInput id="fp-ms-promptKey" label={lbl(locale, 'fp.promptKey')}
-          value={(cc.promptKey as string) ?? ''} onChange={(e) => onClientChange({ ...clientConfig, promptKey: e.currentTarget.value })} disabled={disabled} />
-        <FieldInput id="fp-ms-optionKeys" label={lbl(locale, 'fp.optionKeys')} hint={lbl(locale, 'fp.optionKeysHint')}
-          value={optionKeys.join(', ')}
-          onChange={(e) => {
-            const keys = e.currentTarget.value.split(',').map((s) => s.trim()).filter(Boolean);
-            onClientChange({ ...clientConfig, optionKeys: keys });
-            onServerChange({ ...serverConfig, optionKeys: keys });
-          }}
-          disabled={disabled}
-        />
-        <FieldInput id="fp-ms-sequence" label={lbl(locale, 'fp.sequence')} hint={lbl(locale, 'fp.sequenceHint')}
-          value={sequence.join(', ')}
-          onChange={(e) => {
-            const seq = e.currentTarget.value.split(',').map((s) => s.trim()).filter(Boolean);
-            onServerChange({ ...serverConfig, sequence: seq });
-          }}
-          disabled={disabled}
-        />
-        <FieldInput id="fp-ms-previewMs" label={lbl(locale, 'fp.previewMs')} type="number" min={1} max={60000} step={100}
-          value={previewMs}
-          onChange={(e) => {
-            const v = Number(e.currentTarget.value);
-            onClientChange({ ...clientConfig, previewMs: v });
-            onServerChange({ ...serverConfig, previewMs: v });
-          }}
-          disabled={disabled}
-        />
-      </FieldGroup>
-    </>
-  );
-}
-
-function HoldMultitouchFields({ locale, clientConfig, serverConfig, onClientChange, onServerChange, disabled }: FamilyParamsFieldsProps) {
-  const cc = clientConfig as Record<string, unknown>;
-  const sc = serverConfig as Record<string, unknown>;
-  const holdMs = (cc.holdMs as number) ?? 3000;
-
-  return (
-    <>
-      <FieldGroup>
-        <FieldInput id="fp-hm-categoryKey" label={lbl(locale, 'fp.categoryKey')} hint={lbl(locale, 'fp.categoryKeyHint')}
-          value={(cc.categoryKey as string) ?? ''} onChange={(e) => onClientChange({ ...clientConfig, categoryKey: e.currentTarget.value })} disabled={disabled} />
-        <FieldInput id="fp-hm-promptKey" label={lbl(locale, 'fp.promptKey')}
-          value={(cc.promptKey as string) ?? ''} onChange={(e) => onClientChange({ ...clientConfig, promptKey: e.currentTarget.value })} disabled={disabled} />
-        <FieldInput id="fp-hm-requiredContacts" label={lbl(locale, 'fp.requiredContacts')} type="number"
-          value={2} disabled readOnly />
-        <FieldInput id="fp-hm-holdMs" label={lbl(locale, 'fp.holdMs')} type="number" min={1} max={60000} step={100}
-          value={holdMs}
-          onChange={(e) => {
-            const v = Number(e.currentTarget.value);
-            onClientChange({ ...clientConfig, holdMs: v, requiredContacts: 2 });
-            onServerChange({ ...serverConfig, holdMs: v, requiredContacts: 2 });
-          }}
-          disabled={disabled}
-        />
-        <FieldCheckboxGroup
-          label={lbl(locale, 'fp.resetOnLift')}
-          options={[{ value: 'true', label: lbl(locale, 'fp.resetOnLiftLabel') }]}
-          selected={sc.resetOnLift === true ? ['true'] : []}
-          onChange={(sel) => onServerChange({ ...serverConfig, resetOnLift: sel.includes('true') })}
-        />
-      </FieldGroup>
-    </>
-  );
-}
-
-function MotionShakeFields({ locale, clientConfig, serverConfig, onClientChange, onServerChange, disabled }: FamilyParamsFieldsProps) {
-  const cc = clientConfig as Record<string, unknown>;
-  const sc = serverConfig as Record<string, unknown>;
-
-  return (
-    <>
-      <FieldGroup>
-        <FieldInput id="fp-ms-categoryKey" label={lbl(locale, 'fp.categoryKey')} hint={lbl(locale, 'fp.categoryKeyHint')}
-          value={(cc.categoryKey as string) ?? ''} onChange={(e) => onClientChange({ ...clientConfig, categoryKey: e.currentTarget.value })} disabled={disabled} />
-        <FieldInput id="fp-ms-promptKey" label={lbl(locale, 'fp.promptKey')}
-          value={(cc.promptKey as string) ?? ''} onChange={(e) => onClientChange({ ...clientConfig, promptKey: e.currentTarget.value })} disabled={disabled} />
-        <FieldInput id="fp-ms-progressKey" label={lbl(locale, 'fp.progressKey')}
-          value={(cc.progressKey as string) ?? ''} onChange={(e) => onClientChange({ ...clientConfig, progressKey: e.currentTarget.value })} disabled={disabled} />
-      </FieldGroup>
-      <FieldGroup horizontal>
-        <FieldInput id="fp-ms-requiredShakeCount" label={lbl(locale, 'fp.requiredShakeCount')} type="number" min={1} max={100}
-          value={(sc.requiredShakeCount as number) ?? 5} onChange={(e) => onServerChange({ ...serverConfig, requiredShakeCount: Number(e.currentTarget.value) })} disabled={disabled} />
-        <FieldInput id="fp-ms-noiseThreshold" label={lbl(locale, 'fp.noiseThreshold')} type="number" min={0} max={100} step={0.5}
-          value={(sc.noiseThreshold as number) ?? 5} onChange={(e) => onServerChange({ ...serverConfig, noiseThreshold: Number(e.currentTarget.value) })} disabled={disabled} />
-      </FieldGroup>
-    </>
-  );
-}
-
-function MotionTiltBalanceFields({ locale, clientConfig, serverConfig, onClientChange, onServerChange, disabled }: FamilyParamsFieldsProps) {
-  const cc = clientConfig as Record<string, unknown>;
-  const sc = serverConfig as Record<string, unknown>;
-
-  return (
-    <>
-      <FieldGroup>
-        <FieldInput id="fp-tb-categoryKey" label={lbl(locale, 'fp.categoryKey')} hint={lbl(locale, 'fp.categoryKeyHint')}
-          value={(cc.categoryKey as string) ?? ''} onChange={(e) => onClientChange({ ...clientConfig, categoryKey: e.currentTarget.value })} disabled={disabled} />
-        <FieldInput id="fp-tb-promptKey" label={lbl(locale, 'fp.promptKey')}
-          value={(cc.promptKey as string) ?? ''} onChange={(e) => onClientChange({ ...clientConfig, promptKey: e.currentTarget.value })} disabled={disabled} />
-      </FieldGroup>
-      <FieldGroup horizontal>
-        <FieldInput id="fp-tb-targetX" label={lbl(locale, 'fp.targetX')} type="number" min={-1} max={1} step={0.01}
-          value={(sc.targetX as number) ?? 0} onChange={(e) => onServerChange({ ...serverConfig, targetX: Number(e.currentTarget.value) })} disabled={disabled} />
-        <FieldInput id="fp-tb-targetY" label={lbl(locale, 'fp.targetY')} type="number" min={-1} max={1} step={0.01}
-          value={(sc.targetY as number) ?? 0} onChange={(e) => onServerChange({ ...serverConfig, targetY: Number(e.currentTarget.value) })} disabled={disabled} />
-        <FieldInput id="fp-tb-holdMs" label={lbl(locale, 'fp.holdMs')} type="number" min={1} max={60000} step={100}
-          value={(sc.holdMs as number) ?? 2000} onChange={(e) => onServerChange({ ...serverConfig, holdMs: Number(e.currentTarget.value) })} disabled={disabled} />
-        <FieldInput id="fp-tb-varianceTolerance" label={lbl(locale, 'fp.varianceTolerance')} type="number" min={0} max={1} step={0.01}
-          value={(sc.varianceTolerance as number) ?? 0.15} onChange={(e) => onServerChange({ ...serverConfig, varianceTolerance: Number(e.currentTarget.value) })} disabled={disabled} />
-      </FieldGroup>
-    </>
-  );
-}
-
-function AudioCueFields({ locale, clientConfig, serverConfig, onClientChange, onServerChange, disabled }: FamilyParamsFieldsProps) {
-  const cc = clientConfig as Record<string, unknown>;
-  const sc = serverConfig as Record<string, unknown>;
-
-  return (
-    <>
-      <FieldGroup>
-        <FieldInput id="fp-ac-categoryKey" label={lbl(locale, 'fp.categoryKey')} hint={lbl(locale, 'fp.categoryKeyHint')}
-          value={(cc.categoryKey as string) ?? ''} onChange={(e) => onClientChange({ ...clientConfig, categoryKey: e.currentTarget.value })} disabled={disabled} />
-        <FieldInput id="fp-ac-promptKey" label={lbl(locale, 'fp.promptKey')}
-          value={(cc.promptKey as string) ?? ''} onChange={(e) => onClientChange({ ...clientConfig, promptKey: e.currentTarget.value })} disabled={disabled} />
-        <FieldInput id="fp-ac-visualFallbackKey" label={lbl(locale, 'fp.visualFallbackKey')}
-          value={(cc.visualFallbackKey as string) ?? ''} onChange={(e) => onClientChange({ ...clientConfig, visualFallbackKey: e.currentTarget.value })} disabled={disabled} />
-        <FieldInput id="fp-ac-hapticFallbackKey" label={lbl(locale, 'fp.hapticFallbackKey')}
-          value={(cc.hapticFallbackKey as string) ?? ''} onChange={(e) => onClientChange({ ...clientConfig, hapticFallbackKey: e.currentTarget.value })} disabled={disabled} />
-      </FieldGroup>
-      <FieldGroup>
-        <FieldInput id="fp-ac-pulseCount" label={lbl(locale, 'fp.pulseCount')} type="number" min={1} max={20}
-          value={(sc.pulseCount as number) ?? 3} onChange={(e) => onServerChange({ ...serverConfig, pulseCount: Number(e.currentTarget.value) })} disabled={disabled} />
-      </FieldGroup>
-    </>
-  );
-}
-
-function SocialPairSyncFields({ locale, clientConfig, serverConfig, onClientChange, onServerChange, disabled }: FamilyParamsFieldsProps) {
-  const cc = clientConfig as Record<string, unknown>;
-  const sc = serverConfig as Record<string, unknown>;
-  const partnerRoleKeys = (cc.partnerRoleKeys as string[]) ?? [];
-
-  return (
-    <>
-      <FieldGroup>
-        <FieldInput id="fp-ps-categoryKey" label={lbl(locale, 'fp.categoryKey')} hint={lbl(locale, 'fp.categoryKeyHint')}
-          value={(cc.categoryKey as string) ?? ''} onChange={(e) => onClientChange({ ...clientConfig, categoryKey: e.currentTarget.value })} disabled={disabled} />
-        <FieldInput id="fp-ps-promptKey" label={lbl(locale, 'fp.promptKey')}
-          value={(cc.promptKey as string) ?? ''} onChange={(e) => onClientChange({ ...clientConfig, promptKey: e.currentTarget.value })} disabled={disabled} />
-        <FieldInput id="fp-ps-partnerRoleKeys" label={lbl(locale, 'fp.partnerRoleKeys')} hint={lbl(locale, 'fp.partnerRoleKeysHint')}
-          value={partnerRoleKeys.join(', ')}
-          onChange={(e) => {
-            const keys = e.currentTarget.value.split(',').map((s) => s.trim()).filter(Boolean);
-            onClientChange({ ...clientConfig, partnerRoleKeys: keys });
-            onServerChange({ ...serverConfig, partnerRoleKeys: keys });
-          }}
-          disabled={disabled}
-        />
-        <FieldInput id="fp-ps-syncWindowMs" label={lbl(locale, 'fp.syncWindowMs')} type="number" min={1} max={60000} step={100}
-          value={(sc.syncWindowMs as number) ?? 2000} onChange={(e) => onServerChange({ ...serverConfig, syncWindowMs: Number(e.currentTarget.value) })} disabled={disabled} />
-      </FieldGroup>
-    </>
-  );
-}
-
-function TacticalRiskChoiceFields({ locale, clientConfig, serverConfig, onClientChange, onServerChange, disabled }: FamilyParamsFieldsProps) {
-  const cc = clientConfig as Record<string, unknown>;
-  const sc = serverConfig as Record<string, unknown>;
-  const optionKeys = (cc.optionKeys as string[]) ?? [];
-  const riskWeights = (sc.riskWeights as number[]) ?? [];
-
-  return (
-    <>
-      <FieldGroup>
-        <FieldInput id="fp-rc-categoryKey" label={lbl(locale, 'fp.categoryKey')} hint={lbl(locale, 'fp.categoryKeyHint')}
-          value={(cc.categoryKey as string) ?? ''} onChange={(e) => onClientChange({ ...clientConfig, categoryKey: e.currentTarget.value })} disabled={disabled} />
-        <FieldInput id="fp-rc-promptKey" label={lbl(locale, 'fp.promptKey')}
-          value={(cc.promptKey as string) ?? ''} onChange={(e) => onClientChange({ ...clientConfig, promptKey: e.currentTarget.value })} disabled={disabled} />
-        <FieldInput id="fp-rc-optionKeys" label={lbl(locale, 'fp.optionKeys')} hint={lbl(locale, 'fp.optionKeysHint')}
-          value={optionKeys.join(', ')}
-          onChange={(e) => {
-            const keys = e.currentTarget.value.split(',').map((s) => s.trim()).filter(Boolean);
-            onClientChange({ ...clientConfig, optionKeys: keys });
-            const newWeights = keys.map((_, i) => riskWeights[i] ?? 50);
-            onServerChange({ ...serverConfig, optionKeys: keys, riskWeights: newWeights });
-          }}
-          disabled={disabled}
-        />
-      </FieldGroup>
-      <div style={{ marginTop: '0.5rem' }}>
-        <span style={{ fontWeight: 600, fontSize: '0.9rem' }}>{lbl(locale, 'fp.riskWeights')}</span>
-        <FieldGroup horizontal>
-          {optionKeys.map((key, idx) => (
-            <FieldInput key={key} id={`fp-rc-weight-${idx}`} label={key} type="number" min={0} max={10000}
-              value={riskWeights[idx] ?? 50}
-              onChange={(e) => {
-                const next = [...riskWeights];
-                next[idx] = Number(e.currentTarget.value);
-                onServerChange({ ...serverConfig, riskWeights: next });
-              }}
-              disabled={disabled}
-            />
-          ))}
-        </FieldGroup>
-      </div>
-    </>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// Main switch component
-// ---------------------------------------------------------------------------
 
 export function FamilyParamsFields(props: FamilyParamsFieldsProps) {
   const { engineId, locale } = props;
@@ -578,41 +769,58 @@ export function FamilyParamsFields(props: FamilyParamsFieldsProps) {
 
   const fields = (() => {
     switch (engineId) {
-      case 'reaction.wait_for_signal': return <ReactionWaitForSignalFields {...props} />;
-      case 'trap.no_touch': return <TrapNoTouchFields {...props} />;
-      case 'gesture.reverse_swipe': return <GestureReverseSwipeFields {...props} />;
-      case 'tap.precision': return <TapPrecisionFields {...props} />;
-      case 'memory.sequence': return <MemorySequenceFields {...props} />;
-      case 'hold.multitouch': return <HoldMultitouchFields {...props} />;
-      case 'motion.shake': return <MotionShakeFields {...props} />;
-      case 'motion.tilt_balance': return <MotionTiltBalanceFields {...props} />;
-      case 'audio.cue': return <AudioCueFields {...props} />;
-      case 'social.pair_sync': return <SocialPairSyncFields {...props} />;
-      case 'tactical.risk_choice': return <TacticalRiskChoiceFields {...props} />;
-      default: return <p style={{ color: 'var(--lh-text-muted)', fontSize: '0.85rem' }}>{t(locale, 'studio.field.fp.unknownEngine' as MessageKey)}</p>;
+      case 'reaction.wait_for_signal':
+        return <ReactionWaitForSignalFields {...props} />;
+      case 'trap.no_touch':
+        return <TrapNoTouchFields {...props} />;
+      case 'gesture.reverse_swipe':
+        return <GestureReverseSwipeFields {...props} />;
+      case 'tap.precision':
+        return <TapPrecisionFields {...props} />;
+      case 'memory.sequence':
+        return <MemorySequenceFields {...props} />;
+      case 'hold.multitouch':
+        return <HoldMultitouchFields {...props} />;
+      case 'motion.shake':
+        return <MotionShakeFields {...props} />;
+      case 'motion.tilt_balance':
+        return <MotionTiltBalanceFields {...props} />;
+      case 'audio.cue':
+        return <AudioCueFields {...props} />;
+      case 'social.pair_sync':
+        return <SocialPairSyncFields {...props} />;
+      case 'tactical.risk_choice':
+        return <TacticalRiskChoiceFields {...props} />;
+      default:
+        return (
+          <p style={{ color: 'var(--lh-text-muted)', fontSize: '0.85rem' }}>
+            {t(locale, 'studio.field.fp.unknownEngine' as MessageKey)}
+          </p>
+        );
     }
   })();
 
   return (
     <div>
       {fields}
-      <details style={{ marginTop: '1rem' }} open={showAdvanced} onToggle={(e) => setShowAdvanced((e.target as HTMLDetailsElement).open)}>
-        <summary style={{ cursor: 'pointer', fontSize: '0.8rem', color: 'var(--lh-text-muted)', userSelect: 'none' }}>
+      <details
+        style={{ marginTop: '1rem' }}
+        open={showAdvanced}
+        onToggle={(e) => setShowAdvanced((e.target as HTMLDetailsElement).open)}
+      >
+        <summary
+          style={{
+            cursor: 'pointer',
+            fontSize: '0.8rem',
+            color: 'var(--lh-text-muted)',
+            userSelect: 'none',
+          }}
+        >
           {t(locale, 'studio.field.fp.advancedExport' as MessageKey)}
         </summary>
         <div style={{ marginTop: '0.5rem' }}>
-          <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 600, marginBottom: '0.25rem' }}>
-            {t(locale, 'studio.field.clientConfig' as MessageKey)}
-          </label>
-          <pre style={{ background: 'var(--lh-bg-muted, #f5f5f5)', padding: '0.5rem', borderRadius: '0.25rem', fontSize: '0.75rem', overflow: 'auto', maxHeight: '12rem', whiteSpace: 'pre-wrap' }}>
-            {JSON.stringify(props.clientConfig, null, 2)}
-          </pre>
-          <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 600, marginBottom: '0.25rem', marginTop: '0.5rem' }}>
-            {t(locale, 'studio.field.serverConfig' as MessageKey)}
-          </label>
-          <pre style={{ background: 'var(--lh-bg-muted, #f5f5f5)', padding: '0.5rem', borderRadius: '0.25rem', fontSize: '0.75rem', overflow: 'auto', maxHeight: '12rem', whiteSpace: 'pre-wrap' }}>
-            {JSON.stringify(props.serverConfig, null, 2)}
-          </pre>
+          <pre className="studio-json-export">{JSON.stringify(props.clientConfig, null, 2)}</pre>
+          <pre className="studio-json-export">{JSON.stringify(props.serverConfig, null, 2)}</pre>
         </div>
       </details>
     </div>

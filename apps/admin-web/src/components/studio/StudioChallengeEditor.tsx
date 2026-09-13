@@ -12,8 +12,28 @@ import { localizeAdminError } from '@/i18n/localize-admin-error';
 import { DevicePreviewFrame } from './DevicePreviewFrame';
 import { FamilyParamsFields, defaultClientConfig, defaultServerConfig } from './FamilyParamsFields';
 import { FieldInput, FieldSelect, FieldTextarea, FieldCheckboxGroup, FieldGroup } from './Field';
+import {
+  CatalogKeyField,
+  ChipMultiSelect,
+  DurationSecondsField,
+  PresetChips,
+  SegmentedChoice,
+} from './OperatorControls';
 import { StudioPageHeader } from './StudioPageHeader';
-import { StudioSectionNav, type EditorSection } from './StudioSectionNav';
+import { StudioSectionNav, EDITOR_SECTIONS, type EditorSection } from './StudioSectionNav';
+import {
+  APP_VERSION_PRESETS,
+  DEVICE_CAPABILITY_OPTIONS,
+  FALLBACK_KEY_OPTIONS,
+  INTRO_DURATION_PRESETS_MS,
+  KNOWN_ASSET_OPTIONS,
+  OUTCOME_REASON_CODES,
+  PROMPT_KEY_OPTIONS,
+  RESULT_HOLD_PRESETS_MS,
+  TIMING_DURATION_PRESETS_MS,
+  WEIGHT_PRESETS,
+  slugifyDefinitionId,
+} from './studio-catalog-options';
 import { ValidationSummary, type ValidationError } from './ValidationSummary';
 
 // ---------------------------------------------------------------------------
@@ -73,11 +93,11 @@ type DraftDefinition = {
   selectionWeight: number;
   repetitionCooldownRounds: number;
   minAppVersion: string;
-  requiredCapabilities: string;
+  requiredCapabilities: string[];
   accessibilityFallbackKey: string;
-  requiredAssetIds: string;
-  choiceKeys: string;
-  outcomeReasonKeys: string;
+  requiredAssetIds: string[];
+  choiceKeys: string[];
+  outcomeReasonKeys: Record<string, string>;
   validationNotes: string;
 };
 
@@ -111,11 +131,15 @@ function defaultDraft(): DraftDefinition {
     selectionWeight: 100,
     repetitionCooldownRounds: 0,
     minAppVersion: '0.0.0',
-    requiredCapabilities: '',
+    requiredCapabilities: ['touch'],
     accessibilityFallbackKey: 'reaction.wait_for_signal.v1',
-    requiredAssetIds: '',
-    choiceKeys: '',
-    outcomeReasonKeys: '{}',
+    requiredAssetIds: [],
+    choiceKeys: [],
+    outcomeReasonKeys: {
+      success: 'challenge.outcome.success',
+      failure: 'challenge.outcome.failure',
+      timeout: 'challenge.outcome.timeout',
+    },
     validationNotes: '',
   };
 }
@@ -125,12 +149,9 @@ function defaultDraft(): DraftDefinition {
 // ---------------------------------------------------------------------------
 
 function draftToDefinition(draft: DraftDefinition): ChallengeDefinitionContract {
-  let outcomeReasonKeys: Record<string, string> | undefined;
-
-  try {
-    const parsed = JSON.parse(draft.outcomeReasonKeys);
-    if (typeof parsed === 'object' && parsed !== null) outcomeReasonKeys = parsed;
-  } catch { /* keep undefined */ }
+  const outcomeReasonKeys = Object.fromEntries(
+    Object.entries(draft.outcomeReasonKeys).filter(([, v]) => v.trim().length > 0),
+  );
 
   return {
     definitionId: draft.definitionId,
@@ -156,17 +177,11 @@ function draftToDefinition(draft: DraftDefinition): ChallengeDefinitionContract 
     selectionWeight: draft.selectionWeight,
     repetitionCooldownRounds: draft.repetitionCooldownRounds,
     minAppVersion: draft.minAppVersion,
-    requiredCapabilities: draft.requiredCapabilities
-      ? draft.requiredCapabilities.split(',').map((s) => s.trim()).filter(Boolean)
-      : [],
+    requiredCapabilities: draft.requiredCapabilities,
     accessibilityFallbackKey: draft.accessibilityFallbackKey,
-    requiredAssetIds: draft.requiredAssetIds
-      ? draft.requiredAssetIds.split(',').map((s) => s.trim()).filter(Boolean)
-      : [],
-    choiceKeys: draft.choiceKeys
-      ? draft.choiceKeys.split(',').map((s) => s.trim()).filter(Boolean)
-      : undefined,
-    outcomeReasonKeys,
+    requiredAssetIds: draft.requiredAssetIds,
+    choiceKeys: draft.choiceKeys.length > 0 ? draft.choiceKeys : undefined,
+    outcomeReasonKeys: Object.keys(outcomeReasonKeys).length > 0 ? outcomeReasonKeys : undefined,
   };
 }
 
@@ -249,11 +264,11 @@ export function StudioChallengeEditor({
         selectionWeight: initialDefinition.selectionWeight,
         repetitionCooldownRounds: initialDefinition.repetitionCooldownRounds,
         minAppVersion: initialDefinition.minAppVersion,
-        requiredCapabilities: (initialDefinition.requiredCapabilities ?? []).join(', '),
+        requiredCapabilities: [...(initialDefinition.requiredCapabilities ?? [])],
         accessibilityFallbackKey: initialDefinition.accessibilityFallbackKey,
-        requiredAssetIds: (initialDefinition.requiredAssetIds ?? []).join(', '),
-        choiceKeys: (initialDefinition.choiceKeys ?? []).join(', '),
-        outcomeReasonKeys: JSON.stringify(initialDefinition.outcomeReasonKeys ?? {}, null, 2),
+        requiredAssetIds: [...(initialDefinition.requiredAssetIds ?? [])],
+        choiceKeys: [...(initialDefinition.choiceKeys ?? [])],
+        outcomeReasonKeys: { ...(initialDefinition.outcomeReasonKeys ?? {}) },
         validationNotes: '',
       };
     }
@@ -261,6 +276,17 @@ export function StudioChallengeEditor({
   });
 
   const validationErrors = validateDraft(draft, locale);
+  const activeSectionIndex = EDITOR_SECTIONS.indexOf(activeSection);
+
+  function goToSection(section: EditorSection) {
+    setActiveSection(section);
+    requestAnimationFrame(() => {
+      document.getElementById(`section-${section}`)?.scrollIntoView({
+        behavior: 'smooth',
+        block: 'start',
+      });
+    });
+  }
 
   function updateField<K extends keyof DraftDefinition>(key: K, value: DraftDefinition[K]) {
     setDraft((prev) => ({ ...prev, [key]: value }));
@@ -276,6 +302,11 @@ export function StudioChallengeEditor({
       categoryId: entry.categoryId,
       clientConfig: defaultClientConfig(entry.engineId),
       serverConfig: defaultServerConfig(entry.engineId),
+      accessibilityFallbackKey: `${entry.engineId}.v1`,
+      promptKey:
+        entry.engineId === 'reaction.wait_for_signal'
+          ? 'challenge.wait_for_signal.intro'
+          : prev.promptKey,
     }));
   }
 
@@ -362,32 +393,56 @@ export function StudioChallengeEditor({
         <StudioSectionNav
           locale={locale}
           activeSection={activeSection}
-          onSectionChange={setActiveSection}
+          onSectionChange={goToSection}
         />
 
         {/* Center: form */}
         <div className="studio-editor-form">
           {/* Section 1: Identity & ownership */}
-          <div className="section-group" id="section-identity" data-visible={activeSection === 'identity' || undefined}>
+          <div className="section-group" id="section-identity" data-active={activeSection === 'identity' ? 'true' : undefined} hidden={activeSection !== 'identity'}>
             <h3>{t(locale, 'studio.section.identity')}</h3>
+            <p className="studio-section-lead">{t(locale, 'studio.editor.identityLead')}</p>
             <FieldGroup>
-              <FieldInput
-                id="def-id"
-                label={t(locale, 'studio.field.definitionId')}
-                hint={t(locale, 'studio.field.definitionIdHint')}
-                value={draft.definitionId}
-                onChange={(e) => updateField('definitionId', e.currentTarget.value)}
-                disabled={!canDraft}
-              />
               <FieldInput
                 id="def-title"
                 label={t(locale, 'studio.field.internalTitle')}
                 hint={t(locale, 'studio.field.internalTitleHint')}
                 value={draft.internalTitle}
-                onChange={(e) => updateField('internalTitle', e.currentTarget.value)}
+                onChange={(e) => {
+                  const title = e.currentTarget.value;
+                  setDraft((prev) => ({
+                    ...prev,
+                    internalTitle: title,
+                    definitionId:
+                      mode === 'create' && (!prev.definitionId || prev.definitionId === slugifyDefinitionId(prev.internalTitle))
+                        ? slugifyDefinitionId(title)
+                        : prev.definitionId,
+                  }));
+                }}
                 disabled={!canDraft}
                 maxLength={120}
               />
+              <div className="field">
+                <label htmlFor="def-id">{t(locale, 'studio.field.definitionId')}</label>
+                <div className="studio-id-row">
+                  <input
+                    id="def-id"
+                    value={draft.definitionId}
+                    onChange={(e) => updateField('definitionId', e.currentTarget.value)}
+                    disabled={!canDraft || mode === 'edit'}
+                  />
+                  {mode === 'create' && canDraft ? (
+                    <button
+                      type="button"
+                      className="btn btn-ghost"
+                      onClick={() => updateField('definitionId', slugifyDefinitionId(draft.internalTitle))}
+                    >
+                      {t(locale, 'studio.field.generateId')}
+                    </button>
+                  ) : null}
+                </div>
+                <span className="field-hint">{t(locale, 'studio.field.definitionIdHint')}</span>
+              </div>
               <FieldSelect
                 id="def-engine"
                 label={t(locale, 'studio.field.engineId')}
@@ -397,22 +452,16 @@ export function StudioChallengeEditor({
                 options={engineOptions}
                 disabled={!canDraft}
               />
-              <FieldInput
-                id="def-version"
-                label={t(locale, 'studio.field.definitionVersion')}
-                hint={t(locale, 'studio.field.definitionVersionHint')}
-                type="number"
-                min={1}
-                value={draft.definitionVersion}
-                onChange={(e) => updateField('definitionVersion', Number(e.currentTarget.value) || 1)}
-                disabled={!canDraft}
-              />
+              <p className="studio-inline-hint">
+                {t(locale, 'studio.field.definitionVersion')}: v{draft.definitionVersion}
+              </p>
             </FieldGroup>
           </div>
 
           {/* Section 2: Arabic content */}
-          <div className="section-group" id="section-arabic">
+          <div className="section-group" id="section-arabic" data-active={activeSection === 'arabic' ? 'true' : undefined} hidden={activeSection !== 'arabic'}>
             <h3>{t(locale, 'studio.section.arabic')}</h3>
+            <p className="studio-section-lead">{t(locale, 'studio.editor.arabicLead')}</p>
             <FieldGroup>
               <FieldTextarea
                 id="def-instruction-ar"
@@ -434,108 +483,118 @@ export function StudioChallengeEditor({
                 dir="rtl"
                 maxLength={500}
               />
-              <FieldInput
+              <CatalogKeyField
                 id="def-prompt-key"
                 label={t(locale, 'studio.field.promptKey')}
                 hint={t(locale, 'studio.field.promptKeyHint')}
                 value={draft.promptKey}
-                onChange={(e) => updateField('promptKey', e.currentTarget.value)}
+                onChange={(v) => updateField('promptKey', v)}
+                options={PROMPT_KEY_OPTIONS}
+                localize={(k) => t(locale, k as MessageKey)}
                 disabled={!canDraft}
               />
-              <FieldInput
-                id="def-choice-keys"
-                label={t(locale, 'studio.field.choiceKeys')}
-                hint={t(locale, 'studio.field.choiceKeysHint')}
-                value={draft.choiceKeys}
-                onChange={(e) => updateField('choiceKeys', e.currentTarget.value)}
-                disabled={!canDraft}
-              />
-              <FieldTextarea
-                id="def-outcome-keys"
-                label={t(locale, 'studio.field.outcomeReasonKeys')}
-                hint={t(locale, 'studio.field.outcomeReasonKeysHint')}
-                value={draft.outcomeReasonKeys}
-                onChange={(e) => updateField('outcomeReasonKeys', e.currentTarget.value)}
-                disabled={!canDraft}
-                style={{ fontFamily: 'monospace', fontSize: '0.82rem' }}
-              />
+              <div className="field">
+                <span style={{ fontWeight: 600, fontSize: '0.9rem' }}>
+                  {t(locale, 'studio.field.outcomeReasonKeys')}
+                </span>
+                <span className="field-hint">{t(locale, 'studio.field.outcomeReasonKeysHint')}</span>
+                <div className="studio-outcome-grid">
+                  {OUTCOME_REASON_CODES.map((code) => (
+                    <CatalogKeyField
+                      key={code}
+                      id={`outcome-${code}`}
+                      label={t(locale, `studio.outcome.${code}` as MessageKey)}
+                      value={draft.outcomeReasonKeys[code] ?? ''}
+                      onChange={(v) =>
+                        updateField('outcomeReasonKeys', {
+                          ...draft.outcomeReasonKeys,
+                          [code]: v,
+                        })
+                      }
+                      options={PROMPT_KEY_OPTIONS}
+                      localize={(k) => t(locale, k as MessageKey)}
+                      disabled={!canDraft}
+                    />
+                  ))}
+                </div>
+              </div>
             </FieldGroup>
           </div>
 
           {/* Section 3: Family & classification */}
-          <div className="section-group" id="section-classification">
+          <div className="section-group" id="section-classification" data-active={activeSection === 'classification' ? 'true' : undefined} hidden={activeSection !== 'classification'}>
             <h3>{t(locale, 'studio.section.classification')}</h3>
-            <FieldGroup horizontal>
-              <FieldInput
-                id="def-family"
-                label={t(locale, 'studio.field.familyId')}
-                value={draft.familyId}
-                disabled
-                readOnly
-              />
-              <FieldInput
-                id="def-category"
-                label={t(locale, 'studio.field.categoryId')}
-                value={draft.categoryId}
-                disabled
-                readOnly
-              />
-              <FieldSelect
-                id="def-difficulty"
+            <p className="studio-section-lead">{t(locale, 'studio.editor.classificationLead')}</p>
+            <FieldGroup>
+              <SegmentedChoice
                 label={t(locale, 'studio.field.difficulty')}
+                hint={t(locale, 'studio.field.difficultyHint')}
                 value={draft.difficulty}
-                onChange={(e) => updateField('difficulty', e.currentTarget.value as 'easy' | 'medium' | 'hard')}
                 options={localizedDifficultyOptions}
+                onChange={(v) => updateField('difficulty', v as 'easy' | 'medium' | 'hard')}
                 disabled={!canDraft}
               />
+              <p className="studio-inline-hint">
+                {t(locale, 'studio.field.familyId')}: <strong>{draft.familyId}</strong>
+                {' · '}
+                {t(locale, 'studio.field.categoryId')}: <strong>{draft.categoryId}</strong>
+              </p>
             </FieldGroup>
           </div>
 
           {/* Section 4: Timing */}
-          <div className="section-group" id="section-timing">
+          <div className="section-group" id="section-timing" data-active={activeSection === 'timing' ? 'true' : undefined} hidden={activeSection !== 'timing'}>
             <h3>{t(locale, 'studio.section.timing')}</h3>
-            <FieldGroup horizontal>
-              <FieldInput
+            <p className="studio-section-lead">{t(locale, 'studio.editor.timingLead')}</p>
+            <FieldGroup>
+              <DurationSecondsField
                 id="def-duration"
                 label={t(locale, 'studio.field.durationMs')}
                 hint={t(locale, 'studio.field.durationMsHint')}
-                type="number"
-                min={3000}
-                max={8000}
-                step={100}
-                value={draft.durationMs}
-                onChange={(e) => updateField('durationMs', Number(e.currentTarget.value))}
+                valueMs={draft.durationMs}
+                onChangeMs={(ms) => updateField('durationMs', Math.min(8000, Math.max(3000, ms)))}
+                minSec={3}
+                maxSec={8}
+                stepSec={0.5}
+                presets={TIMING_DURATION_PRESETS_MS.map((p) => ({
+                  ms: p.ms,
+                  label: t(locale, p.labelKey as MessageKey),
+                }))}
                 disabled={!canDraft}
               />
-              <FieldInput
+              <DurationSecondsField
                 id="def-intro-duration"
                 label={t(locale, 'studio.field.introDurationMs')}
                 hint={t(locale, 'studio.field.introDurationMsHint')}
-                type="number"
-                min={0}
-                max={5000}
-                step={100}
-                value={draft.introDurationMs}
-                onChange={(e) => updateField('introDurationMs', Number(e.currentTarget.value))}
+                valueMs={draft.introDurationMs}
+                onChangeMs={(ms) => updateField('introDurationMs', ms)}
+                minSec={0}
+                maxSec={5}
+                presets={INTRO_DURATION_PRESETS_MS.map((p) => ({
+                  ms: p.ms,
+                  label: t(locale, p.labelKey as MessageKey),
+                }))}
                 disabled={!canDraft}
               />
-              <FieldInput
+              <DurationSecondsField
                 id="def-result-hold"
                 label={t(locale, 'studio.field.resultHoldMs')}
                 hint={t(locale, 'studio.field.resultHoldMsHint')}
-                type="number"
-                min={0}
-                max={10000}
-                step={100}
-                value={draft.resultHoldMs}
-                onChange={(e) => updateField('resultHoldMs', Number(e.currentTarget.value))}
+                valueMs={draft.resultHoldMs}
+                onChangeMs={(ms) => updateField('resultHoldMs', ms)}
+                minSec={0}
+                maxSec={10}
+                presets={RESULT_HOLD_PRESETS_MS.map((p) => ({
+                  ms: p.ms,
+                  label: t(locale, p.labelKey as MessageKey),
+                }))}
                 disabled={!canDraft}
               />
             </FieldGroup>
           </div>
 
           {/* Section 5: Engine parameters — typed family fields */}
-          <div className="section-group" id="section-familyParams">
+          <div className="section-group" id="section-familyParams" data-active={activeSection === 'familyParams' ? 'true' : undefined} hidden={activeSection !== 'familyParams'}>
             <h3>{t(locale, 'studio.section.familyParams')}</h3>
             <FamilyParamsFields
               locale={locale}
@@ -549,83 +608,85 @@ export function StudioChallengeEditor({
           </div>
 
           {/* Section 6: Input & behavior */}
-          <div className="section-group" id="section-behavior">
+          <div className="section-group" id="section-behavior" data-active={activeSection === 'behavior' ? 'true' : undefined} hidden={activeSection !== 'behavior'}>
             <h3>{t(locale, 'studio.section.behavior')}</h3>
-            <p style={{ color: 'var(--lh-text-muted)', fontSize: '0.85rem', margin: '0 0 0.5rem' }}>
-              {t(locale, 'studio.field.fp.behaviorNote' as MessageKey)}
-            </p>
+            <p className="studio-section-lead">{t(locale, 'studio.field.fp.behaviorNote' as MessageKey)}</p>
           </div>
 
           {/* Section 7: Heart & energy effects */}
-          <div className="section-group" id="section-effects">
+          <div className="section-group" id="section-effects" data-active={activeSection === 'effects' ? 'true' : undefined} hidden={activeSection !== 'effects'}>
             <h3>{t(locale, 'studio.section.effects')}</h3>
-            <FieldGroup horizontal>
-              <FieldSelect
-                id="def-heart-penalty"
+            <p className="studio-section-lead">{t(locale, 'studio.editor.effectsLead')}</p>
+            <FieldGroup>
+              <SegmentedChoice
                 label={t(locale, 'studio.field.heartPenaltyOnFailure')}
+                hint={t(locale, 'studio.field.heartPenaltyHint')}
                 value={String(draft.heartPenaltyOnFailure)}
-                onChange={(e) => updateField('heartPenaltyOnFailure', Number(e.currentTarget.value) as 0 | 1)}
                 options={[
                   { value: '0', label: t(locale, 'studio.field.heartPenalty.none') },
                   { value: '1', label: t(locale, 'studio.field.heartPenalty.one') },
                 ]}
+                onChange={(v) => updateField('heartPenaltyOnFailure', Number(v) as 0 | 1)}
                 disabled={!canDraft}
               />
-              <FieldInput
-                id="def-energy-reward"
+              <SegmentedChoice
                 label={t(locale, 'studio.field.energyRewardOnSuccess')}
                 hint={t(locale, 'studio.field.energyRewardHint')}
-                type="number"
-                min={0}
-                max={3}
-                value={draft.energyRewardOnSuccess}
-                onChange={(e) => updateField('energyRewardOnSuccess', Number(e.currentTarget.value))}
+                value={String(draft.energyRewardOnSuccess)}
+                options={[0, 1, 2, 3].map((n) => ({
+                  value: String(n),
+                  label: String(n),
+                }))}
+                onChange={(v) => updateField('energyRewardOnSuccess', Number(v))}
                 disabled={!canDraft}
               />
             </FieldGroup>
           </div>
 
           {/* Section 8: Assets, sounds, haptics */}
-          <div className="section-group" id="section-assets">
+          <div className="section-group" id="section-assets" data-active={activeSection === 'assets' ? 'true' : undefined} hidden={activeSection !== 'assets'}>
             <h3>{t(locale, 'studio.section.assets')}</h3>
-            <FieldGroup>
-              <FieldInput
-                id="def-asset-ids"
-                label={t(locale, 'studio.field.requiredAssetIds')}
-                hint={t(locale, 'studio.field.requiredAssetIdsHint')}
-                value={draft.requiredAssetIds}
-                onChange={(e) => updateField('requiredAssetIds', e.currentTarget.value)}
-                disabled={!canDraft}
-              />
-            </FieldGroup>
+            <p className="studio-section-lead">{t(locale, 'studio.editor.assetsLead')}</p>
+            <ChipMultiSelect
+              label={t(locale, 'studio.field.requiredAssetIds')}
+              hint={t(locale, 'studio.field.requiredAssetIdsHint')}
+              options={KNOWN_ASSET_OPTIONS}
+              selected={draft.requiredAssetIds}
+              onChange={(selected) => updateField('requiredAssetIds', selected)}
+              localize={(k) => t(locale, k as MessageKey)}
+              disabled={!canDraft}
+            />
           </div>
 
           {/* Section 9: Capability & accessibility */}
-          <div className="section-group" id="section-accessibility">
+          <div className="section-group" id="section-accessibility" data-active={activeSection === 'accessibility' ? 'true' : undefined} hidden={activeSection !== 'accessibility'}>
             <h3>{t(locale, 'studio.section.accessibility')}</h3>
-            <FieldGroup>
-              <FieldInput
-                id="def-capabilities"
-                label={t(locale, 'studio.field.requiredCapabilities')}
-                hint={t(locale, 'studio.field.requiredCapabilitiesHint')}
-                value={draft.requiredCapabilities}
-                onChange={(e) => updateField('requiredCapabilities', e.currentTarget.value)}
-                disabled={!canDraft}
-              />
-              <FieldInput
-                id="def-fallback"
-                label={t(locale, 'studio.field.accessibilityFallbackKey')}
-                hint={t(locale, 'studio.field.accessibilityFallbackHint')}
-                value={draft.accessibilityFallbackKey}
-                onChange={(e) => updateField('accessibilityFallbackKey', e.currentTarget.value)}
-                disabled={!canDraft}
-              />
-            </FieldGroup>
+            <p className="studio-section-lead">{t(locale, 'studio.editor.accessibilityLead')}</p>
+            <ChipMultiSelect
+              label={t(locale, 'studio.field.requiredCapabilities')}
+              hint={t(locale, 'studio.field.requiredCapabilitiesHint')}
+              options={DEVICE_CAPABILITY_OPTIONS}
+              selected={draft.requiredCapabilities}
+              onChange={(selected) => updateField('requiredCapabilities', selected)}
+              localize={(k) => t(locale, k as MessageKey)}
+              disabled={!canDraft}
+            />
+            <CatalogKeyField
+              id="def-fallback"
+              label={t(locale, 'studio.field.accessibilityFallbackKey')}
+              hint={t(locale, 'studio.field.accessibilityFallbackHint')}
+              value={draft.accessibilityFallbackKey}
+              onChange={(v) => updateField('accessibilityFallbackKey', v)}
+              options={FALLBACK_KEY_OPTIONS}
+              localize={(k) => t(locale, k as MessageKey)}
+              disabled={!canDraft}
+            />
           </div>
 
           {/* Section 10: Mode & eligibility */}
-          <div className="section-group" id="section-eligibility">
+          <div className="section-group" id="section-eligibility" data-active={activeSection === 'eligibility' ? 'true' : undefined} hidden={activeSection !== 'eligibility'}>
             <h3>{t(locale, 'studio.section.eligibility')}</h3>
+            <p className="studio-section-lead">{t(locale, 'studio.editor.eligibilityLead')}</p>
             <FieldGroup>
               <FieldCheckboxGroup
                 label={t(locale, 'studio.field.eligibleModes')}
@@ -633,74 +694,104 @@ export function StudioChallengeEditor({
                 selected={draft.eligibleModes}
                 onChange={(selected) => updateField('eligibleModes', selected)}
               />
-              <FieldGroup horizontal>
-                <FieldInput
-                  id="def-round-min"
-                  label={t(locale, 'studio.field.roundMin')}
-                  hint={t(locale, 'studio.field.roundMinHint')}
-                  type="number"
-                  min={1}
-                  max={99}
-                  value={draft.roundMin}
-                  onChange={(e) => updateField('roundMin', e.currentTarget.value)}
+              <SegmentedChoice
+                label={t(locale, 'studio.field.roundBand')}
+                hint={t(locale, 'studio.field.roundBandHint')}
+                value={!draft.roundMin && !draft.roundMax ? 'any' : 'limited'}
+                options={[
+                  { value: 'any', label: t(locale, 'studio.field.roundAny') },
+                  { value: 'limited', label: t(locale, 'studio.field.roundLimited') },
+                ]}
+                onChange={(v) => {
+                  if (v === 'any') {
+                    updateField('roundMin', '');
+                    updateField('roundMax', '');
+                  } else {
+                    updateField('roundMin', draft.roundMin || '1');
+                    updateField('roundMax', draft.roundMax || '10');
+                  }
+                }}
+                disabled={!canDraft}
+              />
+              {draft.roundMin || draft.roundMax ? (
+                <FieldGroup horizontal>
+                  <FieldSelect
+                    id="def-round-min"
+                    label={t(locale, 'studio.field.roundMin')}
+                    value={draft.roundMin || '1'}
+                    options={Array.from({ length: 20 }, (_, i) => ({
+                      value: String(i + 1),
+                      label: t(locale, 'studio.field.roundN').replace('{n}', String(i + 1)),
+                    }))}
+                    onChange={(e) => updateField('roundMin', e.currentTarget.value)}
+                    disabled={!canDraft}
+                  />
+                  <FieldSelect
+                    id="def-round-max"
+                    label={t(locale, 'studio.field.roundMax')}
+                    value={draft.roundMax || '10'}
+                    options={Array.from({ length: 20 }, (_, i) => ({
+                      value: String(i + 1),
+                      label: t(locale, 'studio.field.roundN').replace('{n}', String(i + 1)),
+                    }))}
+                    onChange={(e) => updateField('roundMax', e.currentTarget.value)}
+                    disabled={!canDraft}
+                  />
+                </FieldGroup>
+              ) : null}
+              <div className="field">
+                <span style={{ fontWeight: 600, fontSize: '0.9rem' }}>
+                  {t(locale, 'studio.field.selectionWeight')}
+                </span>
+                <span className="field-hint">{t(locale, 'studio.field.selectionWeightHint')}</span>
+                <PresetChips
+                  presets={WEIGHT_PRESETS.map((p) => ({
+                    value: p.value,
+                    label: t(locale, p.labelKey as MessageKey),
+                  }))}
+                  activeValue={draft.selectionWeight}
+                  onSelect={(v) => updateField('selectionWeight', Number(v))}
                   disabled={!canDraft}
                 />
-                <FieldInput
-                  id="def-round-max"
-                  label={t(locale, 'studio.field.roundMax')}
-                  hint={t(locale, 'studio.field.roundMaxHint')}
-                  type="number"
-                  min={1}
-                  max={99}
-                  value={draft.roundMax}
-                  onChange={(e) => updateField('roundMax', e.currentTarget.value)}
-                  disabled={!canDraft}
-                />
-              </FieldGroup>
-              <FieldGroup horizontal>
-                <FieldInput
-                  id="def-weight"
-                  label={t(locale, 'studio.field.selectionWeight')}
-                  hint={t(locale, 'studio.field.selectionWeightHint')}
-                  type="number"
-                  min={1}
-                  max={10000}
-                  value={draft.selectionWeight}
-                  onChange={(e) => updateField('selectionWeight', Number(e.currentTarget.value))}
-                  disabled={!canDraft}
-                />
-                <FieldInput
-                  id="def-cooldown"
-                  label={t(locale, 'studio.field.repetitionCooldownRounds')}
-                  hint={t(locale, 'studio.field.repetitionCooldownHint')}
-                  type="number"
-                  min={0}
-                  max={20}
-                  value={draft.repetitionCooldownRounds}
-                  onChange={(e) => updateField('repetitionCooldownRounds', Number(e.currentTarget.value))}
-                  disabled={!canDraft}
-                />
-              </FieldGroup>
-            </FieldGroup>
-          </div>
-
-          {/* Section 11: Version & app support */}
-          <div className="section-group" id="section-versioning">
-            <h3>{t(locale, 'studio.section.versioning')}</h3>
-            <FieldGroup horizontal>
-              <FieldInput
-                id="def-min-app"
-                label={t(locale, 'studio.field.minAppVersion')}
-                hint={t(locale, 'studio.field.minAppVersionHint')}
-                value={draft.minAppVersion}
-                onChange={(e) => updateField('minAppVersion', e.currentTarget.value)}
+              </div>
+              <SegmentedChoice
+                label={t(locale, 'studio.field.repetitionCooldownRounds')}
+                hint={t(locale, 'studio.field.repetitionCooldownHint')}
+                value={String(draft.repetitionCooldownRounds)}
+                options={[0, 1, 2, 3, 5].map((n) => ({
+                  value: String(n),
+                  label:
+                    n === 0
+                      ? t(locale, 'studio.field.cooldownNone')
+                      : t(locale, 'studio.field.cooldownN').replace('{n}', String(n)),
+                }))}
+                onChange={(v) => updateField('repetitionCooldownRounds', Number(v))}
                 disabled={!canDraft}
               />
             </FieldGroup>
           </div>
 
+          {/* Section 11: Version & app support */}
+          <div className="section-group" id="section-versioning" data-active={activeSection === 'versioning' ? 'true' : undefined} hidden={activeSection !== 'versioning'}>
+            <h3>{t(locale, 'studio.section.versioning')}</h3>
+            <p className="studio-section-lead">{t(locale, 'studio.editor.versioningLead')}</p>
+            <CatalogKeyField
+              id="def-min-app"
+              label={t(locale, 'studio.field.minAppVersion')}
+              hint={t(locale, 'studio.field.minAppVersionHint')}
+              value={draft.minAppVersion}
+              onChange={(v) => updateField('minAppVersion', v)}
+              options={APP_VERSION_PRESETS.map((p) => ({
+                value: p.value,
+                labelKey: p.labelKey,
+              }))}
+              localize={(k) => t(locale, k as MessageKey)}
+              disabled={!canDraft}
+            />
+          </div>
+
           {/* Section 12: Review notes */}
-          <div className="section-group" id="section-review">
+          <div className="section-group" id="section-review" data-active={activeSection === 'review' ? 'true' : undefined} hidden={activeSection !== 'review'}>
             <h3>{t(locale, 'studio.section.review')}</h3>
             <FieldGroup>
               <FieldTextarea
@@ -728,6 +819,24 @@ export function StudioChallengeEditor({
 
       {/* Sticky footer */}
       <div className="studio-editor-footer">
+        <div className="studio-section-stepper">
+          <button
+            type="button"
+            className="btn btn-ghost"
+            disabled={activeSectionIndex <= 0}
+            onClick={() => goToSection(EDITOR_SECTIONS[activeSectionIndex - 1]!)}
+          >
+            {t(locale, 'studio.editor.prevSection')}
+          </button>
+          <button
+            type="button"
+            className="btn btn-ghost"
+            disabled={activeSectionIndex >= EDITOR_SECTIONS.length - 1}
+            onClick={() => goToSection(EDITOR_SECTIONS[activeSectionIndex + 1]!)}
+          >
+            {t(locale, 'studio.editor.nextSection')}
+          </button>
+        </div>
         <ValidationSummary locale={locale} errors={validationErrors} />
         {canDraft ? (
           <div className="footer-actions">

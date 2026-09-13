@@ -4,7 +4,7 @@ import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { FormEvent, useCallback, useEffect, useState } from 'react';
 import type {
-  AdminContentTemplateSummary,
+  AdminContentTemplateListResponse,
   ContentLifecycleStatus,
 } from '@thelastheart/contracts';
 import {
@@ -15,19 +15,35 @@ import {
 } from '@/components/ui/confirm-dialog';
 import { t } from '@/i18n/get-dictionary';
 import type { Locale } from '@/i18n/locale';
+import type { MessageKey } from '@/i18n/messages/en';
 import { adminApiFetch } from '@/lib/api/client';
 import { localizeAdminError } from '@/i18n/localize-admin-error';
 import { scheduleEffectTask } from '@/lib/react/schedule-effect-task';
 import { StatusChip } from './StatusChip';
 import { StudioPageHeader } from './StudioPageHeader';
 
-const STATUSES: ContentLifecycleStatus[] = [
-  'draft', 'submitted', 'in_review', 'approved', 'scheduled', 'published', 'paused', 'retired',
+const STATUS_FILTERS: { value: ContentLifecycleStatus; labelKey: MessageKey }[] = [
+  { value: 'draft', labelKey: 'studio.status.draft' },
+  { value: 'submitted', labelKey: 'studio.status.submitted' },
+  { value: 'in_review', labelKey: 'studio.status.inReview' },
+  { value: 'approved', labelKey: 'studio.status.approved' },
+  { value: 'scheduled', labelKey: 'studio.status.scheduled' },
+  { value: 'published', labelKey: 'studio.status.published' },
+  { value: 'paused', labelKey: 'studio.status.paused' },
+  { value: 'retired', labelKey: 'studio.status.retired' },
 ];
 
-const ENGINE_FAMILIES = [
-  'wait_for_signal', 'no_touch', 'reverse_swipe', 'precision', 'memory',
-  'hold', 'shake', 'tilt', 'audio', 'pair_sync', 'risk_choice',
+const ENGINE_FAMILY_FILTERS: { value: string; labelKey: MessageKey }[] = [
+  { value: 'reaction', labelKey: 'studio.catalog.category.reaction' },
+  { value: 'trap', labelKey: 'studio.catalog.category.trap' },
+  { value: 'gesture', labelKey: 'studio.catalog.category.gesture' },
+  { value: 'tap', labelKey: 'studio.catalog.category.tap' },
+  { value: 'memory', labelKey: 'studio.catalog.category.memory' },
+  { value: 'hold', labelKey: 'studio.catalog.category.hold' },
+  { value: 'motion', labelKey: 'studio.catalog.category.motion' },
+  { value: 'audio', labelKey: 'studio.catalog.category.audio' },
+  { value: 'social', labelKey: 'studio.catalog.category.social' },
+  { value: 'tactical', labelKey: 'studio.catalog.category.tactical' },
 ];
 
 type StudioLibraryProps = {
@@ -38,7 +54,7 @@ type StudioLibraryProps = {
 export function StudioLibrary({ locale, canDraft }: StudioLibraryProps) {
   const searchParams = useSearchParams();
   const router = useRouter();
-  const [data, setData] = useState<AdminContentTemplateSummary[] | null>(null);
+  const [data, setData] = useState<AdminContentTemplateListResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [forbidden, setForbidden] = useState(false);
@@ -50,8 +66,15 @@ export function StudioLibrary({ locale, canDraft }: StudioLibraryProps) {
 
   const load = useCallback(async () => {
     setLoading(true);
-    const result = await adminApiFetch<AdminContentTemplateSummary[]>(
-      '/content/templates',
+    const params = new URLSearchParams();
+    params.set('page', String(page));
+    params.set('pageSize', '20');
+    if (q) params.set('search', q);
+    if (status) params.set('status', status);
+    if (family) params.set('familyId', family);
+
+    const result = await adminApiFetch<AdminContentTemplateListResponse>(
+      `/content/templates?${params.toString()}`,
     );
     if (!result.ok) {
       setForbidden(result.status === 403 || result.error.code === 'FORBIDDEN');
@@ -64,7 +87,7 @@ export function StudioLibrary({ locale, canDraft }: StudioLibraryProps) {
     setError(null);
     setData(result.data);
     setLoading(false);
-  }, [locale]);
+  }, [locale, page, q, status, family]);
 
   useEffect(() => scheduleEffectTask(() => void load()), [load]);
 
@@ -82,19 +105,8 @@ export function StudioLibrary({ locale, canDraft }: StudioLibraryProps) {
     router.push(`/${locale}/content/library?${next.toString()}`);
   }
 
-  // Client-side filtering since API may return all
-  const filtered = (data ?? []).filter((tpl) => {
-    if (q && !tpl.internalTitle.toLowerCase().includes(q.toLowerCase()) && !tpl.slug.toLowerCase().includes(q.toLowerCase())) {
-      return false;
-    }
-    if (status && tpl.status !== status) return false;
-    if (family && tpl.familyId !== family) return false;
-    return true;
-  });
-
-  const pageSize = 20;
-  const totalPages = Math.max(Math.ceil(filtered.length / pageSize), 1);
-  const paged = filtered.slice((page - 1) * pageSize, page * pageSize);
+  const items = data?.items ?? [];
+  const totalPages = data ? Math.max(Math.ceil(data.total / data.pageSize), 1) : 1;
 
   if (forbidden) return <ForbiddenState label={t(locale, 'common.forbidden')} />;
 
@@ -115,14 +127,21 @@ export function StudioLibrary({ locale, canDraft }: StudioLibraryProps) {
       <form className="filters panel" onSubmit={applyFilters}>
         <div className="field">
           <label htmlFor="lib-q">{t(locale, 'studio.library.search')}</label>
-          <input id="lib-q" name="q" defaultValue={q} placeholder={t(locale, 'studio.library.search')} />
+          <input
+            id="lib-q"
+            name="q"
+            defaultValue={q}
+            placeholder={t(locale, 'studio.library.search')}
+          />
         </div>
         <div className="field">
           <label htmlFor="lib-status">{t(locale, 'studio.library.filterStatus')}</label>
           <select id="lib-status" name="status" defaultValue={status}>
             <option value="">{t(locale, 'common.all')}</option>
-            {STATUSES.map((s) => (
-              <option key={s} value={s}>{t(locale, `studio.status.${s}` as keyof typeof import('@/i18n/messages/en').default)}</option>
+            {STATUS_FILTERS.map((s) => (
+              <option key={s.value} value={s.value}>
+                {t(locale, s.labelKey)}
+              </option>
             ))}
           </select>
         </div>
@@ -130,8 +149,10 @@ export function StudioLibrary({ locale, canDraft }: StudioLibraryProps) {
           <label htmlFor="lib-family">{t(locale, 'studio.library.filterFamily')}</label>
           <select id="lib-family" name="family" defaultValue={family}>
             <option value="">{t(locale, 'common.all')}</option>
-            {ENGINE_FAMILIES.map((f) => (
-              <option key={f} value={f}>{t(locale, `studio.engine.${f}` as keyof typeof import('@/i18n/messages/en').default)}</option>
+            {ENGINE_FAMILY_FILTERS.map((f) => (
+              <option key={f.value} value={f.value}>
+                {t(locale, f.labelKey)}
+              </option>
             ))}
           </select>
         </div>
@@ -148,10 +169,10 @@ export function StudioLibrary({ locale, canDraft }: StudioLibraryProps) {
           onRetry={() => void load()}
         />
       ) : null}
-      {!loading && data && paged.length === 0 ? (
+      {!loading && data && items.length === 0 ? (
         <EmptyState label={t(locale, 'studio.library.empty')} />
       ) : null}
-      {!loading && data && paged.length > 0 ? (
+      {!loading && data && items.length > 0 ? (
         <>
           <div className="panel table-wrap">
             <table className="studio-data-table">
@@ -165,18 +186,23 @@ export function StudioLibrary({ locale, canDraft }: StudioLibraryProps) {
                 </tr>
               </thead>
               <tbody>
-                {paged.map((tpl) => (
+                {items.map((tpl) => (
                   <tr key={tpl.templateId}>
                     <td>
-                      <Link href={`/${locale}/content/templates/${tpl.templateId}`} style={{ fontWeight: 600 }}>
+                      <Link
+                        href={`/${locale}/content/templates/${tpl.templateId}`}
+                        style={{ fontWeight: 600 }}
+                      >
                         {tpl.internalTitle}
                       </Link>
                       <div style={{ fontSize: '0.8rem', color: 'var(--lh-text-muted)' }}>
                         {tpl.slug}
                       </div>
                     </td>
-                    <td>{tpl.familyId}</td>
-                    <td><StatusChip locale={locale} status={tpl.status} /></td>
+                    <td>{tpl.engineId ?? tpl.familyId}</td>
+                    <td>
+                      <StatusChip locale={locale} status={tpl.status} />
+                    </td>
                     <td>{tpl.latestVersion ?? '—'}</td>
                     <td>
                       <div className="cell-actions">
