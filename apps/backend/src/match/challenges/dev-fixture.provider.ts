@@ -10,16 +10,26 @@ const FIXTURE_FILES = [
   'tap.precision.v1.json',
   'memory.sequence.v1.json',
   'hold.multitouch.v1.json',
+  'motion.shake.v1.json',
+  'motion.tilt_balance.v1.json',
+  'audio.cue.v1.json',
+  'social.pair_sync.v1.json',
+  'tactical.risk_choice.v1.json',
 ] as const;
 
-/** Live playlist until Challenge Studio: red/blue heart only (repeated for match length). */
+/** Mixed launch playlist — one of each live engine for device testing. */
 const PLAYLIST_DEFINITION_IDS = [
   'reaction.wait_for_signal.dev',
-  'reaction.wait_for_signal.dev',
-  'reaction.wait_for_signal.dev',
-  'reaction.wait_for_signal.dev',
-  'reaction.wait_for_signal.dev',
-  'reaction.wait_for_signal.dev',
+  'trap.no_touch.dev',
+  'gesture.reverse_swipe.dev',
+  'tap.precision.dev',
+  'memory.sequence.dev',
+  'hold.multitouch.dev',
+  'motion.shake.dev',
+  'motion.tilt_balance.dev',
+  'audio.cue.dev',
+  'social.pair_sync.dev',
+  'tactical.risk_choice.dev',
 ] as const;
 
 /**
@@ -55,7 +65,7 @@ export class DevFixtureProvider implements ChallengeDefinitionProvider {
     return def;
   }
 
-  /** Finite red/blue-only pack — played in order once (no infinite cycle). */
+  /** Finite mixed pack — played in order once (no infinite cycle). */
   getPlaylist(): readonly ChallengeDefinition[] {
     return this.playlist;
   }

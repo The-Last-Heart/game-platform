@@ -1,0 +1,19 @@
+{
+  "definitionId": "audio.cue.dev",
+  "definitionVersion": 1,
+  "engineId": "audio.cue",
+  "durationMs": 6000,
+  "heartPenaltyOnFailure": 1,
+  "energyRewardOnSuccess": 1,
+  "promptKey": "challenge.audio.intro",
+  "choiceKeys": [],
+  "clientConfig": {
+    "categoryKey": "challenge.category.audio",
+    "promptKey": "challenge.audio.prompt",
+    "visualFallbackKey": "challenge.audio.visual_fallback",
+    "hapticFallbackKey": "challenge.audio.haptic_fallback"
+  },
+  "serverConfig": {
+    "pulseCount": 3
+  }
+}

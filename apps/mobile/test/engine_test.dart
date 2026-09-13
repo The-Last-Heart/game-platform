@@ -133,6 +133,28 @@ void main() {
       expect(engine.engineId, 'reaction.wait_for_signal');
     });
 
+    test('resolves all eleven launch engines', () {
+      final ChallengeEngineRegistry registry = ChallengeEngineRegistry();
+      const List<String> ids = <String>[
+        'reaction.wait_for_signal',
+        'trap.no_touch',
+        'gesture.reverse_swipe',
+        'tap.precision',
+        'memory.sequence',
+        'hold.multitouch',
+        'motion.shake',
+        'motion.tilt_balance',
+        'audio.cue',
+        'social.pair_sync',
+        'tactical.risk_choice',
+      ];
+      for (final String id in ids) {
+        final ChallengeEngine engine = registry.resolve(id);
+        expect(engine.engineId, id);
+        expect(engine, isNot(isA<UnknownEngine>()));
+      }
+    });
+
     test('unknown engine for unrecognized id', () {
       final ChallengeEngineRegistry registry = ChallengeEngineRegistry();
       final ChallengeEngine engine = registry.resolve('some.unknown.engine');

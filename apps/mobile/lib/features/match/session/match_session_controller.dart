@@ -503,7 +503,13 @@ class MatchSessionController {
     if (state.value.answerStatus == AnswerSubmissionStatus.confirmed) return;
 
     final String commandId = generateSecureId();
-    final bool earlyMiss = !_answerLooksLikeSignalSubmit(answer);
+    final bool isProgressUpdate = answer['final'] == false;
+    final String? engineId = state.value.currentChallenge?.engineId;
+    // "Too early" overlay is wait-for-signal only (empty / non-token tap).
+    final bool earlyMiss =
+        engineId == 'reaction.wait_for_signal' &&
+        !_answerLooksLikeSignalSubmit(answer);
+
     _pending = PendingSubmission(
       commandId: commandId,
       challengeInstanceId: challengeInstanceId,
@@ -513,6 +519,8 @@ class MatchSessionController {
       answerStatus: AnswerSubmissionStatus.pending,
       answerChallengeInstanceId: () => challengeInstanceId,
       answerSubmittedEarly: earlyMiss,
+      // Progress frames must not show the early-fail chrome.
+      // (earlyMiss is already false for non-wait engines.)
     );
 
     _sendCommandWithId(
@@ -523,6 +531,17 @@ class MatchSessionController {
         'answer': answer,
       },
     );
+
+    // Hold continuous updates: unlock immediately after send so the next
+    // progress tick is not blocked while waiting for ACK. Final submits still
+    // wait for ACK / confirmed via _pending.
+    if (isProgressUpdate) {
+      _pending = null;
+      state.value = state.value.copyWith(
+        answerStatus: AnswerSubmissionStatus.idle,
+        answerSubmittedEarly: false,
+      );
+    }
   }
 
   /// Whether recovery is still unresolved (watermark and/or needsSnapshot).
@@ -1297,6 +1316,19 @@ class MatchSessionController {
     final Map<String, dynamic>? payload =
         raw['payload'] as Map<String, dynamic>?;
     final bool accepted = payload?['accepted'] == true;
+    final String? reasonKey = payload?['reasonKey'] as String?;
+    final bool isProgress =
+        reasonKey == 'errors.match.submission_progress';
+
+    if (accepted && isProgress) {
+      // Continuous engine progress — keep input unlocked.
+      _pending = null;
+      state.value = state.value.copyWith(
+        answerStatus: AnswerSubmissionStatus.idle,
+        answerSubmittedEarly: false,
+      );
+      return;
+    }
 
     if (accepted) {
       state.value = state.value.copyWith(

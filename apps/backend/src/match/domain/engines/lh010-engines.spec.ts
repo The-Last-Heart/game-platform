@@ -147,16 +147,19 @@ describe('LH-010 engine extensions', () => {
       expect(ENGINE_RUNTIME_READINESS['hold.multitouch']).toBe('live');
     });
 
-    it('marks schema_only engines correctly', () => {
-      expect(ENGINE_RUNTIME_READINESS['motion.shake']).toBe('schema_only');
-      expect(ENGINE_RUNTIME_READINESS['motion.tilt_balance']).toBe('schema_only');
-      expect(ENGINE_RUNTIME_READINESS['audio.cue']).toBe('schema_only');
-      expect(ENGINE_RUNTIME_READINESS['social.pair_sync']).toBe('schema_only');
-      expect(ENGINE_RUNTIME_READINESS['tactical.risk_choice']).toBe('schema_only');
+    it('marks LH-009 advanced engines live', () => {
+      expect(ENGINE_RUNTIME_READINESS['motion.shake']).toBe('live');
+      expect(ENGINE_RUNTIME_READINESS['motion.tilt_balance']).toBe('live');
+      expect(ENGINE_RUNTIME_READINESS['audio.cue']).toBe('live');
+      expect(ENGINE_RUNTIME_READINESS['social.pair_sync']).toBe('live');
+      expect(ENGINE_RUNTIME_READINESS['tactical.risk_choice']).toBe('live');
     });
 
-    it('covers all 11 engines', () => {
+    it('covers all 11 engines as live', () => {
       expect(Object.keys(ENGINE_RUNTIME_READINESS)).toHaveLength(11);
+      expect(
+        Object.values(ENGINE_RUNTIME_READINESS).every((v) => v === 'live'),
+      ).toBe(true);
     });
   });
 });

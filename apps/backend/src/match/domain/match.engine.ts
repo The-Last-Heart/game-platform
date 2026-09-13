@@ -213,10 +213,78 @@ export function validateChallengeDefinition(
   }
 }
 
+function assignPairPartners(playerIds: string[]): Map<string, string> {
+  const assignments = new Map<string, string>();
+  const ids = [...playerIds];
+  for (let i = 0; i + 1 < ids.length; i += 2) {
+    const a = ids[i]!;
+    const b = ids[i + 1]!;
+    assignments.set(a, b);
+    assignments.set(b, a);
+  }
+  return assignments;
+}
+
 export function toPublicChallengeView(
   challenge: ChallengeRound,
   serverNowMs: number,
 ): PublicChallengeView {
+  const clientConfig = deepCloneJsonRecord(challenge.definition.clientConfig);
+
+  // Memory preview: reveal the authoritative sequence only while preview is live.
+  if (
+    challenge.roundPhase === 'preview' &&
+    challenge.engineId === 'memory.sequence'
+  ) {
+    const sequence = challenge.definition.serverConfig['sequence'];
+    if (Array.isArray(sequence)) {
+      clientConfig['previewSequence'] = sequence.filter(
+        (v): v is string => typeof v === 'string',
+      );
+    }
+  }
+
+  // Non-secret play params mirrored from serverConfig so mobile widgets stay
+  // definition-driven without exposing evaluation secrets.
+  if (challenge.engineId === 'motion.shake') {
+    const required = challenge.definition.serverConfig['requiredShakeCount'];
+    if (typeof required === 'number') {
+      clientConfig['requiredShakeCount'] = required;
+    }
+  }
+  if (challenge.engineId === 'motion.tilt_balance') {
+    for (const key of [
+      'targetX',
+      'targetY',
+      'holdMs',
+      'varianceTolerance',
+    ] as const) {
+      const value = challenge.definition.serverConfig[key];
+      if (typeof value === 'number') {
+        clientConfig[key] = value;
+      }
+    }
+  }
+  if (challenge.engineId === 'audio.cue') {
+    const pulseCount = challenge.definition.serverConfig['pulseCount'];
+    if (typeof pulseCount === 'number') {
+      clientConfig['pulseCount'] = pulseCount;
+    }
+  }
+
+  // Pair sync: surface assigned partner + role for the participating player via
+  // per-player overlay is applied by the gateway/service when emitting; the
+  // shared view carries pair map keys on clientConfig when present.
+  if (
+    challenge.engineId === 'social.pair_sync' &&
+    challenge.pairAssignments &&
+    challenge.pairAssignments.size > 0
+  ) {
+    clientConfig['pairAssignments'] = Object.fromEntries(
+      challenge.pairAssignments.entries(),
+    );
+  }
+
   const view: PublicChallengeView = {
     challengeInstanceId: challenge.challengeInstanceId,
     definitionId: challenge.definitionId,
@@ -224,7 +292,7 @@ export function toPublicChallengeView(
     engineId: challenge.engineId,
     promptKey: challenge.definition.promptKey,
     choiceKeys: [...(challenge.definition.choiceKeys ?? [])],
-    clientConfig: deepCloneJsonRecord(challenge.definition.clientConfig),
+    clientConfig,
     serverNowMs,
     startsAtMs: challenge.startsAtMs,
     deadlineAtMs: challenge.deadlineAtMs,
@@ -731,6 +799,12 @@ export class MatchEngine {
       challenge.signalEndsAtMonoMs = null;
     }
 
+    if (challenge.engineId === 'social.pair_sync') {
+      challenge.pairAssignments = assignPairPartners(
+        challenge.participatingPlayerIds,
+      );
+    }
+
     next.status = 'challenge_active';
     next.phase = 'challenge_active';
     next.phaseDeadlineAtMs = challenge.deadlineAtMs;
@@ -863,6 +937,12 @@ export class MatchEngine {
     } else {
       round.roundPhase = 'answer';
       round.previewEndsAtMonoMs = null;
+    }
+
+    if (pinned.engineId === 'social.pair_sync') {
+      round.pairAssignments = assignPairPartners(
+        round.participatingPlayerIds,
+      );
     }
 
     for (const player of next.players.values()) {
@@ -1287,6 +1367,7 @@ export class MatchEngine {
       let outcome: PlayerChallengeResolution['outcome'];
       let reasonKey: string | undefined;
       let measureMs: number | undefined;
+      let energyDelta = 0;
       if (!submission) {
         if (evaluator.absenceOutcome === 'success') {
           outcome = 'success';
@@ -1312,6 +1393,18 @@ export class MatchEngine {
           // Inject expected token only inside the inclusive blue window.
           answerForEval['_expectedSignalToken'] = challenge.signalToken;
         }
+        if (challenge.engineId === 'social.pair_sync') {
+          const partnerId = challenge.pairAssignments?.get(playerId);
+          const partnerSub = partnerId
+            ? challenge.submissions.get(partnerId)
+            : undefined;
+          answerForEval['_hasPartner'] = partnerId != null;
+          answerForEval['_partnerSubmitted'] = partnerSub != null;
+          if (partnerSub) {
+            answerForEval['_partnerReceivedMonoMs'] = partnerSub.receivedMonoMs;
+            answerForEval['_selfReceivedMonoMs'] = submission.receivedMonoMs;
+          }
+        }
         const evaluation = evaluator.evaluate({
           definition: challenge.definition,
           answer: answerForEval,
@@ -1321,12 +1414,19 @@ export class MatchEngine {
         outcome = evaluation.success ? 'success' : 'failure';
         reasonKey = evaluation.reasonKey;
         measureMs = evaluation.measureMs;
+        if (
+          evaluation.success &&
+          typeof evaluation.energyRewardOverride === 'number'
+        ) {
+          energyDelta = evaluation.energyRewardOverride;
+        }
       }
 
       let heartsDelta = 0;
-      let energyDelta = 0;
       if (outcome === 'success') {
-        energyDelta = challenge.definition.energyRewardOnSuccess;
+        if (energyDelta === 0) {
+          energyDelta = challenge.definition.energyRewardOnSuccess;
+        }
         player.energy += energyDelta;
         const config = match.powerConfig ?? defaultPowerConfig();
         const { grant } = convertEnergyForPlayer(
@@ -1970,6 +2070,9 @@ export class MatchEngine {
             participatingPlayerIds: [
               ...match.currentChallenge.participatingPlayerIds,
             ],
+            pairAssignments: match.currentChallenge.pairAssignments
+              ? new Map(match.currentChallenge.pairAssignments)
+              : undefined,
             definition: pinDefinition(match.currentChallenge.definition),
           }
         : null,

@@ -268,6 +268,8 @@ export type ChallengeRound = {
   resolutions: PlayerChallengeResolution[];
   /** Memory: preview ends at this mono time then answer phase begins. */
   previewEndsAtMonoMs?: number | null;
+  /** Pair sync: playerId → partner playerId (symmetric). */
+  pairAssignments?: Map<string, string>;
 };
 
 export type MatchState = {
@@ -506,6 +508,8 @@ export type ChallengeEvaluation = {
   success: boolean;
   reasonKey?: string;
   measureMs?: number;
+  /** Optional override for energy granted on success (e.g. risk choice). */
+  energyRewardOverride?: number;
 };
 
 export interface ChallengeEvaluator {

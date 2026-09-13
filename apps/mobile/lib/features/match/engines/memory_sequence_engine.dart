@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../../../l10n/app_localization.dart';
@@ -27,26 +29,98 @@ class _MemorySequenceWidget extends StatefulWidget {
 
 class _MemorySequenceWidgetState extends State<_MemorySequenceWidget> {
   final List<String> _picked = <String>[];
+  int _previewIndex = 0;
+  Timer? _previewTimer;
+
+  @override
+  void initState() {
+    super.initState();
+    _maybeStartPreviewTicker();
+  }
+
+  @override
+  void didUpdateWidget(covariant _MemorySequenceWidget oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    final RoundPhase was = oldWidget.challengeContext.challenge.roundPhase;
+    final RoundPhase now = widget.challengeContext.challenge.roundPhase;
+    if (was != now) {
+      _previewTimer?.cancel();
+      _previewIndex = 0;
+      _picked.clear();
+      _maybeStartPreviewTicker();
+    }
+  }
+
+  @override
+  void dispose() {
+    _previewTimer?.cancel();
+    super.dispose();
+  }
+
+  List<String> get _previewSequence {
+    final Object? raw =
+        widget.challengeContext.challenge.clientConfig['previewSequence'];
+    if (raw is List) {
+      return raw.whereType<String>().toList();
+    }
+    return const <String>[];
+  }
+
+  List<String> get _options {
+    final Object? raw =
+        widget.challengeContext.challenge.clientConfig['optionKeys'];
+    if (raw is List) {
+      return raw.whereType<String>().toList();
+    }
+    return const <String>[];
+  }
+
+  int get _requiredLength {
+    final int fromPreview = _previewSequence.length;
+    if (fromPreview > 0) return fromPreview;
+    return 3;
+  }
+
+  void _maybeStartPreviewTicker() {
+    if (widget.challengeContext.challenge.roundPhase != RoundPhase.preview) {
+      return;
+    }
+    final List<String> sequence = _previewSequence;
+    if (sequence.isEmpty) return;
+    final num? previewMsRaw =
+        widget.challengeContext.challenge.clientConfig['previewMs'] as num?;
+    final int previewMs = previewMsRaw?.toInt() ?? 1500;
+    final int stepMs = (previewMs / sequence.length).floor().clamp(250, 2000);
+    _previewTimer = Timer.periodic(Duration(milliseconds: stepMs), (Timer t) {
+      if (!mounted) {
+        t.cancel();
+        return;
+      }
+      setState(() {
+        _previewIndex = (_previewIndex + 1) % sequence.length;
+      });
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
     final TranslationResolver resolver = AppLocalization.of(context);
     final PublicChallenge challenge = widget.challengeContext.challenge;
     final Map<String, dynamic> cfg = challenge.clientConfig;
-    final List<String> options =
-        ((cfg['optionKeys'] as List<dynamic>?) ?? <dynamic>[])
-            .whereType<String>()
-            .toList();
     final bool preview = challenge.roundPhase == RoundPhase.preview;
     final String promptKey =
         (cfg['promptKey'] as String?) ?? challenge.promptKey;
+    final List<String> sequence = _previewSequence;
+    final List<String> options = _options;
 
     return Column(
       children: <Widget>[
         Padding(
           padding: const EdgeInsets.all(16),
           child: Text(
-            resolver.resolve(promptKey),
+            preview
+                ? resolver.resolve('challenge.memory.preview')
+                : resolver.resolve(promptKey),
             style: Theme.of(context).textTheme.titleMedium,
             textAlign: TextAlign.center,
           ),
@@ -54,10 +128,35 @@ class _MemorySequenceWidgetState extends State<_MemorySequenceWidget> {
         if (preview)
           Expanded(
             child: Center(
-              child: Text(
-                resolver.resolve('challenge.memory.preview'),
-                style: Theme.of(context).textTheme.headlineSmall,
-              ),
+              child: sequence.isEmpty
+                  ? Text(
+                      resolver.resolve('challenge.memory.preview'),
+                      style: Theme.of(context).textTheme.headlineSmall,
+                    )
+                  : AnimatedSwitcher(
+                      duration: const Duration(milliseconds: 200),
+                      child: Container(
+                        key: ValueKey<String>(
+                          '${sequence[_previewIndex % sequence.length]}-$_previewIndex',
+                        ),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 28,
+                          vertical: 20,
+                        ),
+                        decoration: BoxDecoration(
+                          color: LhColors.success.withValues(alpha: 0.15),
+                          borderRadius: BorderRadius.circular(16),
+                          border: Border.all(color: LhColors.success, width: 2),
+                        ),
+                        child: Text(
+                          resolver.resolve(
+                            sequence[_previewIndex % sequence.length],
+                          ),
+                          style: Theme.of(context).textTheme.headlineMedium
+                              ?.copyWith(fontWeight: FontWeight.w700),
+                        ),
+                      ),
+                    ),
             ),
           )
         else
@@ -67,22 +166,21 @@ class _MemorySequenceWidgetState extends State<_MemorySequenceWidget> {
               runSpacing: 12,
               alignment: WrapAlignment.center,
               children: <Widget>[
-                for (final String key in options)
+                for (int i = 0; i < options.length; i++)
                   Semantics(
                     button: true,
-                    label: key,
+                    label: options[i],
                     child: ElevatedButton(
                       style: ElevatedButton.styleFrom(
-                        backgroundColor: _picked.contains(key)
+                        backgroundColor: _picked.contains(options[i])
                             ? LhColors.success
                             : LhColors.surface,
                       ),
                       onPressed: widget.challengeContext.isInteractionLocked
                           ? null
                           : () {
-                              setState(() => _picked.add(key));
-                              // Submit when player has picked 3 (matches seed sequence length).
-                              if (_picked.length >= 3) {
+                              setState(() => _picked.add(options[i]));
+                              if (_picked.length >= _requiredLength) {
                                 widget.challengeContext.onSubmit(
                                   <String, dynamic>{
                                     'sequence': List<String>.from(_picked),
@@ -90,11 +188,16 @@ class _MemorySequenceWidgetState extends State<_MemorySequenceWidget> {
                                 );
                               }
                             },
-                      child: Text(resolver.resolve(key)),
+                      child: Text(resolver.resolve(options[i])),
                     ),
                   ),
               ],
             ),
+          ),
+        if (!preview && _picked.isNotEmpty)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 12),
+            child: Text('${_picked.length} / $_requiredLength'),
           ),
       ],
     );

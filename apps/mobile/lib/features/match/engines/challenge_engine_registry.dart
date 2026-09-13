@@ -1,9 +1,14 @@
+import 'audio_cue_engine.dart';
 import 'challenge_engine.dart';
 import 'gesture_reverse_swipe_engine.dart';
 import 'hold_multitouch_engine.dart';
 import 'memory_sequence_engine.dart';
+import 'motion_shake_engine.dart';
+import 'motion_tilt_balance_engine.dart';
 import 'reaction_wait_for_signal_engine.dart';
+import 'social_pair_sync_engine.dart';
 import 'tap_precision_engine.dart';
+import 'tactical_risk_choice_engine.dart';
 import 'trap_no_touch_engine.dart';
 import 'unknown_engine.dart';
 
@@ -18,6 +23,11 @@ class ChallengeEngineRegistry {
     register(TapPrecisionEngine());
     register(MemorySequenceEngine());
     register(HoldMultitouchEngine());
+    register(MotionShakeEngine());
+    register(MotionTiltBalanceEngine());
+    register(AudioCueEngine());
+    register(SocialPairSyncEngine());
+    register(TacticalRiskChoiceEngine());
   }
 
   final Map<String, ChallengeEngine> _engines = <String, ChallengeEngine>{};

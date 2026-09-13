@@ -1,0 +1,20 @@
+{
+  "definitionId": "motion.tilt_balance.dev",
+  "definitionVersion": 1,
+  "engineId": "motion.tilt_balance",
+  "durationMs": 6000,
+  "heartPenaltyOnFailure": 1,
+  "energyRewardOnSuccess": 1,
+  "promptKey": "challenge.tilt.intro",
+  "choiceKeys": [],
+  "clientConfig": {
+    "categoryKey": "challenge.category.motion",
+    "promptKey": "challenge.tilt.prompt"
+  },
+  "serverConfig": {
+    "targetX": 0,
+    "targetY": 0,
+    "holdMs": 1500,
+    "varianceTolerance": 0.2
+  }
+}

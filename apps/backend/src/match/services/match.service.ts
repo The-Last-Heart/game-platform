@@ -26,6 +26,7 @@ import {
   WAIT_FOR_SIGNAL_ENGINE_ID,
 } from '../domain/wait-for-signal.evaluator';
 import { createLaunchEvaluators } from '../domain/engines/launch-evaluators';
+import { createAdvancedEvaluators } from '../domain/engines/advanced-evaluators';
 import type {
   ChallengeDefinition,
   Clock,
@@ -176,6 +177,9 @@ export class MatchService implements OnModuleDestroy, OnModuleInit {
     for (const evaluator of createLaunchEvaluators()) {
       this.registry.register(evaluator);
     }
+    for (const evaluator of createAdvancedEvaluators()) {
+      this.registry.register(evaluator);
+    }
     if (this.nodeEnv !== 'production') {
       this.registry.register(new DevDeterministicChoiceEvaluator());
     }
@@ -238,6 +242,9 @@ export class MatchService implements OnModuleDestroy, OnModuleInit {
     // wait_for_signal always registered
     service['registry'].register(new WaitForSignalEvaluator());
     for (const evaluator of createLaunchEvaluators()) {
+      service['registry'].register(evaluator);
+    }
+    for (const evaluator of createAdvancedEvaluators()) {
       service['registry'].register(evaluator);
     }
     if (service['nodeEnv'] !== 'production') {

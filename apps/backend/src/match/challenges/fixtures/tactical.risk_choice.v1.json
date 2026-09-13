@@ -1,0 +1,31 @@
+{
+  "definitionId": "tactical.risk_choice.dev",
+  "definitionVersion": 1,
+  "engineId": "tactical.risk_choice",
+  "durationMs": 5000,
+  "heartPenaltyOnFailure": 1,
+  "energyRewardOnSuccess": 1,
+  "promptKey": "challenge.risk_choice.intro",
+  "choiceKeys": [
+    "option.safe",
+    "option.risky"
+  ],
+  "clientConfig": {
+    "categoryKey": "challenge.category.tactical",
+    "promptKey": "challenge.risk_choice.prompt",
+    "optionKeys": [
+      "option.safe",
+      "option.risky"
+    ]
+  },
+  "serverConfig": {
+    "optionKeys": [
+      "option.safe",
+      "option.risky"
+    ],
+    "riskWeights": [
+      30,
+      70
+    ]
+  }
+}

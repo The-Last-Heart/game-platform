@@ -225,3 +225,6 @@ export function createLaunchEvaluators(): ChallengeEvaluator[] {
     new HoldMultitouchEvaluator(),
   ];
 }
+
+export { createAdvancedEvaluators } from './advanced-evaluators';
+

@@ -1,0 +1,25 @@
+{
+  "definitionId": "social.pair_sync.dev",
+  "definitionVersion": 1,
+  "engineId": "social.pair_sync",
+  "durationMs": 5000,
+  "heartPenaltyOnFailure": 1,
+  "energyRewardOnSuccess": 1,
+  "promptKey": "challenge.pair_sync.intro",
+  "choiceKeys": [],
+  "clientConfig": {
+    "categoryKey": "challenge.category.social",
+    "promptKey": "challenge.pair_sync.prompt",
+    "partnerRoleKeys": [
+      "role.leader",
+      "role.follower"
+    ]
+  },
+  "serverConfig": {
+    "partnerRoleKeys": [
+      "role.leader",
+      "role.follower"
+    ],
+    "syncWindowMs": 500
+  }
+}

@@ -131,23 +131,26 @@ Map<String, dynamic> makeSnapshot({
 
 Map<String, dynamic> makeActiveChallenge({
   String challengeInstanceId = 'ch-1',
+  String engineId = 'reaction.wait_for_signal',
   int startsAtMs = 1700000000000,
   int deadlineAtMs = 1700000008000,
   int serverNowMs = 1700000000000,
+  Map<String, dynamic>? clientConfig,
 }) {
   return <String, dynamic>{
     'challengeInstanceId': challengeInstanceId,
     'definitionId': 'def-1',
     'definitionVersion': 1,
-    'engineId': 'reaction.wait_for_signal',
+    'engineId': engineId,
     'promptKey': 'challenge.wait_for_signal.waiting',
-    'clientConfig': <String, dynamic>{
-      'categoryKey': 'challenge.category.reaction',
-      'waitingPromptKey': 'challenge.wait_for_signal.waiting',
-      'waitingHintKey': 'challenge.wait_for_signal.waiting_hint',
-      'activePromptKey': 'challenge.wait_for_signal.active',
-      'actionKey': 'challenge.wait_for_signal.action',
-    },
+    'clientConfig': clientConfig ??
+        <String, dynamic>{
+          'categoryKey': 'challenge.category.reaction',
+          'waitingPromptKey': 'challenge.wait_for_signal.waiting',
+          'waitingHintKey': 'challenge.wait_for_signal.waiting_hint',
+          'activePromptKey': 'challenge.wait_for_signal.active',
+          'actionKey': 'challenge.wait_for_signal.action',
+        },
     'serverNowMs': serverNowMs,
     'startsAtMs': startsAtMs,
     'deadlineAtMs': deadlineAtMs,
@@ -1449,6 +1452,48 @@ void main() {
         AnswerSubmissionStatus.pending,
       );
       expect(controller.state.value.answerSubmittedEarly, isTrue);
+    });
+
+    test('non-wait engine empty submit is not early miss', () async {
+      await completeJoinHandshake(
+        controller,
+        transport,
+        phase: 'challenge_active',
+        currentChallenge: makeActiveChallenge(engineId: 'trap.no_touch'),
+      );
+      controller.submitAnswer('ch-1', <String, dynamic>{'touched': false});
+      expect(controller.state.value.answerSubmittedEarly, isFalse);
+    });
+
+    test('hold progress final:false stays idle and unlocked', () async {
+      await completeJoinHandshake(
+        controller,
+        transport,
+        phase: 'challenge_active',
+        currentChallenge: makeActiveChallenge(engineId: 'hold.multitouch'),
+      );
+      controller.submitAnswer('ch-1', <String, dynamic>{
+        'contacts': 2,
+        'heldMs': 200,
+        'final': false,
+      });
+      expect(controller.state.value.answerStatus, AnswerSubmissionStatus.idle);
+      expect(controller.state.value.answerSubmittedEarly, isFalse);
+
+      controller.submitAnswer('ch-1', <String, dynamic>{
+        'contacts': 2,
+        'heldMs': 400,
+        'final': false,
+      });
+      expect(
+        transport.sentCommands
+            .where(
+              (Map<String, dynamic> c) =>
+                  c['type'] == MessageTypes.matchSubmitAnswer,
+            )
+            .length,
+        2,
+      );
     });
 
     test('rejected ACK restores idle while deadline open', () async {

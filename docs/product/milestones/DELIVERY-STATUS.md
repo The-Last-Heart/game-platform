@@ -1,6 +1,6 @@
 # RC1 delivery status
 
-Updated: 2026-09-13
+Updated: 2026-09-14
 
 ## Last closed milestone
 
@@ -10,11 +10,13 @@ Previously closed: **LH-001 → LH-007**.
 
 ## Current milestone
 
-**LH-010 — Full Challenge Studio and Content Operations** — in progress (see [LH-010.md](./LH-010.md)).
+**LH-009 — Advanced Challenge Pack** — implementation landed; **awaiting operator device/LAN confirmation** before formal close (see [LH-009-DELIVERY.md](./LH-009-DELIVERY.md)).
+
+Includes hardening remaining LH-007 engines for real-device play and a mixed eleven-engine live catalog.
 
 ## Deferred
 
-**LH-009 — Advanced Challenge Pack** — deferred by product owner until Challenge Studio ships; Studio registers schema-only forms for those families now.
+**LH-010 — Full Challenge Studio and Content Operations** — deferred until LH-009 is formally closed; Studio code remains in-tree but is not the current delivery focus.
 
 ## LH-008 close summary
 

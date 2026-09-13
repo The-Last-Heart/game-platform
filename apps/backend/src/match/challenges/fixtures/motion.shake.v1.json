@@ -1,0 +1,19 @@
+{
+  "definitionId": "motion.shake.dev",
+  "definitionVersion": 1,
+  "engineId": "motion.shake",
+  "durationMs": 5000,
+  "heartPenaltyOnFailure": 1,
+  "energyRewardOnSuccess": 1,
+  "promptKey": "challenge.shake.intro",
+  "choiceKeys": [],
+  "clientConfig": {
+    "categoryKey": "challenge.category.motion",
+    "promptKey": "challenge.shake.prompt",
+    "progressKey": "challenge.shake.progress"
+  },
+  "serverConfig": {
+    "requiredShakeCount": 5,
+    "noiseThreshold": 5
+  }
+}

@@ -399,7 +399,7 @@ export function parseHoldMultitouchAnswer(input: unknown) {
 }
 
 // ---------------------------------------------------------------------------
-// 7. motion.shake (schema_only)
+// 7. motion.shake
 // ---------------------------------------------------------------------------
 
 export const motionShakeClientConfigSchema = z
@@ -427,7 +427,7 @@ export const motionShakeAnswerSchema = z
 export type MotionShakeAnswer = z.infer<typeof motionShakeAnswerSchema>;
 
 // ---------------------------------------------------------------------------
-// 8. motion.tilt_balance (schema_only)
+// 8. motion.tilt_balance
 // ---------------------------------------------------------------------------
 
 export const motionTiltBalanceClientConfigSchema = z
@@ -458,7 +458,7 @@ export const motionTiltBalanceAnswerSchema = z
 export type MotionTiltBalanceAnswer = z.infer<typeof motionTiltBalanceAnswerSchema>;
 
 // ---------------------------------------------------------------------------
-// 9. audio.cue (schema_only)
+// 9. audio.cue
 // ---------------------------------------------------------------------------
 
 export const audioCueClientConfigSchema = z
@@ -486,7 +486,7 @@ export const audioCueAnswerSchema = z
 export type AudioCueAnswer = z.infer<typeof audioCueAnswerSchema>;
 
 // ---------------------------------------------------------------------------
-// 10. social.pair_sync (schema_only)
+// 10. social.pair_sync
 // ---------------------------------------------------------------------------
 
 export const socialPairSyncClientConfigSchema = z
@@ -514,7 +514,7 @@ export const socialPairSyncAnswerSchema = z
 export type SocialPairSyncAnswer = z.infer<typeof socialPairSyncAnswerSchema>;
 
 // ---------------------------------------------------------------------------
-// 11. tactical.risk_choice (schema_only)
+// 11. tactical.risk_choice
 // ---------------------------------------------------------------------------
 
 export const tacticalRiskChoiceClientConfigSchema = z
@@ -571,11 +571,11 @@ export const ENGINE_RUNTIME_READINESS: Record<LaunchEngineId, 'live' | 'schema_o
   'tap.precision': 'live',
   'memory.sequence': 'live',
   'hold.multitouch': 'live',
-  'motion.shake': 'schema_only',
-  'motion.tilt_balance': 'schema_only',
-  'audio.cue': 'schema_only',
-  'social.pair_sync': 'schema_only',
-  'tactical.risk_choice': 'schema_only',
+  'motion.shake': 'live',
+  'motion.tilt_balance': 'live',
+  'audio.cue': 'live',
+  'social.pair_sync': 'live',
+  'tactical.risk_choice': 'live',
 };
 
 type EngineSchemaPair = {

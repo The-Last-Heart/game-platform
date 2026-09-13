@@ -19,13 +19,13 @@ describe('ContentLifecycleService LH-010', () => {
       service = Object.create(ContentLifecycleService.prototype) as ContentLifecycleService;
     });
 
-    it('detects schema_only engines in entries', () => {
+    it('reports no schema_only engines when all are live', () => {
       const proof = service.computeCatalogProof([
         { definitionId: 'def1', engineId: 'reaction.wait_for_signal' },
         { definitionId: 'def2', engineId: 'motion.shake' },
       ]);
-      expect(proof.schemaOnlyEngines).toEqual(['motion.shake']);
-      expect(proof.valid).toBe(false);
+      expect(proof.schemaOnlyEngines).toEqual([]);
+      expect(proof.valid).toBe(true);
     });
 
     it('reports valid when only live engines present', () => {
@@ -38,13 +38,14 @@ describe('ContentLifecycleService LH-010', () => {
       expect(proof.valid).toBe(true);
     });
 
-    it('detects empty playlist when all entries are schema_only', () => {
+    it('treats advanced engines as live playlist members', () => {
       const proof = service.computeCatalogProof([
         { definitionId: 'def1', engineId: 'motion.shake' },
         { definitionId: 'def2', engineId: 'audio.cue' },
       ]);
-      expect(proof.emptyPlaylist).toBe(true);
-      expect(proof.valid).toBe(false);
+      expect(proof.emptyPlaylist).toBe(false);
+      expect(proof.schemaOnlyEngines).toEqual([]);
+      expect(proof.valid).toBe(true);
     });
 
     it('reports empty playlist for no entries', () => {
