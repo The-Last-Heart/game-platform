@@ -4,19 +4,20 @@ Updated: 2026-09-13
 
 ## Last closed milestone
 
-**LH-006 — Versioned Game Content and Release Platform**
+**LH-007 — Core Challenge Pack and Match Presentation**
 
-Previously closed: **LH-001 → LH-005**.
+Previously closed: **LH-001 → LH-006**.
 
 ## Current milestone
 
-**LH-007 — Core Challenge Pack and Match Presentation** — feature shipped; formal close awaits **your** device/LAN matrix confirmation (self-install APK is enough — see [LH-007-DELIVERY.md](./LH-007-DELIVERY.md)). Docker `:3010` + LAN APK ready.
+**LH-008 — Complete Energy and Tactical Powers Loop** — first incomplete (see [LH-008.md](./LH-008.md)).
 
-## LH-006 close summary
+## LH-007 close summary
 
-- Close commit: c1fd844079d13a75a766f9910504db403b9e7dfb — `feat(content): add versioned game content releases`
-- Docs hash: `61f5792`
-- Evidence: [LH-006-DELIVERY.md](./LH-006-DELIVERY.md)
+- Feature commit: `11d7203069b7e6a5ae62e023b16e165f9ed21b19`
+- Follow-ups through: `a827ff5`
+- Evidence: [LH-007-DELIVERY.md](./LH-007-DELIVERY.md)
+- Close authorized by product owner (operator self-install path)
 
 ## Closure rule (product owner lock)
 
