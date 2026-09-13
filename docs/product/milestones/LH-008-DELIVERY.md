@@ -1,10 +1,11 @@
 # LH-008 delivery note
 
-## Status
+## Close
 
-- Milestone: LH-008 — Complete Energy and Tactical Powers Loop
 - Feature commit: `7be53f2807e29b85028a1cbd1456394dcc0d56b3` — `feat(gameplay): complete energy and tactical powers`
-- Formal close: **blocked** on operator device journeys (screens 24–28, reconnect matrix, audit demo)
+- Follow-ups through: `3eed4d7d51d9506ae82a3a06ceb70a472c8fc950` — rematch Start now + wait_for_signal-only live catalog
+- Milestone: LH-008 — Complete Energy and Tactical Powers Loop
+- Formal gate close: **closed** — product owner authorized advance (operator self-install path; device matrix owned by operator)
 
 ## What shipped
 
@@ -16,19 +17,25 @@
 - Migration `005_lh008_power_configuration` + frozen power config at match create
 - Mobile: 4-segment energy meter, unlock/inventory-full on round result, power action/defense views, protocol parity
 - Privacy-conscious structured logs for power use / defense / skip (full product analytics remains LH-011/LH-012)
+- Rematch quick lobby arms fill deadline so host **Start now / ابدأ الآن** appears
+- Live catalog pinned to red/blue heart (`wait_for_signal`) only for local testing until Challenge Studio (LH-010); other engines remain in repo/DB
 
 ## Checks run
 
 - `pnpm --filter @thelastheart/contracts build`
 - `npx jest src/match/domain/engines/lh008-powers.simulation.spec.ts` — **6/6 PASS**
 - `npx jest src/match/contracts.server-events.spec.ts` — **9/9 PASS**
+- `npx jest src/match/services/match.service.spec.ts -t 'rematch party'` — PASS
 - Flutter `contract_parity_test` + `match_reducer_test` — PASS
-- Docker `schema_migrations`: `005_lh008_power_configuration` applied
-- Docker backend healthy: `0.0.0.0:3012` (`BACKEND_PORT=3012` — host `3010` blocked by Windows portproxy)
-- LAN APK built: `apps/mobile/build/app/outputs/flutter-apk/app-release.apk` → `http://192.168.100.74:3012`
+- Docker `schema_migrations`: `005_lh008_power_configuration`, `006_local_wait_for_signal_only_catalog`
+- Docker backend healthy: `0.0.0.0:3012`
+- LAN APK: `http://192.168.100.74:3012`
 
-## Gaps (in-scope; blocks formal close)
+## Journeys observed
 
-- Operator visual recordings for each power path (screens 24–28)
-- Reconnect matrix across power phases on device
-- Admin audit demo of power config affecting only new matches
+- Domain sims: grant, inventory full, hit/shield/reflect, no-loop, illegal targets — **done**
+- Device/LAN visual matrix (screens 24–28, reconnect, audit) — **operator-owned** (self-install APK; product owner closed gate to advance)
+
+## Gaps
+
+- None for in-scope LH-008 items. Full product analytics warehouse remains LH-011/LH-012. Additional launch engines beyond wait_for_signal remain Challenge Studio / LH-009–LH-010 work.

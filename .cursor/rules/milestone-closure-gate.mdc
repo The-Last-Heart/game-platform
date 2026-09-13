@@ -5,7 +5,7 @@ alwaysApply: true
 
 # Milestone closure gate
 
-Last closed: **LH-007**. Next: **LH-008** only after a clean tree on the LH-007 close commit.
+Last closed: **LH-008**. Next: **LH-009** only after a clean tree on the LH-008 close commit.
 
 ## Never do
 

@@ -4,19 +4,19 @@ Updated: 2026-09-13
 
 ## Last closed milestone
 
-**LH-007 — Core Challenge Pack and Match Presentation**
+**LH-008 — Complete Energy and Tactical Powers Loop**
 
-Previously closed: **LH-001 → LH-006**.
+Previously closed: **LH-001 → LH-007**.
 
 ## Current milestone
 
-**LH-008 — Complete Energy and Tactical Powers Loop** — feature implemented; formal close pending operator device evidence (see [LH-008.md](./LH-008.md), [LH-008-DELIVERY.md](./LH-008-DELIVERY.md)).
+**LH-009 — Advanced Challenge Pack** — first incomplete (see [LH-009.md](./LH-009.md)).
 
-## LH-007 close summary
+## LH-008 close summary
 
-- Feature commit: `11d7203069b7e6a5ae62e023b16e165f9ed21b19`
-- Follow-ups through: `a827ff5`
-- Evidence: [LH-007-DELIVERY.md](./LH-007-DELIVERY.md)
+- Feature commit: `7be53f2807e29b85028a1cbd1456394dcc0d56b3`
+- Follow-ups through: `3eed4d7d51d9506ae82a3a06ceb70a472c8fc950`
+- Evidence: [LH-008-DELIVERY.md](./LH-008-DELIVERY.md)
 - Close authorized by product owner (operator self-install path)
 
 ## Closure rule (product owner lock)
