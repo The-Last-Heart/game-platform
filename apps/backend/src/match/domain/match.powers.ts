@@ -28,7 +28,7 @@ export function defaultPowerConfig(): PowerConfigurationRuntime {
     energyThreshold: 4,
     inventoryMaxTotal: 3,
     inventoryMaxPerPower: 1,
-    actionWindowMs: 8000,
+    actionWindowMs: 5000,
     defenseWindowMs: 5000,
     powers: [
       {
@@ -64,6 +64,12 @@ export function defaultPowerConfig(): PowerConfigurationRuntime {
 
 export type PowerRng = () => number;
 
+/**
+ * When the meter first reaches the threshold, grant one random eligible power
+ * and keep the meter full. The meter stays full until that power is consumed.
+ * Call only when energy has just crossed the threshold (not on every success
+ * while already full).
+ */
 export function convertEnergyForPlayer(
   player: PlayerState,
   mode: MatchMode,
@@ -79,7 +85,8 @@ export function convertEnergyForPlayer(
   if (player.energy < threshold) {
     return { grant: null };
   }
-  player.energy = Math.max(0, player.energy - threshold);
+  // Keep the meter full until the player consumes the granted ability.
+  player.energy = threshold;
 
   const eligible = config.powers.filter((p) => {
     if (!p.enabled || p.grantWeight <= 0) return false;
@@ -111,6 +118,11 @@ export function convertEnergyForPlayer(
   return {
     grant: { outcome: 'granted', powerId: chosen.powerId },
   };
+}
+
+/** Meter resets only when the player spends a granted power charge. */
+export function resetMeterAfterPowerConsume(player: PlayerState): void {
+  player.energy = 0;
 }
 
 export function eligibleDangerPulseTargets(

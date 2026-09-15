@@ -4,7 +4,7 @@ export { MetricCard } from './MetricCard';
 export { StudioSectionNav, EDITOR_SECTIONS } from './StudioSectionNav';
 export type { EditorSection } from './StudioSectionNav';
 export { Field, FieldGroup, FieldInput, FieldSelect, FieldTextarea, FieldCheckboxGroup } from './Field';
-export { FamilyParamsFields, defaultClientConfig, defaultServerConfig } from './FamilyParamsFields';
+export { FamilyParamsFields, defaultClientConfig, defaultServerConfig, mergeFogWipeRequiredAssets } from './FamilyParamsFields';
 export { ValidationSummary } from './ValidationSummary';
 export type { ValidationError } from './ValidationSummary';
 export { DataTable } from './DataTable';

@@ -38,6 +38,7 @@ import {
   grantEventsFromConversion,
   makeAttackId,
   playersWithOffensiveCharge,
+  resetMeterAfterPowerConsume,
   applyHeartLoss,
 } from './match.powers';
 import {
@@ -985,6 +986,7 @@ export class MatchEngine {
       challenge.engineId === 'precision.maze_path' ||
       challenge.engineId === 'precision.neon_cable' ||
       challenge.engineId === 'gesture.fog_wipe' ||
+      challenge.engineId === 'precision.circuit_rotation' ||
       challenge.engineId === 'logic.balance_scale' ||
       challenge.engineId === 'focus.stroop' ||
       challenge.engineId === 'search.select_occurrences'
@@ -1174,6 +1176,7 @@ export class MatchEngine {
       pinned.engineId === 'precision.maze_path' ||
       pinned.engineId === 'precision.neon_cable' ||
       pinned.engineId === 'gesture.fog_wipe' ||
+      pinned.engineId === 'precision.circuit_rotation' ||
       pinned.engineId === 'logic.balance_scale' ||
       pinned.engineId === 'focus.stroop' ||
       pinned.engineId === 'search.select_occurrences'
@@ -1858,8 +1861,21 @@ export class MatchEngine {
         if (energyDelta === 0) {
           energyDelta = challenge.definition.energyRewardOnSuccess;
         }
-        player.energy += energyDelta;
-        if (match.mode !== 'training') {
+        const energyBefore = player.energy;
+        // Meter stays capped while a granted power is unused.
+        if (energyBefore >= ENERGY_THRESHOLD) {
+          energyDelta = 0;
+        } else {
+          const room = ENERGY_THRESHOLD - energyBefore;
+          const applied = Math.min(energyDelta, room);
+          player.energy += applied;
+          energyDelta = applied;
+        }
+        if (
+          match.mode !== 'training' &&
+          energyBefore < ENERGY_THRESHOLD &&
+          player.energy >= ENERGY_THRESHOLD
+        ) {
           const config = match.powerConfig ?? defaultPowerConfig();
           const { grant } = convertEnergyForPlayer(
             player,
@@ -1871,10 +1887,6 @@ export class MatchEngine {
             // Defer event emission until after sequence bump below.
             (player as PlayerState & { __pendingGrant?: typeof grant }).__pendingGrant =
               grant;
-          }
-          // Cap public energy at threshold (segments remaining after convert).
-          if (player.energy > ENERGY_THRESHOLD) {
-            player.energy = ENERGY_THRESHOLD;
           }
         }
       } else {
@@ -2219,6 +2231,12 @@ export class MatchEngine {
     if (match.phase !== 'power_action') {
       throw new DomainError('POWER_PHASE_INVALID', 'not in power action');
     }
+    if (
+      match.phaseDeadlineMonoMs != null &&
+      this.clock.monoMs() > match.phaseDeadlineMonoMs
+    ) {
+      throw new DomainError('POWER_PHASE_INVALID', 'action window expired');
+    }
     if (input.offensivePowersDisabled) {
       throw new DomainError(
         'OFFENSIVE_POWERS_DISABLED',
@@ -2244,6 +2262,7 @@ export class MatchEngine {
     const nowWall = this.clock.nowMs();
     const nowMono = this.clock.monoMs();
     attacker.inventory.danger_pulse = 0;
+    resetMeterAfterPowerConsume(attacker);
     attacker.powerActionResolved = true;
     attacker.lastDangerPulseTargetId = input.targetPlayerId;
     const attackId = makeAttackId();
@@ -2261,25 +2280,27 @@ export class MatchEngine {
     next.phaseDeadlineMonoMs = next.pendingAttack.defenseDeadlineMonoMs;
     next.nextPhaseAtMs = next.pendingAttack.defenseDeadlineAtMs;
     next.powerActionActorIds = [];
-    const bump = this.bump(next);
+    const usedBump = this.bump(next);
+    const defenseBump = this.bump(next);
     return {
       match: next,
       events: [
-        bump,
+        usedBump,
         {
           kind: 'power_used',
-          sequence: next.sequence,
+          sequence: usedBump.sequence,
           revision: next.revision,
-          serverTimestampMs: bump.serverTimestampMs,
+          serverTimestampMs: usedBump.serverTimestampMs,
           attackId,
           attackerId: input.attackerId,
           targetId: input.targetPlayerId,
         },
+        defenseBump,
         {
           kind: 'power_defense_required',
-          sequence: next.sequence,
+          sequence: defenseBump.sequence,
           revision: next.revision,
-          serverTimestampMs: bump.serverTimestampMs,
+          serverTimestampMs: defenseBump.serverTimestampMs,
           attackId,
           attackerId: input.attackerId,
           targetId: input.targetPlayerId,
@@ -2301,6 +2322,12 @@ export class MatchEngine {
     const player = next.players.get(playerId);
     if (!player) {
       throw new DomainError('PLAYER_NOT_FOUND', 'player not found');
+    }
+    if (!next.powerActionActorIds.includes(playerId)) {
+      return { match: next, events: [] };
+    }
+    if (player.powerActionResolved) {
+      return { match: next, events: [] };
     }
     player.powerActionResolved = true;
     next.powerActionActorIds = next.powerActionActorIds.filter(
@@ -2332,6 +2359,9 @@ export class MatchEngine {
     if (match.pendingAttack.targetId !== input.defenderId) {
       throw new DomainError('POWER_PHASE_INVALID', 'not the target');
     }
+    if (this.clock.monoMs() > match.pendingAttack.defenseDeadlineMonoMs) {
+      throw new DomainError('POWER_PHASE_INVALID', 'defense window expired');
+    }
     return this.resolvePendingAttack(match, input.choice);
   }
 
@@ -2341,7 +2371,8 @@ export class MatchEngine {
     if (match.phase !== 'power_defense' || !match.pendingAttack) {
       return { match, events: [] };
     }
-    if (this.clock.monoMs() <= match.pendingAttack.defenseDeadlineMonoMs) {
+    // Inclusive deadline: expire when mono has reached/passed the defense end.
+    if (this.clock.monoMs() < match.pendingAttack.defenseDeadlineMonoMs) {
       return { match, events: [] };
     }
     return this.resolvePendingAttack(match, 'none');
@@ -2374,6 +2405,7 @@ export class MatchEngine {
         throw new DomainError('POWER_NOT_AVAILABLE', 'no shield');
       }
       target.inventory.shield = 0;
+      resetMeterAfterPowerConsume(target);
       outcome = attack.reflected ? 'reflected_shielded' : 'shielded';
     } else if (choice === 'reflect') {
       if (attack.reflected) {
@@ -2383,6 +2415,7 @@ export class MatchEngine {
         throw new DomainError('POWER_NOT_AVAILABLE', 'no reflection');
       }
       target.inventory.reflection = 0;
+      resetMeterAfterPowerConsume(target);
       const config = next.powerConfig ?? defaultPowerConfig();
       const nowWall = this.clock.nowMs();
       const nowMono = this.clock.monoMs();

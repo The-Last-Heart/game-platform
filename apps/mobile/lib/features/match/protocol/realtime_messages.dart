@@ -255,6 +255,22 @@ class PowerGrantInfo {
   }
 }
 
+/// Live strike narrative kinds shown to the whole room.
+enum PowerNarrativeKind { struck, reversed, shielded, hit, expired }
+
+/// Latest between-round strike event for room-wide UI.
+class PowerNarrative {
+  const PowerNarrative({
+    required this.kind,
+    required this.attackerId,
+    required this.targetId,
+  });
+
+  final PowerNarrativeKind kind;
+  final String attackerId;
+  final String targetId;
+}
+
 /// Between-round tactical window state (LH-008).
 class MatchTacticalState {
   const MatchTacticalState({
@@ -262,6 +278,8 @@ class MatchTacticalState {
     this.eligibleTargetIds = const <String>[],
     this.actorsWithOffensiveCharge = const <String>[],
     this.lastGrant,
+    this.recentGrants = const <PowerGrantInfo>[],
+    this.lastNarrative,
   });
 
   final PendingPowerAttack? pendingAttack;
@@ -269,11 +287,21 @@ class MatchTacticalState {
   final List<String> actorsWithOffensiveCharge;
   final PowerGrantInfo? lastGrant;
 
+  /// Client-accumulated grants for the current result hold. Snapshot `lastGrant`
+  /// is room-wide (last writer wins); this list keeps every seat's unlock.
+  final List<PowerGrantInfo> recentGrants;
+
+  /// Latest strike narrative for bystanders (client-derived from events).
+  final PowerNarrative? lastNarrative;
+
   factory MatchTacticalState.fromJson(Map<String, dynamic> json) {
     final dynamic pending = json['pendingAttack'];
     final dynamic grant = json['lastGrant'];
     final dynamic eligible = json['eligibleTargetIds'];
     final dynamic actors = json['actorsWithOffensiveCharge'];
+    final PowerGrantInfo? lastGrant = grant is Map
+        ? PowerGrantInfo.fromJson(Map<String, dynamic>.from(grant))
+        : null;
     return MatchTacticalState(
       pendingAttack: pending is Map
           ? PendingPowerAttack.fromJson(
@@ -286,10 +314,20 @@ class MatchTacticalState {
       actorsWithOffensiveCharge: actors is List
           ? actors.cast<String>()
           : const <String>[],
-      lastGrant: grant is Map
-          ? PowerGrantInfo.fromJson(Map<String, dynamic>.from(grant))
-          : null,
+      lastGrant: lastGrant,
+      recentGrants: lastGrant == null
+          ? const <PowerGrantInfo>[]
+          : <PowerGrantInfo>[lastGrant],
     );
+  }
+
+  PowerGrantInfo? grantFor(String? playerId) {
+    if (playerId == null) return null;
+    for (final PowerGrantInfo g in recentGrants.reversed) {
+      if (g.playerId == playerId) return g;
+    }
+    if (lastGrant?.playerId == playerId) return lastGrant;
+    return null;
   }
 
   MatchTacticalState copyWith({
@@ -297,6 +335,8 @@ class MatchTacticalState {
     List<String>? eligibleTargetIds,
     List<String>? actorsWithOffensiveCharge,
     PowerGrantInfo? Function()? lastGrant,
+    List<PowerGrantInfo>? recentGrants,
+    PowerNarrative? Function()? lastNarrative,
   }) {
     return MatchTacticalState(
       pendingAttack: pendingAttack != null
@@ -306,7 +346,20 @@ class MatchTacticalState {
       actorsWithOffensiveCharge:
           actorsWithOffensiveCharge ?? this.actorsWithOffensiveCharge,
       lastGrant: lastGrant != null ? lastGrant() : this.lastGrant,
+      recentGrants: recentGrants ?? this.recentGrants,
+      lastNarrative: lastNarrative != null
+          ? lastNarrative()
+          : this.lastNarrative,
     );
+  }
+
+  /// Upsert a grant for one seat without dropping other seats' unlocks.
+  MatchTacticalState withGrant(PowerGrantInfo grant) {
+    final List<PowerGrantInfo> next = recentGrants
+        .where((PowerGrantInfo g) => g.playerId != grant.playerId)
+        .toList();
+    next.add(grant);
+    return copyWith(lastGrant: () => grant, recentGrants: next);
   }
 }
 

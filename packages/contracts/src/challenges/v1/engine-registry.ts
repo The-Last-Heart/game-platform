@@ -137,6 +137,13 @@ export const STUDIO_ENGINE_REGISTRY: readonly StudioEngineRegistryEntry[] = [
     labelKey: 'engine.gesture.fog_wipe',
   },
   {
+    engineId: 'precision.circuit_rotation',
+    familyId: 'precision',
+    categoryId: 'precision.circuit_rotation',
+    runtimeReadiness: ENGINE_RUNTIME_READINESS['precision.circuit_rotation'],
+    labelKey: 'engine.precision.circuit_rotation',
+  },
+  {
     engineId: 'logic.balance_scale',
     familyId: 'logic',
     categoryId: 'logic.balance_scale',

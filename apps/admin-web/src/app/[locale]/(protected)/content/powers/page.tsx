@@ -28,7 +28,7 @@ export default async function PowersPage({ params }: PageProps) {
           energyThreshold: 4,
           inventoryMaxTotal: 3,
           inventoryMaxPerPower: 1,
-          actionWindowMs: 8000,
+          actionWindowMs: 5000,
           defenseWindowMs: 5000,
           powers: [
             {

@@ -713,17 +713,38 @@ describe('MatchService', () => {
     await store.save(match!);
 
     const first = await service.rematch(created.matchId, a.playerId);
-    expect(first.lobbyFillWaitMs).toBe(60_000);
-    expect(first.snapshot.lobbyFillDeadlineAtMs).toBe(
-      clock.nowMs() + 60_000,
-    );
+    // Solo rematch must not arm fill-abort (keeps the lobby for the party).
+    expect(first.lobbyFillWaitMs).toBeUndefined();
+    expect(first.snapshot.lobbyFillDeadlineAtMs).toBeNull();
+
+    const broadcasts: Array<{ matchId: string; sequence: number }> = [];
+    service.onBroadcast((b) => {
+      broadcasts.push({
+        matchId: b.matchId,
+        sequence: b.snapshot.sequence,
+      });
+    });
+
     const second = await service.rematch(created.matchId, b.playerId);
     expect(second.matchId).toBe(first.matchId);
     expect(first.snapshot.hostPlayerId).toBe(first.playerId);
     expect(second.snapshot.players).toHaveLength(2);
     expect(second.snapshot.hostPlayerId).toBe(first.playerId);
+    expect(second.lobbyFillWaitMs).toBe(60_000);
     expect(second.snapshot.lobbyFillDeadlineAtMs).toBe(
-      first.snapshot.lobbyFillDeadlineAtMs,
+      clock.nowMs() + 60_000,
+    );
+    // Host already seated must receive a bumped snap with the fill deadline
+    // (mobile gates Start now on lobbyFillDeadlineAtMs).
+    const fillBroadcast = broadcasts.find(
+      (b) =>
+        b.matchId === first.matchId &&
+        b.sequence > first.snapshot.sequence,
+    );
+    expect(fillBroadcast).toBeTruthy();
+    const hostView = await service.requestSnapshot(first.matchId);
+    expect(hostView.snapshot.lobbyFillDeadlineAtMs).toBe(
+      clock.nowMs() + 60_000,
     );
 
     service.onModuleDestroy();
@@ -765,6 +786,75 @@ describe('MatchService', () => {
     const again = await service.rematch(created.matchId, a.playerId);
     expect(again.matchId).toBe(first.matchId);
     expect(again.playerId).toBe(first.playerId);
+    expect((await store.get(first.matchId))!.players.size).toBe(2);
+
+    service.onModuleDestroy();
+  });
+
+  it('late rematch after party window still joins the open rematch lobby', async () => {
+    const clock = new FakeClock(5_000_000);
+    const service = MatchService.forTests({ clock, nodeEnv: 'test' });
+    const created = await service.createQuickSurvivalMatch([
+      { displayName: 'A', avatarColor: '#111111' },
+      { displayName: 'B', avatarColor: '#222222' },
+    ]);
+    const a = created.assignments[0]!;
+    const b = created.assignments[1]!;
+    for (const seat of created.assignments) {
+      await service.finalizeJoin(created.matchId, seat.playerId);
+    }
+
+    const store = service.getStoreForTests();
+    const match = await store.get(created.matchId);
+    match!.phase = 'completed';
+    match!.status = 'completed';
+    match!.winnerId = a.playerId;
+    await store.save(match!);
+
+    const first = await service.rematch(created.matchId, a.playerId);
+    clock.advance(60_001);
+    const second = await service.rematch(created.matchId, b.playerId);
+
+    expect(second.matchId).toBe(first.matchId);
+    expect((await store.get(first.matchId))!.players.size).toBe(2);
+    expect(second.lobbyFillWaitMs).toBe(60_000);
+
+    service.onModuleDestroy();
+  });
+
+  it('solo rematch lobby is not aborted by fill resolve while party waits', async () => {
+    const clock = new FakeClock(5_000_000);
+    const service = MatchService.forTests({ clock, nodeEnv: 'test' });
+    const created = await service.createQuickSurvivalMatch([
+      { displayName: 'A', avatarColor: '#111111' },
+      { displayName: 'B', avatarColor: '#222222' },
+    ]);
+    const a = created.assignments[0]!;
+    const b = created.assignments[1]!;
+    for (const seat of created.assignments) {
+      await service.finalizeJoin(created.matchId, seat.playerId);
+    }
+
+    const store = service.getStoreForTests();
+    const match = await store.get(created.matchId);
+    match!.phase = 'completed';
+    match!.status = 'completed';
+    match!.winnerId = a.playerId;
+    await store.save(match!);
+
+    const first = await service.rematch(created.matchId, a.playerId);
+    // Force a spent fill deadline as if a timer had been armed elsewhere.
+    const lobby = await store.get(first.matchId);
+    lobby!.lobbyFillDeadlineAtMs = clock.nowMs() - 1;
+    lobby!.lobbyFillDeadlineMonoMs = clock.monoMs() - 1;
+    await store.save(lobby!);
+
+    const resolved = await service.resolveQuickLobbyFill(first.matchId);
+    expect(resolved.outcome).toBe('noop');
+    expect(await store.get(first.matchId)).toBeTruthy();
+
+    const second = await service.rematch(created.matchId, b.playerId);
+    expect(second.matchId).toBe(first.matchId);
     expect((await store.get(first.matchId))!.players.size).toBe(2);
 
     service.onModuleDestroy();

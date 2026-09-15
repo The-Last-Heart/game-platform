@@ -50,7 +50,7 @@ export async function adminApiFetch<T>(
   const headers = new Headers(init.headers);
   headers.set('accept', 'application/json');
 
-  if (!headers.has('content-type') && init.body) {
+  if (!headers.has('content-type') && init.body && !(init.body instanceof FormData)) {
     headers.set('content-type', 'application/json');
   }
 

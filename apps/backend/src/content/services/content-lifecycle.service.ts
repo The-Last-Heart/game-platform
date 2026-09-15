@@ -219,8 +219,12 @@ export class ContentLifecycleService {
     notes?: string,
   ) {
     return this.db.tx(async (client) => {
-      const row = await client.query<{ status: string }>(
-        `SELECT status FROM content_template_versions WHERE id = $1::uuid FOR UPDATE`,
+      const row = await client.query<{
+        status: string;
+        template_id: string;
+      }>(
+        `SELECT status, template_id::text
+         FROM content_template_versions WHERE id = $1::uuid FOR UPDATE`,
         [templateVersionId],
       );
       if (!row.rows[0]) {
@@ -237,6 +241,14 @@ export class ContentLifecycleService {
              validation_notes = COALESCE($3, validation_notes)
          WHERE id = $1::uuid`,
         [templateVersionId, actorAdminId, notes ?? null],
+      );
+      // Library / home counts filter content_templates.status — keep in sync.
+      await client.query(
+        `UPDATE content_templates
+         SET status = 'submitted', updated_at = now()
+         WHERE id = $1::uuid
+           AND status IN ('draft', 'submitted', 'in_review', 'approved')`,
+        [row.rows[0].template_id],
       );
       await this.audit.write(
         {
@@ -262,8 +274,9 @@ export class ContentLifecycleService {
       const row = await client.query<{
         status: string;
         submitted_by_admin_id: string | null;
+        template_id: string;
       }>(
-        `SELECT status, submitted_by_admin_id
+        `SELECT status, submitted_by_admin_id, template_id::text
          FROM content_template_versions WHERE id = $1::uuid FOR UPDATE`,
         [templateVersionId],
       );
@@ -297,6 +310,13 @@ export class ContentLifecycleService {
              validation_notes = COALESCE($3, validation_notes)
          WHERE id = $1::uuid`,
         [templateVersionId, actorAdminId, notes ?? null],
+      );
+      await client.query(
+        `UPDATE content_templates
+         SET status = 'approved', updated_at = now()
+         WHERE id = $1::uuid
+           AND status IN ('submitted', 'in_review', 'approved')`,
+        [row.rows[0].template_id],
       );
       await this.audit.write(
         {
@@ -353,6 +373,14 @@ export class ContentLifecycleService {
         });
         await client.query(
           `UPDATE content_template_versions SET status = 'published' WHERE id = $1::uuid`,
+          [versionId],
+        );
+        await client.query(
+          `UPDATE content_templates
+           SET status = 'published', updated_at = now()
+           WHERE id = (
+             SELECT template_id FROM content_template_versions WHERE id = $1::uuid
+           )`,
           [versionId],
         );
       }
@@ -463,6 +491,44 @@ export class ContentLifecycleService {
       );
     });
     return { definitionId, paused: input.paused };
+  }
+
+  async setLiveEligibility(
+    actorAdminId: string,
+    input: {
+      definitionId: string;
+      eligibleModes: ChallengeDefinitionContract['eligibleModes'];
+      reason: string;
+    },
+  ) {
+    const modes = [...new Set(input.eligibleModes)];
+    if (modes.length === 0) {
+      throw new BadRequestException('eligibleModes must include at least one mode');
+    }
+    await this.db.tx(async (client) => {
+      await client.query(
+        `INSERT INTO content_catalog_entry_overrides
+           (definition_id, paused, eligible_modes, reason, updated_at)
+         VALUES ($1, false, $2::jsonb, $3, now())
+         ON CONFLICT (definition_id) DO UPDATE
+           SET eligible_modes = EXCLUDED.eligible_modes,
+               reason = EXCLUDED.reason,
+               updated_at = now()`,
+        [input.definitionId, JSON.stringify(modes), input.reason],
+      );
+      await this.audit.write(
+        {
+          actorAdminId,
+          action: 'content.live_eligibility',
+          entityType: 'content_definition',
+          entityId: input.definitionId,
+          outcome: 'success',
+          metadata: { eligibleModes: modes, reason: input.reason },
+        },
+        client,
+      );
+    });
+    return { definitionId: input.definitionId, eligibleModes: modes };
   }
 
   async rollbackCatalog(
@@ -727,17 +793,32 @@ export class ContentLifecycleService {
 
     let catalogPaused = false;
     let pauseReason: string | null = null;
+    let liveEligibleModesOverride:
+      | ChallengeDefinitionContract['eligibleModes']
+      | null = null;
     if (latestDefinitionId) {
       const override = await this.db.query<{
         paused: boolean;
         reason: string | null;
+        eligible_modes: unknown;
       }>(
-        `SELECT paused, reason FROM content_catalog_entry_overrides
+        `SELECT paused, reason, eligible_modes FROM content_catalog_entry_overrides
          WHERE definition_id = $1`,
         [latestDefinitionId],
       );
       catalogPaused = override.rows[0]?.paused === true;
       pauseReason = override.rows[0]?.reason ?? null;
+      const rawModes = override.rows[0]?.eligible_modes;
+      if (Array.isArray(rawModes)) {
+        const parsedModes = rawModes.filter(
+          (m): m is ChallengeDefinitionContract['eligibleModes'][number] =>
+            m === 'quick_survival' ||
+            m === 'private' ||
+            m === 'training' ||
+            m === 'dev',
+        );
+        liveEligibleModesOverride = parsedModes;
+      }
     }
 
     // Prefer catalog override for display when template row was never flipped.
@@ -745,6 +826,50 @@ export class ContentLifecycleService {
       catalogPaused && t.status === 'published'
         ? 'paused'
         : (t.status as ContentLifecycleStatus);
+
+    const versionIds = versions.rows.map((v) => v.id);
+    let inLiveCatalog = false;
+    let pinnedDefinitionModes:
+      | ChallengeDefinitionContract['eligibleModes']
+      | null = null;
+    if (versionIds.length > 0) {
+      const catalog = await this.db.query<{ payload: unknown }>(
+        `SELECT r.payload
+         FROM content_current_releases c
+         JOIN content_releases r ON r.id = c.release_id
+         WHERE c.kind = 'challenge_catalog'
+         LIMIT 1`,
+      );
+      const payload = catalog.rows[0]?.payload as
+        | {
+            entries?: Array<{
+              definitionId?: string;
+              templateVersionId?: string;
+              paused?: boolean;
+            }>;
+          }
+        | undefined;
+      const pinned = payload?.entries?.find((entry) =>
+        versionIds.includes(entry.templateVersionId ?? ''),
+      );
+      if (pinned?.templateVersionId) {
+        inLiveCatalog = true;
+        const pinnedVersion = versions.rows.find(
+          (v) => v.id === pinned.templateVersionId,
+        );
+        if (pinnedVersion) {
+          const parsed = challengeDefinitionSchema.safeParse(
+            pinnedVersion.definition,
+          );
+          if (parsed.success) {
+            pinnedDefinitionModes = [...parsed.data.eligibleModes];
+          }
+        }
+      }
+    }
+
+    const liveEligibleModes =
+      liveEligibleModesOverride ?? pinnedDefinitionModes;
 
     return {
       templateId: t.id,
@@ -755,6 +880,9 @@ export class ContentLifecycleService {
       status: displayStatus,
       catalogPaused,
       pauseReason,
+      inLiveCatalog,
+      liveEligibleModes,
+      liveEligibleModesOverride,
       versions: versions.rows.map((v) => ({
         templateVersionId: v.id,
         templateId: v.template_id,

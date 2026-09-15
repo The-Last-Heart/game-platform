@@ -215,13 +215,20 @@ abstract final class TranslationKeys {
   static const String powerActionChooseTarget = 'power.action.choose_target';
   static const String powerActionSkip = 'power.action.skip';
   static const String powerActionWaiting = 'power.action.waiting';
+  static const String powerActionWatching = 'power.action.watching';
   static const String powerDefenseTitle = 'power.defense.title';
   static const String powerDefenseIncoming = 'power.defense.incoming';
   static const String powerDefenseReflectedIncoming =
       'power.defense.reflected_incoming';
   static const String powerDefenseWaiting = 'power.defense.waiting';
+  static const String powerDefenseWatching = 'power.defense.watching';
   static const String powerDefenseNone = 'power.defense.none';
   static const String powerDefenseFrom = 'power.defense.from';
+  static const String powerNarrativeStruck = 'power.narrative.struck';
+  static const String powerNarrativeReversed = 'power.narrative.reversed';
+  static const String powerNarrativeShielded = 'power.narrative.shielded';
+  static const String powerNarrativeHit = 'power.narrative.hit';
+  static const String powerNarrativeExpired = 'power.narrative.expired';
 }
 
 /// Shared normalization for catalog create/lookup/resolve.

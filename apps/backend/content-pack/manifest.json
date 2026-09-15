@@ -1,6 +1,6 @@
 {
   "packId": "lh.local.content.v1",
-  "packVersion": 8,
+  "packVersion": 12,
   "assets": [
     {
       "assetId": "sfx.pulse",
@@ -160,50 +160,113 @@
       "assetId": "fog_wipe.reveal_content",
       "relativePath": "assets/fog_wipe.reveal_content.png",
       "contentType": "image/png",
-      "bytes": 3119507,
-      "sha256": "5ee266d664c7740b6e3be1368ea5d8071806f83658ec6844f97b235162fea98f"
+      "bytes": 377803,
+      "sha256": "147af877587f6a951c4eea60252ef849f4f9445fd77ce8ec5e8c373648f4e60e"
     },
     {
       "assetId": "fog_wipe.fog_density",
       "relativePath": "assets/fog_wipe.fog_density.png",
       "contentType": "image/png",
-      "bytes": 3546095,
-      "sha256": "8bd53277919557c6d10e9bc43a3757455fbc4b89ddbd47a2dacabdbaf87ebecc"
+      "bytes": 490366,
+      "sha256": "4715872ccff6b7db723ee920de90c36d35db0b03e54584e2725b45ad031c80ad"
     },
     {
       "assetId": "fog_wipe.droplets_height",
       "relativePath": "assets/fog_wipe.droplets_height.png",
       "contentType": "image/png",
-      "bytes": 1292848,
-      "sha256": "fe5473739b7658db5da6653a8c089f4d2b31c532616efd277299285ff00c43da"
+      "bytes": 277450,
+      "sha256": "5a3de714308f2933ded7a810beb7d40be66116df0d6f27e9ebf93947a78b5ed3"
     },
     {
       "assetId": "fog_wipe.frosted_edges",
       "relativePath": "assets/fog_wipe.frosted_edges.png",
       "contentType": "image/png",
-      "bytes": 1938017,
-      "sha256": "9fec3b3c7c36a68a892e79a104a1b519caa3afdec4716dd6f5d5fdee1646ae20"
+      "bytes": 193037,
+      "sha256": "720a8bfa09705e8e42dfdb416bb275c98c617556653b7170e1829666b6271b46"
     },
     {
       "assetId": "fog_wipe.scratch_mask",
       "relativePath": "assets/fog_wipe.scratch_mask.png",
       "contentType": "image/png",
-      "bytes": 505541,
-      "sha256": "fae537d044a0a2011f6e2a6c80290d270930ca930946f67d8e5cf1b00880d675"
+      "bytes": 108275,
+      "sha256": "36fd36bbc0d4842a0b018cf6127f6e532be372b9d3a06ea499ecccacdc435452"
     },
     {
       "assetId": "fog_wipe.wet_smudge_mask",
       "relativePath": "assets/fog_wipe.wet_smudge_mask.png",
       "contentType": "image/png",
-      "bytes": 1520066,
-      "sha256": "986af032a43b8712996345294ac008058223c22f0ed4eebe47ecfcae7448934e"
+      "bytes": 273756,
+      "sha256": "90383cb5fc3a5e9e48f56e9084e5efd2ebfd53af5098b0928d348ec351b6297c"
     },
     {
       "assetId": "fog_wipe.glass_reflections",
       "relativePath": "assets/fog_wipe.glass_reflections.png",
       "contentType": "image/png",
-      "bytes": 1282173,
-      "sha256": "3dc43d3fd370f760a2ef9883175c1c517cd18c35651d9c9bdcffb8c6e0205401"
+      "bytes": 171343,
+      "sha256": "16784c8e0105899145bb405f63a298f1a6775e5baed1c3c5f2e83d8f8df0c093"
+    },
+    {
+      "assetId": "circuit_rotation.board_base",
+      "relativePath": "assets/circuit_rotation.board_base.webp",
+      "contentType": "image/webp",
+      "bytes": 46106,
+      "sha256": "b131714d323cfc722b1b9bc59fbc2477db6356253caee1b8f6ff4ba25e7a4de7"
+    },
+    {
+      "assetId": "circuit_rotation.grid_plate",
+      "relativePath": "assets/circuit_rotation.grid_plate.webp",
+      "contentType": "image/webp",
+      "bytes": 11572,
+      "sha256": "c4aa8b426c9c896200894a0d10b2508da7f4597070f9bc096dab0f5e17944141"
+    },
+    {
+      "assetId": "fog_wipe.reveal.petsev",
+      "relativePath": "assets/fog_wipe.reveal.petsev.png",
+      "contentType": "image/png",
+      "bytes": 195488,
+      "sha256": "bc1774253959fe7b2cdf2c7e88eec860947bf0956d92a76f738a30d7072f8ae4"
+    },
+    {
+      "assetId": "fog_wipe.reveal.gta_vi",
+      "relativePath": "assets/fog_wipe.reveal.gta_vi.png",
+      "contentType": "image/png",
+      "bytes": 48899,
+      "sha256": "0a7d3890df3f94d8399ad84d5708666cd58b1c666d48cb8f8d665ee6f845f48a"
+    },
+    {
+      "assetId": "fog_wipe.reveal.snowman",
+      "relativePath": "assets/fog_wipe.reveal.snowman.png",
+      "contentType": "image/png",
+      "bytes": 25318,
+      "sha256": "62879651b855d76b2198af648983e6145c998ed87b64e9afeee3d336312b99e1"
+    },
+    {
+      "assetId": "fog_wipe.reveal.cucumber",
+      "relativePath": "assets/fog_wipe.reveal.cucumber.png",
+      "contentType": "image/png",
+      "bytes": 55049,
+      "sha256": "1ac7b5d633d7bd9ba52ce41a38d7a9db7cba62f1defa0c67080b1c9d4ecf1e73"
+    },
+    {
+      "assetId": "fog_wipe.reveal.wrap",
+      "relativePath": "assets/fog_wipe.reveal.wrap.png",
+      "contentType": "image/png",
+      "bytes": 26435,
+      "sha256": "38ae5241a99604156b77c170bb323ba924a0bb8af15e3f19fd2e1db2ec7fc088"
+    },
+    {
+      "assetId": "fog_wipe.reveal.watermelon",
+      "relativePath": "assets/fog_wipe.reveal.watermelon.png",
+      "contentType": "image/png",
+      "bytes": 41427,
+      "sha256": "000c572e5f478deed87950c9b31e89945f3793eb0f114b5a1d7b8f4cc72c3b76"
+    },
+    {
+      "assetId": "fog_wipe.swipe",
+      "relativePath": "assets/fog_wipe.swipe.mp3",
+      "contentType": "audio/mpeg",
+      "bytes": 5015,
+      "sha256": "6b1e554c0742d818ced1990a4eb5b89d8d01cc3074de62eca13e08c7dcde4001"
     }
   ]
 }

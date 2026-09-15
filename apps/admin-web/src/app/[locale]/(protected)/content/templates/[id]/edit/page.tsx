@@ -17,6 +17,7 @@ export default async function EditTemplatePage({ params }: PageProps) {
   const session = await requireAdminSession(rawLocale);
   const canDraft = session.user.permissions.includes('content:draft' as never);
   const canReview = session.user.permissions.includes('content:review' as never);
+  const canPublish = session.user.permissions.includes('content:publish' as never);
 
   return (
     <Suspense fallback={<p>{t(rawLocale, 'common.loading')}</p>}>
@@ -24,6 +25,7 @@ export default async function EditTemplatePage({ params }: PageProps) {
         locale={rawLocale}
         canDraft={canDraft}
         canReview={canReview}
+        canPublish={canPublish}
         mode="edit"
         templateId={id}
       />

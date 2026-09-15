@@ -1,11 +1,16 @@
 import { randomInt } from 'node:crypto';
 import { readFileSync, existsSync } from 'node:fs';
 import { resolve } from 'node:path';
+import {
+  precisionCircuitRotationAnswerSchema,
+  precisionCircuitRotationServerConfigSchema,
+} from '@thelastheart/contracts';
 import type {
   ChallengeDefinition,
   ChallengeEvaluation,
   ChallengeEvaluator,
 } from '../types';
+import { evaluateCircuit } from './circuit-rotation';
 
 function num(value: unknown, fallback = 0): number {
   return typeof value === 'number' && Number.isFinite(value) ? value : fallback;
@@ -34,7 +39,8 @@ function pickVariant<T extends Record<string, unknown>>(
   if (!Array.isArray(raw) || raw.length === 0) {
     return fallback;
   }
-  const pick = raw[randomInt(0, raw.length)];
+  const variants = raw as unknown[];
+  const pick: unknown = variants[randomInt(0, variants.length)];
   if (!pick || typeof pick !== 'object' || Array.isArray(pick)) {
     return fallback;
   }
@@ -48,6 +54,8 @@ export const ORDER_SEQUENCE_SORT_ENGINE_ID = 'order.sequence_sort';
 export const PRECISION_MAZE_PATH_ENGINE_ID = 'precision.maze_path';
 export const PRECISION_NEON_CABLE_ENGINE_ID = 'precision.neon_cable';
 export const GESTURE_FOG_WIPE_ENGINE_ID = 'gesture.fog_wipe';
+export const PRECISION_CIRCUIT_ROTATION_ENGINE_ID =
+  'precision.circuit_rotation';
 export const LOGIC_BALANCE_SCALE_ENGINE_ID = 'logic.balance_scale';
 export const FOCUS_STROOP_ENGINE_ID = 'focus.stroop';
 export const SEARCH_SELECT_OCCURRENCES_ENGINE_ID = 'search.select_occurrences';
@@ -236,6 +244,54 @@ export class GestureFogWipeEvaluator implements ChallengeEvaluator {
   }
 }
 
+export class CircuitRotationEvaluator implements ChallengeEvaluator {
+  readonly engineId = PRECISION_CIRCUIT_ROTATION_ENGINE_ID;
+
+  evaluate(input: {
+    definition: ChallengeDefinition;
+    answer: Record<string, unknown>;
+    receivedMonoMs: number;
+    deadlineMonoMs: number;
+  }): ChallengeEvaluation {
+    if (input.receivedMonoMs > input.deadlineMonoMs) {
+      return { success: false, reasonKey: 'result.timeout' };
+    }
+
+    const serverConfig = precisionCircuitRotationServerConfigSchema.safeParse(
+      input.definition.serverConfig,
+    );
+    const answer = precisionCircuitRotationAnswerSchema.safeParse(input.answer);
+    if (!serverConfig.success || !answer.success) {
+      return {
+        success: false,
+        reasonKey: 'result.circuit_rotation.incomplete',
+      };
+    }
+
+    const result = evaluateCircuit({
+      grid: serverConfig.data.grid,
+      source: serverConfig.data.source,
+      target: serverConfig.data.target,
+      tiles: serverConfig.data.tiles,
+      stationaryConnections: serverConfig.data.stationaryConnections,
+      tileQuarterTurns: answer.data.tileQuarterTurns,
+      requireAllConfiguredTilesPowered:
+        serverConfig.data.requireAllConfiguredTilesPowered,
+    });
+    if (!result.success) {
+      return {
+        success: false,
+        reasonKey: 'result.circuit_rotation.incomplete',
+      };
+    }
+    return {
+      success: true,
+      reasonKey: 'result.success',
+      measureMs: Math.max(0, Math.floor(input.receivedMonoMs)),
+    };
+  }
+}
+
 export class LogicBalanceScaleEvaluator implements ChallengeEvaluator {
   readonly engineId = LOGIC_BALANCE_SCALE_ENGINE_ID;
 
@@ -338,6 +394,7 @@ export function createPack31Evaluators(): ChallengeEvaluator[] {
     new PrecisionMazePathEvaluator(),
     new PrecisionNeonCableEvaluator(),
     new GestureFogWipeEvaluator(),
+    new CircuitRotationEvaluator(),
     new LogicBalanceScaleEvaluator(),
     new FocusStroopEvaluator(),
     new SearchSelectOccurrencesEvaluator(),
@@ -362,8 +419,17 @@ export function loadGeographyMaps(): GeoMap[] {
   if (cachedMaps) return cachedMaps;
   const candidates = [
     resolve(process.cwd(), 'content-pack/maps/geography-maps.json'),
-    resolve(process.cwd(), 'apps/backend/content-pack/maps/geography-maps.json'),
-    resolve(__dirname, '..', '..', '..', 'content-pack/maps/geography-maps.json'),
+    resolve(
+      process.cwd(),
+      'apps/backend/content-pack/maps/geography-maps.json',
+    ),
+    resolve(
+      __dirname,
+      '..',
+      '..',
+      '..',
+      'content-pack/maps/geography-maps.json',
+    ),
   ];
   for (const candidate of candidates) {
     if (!existsSync(candidate)) continue;
@@ -480,6 +546,29 @@ export function materializePack31Round(definition: ChallengeDefinition): void {
 
   if (definition.engineId === PRECISION_NEON_CABLE_ENGINE_ID) {
     applyNeonCableVariant(definition, pickNeonCableVariant(server));
+    return;
+  }
+
+  if (definition.engineId === PRECISION_CIRCUIT_ROTATION_ENGINE_ID) {
+    const variant = pickVariant(server, {
+      grid: server['grid'],
+      source: server['source'],
+      target: server['target'],
+      tiles: server['tiles'],
+      stationaryConnections: server['stationaryConnections'],
+      requireAllConfiguredTilesPowered:
+        server['requireAllConfiguredTilesPowered'],
+    });
+    Object.assign(server, variant);
+    for (const key of [
+      'grid',
+      'source',
+      'target',
+      'tiles',
+      'stationaryConnections',
+    ] as const) {
+      client[key] = variant[key];
+    }
     return;
   }
 

@@ -174,7 +174,7 @@ export const powerConfigurationReleasePayloadSchema = z
     energyThreshold: z.literal(4),
     inventoryMaxTotal: z.literal(3),
     inventoryMaxPerPower: z.literal(1),
-    actionWindowMs: z.number().int().min(3_000).max(30_000).default(8_000),
+    actionWindowMs: z.number().int().min(3_000).max(30_000).default(5_000),
     defenseWindowMs: z.number().int().min(2_000).max(15_000).default(5_000),
     powers: z.array(powerDefinitionSchema).min(1).max(3),
     changelog: z.string().max(4000).optional(),

@@ -10,6 +10,7 @@ import 'memory_sequence_engine.dart';
 import 'motion_shake_engine.dart';
 import 'motion_tilt_balance_engine.dart';
 import 'order_sequence_sort_engine.dart';
+import 'precision_circuit_rotation_engine.dart';
 import 'precision_maze_path_engine.dart';
 import 'precision_neon_cable_engine.dart';
 import 'gesture_fog_wipe_engine.dart';
@@ -44,6 +45,7 @@ class ChallengeEngineRegistry {
     register(OrderSequenceSortEngine());
     register(PrecisionMazePathEngine());
     register(PrecisionNeonCableEngine());
+    register(PrecisionCircuitRotationEngine());
     register(GestureFogWipeEngine());
     register(LogicBalanceScaleEngine());
     register(FocusStroopEngine());

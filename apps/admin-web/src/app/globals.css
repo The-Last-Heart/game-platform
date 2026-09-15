@@ -923,6 +923,7 @@ html[data-theme='dark'] .status-chip[data-status='scheduled'] {
   background: var(--lh-surface);
   border: 1px solid var(--lh-border);
   border-radius: var(--lh-radius);
+  scroll-margin-top: 7rem;
 }
 
 .studio-editor-form .section-group[hidden] {
@@ -1407,6 +1408,153 @@ html[data-theme='dark'] .status-chip[data-status='scheduled'] {
   color: var(--lh-text-muted);
   font-size: 1rem;
   line-height: 1;
+}
+
+.studio-asset-gallery {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(104px, 1fr));
+  gap: 0.75rem;
+  margin-bottom: 0.75rem;
+}
+
+.studio-asset-gallery--add {
+  grid-template-columns: repeat(auto-fill, minmax(72px, 1fr));
+  margin-bottom: 0;
+  flex: 1;
+}
+
+.studio-asset-tile {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  min-width: 0;
+}
+
+.studio-asset-tile-media {
+  position: relative;
+  width: 96px;
+  border-radius: 10px;
+}
+
+.studio-asset-tile.is-active .studio-asset-tile-media {
+  outline: 2px solid var(--lh-accent);
+  outline-offset: 2px;
+  border-radius: 10px;
+}
+
+.studio-asset-tile-media figure,
+.studio-asset-tile-media img {
+  width: 96px !important;
+  height: 96px !important;
+  border-radius: 10px;
+}
+
+.studio-asset-tile-badge {
+  position: absolute;
+  top: 6px;
+  left: 6px;
+  z-index: 1;
+  padding: 0.1rem 0.4rem;
+  border-radius: 999px;
+  background: var(--lh-accent);
+  color: #fff;
+  font-size: 0.65rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+
+.studio-asset-tile-remove {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  z-index: 1;
+  width: 1.5rem;
+  height: 1.5rem;
+  border: 0;
+  border-radius: 999px;
+  background: color-mix(in srgb, #000 55%, transparent);
+  color: #fff;
+  font-size: 1rem;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.studio-asset-tile-remove:hover:not(:disabled) {
+  background: color-mix(in srgb, #c45 85%, #000);
+}
+
+.studio-asset-tile-remove:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.studio-asset-tile-label {
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--lh-text);
+  max-width: 96px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.studio-asset-add-row {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  padding-top: 0.35rem;
+  border-top: 1px dashed var(--lh-border);
+}
+
+.studio-asset-add-label {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--lh-text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.studio-asset-add-tile {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.3rem;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+  text-align: start;
+  opacity: 0.85;
+}
+
+.studio-asset-add-tile:hover:not(:disabled) {
+  opacity: 1;
+}
+
+.studio-asset-add-tile:hover:not(:disabled) img {
+  border-color: var(--lh-accent);
+}
+
+.studio-asset-add-tile:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.studio-asset-add-tile figure,
+.studio-asset-add-tile img {
+  width: 64px !important;
+  height: 64px !important;
+  border-radius: 8px;
+}
+
+.studio-asset-add-caption {
+  font-size: 0.7rem;
+  font-weight: 600;
+  color: var(--lh-text-muted);
+  max-width: 64px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .studio-collapsible {

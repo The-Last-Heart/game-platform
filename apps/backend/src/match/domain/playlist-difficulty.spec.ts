@@ -83,4 +83,20 @@ describe('playlist-difficulty', () => {
     }
     expect(orders.size).toBeGreaterThan(1);
   });
+
+  it('interleaves sparse neon+fog pool so fog is not buried behind five neon pads', () => {
+    const sparse = [
+      def('precision.neon_cable', 'easy'),
+      def('gesture.fog_wipe', 'medium'),
+    ];
+    const { structured } = buildDifficultyOrderedPlaylist(sparse, 'sparse-room');
+    expect(structured).toHaveLength(CHALLENGES_PER_DIFFICULTY * 3);
+    expect(structured.some((d) => d.engineId === 'gesture.fog_wipe')).toBe(
+      true,
+    );
+    expect(structured.slice(0, 2).map((d) => d.engineId).sort()).toEqual([
+      'gesture.fog_wipe',
+      'precision.neon_cable',
+    ]);
+  });
 });

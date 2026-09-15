@@ -14,21 +14,38 @@ describe('ContentPackService', () => {
     const service = new ContentPackService();
     const manifest = service.getManifest();
     expect(manifest.packId).toBe('lh.local.content.v1');
-    expect(manifest.packVersion).toBe(8);
+    expect(manifest.packVersion).toBe(12);
     expect(manifest.assets.some((a) => a.assetId === 'sfx.pulse')).toBe(true);
-    expect(manifest.assets.some((a) => a.assetId === 'fog_wipe.reveal_content')).toBe(
+    expect(
+      manifest.assets.some((a) => a.assetId === 'fog_wipe.reveal_content'),
+    ).toBe(true);
+    expect(
+      manifest.assets.some((a) => a.assetId === 'fog_wipe.reveal.petsev'),
+    ).toBe(true);
+    expect(
+      manifest.assets.some((a) => a.assetId === 'fog_wipe.reveal.watermelon'),
+    ).toBe(true);
+    expect(manifest.assets.some((a) => a.assetId === 'fog_wipe.swipe')).toBe(
       true,
     );
-    expect(manifest.assets.some((a) => a.assetId === 'neon_cable.panel_background')).toBe(
+    expect(
+      manifest.assets.some((a) => a.assetId === 'neon_cable.panel_background'),
+    ).toBe(true);
+    expect(
+      manifest.assets.some((a) => a.assetId === 'neon_cable.cable_spark'),
+    ).toBe(true);
+    expect(manifest.assets.some((a) => a.assetId === 'neon_cable.spark')).toBe(
       true,
     );
-    expect(manifest.assets.some((a) => a.assetId === 'neon_cable.cable_spark')).toBe(
-      true,
-    );
-    expect(manifest.assets.some((a) => a.assetId === 'neon_cable.spark')).toBe(true);
-    expect(manifest.assets.some((a) => a.assetId === 'neon_cable.composition')).toBe(
-      true,
-    );
+    expect(
+      manifest.assets.some((a) => a.assetId === 'neon_cable.composition'),
+    ).toBe(true);
+    expect(
+      manifest.assets.some((a) => a.assetId === 'circuit_rotation.board_base'),
+    ).toBe(true);
+    expect(
+      manifest.assets.some((a) => a.assetId === 'circuit_rotation.grid_plate'),
+    ).toBe(true);
     expect(manifest.assets.some((a) => a.assetId === 'sfx.strike')).toBe(true);
     expect(manifest.assets.some((a) => a.assetId === 'sfx.win')).toBe(true);
     expect(manifest.assets.some((a) => a.assetId === 'sfx.lose')).toBe(true);
@@ -46,4 +63,3 @@ describe('ContentPackService', () => {
     expect(lose.body.byteLength).toBe(lose.meta.bytes);
   });
 });
-

@@ -3,6 +3,7 @@ import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:game/features/match/engines/challenge_engine.dart';
 import 'package:game/features/match/engines/challenge_engine_registry.dart';
+import 'package:game/features/match/engines/precision_circuit_rotation_engine.dart';
 import 'package:game/features/match/engines/reaction_wait_for_signal_engine.dart';
 import 'package:game/features/match/engines/unknown_engine.dart';
 import 'package:game/features/match/protocol/realtime_messages.dart';
@@ -169,6 +170,15 @@ void main() {
       expect(engine, isNot(isA<UnknownEngine>()));
     });
 
+    test('resolves circuit rotation engine', () {
+      final ChallengeEngineRegistry registry = ChallengeEngineRegistry();
+      final ChallengeEngine engine = registry.resolve(
+        'precision.circuit_rotation',
+      );
+      expect(engine.engineId, 'precision.circuit_rotation');
+      expect(engine, isA<PrecisionCircuitRotationEngine>());
+    });
+
     test('unknown engine for unrecognized id', () {
       final ChallengeEngineRegistry registry = ChallengeEngineRegistry();
       final ChallengeEngine engine = registry.resolve('some.unknown.engine');
@@ -199,7 +209,8 @@ void main() {
           ),
         ),
       );
-      await tester.pumpAndSettle();
+      // The reaction engine intentionally runs a continuous pulse and timer.
+      await tester.pump();
 
       final TranslationResolver resolver = TranslationResolver(
         isProduction: false,
@@ -233,7 +244,7 @@ void main() {
           ),
         ),
       );
-      await tester.pumpAndSettle();
+      await tester.pump();
 
       final TranslationResolver resolver = TranslationResolver(
         isProduction: false,
@@ -271,7 +282,7 @@ void main() {
           ),
         ),
       );
-      await tester.pumpAndSettle();
+      await tester.pump();
 
       await tester.tap(find.byType(GestureDetector).first);
       await tester.pump();
@@ -309,7 +320,7 @@ void main() {
           ),
         ),
       );
-      await tester.pumpAndSettle();
+      await tester.pump();
 
       await tester.tap(find.byType(GestureDetector).first);
       await tester.pump();
@@ -339,7 +350,7 @@ void main() {
           ),
         ),
       );
-      await tester.pumpAndSettle();
+      await tester.pump();
 
       await tester.tap(find.byType(GestureDetector).first);
       await tester.pump();
@@ -366,7 +377,7 @@ void main() {
           ),
         ),
       );
-      await tester.pumpAndSettle();
+      await tester.pump();
 
       await tester.tap(find.byType(GestureDetector).first);
       await tester.pump();
@@ -401,7 +412,7 @@ void main() {
           ),
         ),
       );
-      await tester.pumpAndSettle();
+      await tester.pump();
 
       await tester.tap(find.byType(GestureDetector).first);
       await tester.pump();
@@ -433,7 +444,7 @@ void main() {
           ),
         ),
       );
-      await tester.pumpAndSettle();
+      await tester.pump();
 
       await tester.tap(find.byType(GestureDetector).first);
       await tester.pump();
@@ -463,7 +474,7 @@ void main() {
           ),
         ),
       );
-      await tester.pumpAndSettle();
+      await tester.pump();
 
       await tester.tap(find.byType(GestureDetector).first);
       await tester.pump();
@@ -506,7 +517,7 @@ void main() {
             ),
           ),
         );
-        await tester.pumpAndSettle();
+        await tester.pump();
 
         final String waitingA = resolver.resolve(
           TranslationKeys.challengeWaitForSignalWaiting,
@@ -536,7 +547,7 @@ void main() {
             ),
           ),
         );
-        await tester.pumpAndSettle();
+        await tester.pump();
 
         final String waitingB = resolver.resolve(
           TranslationKeys.challengeWaitForSignalIntro,

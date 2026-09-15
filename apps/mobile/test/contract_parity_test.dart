@@ -313,6 +313,35 @@ void main() {
       expect(validateServerEnvelope(raw).isValid, isTrue);
     });
 
+    test('challenge.started accepts fog wipe durationMs 10000', () {
+      final Map<String, dynamic> raw = Map<String, dynamic>.from(
+        fixtures['challenge_started'] as Map,
+      );
+      final Map<String, dynamic> payload = Map<String, dynamic>.from(
+        raw['payload'] as Map,
+      );
+      payload['engineId'] = 'gesture.fog_wipe';
+      payload['definitionId'] = 'gesture.fog_wipe.dev';
+      payload['durationMs'] = 10000;
+      payload['deadlineAtMs'] =
+          (payload['startsAtMs'] as int) + 10000;
+      raw['payload'] = payload;
+      final EnvelopeValidation result = validateServerEnvelope(raw);
+      expect(result.isValid, isTrue, reason: result.reason);
+    });
+
+    test('challenge.started rejects durationMs above contract max', () {
+      final Map<String, dynamic> raw = Map<String, dynamic>.from(
+        fixtures['challenge_started'] as Map,
+      );
+      final Map<String, dynamic> payload = Map<String, dynamic>.from(
+        raw['payload'] as Map,
+      );
+      payload['durationMs'] = 15001;
+      raw['payload'] = payload;
+      expect(validateServerEnvelope(raw).isValid, isFalse);
+    });
+
     test('malformed payloads from each event family are rejected', () {
       final Map<String, Map<String, dynamic>> malformed =
           <String, Map<String, dynamic>>{

@@ -29,6 +29,28 @@ export const KNOWN_ASSET_OPTIONS: CatalogOption[] = [
   { value: 'neon_cable.plug_body', labelKey: 'studio.asset.neonPlugBody' },
   { value: 'neon_cable.cable_spark', labelKey: 'studio.asset.neonCableSpark' },
   { value: 'neon_cable.composition', labelKey: 'studio.asset.neonComposition' },
+  { value: 'circuit_rotation.board_base',
+    labelKey: 'studio.asset.circuitBoardBase',
+  },
+  {
+    value: 'circuit_rotation.grid_plate',
+    labelKey: 'studio.asset.circuitGridPlate',
+  },
+
+  { value: 'fog_wipe.reveal_content', labelKey: 'studio.asset.fogRevealContent' },
+  { value: 'fog_wipe.fog_density', labelKey: 'studio.asset.fogDensity' },
+  { value: 'fog_wipe.droplets_height', labelKey: 'studio.asset.fogDroplets' },
+  { value: 'fog_wipe.frosted_edges', labelKey: 'studio.asset.fogFrostedEdges' },
+  { value: 'fog_wipe.scratch_mask', labelKey: 'studio.asset.fogScratchMask' },
+  { value: 'fog_wipe.wet_smudge_mask', labelKey: 'studio.asset.fogWetSmudge' },
+  { value: 'fog_wipe.glass_reflections', labelKey: 'studio.asset.fogGlassReflections' },
+  { value: 'fog_wipe.swipe', labelKey: 'studio.asset.fogSwipeSfx' },
+  { value: 'fog_wipe.reveal.petsev', labelKey: 'studio.asset.fogRevealPetsev' },
+  { value: 'fog_wipe.reveal.gta_vi', labelKey: 'studio.asset.fogRevealGtaVi' },
+  { value: 'fog_wipe.reveal.snowman', labelKey: 'studio.asset.fogRevealSnowman' },
+  { value: 'fog_wipe.reveal.cucumber', labelKey: 'studio.asset.fogRevealCucumber' },
+  { value: 'fog_wipe.reveal.wrap', labelKey: 'studio.asset.fogRevealWrap' },
+  { value: 'fog_wipe.reveal.watermelon', labelKey: 'studio.asset.fogRevealWatermelon' },
 
   { value: 'haptic.light', labelKey: 'studio.asset.hapticLight' },
   { value: 'haptic.medium', labelKey: 'studio.asset.hapticMedium' },
@@ -37,6 +59,26 @@ export const KNOWN_ASSET_OPTIONS: CatalogOption[] = [
   { value: 'shape.circle', labelKey: 'studio.asset.shapeCircle' },
   { value: 'shape.target', labelKey: 'studio.asset.shapeTarget' },
 ];
+
+/** Default fog-wipe reveal pool for Challenge Studio. */
+export const FOG_WIPE_REVEAL_VARIANT_OPTIONS: CatalogOption[] = [
+  { value: 'fog_wipe.reveal.petsev', labelKey: 'studio.asset.fogRevealPetsev' },
+  { value: 'fog_wipe.reveal.gta_vi', labelKey: 'studio.asset.fogRevealGtaVi' },
+  { value: 'fog_wipe.reveal.snowman', labelKey: 'studio.asset.fogRevealSnowman' },
+  { value: 'fog_wipe.reveal.cucumber', labelKey: 'studio.asset.fogRevealCucumber' },
+  { value: 'fog_wipe.reveal.wrap', labelKey: 'studio.asset.fogRevealWrap' },
+  { value: 'fog_wipe.reveal.watermelon', labelKey: 'studio.asset.fogRevealWatermelon' },
+];
+
+export const FOG_WIPE_LAYER_ASSET_IDS = [
+  'fog_wipe.fog_density',
+  'fog_wipe.droplets_height',
+  'fog_wipe.frosted_edges',
+  'fog_wipe.scratch_mask',
+  'fog_wipe.wet_smudge_mask',
+  'fog_wipe.glass_reflections',
+  'fog_wipe.swipe',
+] as const;
 
 export const CATEGORY_KEY_OPTIONS: CatalogOption[] = [
   { value: 'challenge.category.reaction', labelKey: 'studio.catalog.category.reaction' },

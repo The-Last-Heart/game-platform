@@ -24,6 +24,7 @@ export const DIFFICULTY_ENGINE_PRIORITY: Record<
     'tap.precision',
     'gesture.reverse_swipe',
     'gesture.fog_wipe',
+    'precision.circuit_rotation',
     'hold.multitouch',
     'search.select_occurrences',
     'order.sequence_sort',
@@ -50,6 +51,10 @@ export function difficultyOf(
 /**
  * Build a room playlist: 5 easy → 5 medium → 5 hard (shuffled within each tier).
  * `hardLoopPlaylist` is every hard-tagged definition from the pool for sudden-death.
+ *
+ * When the live catalog is sparse (ops pauses / early seeds), padding an early
+ * tier to 5 slots with the same challenge would hide later-tier engines for an
+ * entire match. In that case, interleave across non-empty tiers instead.
  */
 export function buildDifficultyOrderedPlaylist(
   pool: readonly ChallengeDefinition[],
@@ -67,12 +72,25 @@ export function buildDifficultyOrderedPlaylist(
     byDifficulty[difficultyOf(def)].push(def);
   }
 
-  const structured: ChallengeDefinition[] = [];
-  for (const tier of ['easy', 'medium', 'hard'] as const) {
-    structured.push(
-      ...pickTierSlice(byDifficulty[tier], tier, matchId, CHALLENGES_PER_DIFFICULTY),
-    );
-  }
+  const tiers = ['easy', 'medium', 'hard'] as const;
+  const orderedByTier = tiers.map((tier) =>
+    orderTierAvailable(byDifficulty[tier], tier),
+  );
+  const nonEmptyTier = orderedByTier.filter((tier) => tier.length > 0);
+  const sparseAcrossTiers =
+    nonEmptyTier.length >= 2 &&
+    nonEmptyTier.some((tier) => tier.length < CHALLENGES_PER_DIFFICULTY);
+
+  const structured: ChallengeDefinition[] = sparseAcrossTiers
+    ? interleaveSparseTiers(orderedByTier, matchId, CHALLENGES_PER_DIFFICULTY * 3)
+    : tiers.flatMap((tier, index) =>
+        pickTierSlice(
+          orderedByTier[index]!,
+          tier,
+          matchId,
+          CHALLENGES_PER_DIFFICULTY,
+        ),
+      );
 
   const hardLoop =
     byDifficulty.hard.length > 0
@@ -82,13 +100,11 @@ export function buildDifficultyOrderedPlaylist(
   return { structured, hardLoop };
 }
 
-function pickTierSlice(
+function orderTierAvailable(
   available: readonly ChallengeDefinition[],
   tier: ChallengeDifficulty,
-  matchId: string,
-  count: number,
 ): ChallengeDefinition[] {
-  if (available.length === 0 || count <= 0) {
+  if (available.length === 0) {
     return [];
   }
 
@@ -105,7 +121,18 @@ function pickTierSlice(
   const leftovers = [...byEngine.values()].sort((a, b) =>
     a.definitionId.localeCompare(b.definitionId),
   );
-  const ordered = [...prioritized, ...leftovers];
+  return [...prioritized, ...leftovers];
+}
+
+function pickTierSlice(
+  ordered: readonly ChallengeDefinition[],
+  tier: ChallengeDifficulty,
+  matchId: string,
+  count: number,
+): ChallengeDefinition[] {
+  if (ordered.length === 0 || count <= 0) {
+    return [];
+  }
 
   const take = ordered.slice(0, Math.min(count, ordered.length));
   // If catalog is short, cycle the tier so the pack still has `count` slots.
@@ -114,6 +141,54 @@ function pickTierSlice(
   }
 
   return seededShuffle(take, `${matchId}:tier:${tier}`);
+}
+
+/**
+ * Round-robin unique picks across tiers, then cycle to fill the pack.
+ * Shuffled per room so neon/fog (etc.) are not stuck in a fixed order.
+ */
+function interleaveSparseTiers(
+  orderedByTier: readonly (readonly ChallengeDefinition[])[],
+  matchId: string,
+  totalCount: number,
+): ChallengeDefinition[] {
+  const queues = orderedByTier
+    .map((tier, index) =>
+      seededShuffle(tier, `${matchId}:sparse-tier:${index}`),
+    )
+    .filter((tier) => tier.length > 0);
+  if (queues.length === 0 || totalCount <= 0) {
+    return [];
+  }
+
+  const unique: ChallengeDefinition[] = [];
+  const seen = new Set<string>();
+  let progress = true;
+  while (progress) {
+    progress = false;
+    for (const queue of queues) {
+      while (queue.length > 0) {
+        const next = queue.shift()!;
+        if (seen.has(next.definitionId)) {
+          continue;
+        }
+        seen.add(next.definitionId);
+        unique.push(next);
+        progress = true;
+        break;
+      }
+    }
+  }
+
+  if (unique.length === 0) {
+    return [];
+  }
+
+  const out: ChallengeDefinition[] = [];
+  while (out.length < totalCount) {
+    out.push(unique[out.length % unique.length]!);
+  }
+  return out;
 }
 
 function seededShuffle<T>(items: readonly T[], seedMaterial: string): T[] {

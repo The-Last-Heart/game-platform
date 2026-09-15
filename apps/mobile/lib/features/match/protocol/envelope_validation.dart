@@ -457,7 +457,8 @@ EnvelopeValidation? _validatePublicChallenge(
     return EnvelopeValidation.invalid('$label timing fields invalid');
   }
   final Object? durationMs = json['durationMs'];
-  if (durationMs is! int || durationMs < 3000 || durationMs > 8000) {
+  // Must stay aligned with contracts challengeDurationMsSchema (3s–15s).
+  if (durationMs is! int || durationMs < 3000 || durationMs > 15000) {
     return EnvelopeValidation.invalid('$label.durationMs invalid');
   }
   if (json['roundPhase'] is! String ||

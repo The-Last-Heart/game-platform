@@ -7,7 +7,8 @@ import type { SwipeDirection } from '@thelastheart/contracts';
 import { t } from '@/i18n/get-dictionary';
 import type { Locale } from '@/i18n/locale';
 import type { MessageKey } from '@/i18n/messages/en';
-import { FieldCheckboxGroup, FieldGroup } from './Field';
+import { adminApiFetch } from '@/lib/api/client';
+import { FieldCheckboxGroup, FieldGroup, FieldInput } from './Field';
 import {
   CatalogKeyField,
   CollapsibleGroup,
@@ -21,6 +22,8 @@ import {
 } from './OperatorControls';
 import {
   CATEGORY_KEY_OPTIONS,
+  FOG_WIPE_LAYER_ASSET_IDS,
+  FOG_WIPE_REVEAL_VARIANT_OPTIONS,
   MEMORY_OPTION_PRESETS,
   PAIR_ROLE_PRESETS,
   PROMPT_KEY_OPTIONS,
@@ -30,6 +33,99 @@ import {
   SWIPE_DISTANCE_PRESETS,
   ZONE_PRESETS,
 } from './studio-catalog-options';
+
+const DEFAULT_FOG_WIPE_REVEAL_VARIANTS = FOG_WIPE_REVEAL_VARIANT_OPTIONS.map(
+  (o) => o.value,
+);
+
+function defaultFogWipeAssetIds(revealContent: string): Record<string, string> {
+  return {
+    revealContent,
+    fogDensity: 'fog_wipe.fog_density',
+    dropletHeight: 'fog_wipe.droplets_height',
+    frostedEdges: 'fog_wipe.frosted_edges',
+    scratchMask: 'fog_wipe.scratch_mask',
+    wetSmudgeMask: 'fog_wipe.wet_smudge_mask',
+    glassReflections: 'fog_wipe.glass_reflections',
+    swipeSfx: 'fog_wipe.swipe',
+  };
+}
+
+/** Merge fog layers + reveal variants into requiredAssetIds (preserve extras). */
+export function mergeFogWipeRequiredAssets(
+  current: string[],
+  variants: string[],
+  revealContent?: string,
+): string[] {
+  const required = new Set<string>([
+    ...FOG_WIPE_LAYER_ASSET_IDS,
+    ...variants,
+    ...(revealContent ? [revealContent] : []),
+  ]);
+  const extras = current.filter((id) => !required.has(id) && !id.startsWith('fog_wipe.'));
+  return [...required, ...extras];
+}
+
+function defaultCircuitRotationSharedConfig(): Record<string, unknown> {
+  return {
+    assetIds: {
+      boardBase: 'circuit_rotation.board_base',
+      gridPlate: 'circuit_rotation.grid_plate',
+      sparkRive: 'neon_cable.cable_spark',
+    },
+    grid: { rows: 3, columns: 3 },
+    source: { cell: [2, 0], side: 'south' },
+    target: { cell: [0, 2], side: 'north', kind: 'heart' },
+    tiles: [
+      {
+        id: 'source-corner',
+        cell: [2, 0],
+        shape: 'corner',
+        initialQuarterTurns: 1,
+        movable: false,
+      },
+      {
+        id: 'bottom-turn',
+        cell: [2, 1],
+        shape: 'corner',
+        initialQuarterTurns: 0,
+        movable: true,
+      },
+      {
+        id: 'center-straight',
+        cell: [1, 1],
+        shape: 'straight',
+        initialQuarterTurns: 0,
+        movable: false,
+      },
+      {
+        id: 'top-turn',
+        cell: [0, 1],
+        shape: 'corner',
+        initialQuarterTurns: 2,
+        movable: true,
+      },
+      {
+        id: 'heart-corner',
+        cell: [0, 2],
+        shape: 'corner',
+        initialQuarterTurns: 3,
+        movable: false,
+      },
+    ],
+    stationaryConnections: [
+      { cell: [2, 0], side: 'south' },
+      { cell: [0, 2], side: 'north' },
+    ],
+    theme: {
+      inactivePipeColor: '#173746',
+      energyColor: '#55E9FF',
+      energyCoreColor: '#EFFFFF',
+      socketColor: '#B7C3CB',
+    },
+    rotationDegrees: 90,
+  };
+}
 
 export function defaultClientConfig(engineId: LaunchEngineId): Record<string, unknown> {
   switch (engineId) {
@@ -217,23 +313,24 @@ export function defaultClientConfig(engineId: LaunchEngineId): Record<string, un
         correctSocketId: 'socket.cyan',
         plugColor: 'cyan',
       };
-    case 'gesture.fog_wipe':
+    case 'gesture.fog_wipe': {
+      const reveal = DEFAULT_FOG_WIPE_REVEAL_VARIANTS[0]!;
       return {
         categoryKey: 'challenge.category.gesture',
         promptKey: 'challenge.fog_wipe.prompt',
         footerKey: 'challenge.fog_wipe.footer',
-        assetIds: {
-          revealContent: 'fog_wipe.reveal_content',
-          fogDensity: 'fog_wipe.fog_density',
-          dropletHeight: 'fog_wipe.droplets_height',
-          frostedEdges: 'fog_wipe.frosted_edges',
-          scratchMask: 'fog_wipe.scratch_mask',
-          wetSmudgeMask: 'fog_wipe.wet_smudge_mask',
-          glassReflections: 'fog_wipe.glass_reflections',
-        },
+        assetIds: defaultFogWipeAssetIds(reveal),
         brushDiameterNorm: 0.12,
         brushFeatherNorm: 0.28,
         clearanceRatioMin: 0.55,
+      };
+    }
+    case 'precision.circuit_rotation':
+      return {
+        categoryKey: 'challenge.category.precision',
+        promptKey: 'challenge.circuit_rotation.prompt',
+        footerKey: 'challenge.circuit_rotation.footer',
+        ...defaultCircuitRotationSharedConfig(),
       };
     case 'logic.balance_scale':
       return {
@@ -409,20 +506,20 @@ export function defaultServerConfig(engineId: LaunchEngineId): Record<string, un
         correctSocketId: 'socket.cyan',
         plugColor: 'cyan',
       };
-    case 'gesture.fog_wipe':
+    case 'gesture.fog_wipe': {
+      const reveal = DEFAULT_FOG_WIPE_REVEAL_VARIANTS[0]!;
       return {
-        assetIds: {
-          revealContent: 'fog_wipe.reveal_content',
-          fogDensity: 'fog_wipe.fog_density',
-          dropletHeight: 'fog_wipe.droplets_height',
-          frostedEdges: 'fog_wipe.frosted_edges',
-          scratchMask: 'fog_wipe.scratch_mask',
-          wetSmudgeMask: 'fog_wipe.wet_smudge_mask',
-          glassReflections: 'fog_wipe.glass_reflections',
-        },
+        assetIds: defaultFogWipeAssetIds(reveal),
+        revealContentVariants: [...DEFAULT_FOG_WIPE_REVEAL_VARIANTS],
         brushDiameterNorm: 0.12,
         brushFeatherNorm: 0.28,
         clearanceRatioMin: 0.55,
+      };
+    }
+    case 'precision.circuit_rotation':
+      return {
+        ...defaultCircuitRotationSharedConfig(),
+        requireAllConfiguredTilesPowered: true,
       };
     case 'logic.balance_scale':
       return {
@@ -472,6 +569,8 @@ type FamilyParamsFieldsProps = {
   serverConfig: Record<string, unknown>;
   onClientChange: (config: Record<string, unknown>) => void;
   onServerChange: (config: Record<string, unknown>) => void;
+  requiredAssetIds?: string[];
+  onRequiredAssetIdsChange?: (ids: string[]) => void;
   disabled?: boolean;
 };
 
@@ -1092,6 +1191,224 @@ function TacticalRiskChoiceFields(props: FamilyParamsFieldsProps) {
   );
 }
 
+function GestureFogWipeFields(props: FamilyParamsFieldsProps) {
+  const {
+    locale,
+    clientConfig,
+    serverConfig,
+    onClientChange,
+    onServerChange,
+    requiredAssetIds,
+    onRequiredAssetIdsChange,
+    disabled,
+  } = props;
+
+  const variants =
+    (serverConfig.revealContentVariants as string[] | undefined) ??
+    [...DEFAULT_FOG_WIPE_REVEAL_VARIANTS];
+  const brushDiameterNorm = (clientConfig.brushDiameterNorm as number) ?? 0.12;
+  const brushFeatherNorm = (clientConfig.brushFeatherNorm as number) ?? 0.28;
+  const clearanceRatioMin = (clientConfig.clearanceRatioMin as number) ?? 0.55;
+
+  const [customVariant, setCustomVariant] = useState('');
+  const [uploadAssetId, setUploadAssetId] = useState('fog_wipe.reveal.custom');
+  const [uploading, setUploading] = useState(false);
+  const [uploadError, setUploadError] = useState<string | null>(null);
+
+  function syncRevealVariants(nextVariants: string[]) {
+    const reveal = nextVariants[0] ?? DEFAULT_FOG_WIPE_REVEAL_VARIANTS[0]!;
+    const clientAssets = {
+      ...defaultFogWipeAssetIds(reveal),
+      ...((clientConfig.assetIds as Record<string, string> | undefined) ?? {}),
+      revealContent: reveal,
+    };
+    const serverAssets = {
+      ...defaultFogWipeAssetIds(reveal),
+      ...((serverConfig.assetIds as Record<string, string> | undefined) ?? {}),
+      revealContent: reveal,
+    };
+    onClientChange({
+      ...clientConfig,
+      assetIds: clientAssets,
+      brushDiameterNorm,
+      brushFeatherNorm,
+      clearanceRatioMin,
+    });
+    onServerChange({
+      ...serverConfig,
+      assetIds: serverAssets,
+      revealContentVariants: nextVariants,
+      brushDiameterNorm,
+      brushFeatherNorm,
+      clearanceRatioMin,
+    });
+    if (onRequiredAssetIdsChange) {
+      onRequiredAssetIdsChange(
+        mergeFogWipeRequiredAssets(requiredAssetIds ?? [], nextVariants, reveal),
+      );
+    }
+  }
+
+  function syncBrush(partial: {
+    brushDiameterNorm?: number;
+    brushFeatherNorm?: number;
+    clearanceRatioMin?: number;
+  }) {
+    const nextClient = { ...clientConfig, ...partial };
+    const nextServer = { ...serverConfig, ...partial };
+    onClientChange(nextClient);
+    onServerChange(nextServer);
+  }
+
+  async function handleUpload(file: File | null) {
+    if (!file || disabled) return;
+    const assetId = uploadAssetId.trim();
+    if (!assetId) {
+      setUploadError(lbl(locale, 'fp.fogUploadAssetIdRequired'));
+      return;
+    }
+    setUploading(true);
+    setUploadError(null);
+    const form = new FormData();
+    form.append('file', file);
+    form.append('assetId', assetId);
+    const result = await adminApiFetch<{
+      packVersion: number;
+      asset: { assetId: string };
+    }>(`/content/pack/assets?assetId=${encodeURIComponent(assetId)}`, {
+      method: 'POST',
+      body: form,
+    });
+    setUploading(false);
+    if (!result.ok) {
+      setUploadError(result.error.message);
+      return;
+    }
+    const registeredId = result.data.asset.assetId;
+    const nextVariants = variants.includes(registeredId)
+      ? variants
+      : [...variants, registeredId];
+    syncRevealVariants(nextVariants);
+  }
+
+  return (
+    <>
+      <p className="studio-section-lead">{lbl(locale, 'fp.fogWipeLead')}</p>
+      <OrderedChipEditor
+        label={lbl(locale, 'fp.revealContentVariants')}
+        hint={lbl(locale, 'fp.revealContentVariantsHint')}
+        values={variants}
+        options={FOG_WIPE_REVEAL_VARIANT_OPTIONS}
+        onChange={syncRevealVariants}
+        localize={(k) => L(locale, k)}
+        disabled={disabled}
+      />
+      <FieldGroup horizontal>
+        <FieldInput
+          id="fp-fog-custom-variant"
+          label={lbl(locale, 'fp.revealVariantCustom')}
+          value={customVariant}
+          disabled={disabled}
+          placeholder="fog_wipe.reveal.my_image"
+          onChange={(e) => setCustomVariant(e.currentTarget.value)}
+        />
+        <div className="field" style={{ justifyContent: 'flex-end' }}>
+          <label htmlFor="fp-fog-add-custom">&nbsp;</label>
+          <button
+            id="fp-fog-add-custom"
+            type="button"
+            className="btn btn-ghost"
+            disabled={disabled || !customVariant.trim()}
+            onClick={() => {
+              const id = customVariant.trim();
+              if (!id || variants.includes(id)) return;
+              syncRevealVariants([...variants, id]);
+              setCustomVariant('');
+            }}
+          >
+            {lbl(locale, 'fp.revealVariantAdd')}
+          </button>
+        </div>
+      </FieldGroup>
+
+      <FieldGroup horizontal>
+        <FractionPercentField
+          id="fp-fog-brush"
+          label={lbl(locale, 'fp.brushDiameterNorm')}
+          hint={lbl(locale, 'fp.brushDiameterHint')}
+          value={brushDiameterNorm}
+          min={4}
+          max={30}
+          onChange={(v) => syncBrush({ brushDiameterNorm: Math.min(0.3, Math.max(0.04, v)) })}
+          disabled={disabled}
+        />
+        <FractionPercentField
+          id="fp-fog-feather"
+          label={lbl(locale, 'fp.brushFeatherNorm')}
+          hint={lbl(locale, 'fp.brushFeatherHint')}
+          value={brushFeatherNorm}
+          min={10}
+          max={60}
+          onChange={(v) => syncBrush({ brushFeatherNorm: Math.min(0.6, Math.max(0.1, v)) })}
+          disabled={disabled}
+        />
+        <FractionPercentField
+          id="fp-fog-clearance"
+          label={lbl(locale, 'fp.clearanceRatioMin')}
+          hint={lbl(locale, 'fp.clearanceRatioHint')}
+          value={clearanceRatioMin}
+          min={20}
+          max={95}
+          onChange={(v) => syncBrush({ clearanceRatioMin: Math.min(0.95, Math.max(0.2, v)) })}
+          disabled={disabled}
+        />
+      </FieldGroup>
+
+      <CollapsibleGroup title={lbl(locale, 'fp.fogUploadGroup')} defaultOpen>
+        <FieldGroup>
+          <FieldInput
+            id="fp-fog-upload-asset-id"
+            label={lbl(locale, 'fp.fogUploadAssetId')}
+            hint={lbl(locale, 'fp.fogUploadAssetIdHint')}
+            value={uploadAssetId}
+            disabled={disabled || uploading}
+            onChange={(e) => setUploadAssetId(e.currentTarget.value)}
+          />
+          <div className="field">
+            <label htmlFor="fp-fog-upload-file">{lbl(locale, 'fp.fogUploadFile')}</label>
+            <input
+              id="fp-fog-upload-file"
+              type="file"
+              accept="image/png,image/jpeg,image/webp,.png,.jpg,.jpeg,.webp"
+              disabled={disabled || uploading}
+              onChange={(e) => {
+                const file = e.currentTarget.files?.[0] ?? null;
+                void handleUpload(file);
+                e.currentTarget.value = '';
+              }}
+            />
+            <span className="field-hint" style={{ color: 'var(--lh-text-muted)', fontSize: '0.8rem' }}>
+              {uploading ? lbl(locale, 'fp.fogUploading') : lbl(locale, 'fp.fogUploadHint')}
+            </span>
+            {uploadError ? <span className="field-error">{uploadError}</span> : null}
+          </div>
+        </FieldGroup>
+      </CollapsibleGroup>
+
+      <CopyKeysBlock
+        locale={locale}
+        clientConfig={clientConfig}
+        onClientChange={onClientChange}
+        disabled={disabled}
+        keys={[
+          { field: 'promptKey', labelKey: 'fp.promptKey' },
+          { field: 'footerKey', labelKey: 'fp.footerKey' },
+        ]}
+      />
+    </>
+  );
+}
+
 export function FamilyParamsFields(props: FamilyParamsFieldsProps) {
   const { engineId, locale } = props;
   const [showAdvanced, setShowAdvanced] = useState(false);
@@ -1120,6 +1437,8 @@ export function FamilyParamsFields(props: FamilyParamsFieldsProps) {
         return <SocialPairSyncFields {...props} />;
       case 'tactical.risk_choice':
         return <TacticalRiskChoiceFields {...props} />;
+      case 'gesture.fog_wipe':
+        return <GestureFogWipeFields {...props} />;
       default:
         return (
           <p style={{ color: 'var(--lh-text-muted)', fontSize: '0.85rem' }}>

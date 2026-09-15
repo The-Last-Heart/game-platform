@@ -196,6 +196,16 @@ class MatchReducer {
     final bool keepChallenge =
         snap.phase == MatchPhase.challengeIntro ||
         snap.phase == MatchPhase.challengeActive;
+    final bool clearGrants =
+        snap.phase == MatchPhase.challengeIntro ||
+        snap.phase == MatchPhase.challengeActive ||
+        snap.phase == MatchPhase.lobby ||
+        snap.phase == MatchPhase.readyCountdown;
+    final MatchTacticalState? mergedTactical = _mergeTactical(
+      state.tactical,
+      snap.tactical,
+      clearGrants: clearGrants,
+    );
     return state.copyWith(
       matchId: () => snap.matchId,
       phase: snap.phase,
@@ -212,7 +222,41 @@ class MatchReducer {
       mode: () => snap.mode,
       hostPlayerId: () => snap.hostPlayerId,
       roomCode: () => snap.roomCode,
-      tactical: () => snap.tactical,
+      tactical: () => mergedTactical,
+    );
+  }
+
+  /// Snapshot `lastGrant` is singular; keep every seat's unlock across the
+  /// result hold so a later writer's grant does not erase an earlier banner.
+  MatchTacticalState? _mergeTactical(
+    MatchTacticalState? prior,
+    MatchTacticalState? snap, {
+    required bool clearGrants,
+  }) {
+    if (clearGrants) {
+      if (snap == null) return null;
+      return snap.copyWith(
+        recentGrants: const <PowerGrantInfo>[],
+        lastNarrative: () => null,
+      );
+    }
+    if (snap == null && prior == null) return null;
+    final MatchTacticalState base = snap ?? prior!;
+    final Map<String, PowerGrantInfo> byPlayer = <String, PowerGrantInfo>{};
+    for (final PowerGrantInfo g in prior?.recentGrants ?? const <PowerGrantInfo>[]) {
+      byPlayer[g.playerId] = g;
+    }
+    for (final PowerGrantInfo g in snap?.recentGrants ?? const <PowerGrantInfo>[]) {
+      byPlayer[g.playerId] = g;
+    }
+    if (snap?.lastGrant != null) {
+      byPlayer[snap!.lastGrant!.playerId] = snap.lastGrant!;
+    }
+    return base.copyWith(
+      recentGrants: byPlayer.values.toList(),
+      lastGrant: () => snap?.lastGrant ?? prior?.lastGrant,
+      // Snapshots do not carry narrative; keep the live room feed.
+      lastNarrative: () => prior?.lastNarrative ?? snap?.lastNarrative,
     );
   }
 
@@ -439,8 +483,8 @@ class MatchReducer {
       return p.copyWith(energy: granted.energyAfter, inventory: () => next);
     }).toList();
     final MatchTacticalState tactical =
-        (state.tactical ?? const MatchTacticalState()).copyWith(
-          lastGrant: () => PowerGrantInfo(
+        (state.tactical ?? const MatchTacticalState()).withGrant(
+          PowerGrantInfo(
             playerId: granted.playerId,
             powerId: granted.powerId,
             outcome: 'granted',
@@ -466,8 +510,8 @@ class MatchReducer {
       return p.copyWith(energy: full.energyAfter);
     }).toList();
     final MatchTacticalState tactical =
-        (state.tactical ?? const MatchTacticalState()).copyWith(
-          lastGrant: () => PowerGrantInfo(
+        (state.tactical ?? const MatchTacticalState()).withGrant(
+          PowerGrantInfo(
             playerId: full.playerId,
             powerId: null,
             outcome: 'inventory_full',
@@ -513,12 +557,22 @@ class MatchReducer {
       final PlayerPowerInventory prior =
           p.inventory ?? const PlayerPowerInventory();
       return p.copyWith(
+        energy: 0,
         inventory: () => prior.copyWith(dangerPulse: 0),
         lastDangerPulseTargetId: () => used.targetId,
       );
     }).toList();
+    final MatchTacticalState tactical =
+        (state.tactical ?? const MatchTacticalState()).copyWith(
+          lastNarrative: () => PowerNarrative(
+            kind: PowerNarrativeKind.struck,
+            attackerId: used.attackerId,
+            targetId: used.targetId,
+          ),
+        );
     return state.copyWith(
       players: players,
+      tactical: () => tactical,
       currentChallenge: () => null,
       serverSequence: envelope.serverSequence ?? state.serverSequence,
     );
@@ -538,14 +592,38 @@ class MatchReducer {
       reflected: required.reflected,
       defenseDeadlineAtMs: required.defenseDeadlineAtMs,
     );
-    final MatchTacticalState tactical =
+    MatchTacticalState tactical =
         (state.tactical ?? const MatchTacticalState()).copyWith(
           pendingAttack: () => pending,
           eligibleTargetIds: const <String>[],
           actorsWithOffensiveCharge: const <String>[],
         );
+    List<PlayerPublic> players = state.players;
+    // Reflection is consumed when the reverse strike is launched.
+    if (required.reflected) {
+      players = state.players.map((PlayerPublic p) {
+        if (p.playerId != required.attackerId) return p;
+        final PlayerPowerInventory prior =
+            p.inventory ?? const PlayerPowerInventory();
+        return p.copyWith(
+          energy: 0,
+          inventory: () => prior.copyWith(reflection: 0),
+        );
+      }).toList();
+      // Narrative: original target (now attacker) reversed onto original attacker
+      // (now target). Wire fields already swapped on the reflected attack.
+      tactical = tactical.copyWith(
+        lastNarrative: () => PowerNarrative(
+          kind: PowerNarrativeKind.reversed,
+          // Display as defender (who reversed) → new target (original striker).
+          attackerId: required.targetId,
+          targetId: required.attackerId,
+        ),
+      );
+    }
     return state.copyWith(
       phase: MatchPhase.powerDefense,
+      players: players,
       phaseDeadlineAtMs: () => required.defenseDeadlineAtMs,
       nextPhaseAtMs: () => required.defenseDeadlineAtMs,
       tactical: () => tactical,
@@ -563,19 +641,55 @@ class MatchReducer {
     );
     final List<PlayerPublic> players = state.players.map((PlayerPublic p) {
       if (p.playerId != resolved.targetId) return p;
+      final bool spentDefense =
+          resolved.outcome == 'shielded' ||
+          resolved.outcome == 'reflected_shielded';
+      // Reflecting spends reflection immediately when defense_required is
+      // re-issued; shielded outcomes spend the shield here.
+      if (!spentDefense) {
+        return p.copyWith(
+          hearts: resolved.heartsAfterTarget,
+          status: resolved.statusAfterTarget,
+        );
+      }
+      final PlayerPowerInventory prior =
+          p.inventory ?? const PlayerPowerInventory();
       return p.copyWith(
         hearts: resolved.heartsAfterTarget,
         status: resolved.statusAfterTarget,
+        energy: 0,
+        inventory: () => prior.copyWith(shield: 0),
       );
     }).toList();
+    final PowerNarrativeKind kind = switch (resolved.outcome) {
+      'shielded' || 'reflected_shielded' => PowerNarrativeKind.shielded,
+      'expired' => PowerNarrativeKind.expired,
+      _ => PowerNarrativeKind.hit,
+    };
     final MatchTacticalState tactical =
         (state.tactical ?? const MatchTacticalState()).copyWith(
           pendingAttack: () => null,
           eligibleTargetIds: const <String>[],
           actorsWithOffensiveCharge: const <String>[],
+          lastNarrative: () => PowerNarrative(
+            kind: kind,
+            attackerId: resolved.attackerId,
+            targetId: resolved.targetId,
+          ),
         );
     return state.copyWith(
+      phase: MatchPhase.roundResult,
       players: players,
+      phaseDeadlineAtMs: () {
+        final int? ts = envelope.serverTimestampMs;
+        if (ts != null) return ts + 2500;
+        return state.phaseDeadlineAtMs;
+      },
+      nextPhaseAtMs: () {
+        final int? ts = envelope.serverTimestampMs;
+        if (ts != null) return ts + 2500;
+        return state.nextPhaseAtMs;
+      },
       tactical: () => tactical,
       currentChallenge: () => null,
       serverSequence: envelope.serverSequence ?? state.serverSequence,

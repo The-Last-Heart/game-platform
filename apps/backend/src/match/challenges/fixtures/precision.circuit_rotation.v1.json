@@ -1,0 +1,480 @@
+{
+  "definitionId": "precision.circuit_rotation.dev",
+  "definitionVersion": 1,
+  "engineId": "precision.circuit_rotation",
+  "durationMs": 8000,
+  "heartPenaltyOnFailure": 1,
+  "energyRewardOnSuccess": 1,
+  "promptKey": "challenge.circuit_rotation.intro",
+  "choiceKeys": [],
+  "clientConfig": {
+    "categoryKey": "challenge.category.precision",
+    "promptKey": "challenge.circuit_rotation.prompt",
+    "footerKey": "challenge.circuit_rotation.footer",
+    "assetIds": {
+      "boardBase": "circuit_rotation.board_base",
+      "gridPlate": "circuit_rotation.grid_plate",
+      "sparkRive": "neon_cable.cable_spark"
+    },
+    "grid": {
+      "rows": 3,
+      "columns": 3
+    },
+    "source": {
+      "cell": [2, 0],
+      "side": "south"
+    },
+    "target": {
+      "cell": [0, 2],
+      "side": "north",
+      "kind": "heart"
+    },
+    "tiles": [
+      {
+        "id": "source-corner",
+        "cell": [2, 0],
+        "shape": "corner",
+        "initialQuarterTurns": 1,
+        "movable": false
+      },
+      {
+        "id": "bottom-turn",
+        "cell": [2, 1],
+        "shape": "corner",
+        "initialQuarterTurns": 0,
+        "movable": true
+      },
+      {
+        "id": "center-straight",
+        "cell": [1, 1],
+        "shape": "straight",
+        "initialQuarterTurns": 0,
+        "movable": false
+      },
+      {
+        "id": "top-turn",
+        "cell": [0, 1],
+        "shape": "corner",
+        "initialQuarterTurns": 2,
+        "movable": true
+      },
+      {
+        "id": "heart-corner",
+        "cell": [0, 2],
+        "shape": "corner",
+        "initialQuarterTurns": 3,
+        "movable": false
+      }
+    ],
+    "stationaryConnections": [
+      {
+        "cell": [2, 0],
+        "side": "south"
+      },
+      {
+        "cell": [0, 2],
+        "side": "north"
+      }
+    ],
+    "theme": {
+      "inactivePipeColor": "#2A6174",
+      "energyColor": "#55E9FF",
+      "energyCoreColor": "#EFFFFF",
+      "socketColor": "#C9D4DC"
+    },
+    "rotationDegrees": 90
+  },
+  "serverConfig": {
+    "assetIds": {
+      "boardBase": "circuit_rotation.board_base",
+      "gridPlate": "circuit_rotation.grid_plate",
+      "sparkRive": "neon_cable.cable_spark"
+    },
+    "grid": {
+      "rows": 3,
+      "columns": 3
+    },
+    "source": {
+      "cell": [2, 0],
+      "side": "south"
+    },
+    "target": {
+      "cell": [0, 2],
+      "side": "north",
+      "kind": "heart"
+    },
+    "tiles": [
+      {
+        "id": "source-corner",
+        "cell": [2, 0],
+        "shape": "corner",
+        "initialQuarterTurns": 1,
+        "movable": false
+      },
+      {
+        "id": "bottom-turn",
+        "cell": [2, 1],
+        "shape": "corner",
+        "initialQuarterTurns": 0,
+        "movable": true
+      },
+      {
+        "id": "center-straight",
+        "cell": [1, 1],
+        "shape": "straight",
+        "initialQuarterTurns": 0,
+        "movable": false
+      },
+      {
+        "id": "top-turn",
+        "cell": [0, 1],
+        "shape": "corner",
+        "initialQuarterTurns": 2,
+        "movable": true
+      },
+      {
+        "id": "heart-corner",
+        "cell": [0, 2],
+        "shape": "corner",
+        "initialQuarterTurns": 3,
+        "movable": false
+      }
+    ],
+    "stationaryConnections": [
+      {
+        "cell": [2, 0],
+        "side": "south"
+      },
+      {
+        "cell": [0, 2],
+        "side": "north"
+      }
+    ],
+    "theme": {
+      "inactivePipeColor": "#2A6174",
+      "energyColor": "#55E9FF",
+      "energyCoreColor": "#EFFFFF",
+      "socketColor": "#C9D4DC"
+    },
+    "rotationDegrees": 90,
+    "requireAllConfiguredTilesPowered": true,
+    "variants": [
+      {
+        "grid": {
+          "rows": 3,
+          "columns": 3
+        },
+        "source": {
+          "cell": [2, 0],
+          "side": "south"
+        },
+        "target": {
+          "cell": [0, 2],
+          "side": "north",
+          "kind": "heart"
+        },
+        "tiles": [
+          {
+            "id": "source-corner",
+            "cell": [2, 0],
+            "shape": "corner",
+            "initialQuarterTurns": 1,
+            "movable": false
+          },
+          {
+            "id": "bottom-turn",
+            "cell": [2, 1],
+            "shape": "corner",
+            "initialQuarterTurns": 3,
+            "movable": false
+          },
+          {
+            "id": "center-straight",
+            "cell": [1, 1],
+            "shape": "straight",
+            "initialQuarterTurns": 1,
+            "movable": true
+          },
+          {
+            "id": "top-turn",
+            "cell": [0, 1],
+            "shape": "corner",
+            "initialQuarterTurns": 1,
+            "movable": false
+          },
+          {
+            "id": "heart-corner",
+            "cell": [0, 2],
+            "shape": "corner",
+            "initialQuarterTurns": 3,
+            "movable": false
+          }
+        ],
+        "stationaryConnections": [
+          {
+            "cell": [2, 0],
+            "side": "south"
+          },
+          {
+            "cell": [0, 2],
+            "side": "north"
+          }
+        ],
+        "requireAllConfiguredTilesPowered": true
+      },
+      {
+        "grid": {
+          "rows": 3,
+          "columns": 3
+        },
+        "source": {
+          "cell": [2, 0],
+          "side": "south"
+        },
+        "target": {
+          "cell": [0, 2],
+          "side": "north",
+          "kind": "heart"
+        },
+        "tiles": [
+          {
+            "id": "source-corner",
+            "cell": [2, 0],
+            "shape": "corner",
+            "initialQuarterTurns": 1,
+            "movable": false
+          },
+          {
+            "id": "bottom-turn",
+            "cell": [2, 1],
+            "shape": "corner",
+            "initialQuarterTurns": 0,
+            "movable": true
+          },
+          {
+            "id": "center-straight",
+            "cell": [1, 1],
+            "shape": "straight",
+            "initialQuarterTurns": 0,
+            "movable": false
+          },
+          {
+            "id": "top-turn",
+            "cell": [0, 1],
+            "shape": "corner",
+            "initialQuarterTurns": 2,
+            "movable": true
+          },
+          {
+            "id": "heart-corner",
+            "cell": [0, 2],
+            "shape": "corner",
+            "initialQuarterTurns": 3,
+            "movable": false
+          }
+        ],
+        "stationaryConnections": [
+          {
+            "cell": [2, 0],
+            "side": "south"
+          },
+          {
+            "cell": [0, 2],
+            "side": "north"
+          }
+        ],
+        "requireAllConfiguredTilesPowered": true
+      },
+      {
+        "grid": {
+          "rows": 3,
+          "columns": 3
+        },
+        "source": {
+          "cell": [2, 0],
+          "side": "south"
+        },
+        "target": {
+          "cell": [0, 2],
+          "side": "north",
+          "kind": "heart"
+        },
+        "tiles": [
+          {
+            "id": "source-corner",
+            "cell": [2, 0],
+            "shape": "corner",
+            "initialQuarterTurns": 0,
+            "movable": true
+          },
+          {
+            "id": "bottom-turn",
+            "cell": [2, 1],
+            "shape": "corner",
+            "initialQuarterTurns": 0,
+            "movable": true
+          },
+          {
+            "id": "center-straight",
+            "cell": [1, 1],
+            "shape": "straight",
+            "initialQuarterTurns": 1,
+            "movable": true
+          },
+          {
+            "id": "top-turn",
+            "cell": [0, 1],
+            "shape": "corner",
+            "initialQuarterTurns": 1,
+            "movable": false
+          },
+          {
+            "id": "heart-corner",
+            "cell": [0, 2],
+            "shape": "corner",
+            "initialQuarterTurns": 3,
+            "movable": false
+          }
+        ],
+        "stationaryConnections": [
+          {
+            "cell": [2, 0],
+            "side": "south"
+          },
+          {
+            "cell": [0, 2],
+            "side": "north"
+          }
+        ],
+        "requireAllConfiguredTilesPowered": true
+      },
+      {
+        "grid": {
+          "rows": 3,
+          "columns": 3
+        },
+        "source": {
+          "cell": [2, 0],
+          "side": "south"
+        },
+        "target": {
+          "cell": [0, 2],
+          "side": "north",
+          "kind": "heart"
+        },
+        "tiles": [
+          {
+            "id": "source-corner",
+            "cell": [2, 0],
+            "shape": "corner",
+            "initialQuarterTurns": 0,
+            "movable": true
+          },
+          {
+            "id": "bottom-turn",
+            "cell": [2, 1],
+            "shape": "corner",
+            "initialQuarterTurns": 0,
+            "movable": true
+          },
+          {
+            "id": "center-straight",
+            "cell": [1, 1],
+            "shape": "straight",
+            "initialQuarterTurns": 0,
+            "movable": false
+          },
+          {
+            "id": "top-turn",
+            "cell": [0, 1],
+            "shape": "corner",
+            "initialQuarterTurns": 2,
+            "movable": true
+          },
+          {
+            "id": "heart-corner",
+            "cell": [0, 2],
+            "shape": "corner",
+            "initialQuarterTurns": 0,
+            "movable": true
+          }
+        ],
+        "stationaryConnections": [
+          {
+            "cell": [2, 0],
+            "side": "south"
+          },
+          {
+            "cell": [0, 2],
+            "side": "north"
+          }
+        ],
+        "requireAllConfiguredTilesPowered": true
+      },
+      {
+        "grid": {
+          "rows": 3,
+          "columns": 3
+        },
+        "source": {
+          "cell": [2, 0],
+          "side": "south"
+        },
+        "target": {
+          "cell": [0, 2],
+          "side": "north",
+          "kind": "heart"
+        },
+        "tiles": [
+          {
+            "id": "source-corner",
+            "cell": [2, 0],
+            "shape": "corner",
+            "initialQuarterTurns": 0,
+            "movable": true
+          },
+          {
+            "id": "bottom-turn",
+            "cell": [2, 1],
+            "shape": "corner",
+            "initialQuarterTurns": 0,
+            "movable": true
+          },
+          {
+            "id": "center-straight",
+            "cell": [1, 1],
+            "shape": "straight",
+            "initialQuarterTurns": 1,
+            "movable": true
+          },
+          {
+            "id": "top-turn",
+            "cell": [0, 1],
+            "shape": "corner",
+            "initialQuarterTurns": 2,
+            "movable": true
+          },
+          {
+            "id": "heart-corner",
+            "cell": [0, 2],
+            "shape": "corner",
+            "initialQuarterTurns": 0,
+            "movable": true
+          }
+        ],
+        "stationaryConnections": [
+          {
+            "cell": [2, 0],
+            "side": "south"
+          },
+          {
+            "cell": [0, 2],
+            "side": "north"
+          }
+        ],
+        "requireAllConfiguredTilesPowered": true
+      }
+    ]
+  },
+  "difficulty": "medium"
+}

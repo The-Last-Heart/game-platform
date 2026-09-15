@@ -12,6 +12,7 @@ import 'widgets/energy_display.dart';
 import 'widgets/hearts_display.dart';
 import 'widgets/lh_buttons.dart';
 import 'widgets/lh_heart_logo.dart';
+import 'widgets/power_narrative_banner.dart';
 
 /// Displays round results — survived (22) or lost heart (23).
 class RoundResultView extends StatefulWidget {
@@ -129,6 +130,8 @@ class _RoundResultViewState extends State<RoundResultView> {
             const SizedBox(height: 16),
           ],
 
+          PowerNarrativeBanner(state: widget.state, resolver: resolver),
+
           if (survived)
             ..._buildSurvivedContent(
               context,
@@ -178,9 +181,9 @@ class _RoundResultViewState extends State<RoundResultView> {
   }
 
   Widget? _localGrantBanner(TranslationResolver resolver) {
-    final PowerGrantInfo? grant = widget.state.tactical?.lastGrant;
+    final PowerGrantInfo? grant =
+        widget.state.tactical?.grantFor(widget.state.playerId);
     if (grant == null) return null;
-    if (grant.playerId != widget.state.playerId) return null;
     final bool full = grant.outcome == 'inventory_full';
     final String title = resolver.resolve(
       full ? 'power.inventory_full' : 'power.granted',
@@ -188,6 +191,11 @@ class _RoundResultViewState extends State<RoundResultView> {
     final String? powerName = grant.powerId == null
         ? null
         : resolver.resolve('power.${grant.powerId}.name');
+    final String? nextHint = full
+        ? null
+        : grant.powerId == PowerIds.dangerPulse
+            ? resolver.resolve('power.granted.strike_next')
+            : resolver.resolve('power.granted.meter_ready');
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.all(14),
@@ -214,6 +222,16 @@ class _RoundResultViewState extends State<RoundResultView> {
             Text(
               powerName,
               style: Theme.of(context).textTheme.bodyMedium,
+              textAlign: TextAlign.center,
+            ),
+          ],
+          if (nextHint != null) ...<Widget>[
+            const SizedBox(height: 6),
+            Text(
+              nextHint,
+              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                color: LhColors.textMuted,
+              ),
               textAlign: TextAlign.center,
             ),
           ],
@@ -379,6 +397,12 @@ class _RoundResultViewState extends State<RoundResultView> {
     TranslationResolver resolver,
     int energy,
   ) {
+    final PowerGrantInfo? grant =
+        widget.state.tactical?.grantFor(widget.state.playerId);
+    final bool meterReadyWithPower =
+        grant != null &&
+        grant.outcome == 'granted' &&
+        energy >= 4;
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
@@ -396,7 +420,9 @@ class _RoundResultViewState extends State<RoundResultView> {
                 style: Theme.of(context).textTheme.labelLarge,
               ),
               Text(
-                '$energy / 4',
+                meterReadyWithPower
+                    ? resolver.resolve('power.granted.meter_ready_short')
+                    : '$energy / 4',
                 style: Theme.of(
                   context,
                 ).textTheme.bodyMedium?.copyWith(color: LhColors.warning),

@@ -498,4 +498,77 @@ describe('per-seat challenge variants', () => {
     expect(match.players.get(idA)!.hearts).toBe(3);
     expect(match.players.get(idB)!.hearts).toBe(3);
   });
+
+  it('assigns distinct fog wipe reveal images per seat', () => {
+    const clock = new FakeClock(1_000_000);
+    const eng = engine(clock);
+    let match = fillTwo(eng);
+    const sharedLayers = {
+      fogDensity: 'fog_wipe.fog_density',
+      dropletHeight: 'fog_wipe.droplets_height',
+      frostedEdges: 'fog_wipe.frosted_edges',
+      scratchMask: 'fog_wipe.scratch_mask',
+      wetSmudgeMask: 'fog_wipe.wet_smudge_mask',
+      glassReflections: 'fog_wipe.glass_reflections',
+    };
+    const def = {
+      definitionId: 'gesture.fog_wipe.dev',
+      definitionVersion: 2,
+      engineId: 'gesture.fog_wipe',
+      durationMs: 10000,
+      heartPenaltyOnFailure: 1,
+      energyRewardOnSuccess: 1,
+      promptKey: 'challenge.fog_wipe.intro',
+      choiceKeys: [] as string[],
+      clientConfig: {
+        categoryKey: 'challenge.category.gesture',
+        promptKey: 'challenge.fog_wipe.prompt',
+        footerKey: 'challenge.fog_wipe.footer',
+        assetIds: {
+          revealContent: 'fog_wipe.reveal.petsev',
+          ...sharedLayers,
+        },
+        brushDiameterNorm: 0.12,
+        brushFeatherNorm: 0.28,
+        clearanceRatioMin: 0.55,
+      },
+      serverConfig: {
+        assetIds: {
+          revealContent: 'fog_wipe.reveal.petsev',
+          ...sharedLayers,
+        },
+        revealContentVariants: [
+          'fog_wipe.reveal.petsev',
+          'fog_wipe.reveal.gta_vi',
+          'fog_wipe.reveal.snowman',
+          'fog_wipe.reveal.cucumber',
+        ],
+        brushDiameterNorm: 0.12,
+        brushFeatherNorm: 0.28,
+        clearanceRatioMin: 0.55,
+      },
+    };
+    match = eng.startChallenge(match, def).match;
+    const challenge = match.currentChallenge!;
+    const seats = [...challenge.seatVariants!.entries()];
+    expect(seats).toHaveLength(2);
+    const reveals = seats.map(([, s]) => {
+      const ids = s.clientOverlay['assetIds'] as Record<string, string>;
+      expect(ids['fogDensity']).toBe('fog_wipe.fog_density');
+      return ids['revealContent'];
+    });
+    expect(reveals.every((id) => typeof id === 'string' && id.length > 0)).toBe(
+      true,
+    );
+    expect(new Set(reveals).size).toBe(2);
+
+    const [idA, seatA] = seats[0]!;
+    const viewA = toPublicChallengeView(challenge, clock.nowMs(), idA);
+    const viewAssets = viewA.clientConfig['assetIds'] as Record<string, string>;
+    expect(viewAssets['revealContent']).toBe(
+      (seatA.clientOverlay['assetIds'] as Record<string, string>)[
+        'revealContent'
+      ],
+    );
+  });
 });

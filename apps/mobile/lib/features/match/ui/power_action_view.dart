@@ -14,6 +14,7 @@ import 'widgets/hearts_display.dart';
 import 'widgets/lh_buttons.dart';
 import 'widgets/lh_heart_logo.dart';
 import 'widgets/challenge_sfx.dart';
+import 'widgets/power_narrative_banner.dart';
 
 /// Between-round offensive window: target selection / no targets / skip.
 class PowerActionView extends StatefulWidget {
@@ -152,7 +153,9 @@ class _PowerActionViewState extends State<PowerActionView> {
           ),
           const SizedBox(height: 12),
           EnergyDisplay(energy: local?.energy ?? 0),
-          const SizedBox(height: 28),
+          const SizedBox(height: 16),
+          PowerNarrativeBanner(state: widget.state, resolver: resolver),
+          const SizedBox(height: 12),
           CountdownRing(
             progress: _progress,
             label: '$_secondsLabel',
@@ -161,7 +164,9 @@ class _PowerActionViewState extends State<PowerActionView> {
           const SizedBox(height: 24),
           if (!canAct)
             Text(
-              resolver.resolve(TranslationKeys.powerActionWaiting),
+              widget.state.tactical?.lastNarrative != null
+                  ? resolver.resolve(TranslationKeys.powerActionWatching)
+                  : resolver.resolve(TranslationKeys.powerActionWaiting),
               style: Theme.of(context).textTheme.titleMedium?.copyWith(
                 color: LhColors.textMuted,
               ),

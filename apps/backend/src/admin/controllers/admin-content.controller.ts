@@ -3,17 +3,25 @@ import {
   Body,
   Controller,
   Get,
+  Header,
   Param,
   Patch,
   Post,
   Query,
+  Res,
+  UploadedFile,
   UseGuards,
+  UseInterceptors,
 } from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
+import { memoryStorage } from 'multer';
+import type { Response } from 'express';
 import {
   adminCatalogComposeRequestSchema,
   adminChallengeAnalyticsQuerySchema,
   adminContentApproveRequestSchema,
   adminContentDraftUpsertRequestSchema,
+  adminContentLiveEligibilityRequestSchema,
   adminContentPauseRequestSchema,
   adminContentPublishCatalogRequestSchema,
   adminContentRejectRequestSchema,
@@ -36,6 +44,7 @@ import { AdminAuthGuard } from '../guards/admin-auth.guard';
 import { PermissionsGuard } from '../guards/permissions.guard';
 import type { AdminAuthContext } from '../services/admin.types';
 import { ContentLifecycleService } from '../../content/services/content-lifecycle.service';
+import { ContentPackService } from '../../content/services/content-pack.service';
 import { EmergencyControlsService } from '../../content/services/emergency-controls.service';
 import { ReleaseResolverService } from '../../content/services/release-resolver.service';
 import { MatchService } from '../../match/services/match.service';
@@ -51,6 +60,7 @@ export class AdminContentController {
   constructor(
     private readonly content: ContentLifecycleService,
     private readonly releases: ReleaseResolverService,
+    private readonly contentPack: ContentPackService,
   ) {}
 
   // ── Read endpoints ───────────────────────────────────────────────────────
@@ -116,6 +126,78 @@ export class AdminContentController {
       });
     }
     return ok(this.content.computeCatalogProof(entries));
+  }
+
+  // ── Content pack assets ──────────────────────────────────────────────────
+
+  @Get('pack/assets')
+  @RequirePermissions('content:read')
+  listPackAssets() {
+    const manifest = this.contentPack.getManifest();
+    return ok({
+      packId: manifest.packId,
+      packVersion: manifest.packVersion,
+      assets: this.contentPack.listAssets(),
+    });
+  }
+
+  @Get('pack/assets/:assetId')
+  @RequirePermissions('content:read')
+  @Header('Cache-Control', 'private, max-age=300')
+  getPackAsset(
+    @Param('assetId') assetId: string,
+    @Res() res: Response,
+  ): void {
+    const { meta, body } = this.contentPack.getAsset(assetId);
+    res.setHeader('Content-Type', meta.contentType);
+    res.setHeader('Content-Length', String(body.byteLength));
+    res.setHeader('X-Content-Sha256', meta.sha256);
+    res.send(body);
+  }
+
+  @Post('pack/assets')
+  @RequirePermissions('content:write')
+  @UseInterceptors(
+    FileInterceptor('file', {
+      storage: memoryStorage(),
+      limits: { fileSize: 12 * 1024 * 1024 },
+    }),
+  )
+  async registerPackAsset(
+    @UploadedFile() file: Express.Multer.File | undefined,
+    @Query('assetId') assetIdQuery: string | undefined,
+    @Body() body: { assetId?: string } | undefined,
+  ) {
+    const assetId =
+      (typeof assetIdQuery === 'string' && assetIdQuery.trim()) ||
+      (typeof body?.assetId === 'string' && body.assetId.trim()) ||
+      '';
+    if (!assetId) {
+      throw new BadRequestException({
+        ok: false,
+        error: {
+          code: 'VALIDATION_ERROR',
+          message: 'assetId query or form field is required',
+        },
+      });
+    }
+    if (!file?.buffer?.byteLength) {
+      throw new BadRequestException({
+        ok: false,
+        error: {
+          code: 'VALIDATION_ERROR',
+          message: 'multipart field "file" is required',
+        },
+      });
+    }
+    const asset = await this.contentPack.registerPngAsset({
+      assetId,
+      body: file.buffer,
+    });
+    return ok({
+      packVersion: this.contentPack.getManifest().packVersion,
+      asset,
+    });
   }
 
   // ── Draft endpoints ──────────────────────────────────────────────────────
@@ -294,6 +376,25 @@ export class AdminContentController {
       });
     }
     return ok(await this.content.pauseDefinition(admin.user.id, parsed.data));
+  }
+
+  @Post('live-eligibility')
+  @RequirePermissions('content:publish')
+  async liveEligibility(
+    @CurrentAdmin() admin: AdminAuthContext,
+    @Body() body: unknown,
+  ) {
+    const parsed = adminContentLiveEligibilityRequestSchema.safeParse(body);
+    if (!parsed.success) {
+      throw new BadRequestException({
+        ok: false,
+        error: {
+          code: 'VALIDATION_ERROR',
+          message: 'Invalid live eligibility payload',
+        },
+      });
+    }
+    return ok(await this.content.setLiveEligibility(admin.user.id, parsed.data));
   }
 
   @Post('catalog/rollback')

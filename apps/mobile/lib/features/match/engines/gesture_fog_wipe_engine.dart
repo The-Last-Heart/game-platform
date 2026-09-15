@@ -12,6 +12,7 @@ import '../../../l10n/translation_resolver.dart';
 import '../../../theme/lh_tokens.dart';
 import '../../content/content_asset_cache.dart';
 import '../ui/widgets/challenge_countdown.dart';
+import '../ui/widgets/challenge_sfx.dart';
 import 'challenge_engine.dart';
 
 /// Fog-wipe glass panel: swipe to clear condensation over reveal content.
@@ -36,9 +37,26 @@ class _FogWipeWidget extends StatefulWidget {
 
 class _FogWipeWidgetState extends State<_FogWipeWidget> {
   static const int _grid = 48;
+  /// Panel is phone-sized; decoding full 1254² layers on the UI isolate stalls
+  /// the whole round. Keep authored art, decode at display resolution.
+  static const int _decodeTargetPx = 720;
+  static const String _defaultSwipeSfxId = 'fog_wipe.swipe';
+  static const int _swipeSfxMinIntervalMs = 90;
+  static const List<String> _layerKeys = <String>[
+    'revealContent',
+    'fogDensity',
+    'dropletHeight',
+    'frostedEdges',
+    'scratchMask',
+    'wetSmudgeMask',
+    'glassReflections',
+  ];
 
   bool _submitted = false;
   bool _loading = true;
+  int _loadAttempts = 0;
+  int _lastSwipeSfxMs = 0;
+  String _swipeSfxAssetId = _defaultSwipeSfxId;
   final Map<String, ui.Image> _images = <String, ui.Image>{};
   final List<Offset> _wipePoints = <Offset>[];
   Float32List? _fogWeights;
@@ -72,34 +90,113 @@ class _FogWipeWidgetState extends State<_FogWipeWidget> {
     unawaited(_loadAssets());
   }
 
+  @override
+  void dispose() {
+    for (final ui.Image image in _images.values) {
+      image.dispose();
+    }
+    _images.clear();
+    super.dispose();
+  }
+
   Future<void> _loadAssets() async {
-    final List<String> keys = <String>[
-      'revealContent',
-      'fogDensity',
-      'dropletHeight',
-      'frostedEdges',
-      'scratchMask',
-      'wetSmudgeMask',
-      'glassReflections',
-    ];
-    for (final String key in keys) {
-      final String? id = _assetIds[key]?.toString();
-      if (id == null || id.isEmpty) continue;
-      final File? file = await ContentAssetCache.instance.localFile(id);
-      if (file == null || !await file.exists()) continue;
-      final Uint8List bytes = await file.readAsBytes();
-      final ui.Codec codec = await ui.instantiateImageCodec(bytes);
-      final ui.FrameInfo frame = await codec.getNextFrame();
-      _images[key] = frame.image;
-    }
+    try {
+      final Map<String, String> requiredIds = <String, String>{};
+      for (final String key in _layerKeys) {
+        final String? id = _assetIds[key]?.toString();
+        if (id == null || id.isEmpty) {
+          throw StateError('fog wipe missing assetId for $key');
+        }
+        requiredIds[key] = id;
+      }
+      final String swipeId =
+          _assetIds['swipeSfx']?.toString() ?? _defaultSwipeSfxId;
+      _swipeSfxAssetId = swipeId.isEmpty ? _defaultSwipeSfxId : swipeId;
 
-    final ui.Image? fog = _images['fogDensity'];
-    if (fog != null) {
+      // Resolve files first (may re-fetch), then decode one layer at a time so
+      // the round countdown / spinner can keep painting on slower devices.
+      final Map<String, File> files = <String, File>{};
+      for (final MapEntry<String, String> entry in requiredIds.entries) {
+        final File? file =
+            await ContentAssetCache.instance.ensureAsset(entry.value);
+        if (file == null || !await file.exists()) {
+          throw StateError('fog wipe asset not cached: ${entry.value}');
+        }
+        files[entry.key] = file;
+        await Future<void>.delayed(Duration.zero);
+        if (!mounted) return;
+      }
+      // Swipe SFX is optional for painting but should be warm in cache.
+      await ContentAssetCache.instance.ensureAsset(_swipeSfxAssetId);
+      await Future<void>.delayed(Duration.zero);
+      if (!mounted) return;
+
+      final Map<String, ui.Image> decoded = <String, ui.Image>{};
+      try {
+        for (final MapEntry<String, File> entry in files.entries) {
+          decoded[entry.key] = await _decodeImageFile(entry.value);
+          await Future<void>.delayed(Duration.zero);
+          if (!mounted) {
+            for (final ui.Image image in decoded.values) {
+              image.dispose();
+            }
+            return;
+          }
+        }
+      } catch (_) {
+        for (final ui.Image image in decoded.values) {
+          image.dispose();
+        }
+        rethrow;
+      }
+
+      for (final ui.Image old in _images.values) {
+        old.dispose();
+      }
+      _images
+        ..clear()
+        ..addAll(decoded);
+
+      final ui.Image? fog = _images['fogDensity'];
+      if (fog == null) {
+        throw StateError('fog wipe fogDensity failed to decode');
+      }
       await _sampleFogWeights(fog);
-    }
+      if (_fogWeights == null) {
+        throw StateError('fog wipe weight sampling failed');
+      }
 
-    if (!mounted) return;
-    setState(() => _loading = false);
+      if (!mounted) return;
+      setState(() => _loading = false);
+    } catch (error, stack) {
+      debugPrint('gesture.fog_wipe load failed: $error\n$stack');
+      if (!mounted) return;
+      _loadAttempts += 1;
+      if (_loadAttempts >= 4) {
+        // Keep loader visible; do not open a hollow panel.
+        return;
+      }
+      await Future<void>.delayed(Duration(milliseconds: 200 * _loadAttempts));
+      if (!mounted || !_loading) return;
+      unawaited(_loadAssets());
+    }
+  }
+
+  Future<ui.Image> _decodeImageFile(File file) async {
+    final Uint8List bytes = await file.readAsBytes();
+    // Yield after IO so the first frame can paint before codec work.
+    await Future<void>.delayed(Duration.zero);
+    final ui.Codec codec = await ui.instantiateImageCodec(
+      bytes,
+      targetWidth: _decodeTargetPx,
+      targetHeight: _decodeTargetPx,
+    );
+    try {
+      final ui.FrameInfo frame = await codec.getNextFrame();
+      return frame.image;
+    } finally {
+      codec.dispose();
+    }
   }
 
   Future<void> _sampleFogWeights(ui.Image fog) async {
@@ -136,6 +233,13 @@ class _FogWipeWidgetState extends State<_FogWipeWidget> {
     });
   }
 
+  void _playSwipeSfx() {
+    final int now = DateTime.now().millisecondsSinceEpoch;
+    if (now - _lastSwipeSfxMs < _swipeSfxMinIntervalMs) return;
+    _lastSwipeSfxMs = now;
+    unawaited(ChallengeSfx.instance.play(_swipeSfxAssetId));
+  }
+
   void _stampWipe(Offset local, Size panelSize) {
     if (_submitted ||
         widget.challengeContext.isInteractionLocked ||
@@ -165,6 +269,7 @@ class _FogWipeWidgetState extends State<_FogWipeWidget> {
       _wipePoints.add(norm);
       _markCleared(norm);
     }
+    _playSwipeSfx();
     setState(() {});
     _submitIfReady();
   }

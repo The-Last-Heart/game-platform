@@ -35,7 +35,7 @@ The home level, earned points, current activity, and daily goal are real or abse
 ## Energy and powers
 
 - Standard success grants one of four energy segments.
-- Completing the meter grants exactly one eligible power from published weights and consumes the meter.
+- Completing the meter grants exactly one eligible power from published weights. The meter stays full until the player consumes that power, then resets to zero and can refill on later successes.
 - Inventory limit is three total charges and one per power type.
 - Full inventory produces an explicit result and never silently drops a reward.
 - Launch powers are Danger Pulse, Shield, and Reflection.

@@ -80,7 +80,7 @@ describe('LH-008 energy and powers', () => {
     return { clock, engine };
   };
 
-  it('four successes grant exactly one power and reset meter', () => {
+  it('four successes grant one power and keep the meter full', () => {
     const { engine } = setup();
     let match = fillTwo(engine);
     for (let i = 0; i < 4; i++) {
@@ -94,12 +94,27 @@ describe('LH-008 energy and powers', () => {
       ).match;
     }
     const p0 = match.players.get('p0')!;
-    expect(p0.energy).toBe(0);
+    expect(p0.energy).toBe(4);
     expect(
       p0.inventory.danger_pulse +
         p0.inventory.shield +
         p0.inventory.reflection,
     ).toBe(1);
+  });
+
+  it('using danger pulse resets the meter to zero', () => {
+    const { engine } = setup();
+    let match = fillTwo(engine);
+    match.players.get('p0')!.energy = 4;
+    match.players.get('p0')!.inventory.danger_pulse = 1;
+    match = engine.beginRoundResult(match, [], 'x', 100).match;
+    match = engine.beginPowerAction(match).match;
+    match = engine.useDangerPulse(match, {
+      attackerId: 'p0',
+      targetPlayerId: 'p1',
+    }).match;
+    expect(match.players.get('p0')!.energy).toBe(0);
+    expect(match.players.get('p0')!.inventory.danger_pulse).toBe(0);
   });
 
   it('power.granted events use sequences after challenge.resolved', () => {
@@ -148,7 +163,7 @@ describe('LH-008 energy and powers', () => {
     p0.energy = 3;
     match = playSuccess(engine, match);
     const after = match.players.get('p0')!;
-    expect(after.energy).toBe(0);
+    expect(after.energy).toBe(4);
     expect(match.lastPowerGrant?.outcome).toBe('inventory_full');
   });
 
@@ -174,6 +189,46 @@ describe('LH-008 energy and powers', () => {
     expect(match.players.get('p1')!.protectedThroughRound).toBe(
       match.roundNumber + 1,
     );
+  });
+
+  it('power.used and power.defense_required use consecutive sequences', () => {
+    const { engine } = setup();
+    let match = fillTwo(engine);
+    match.players.get('p0')!.inventory.danger_pulse = 1;
+    match = engine.beginRoundResult(match, [], 'x', 100).match;
+    match = engine.beginPowerAction(match).match;
+    const used = engine.useDangerPulse(match, {
+      attackerId: 'p0',
+      targetPlayerId: 'p1',
+    });
+    const powerUsed = used.events.find((e) => e.kind === 'power_used');
+    const defenseRequired = used.events.find(
+      (e) => e.kind === 'power_defense_required',
+    );
+    expect(powerUsed).toBeDefined();
+    expect(defenseRequired).toBeDefined();
+    expect(defenseRequired!.sequence).toBe(powerUsed!.sequence + 1);
+  });
+
+  it('action window defaults to 5 seconds', () => {
+    const { engine } = setup();
+    let match = fillTwo(engine);
+    match.players.get('p0')!.inventory.danger_pulse = 1;
+    match = engine.beginRoundResult(match, [], 'x', 100).match;
+    const offered = engine.beginPowerAction(match);
+    expect(offered.match.powerConfig?.actionWindowMs ?? 5000).toBe(5000);
+    expect(
+      (offered.match.phaseDeadlineAtMs ?? 0) -
+        (offered.events.find((e) => e.kind === 'power_offered')
+          ?.serverTimestampMs ?? 0),
+    ).toBeLessThanOrEqual(5000);
+    const offeredEvent = offered.events.find((e) => e.kind === 'power_offered');
+    expect(offeredEvent).toBeDefined();
+    if (offeredEvent && offeredEvent.kind === 'power_offered') {
+      expect(
+        offeredEvent.actionDeadlineAtMs - offeredEvent.serverTimestampMs,
+      ).toBe(5000);
+    }
   });
 
   it('reflection cannot loop; reflected sender may shield', () => {

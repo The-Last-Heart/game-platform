@@ -331,6 +331,274 @@ void main() {
       );
     });
 
+    test('power grants accumulate per seat across snapshot lastGrant overwrite', () {
+      MatchViewState state = initialState(
+        sequence: 10,
+        playerId: 'player-1',
+        matchId: 'match-abc',
+      );
+      state = state.copyWith(
+        players: <PlayerPublic>[
+          const PlayerPublic(
+            playerId: 'player-1',
+            hearts: 3,
+            energy: 0,
+            status: PlayerStatus.active,
+            presence: Presence.connected,
+            submittedForCurrentChallenge: false,
+          ),
+          const PlayerPublic(
+            playerId: 'player-2',
+            hearts: 3,
+            energy: 0,
+            status: PlayerStatus.active,
+            presence: Presence.connected,
+            submittedForCurrentChallenge: false,
+          ),
+        ],
+      );
+
+      final ReducerResult grant1 = reducer.reduce(state, <String, dynamic>{
+        'schemaVersion': '1',
+        'type': MessageTypes.powerGranted,
+        'messageId': 'g1',
+        'matchId': 'match-abc',
+        'serverSequence': 11,
+        'serverTimestampMs': 1,
+        'payload': <String, dynamic>{
+          'playerId': 'player-1',
+          'powerId': PowerIds.dangerPulse,
+          'energyAfter': 0,
+        },
+      });
+      expect(grant1.disposition, ReducerDisposition.applied);
+      expect(
+        grant1.state.tactical?.grantFor('player-1')?.powerId,
+        PowerIds.dangerPulse,
+      );
+
+      final ReducerResult grant2 = reducer.reduce(grant1.state, <String, dynamic>{
+        'schemaVersion': '1',
+        'type': MessageTypes.powerGranted,
+        'messageId': 'g2',
+        'matchId': 'match-abc',
+        'serverSequence': 12,
+        'serverTimestampMs': 2,
+        'payload': <String, dynamic>{
+          'playerId': 'player-2',
+          'powerId': PowerIds.shield,
+          'energyAfter': 0,
+        },
+      });
+      expect(
+        grant2.state.tactical?.grantFor('player-1')?.powerId,
+        PowerIds.dangerPulse,
+      );
+      expect(
+        grant2.state.tactical?.grantFor('player-2')?.powerId,
+        PowerIds.shield,
+      );
+
+      // Snapshot only carries the room's lastGrant (player-2) — must not wipe
+      // player-1's unlock feedback.
+      final ReducerResult snap = reducer.reduce(grant2.state, <String, dynamic>{
+        'schemaVersion': '1',
+        'type': MessageTypes.matchSnapshot,
+        'messageId': 's1',
+        'matchId': 'match-abc',
+        'serverSequence': 12,
+        'serverTimestampMs': 3,
+        'payload': <String, dynamic>{
+          'matchId': 'match-abc',
+          'status': 'waiting',
+          'phase': 'round_result',
+          'phaseDeadlineAtMs': null,
+          'roundNumber': 1,
+          'serverNowMs': 3,
+          'lastRoundResult': null,
+          'nextPhaseAtMs': null,
+          'revision': 12,
+          'sequence': 12,
+          'players': <Map<String, dynamic>>[
+            <String, dynamic>{
+              'playerId': 'player-1',
+              'hearts': 3,
+              'energy': 0,
+              'status': 'active',
+              'presence': 'connected',
+              'submittedForCurrentChallenge': false,
+              'inventory': <String, dynamic>{
+                'danger_pulse': 1,
+                'shield': 0,
+                'reflection': 0,
+              },
+            },
+            <String, dynamic>{
+              'playerId': 'player-2',
+              'hearts': 3,
+              'energy': 0,
+              'status': 'active',
+              'presence': 'connected',
+              'submittedForCurrentChallenge': false,
+              'inventory': <String, dynamic>{
+                'danger_pulse': 0,
+                'shield': 1,
+                'reflection': 0,
+              },
+            },
+          ],
+          'winnerId': null,
+          'currentChallenge': null,
+          'tactical': <String, dynamic>{
+            'pendingAttack': null,
+            'eligibleTargetIds': <String>[],
+            'actorsWithOffensiveCharge': <String>[],
+            'lastGrant': <String, dynamic>{
+              'playerId': 'player-2',
+              'powerId': PowerIds.shield,
+              'outcome': 'granted',
+            },
+          },
+        },
+      });
+      expect(snap.disposition, ReducerDisposition.applied);
+      expect(
+        snap.state.tactical?.grantFor('player-1')?.powerId,
+        PowerIds.dangerPulse,
+      );
+      expect(
+        snap.state.localPlayer?.inventory?.dangerPulse,
+        1,
+      );
+    });
+
+    test('power strike narrative updates live for room including reverse', () {
+      MatchViewState state = initialState(
+        sequence: 20,
+        playerId: 'player-3',
+        matchId: 'match-abc',
+      );
+      state = state.copyWith(
+        phase: MatchPhase.powerAction,
+        players: <PlayerPublic>[
+          const PlayerPublic(
+            playerId: 'player-1',
+            hearts: 3,
+            energy: 4,
+            status: PlayerStatus.active,
+            presence: Presence.connected,
+            submittedForCurrentChallenge: false,
+            displayName: 'A',
+          ),
+          const PlayerPublic(
+            playerId: 'player-2',
+            hearts: 3,
+            energy: 0,
+            status: PlayerStatus.active,
+            presence: Presence.connected,
+            submittedForCurrentChallenge: false,
+            displayName: 'B',
+          ),
+          const PlayerPublic(
+            playerId: 'player-3',
+            hearts: 3,
+            energy: 0,
+            status: PlayerStatus.active,
+            presence: Presence.connected,
+            submittedForCurrentChallenge: false,
+            displayName: 'C',
+          ),
+        ],
+      );
+
+      final ReducerResult used = reducer.reduce(state, <String, dynamic>{
+        'schemaVersion': '1',
+        'type': MessageTypes.powerUsed,
+        'messageId': 'u1',
+        'matchId': 'match-abc',
+        'serverSequence': 21,
+        'serverTimestampMs': 100,
+        'payload': <String, dynamic>{
+          'attackId': 'atk-1',
+          'attackerId': 'player-1',
+          'targetId': 'player-2',
+          'powerId': PowerIds.dangerPulse,
+        },
+      });
+      expect(used.disposition, ReducerDisposition.applied);
+      expect(used.state.tactical?.lastNarrative?.kind, PowerNarrativeKind.struck);
+      expect(used.state.tactical?.lastNarrative?.attackerId, 'player-1');
+      expect(used.state.tactical?.lastNarrative?.targetId, 'player-2');
+
+      final ReducerResult defense = reducer.reduce(used.state, <String, dynamic>{
+        'schemaVersion': '1',
+        'type': MessageTypes.powerDefenseRequired,
+        'messageId': 'd1',
+        'matchId': 'match-abc',
+        'serverSequence': 22,
+        'serverTimestampMs': 101,
+        'payload': <String, dynamic>{
+          'attackId': 'atk-1',
+          'attackerId': 'player-1',
+          'targetId': 'player-2',
+          'reflected': false,
+          'defenseDeadlineAtMs': 5100,
+        },
+      });
+      expect(defense.disposition, ReducerDisposition.applied);
+      expect(defense.state.phase, MatchPhase.powerDefense);
+      // Struck narrative preserved until reverse/resolve.
+      expect(
+        defense.state.tactical?.lastNarrative?.kind,
+        PowerNarrativeKind.struck,
+      );
+
+      final ReducerResult reversed = reducer.reduce(defense.state, <String, dynamic>{
+        'schemaVersion': '1',
+        'type': MessageTypes.powerDefenseRequired,
+        'messageId': 'd2',
+        'matchId': 'match-abc',
+        'serverSequence': 23,
+        'serverTimestampMs': 102,
+        'payload': <String, dynamic>{
+          'attackId': 'atk-2',
+          'attackerId': 'player-2',
+          'targetId': 'player-1',
+          'reflected': true,
+          'defenseDeadlineAtMs': 10100,
+        },
+      });
+      expect(reversed.disposition, ReducerDisposition.applied);
+      expect(
+        reversed.state.tactical?.lastNarrative?.kind,
+        PowerNarrativeKind.reversed,
+      );
+
+      final ReducerResult resolved = reducer.reduce(reversed.state, <String, dynamic>{
+        'schemaVersion': '1',
+        'type': MessageTypes.powerResolved,
+        'messageId': 'r1',
+        'matchId': 'match-abc',
+        'serverSequence': 24,
+        'serverTimestampMs': 103,
+        'payload': <String, dynamic>{
+          'attackId': 'atk-2',
+          'attackerId': 'player-2',
+          'targetId': 'player-1',
+          'outcome': 'reflected_shielded',
+          'heartsDeltaTarget': 0,
+          'heartsAfterTarget': 3,
+          'statusAfterTarget': 'active',
+        },
+      });
+      expect(resolved.disposition, ReducerDisposition.applied);
+      expect(resolved.state.phase, MatchPhase.roundResult);
+      expect(
+        resolved.state.tactical?.lastNarrative?.kind,
+        PowerNarrativeKind.shielded,
+      );
+    });
+
     test('match finished transitions to completed phase', () {
       final MatchViewState stateAtSeq12 = initialState(
         sequence: 12,

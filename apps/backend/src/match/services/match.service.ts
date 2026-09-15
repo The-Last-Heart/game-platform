@@ -717,6 +717,13 @@ export class MatchService implements OnModuleDestroy, OnModuleInit {
         attackId: input.attackId,
         choice: input.choice,
       });
+      if (result.match.phase === 'round_result') {
+        // Brief hold so the room can read strike / shield / reverse outcome.
+        const holdMs = ROUND_RESULT_MS;
+        result.match.phaseDeadlineAtMs = this.clock.nowMs() + holdMs;
+        result.match.phaseDeadlineMonoMs = this.clock.monoMs() + holdMs;
+        result.match.nextPhaseAtMs = result.match.phaseDeadlineAtMs;
+      }
       await this.store.save(result.match);
       this.emit(result.match, result.events);
       this.logger.log(
@@ -732,7 +739,10 @@ export class MatchService implements OnModuleDestroy, OnModuleInit {
           result.match.pendingAttack.defenseDeadlineAtMs - this.clock.nowMs();
         this.schedulePhaseTimer(input.matchId, Math.max(1, windowMs));
       } else if (result.match.phase === 'round_result') {
-        await this.startNextChallengeAfterPowers(input.matchId, result.match);
+        this.schedulePhaseTimer(
+          input.matchId,
+          Math.max(1, (result.match.phaseDeadlineAtMs ?? 0) - this.clock.nowMs()),
+        );
       }
       const latest = await this.requireMatch(input.matchId);
       return { snapshot: this.engine.toPublicSnapshot(latest) };
@@ -1283,10 +1293,14 @@ export class MatchService implements OnModuleDestroy, OnModuleInit {
 
   /**
    * Rematch behavior:
-   * - Allowed when the source match is completed or halted.
+   * - Allowed when the source match is completed, halted, or draw.
    * - First caller opens a new lobby of the same mode and becomes host.
-   * - Later callers from the same source match (within REMATCH_WINDOW_MS) join
-   *   that rematch lobby instead of creating another room.
+   * - Later callers from the same source match join that rematch lobby while
+   *   it is still waiting/lobby with free seats (party map refreshed on each
+   *   join — expiry alone must not open a parallel room).
+   * - Solo rematch lobbies do not arm the matchmaking fill-abort timer; the
+   *   fill wait starts once ≥ MIN_LIVE_MATCH_PLAYERS are seated so a late
+   *   party rematch cannot orphan the first clicker into a deleted lobby.
    * - Private: room code is preserved on the rematch lobby when possible.
    *
    * Serialized on the *source* matchId so two devices cannot both miss the
@@ -1321,64 +1335,46 @@ export class MatchService implements OnModuleDestroy, OnModuleInit {
     };
     const now = this.clock.nowMs();
     const existing = this.rematchParties.get(matchId);
-    if (
-      existing &&
-      existing.expiresAtMs > now &&
-      existing.mode === source.mode
-    ) {
-      const priorSeat = existing.seatsBySourcePlayerId.get(playerId);
-      if (priorSeat) {
-        const snap = await this.requestSnapshot(existing.newMatchId);
-        const partyMatch = await this.store.get(existing.newMatchId);
-        return {
-          matchId: existing.newMatchId,
-          playerId: priorSeat.playerId,
-          resumeToken: priorSeat.resumeToken,
-          snapshot: snap.snapshot,
-          roomCode: partyMatch?.roomCode ?? existing.roomCode,
-        };
-      }
+    if (existing && existing.mode === source.mode) {
       const partyMatch = await this.store.get(existing.newMatchId);
-      if (
-        partyMatch &&
+      const joinable =
+        !!partyMatch &&
         partyMatch.status === 'waiting' &&
         partyMatch.phase === 'lobby' &&
-        partyMatch.players.size < partyMatch.playerCapacity
-      ) {
+        partyMatch.players.size < partyMatch.playerCapacity;
+
+      if (!joinable) {
+        // Aborted, started, full, or deleted — drop stale party and open fresh.
+        this.rematchParties.delete(matchId);
+      } else {
+        // Keep the party window alive for every live join (ignore prior expiry).
+        existing.expiresAtMs = now + REMATCH_WINDOW_MS;
+
+        const priorSeat = existing.seatsBySourcePlayerId.get(playerId);
+        if (priorSeat && partyMatch.players.has(priorSeat.playerId)) {
+          const snap = await this.requestSnapshot(existing.newMatchId);
+          return {
+            matchId: existing.newMatchId,
+            playerId: priorSeat.playerId,
+            resumeToken: priorSeat.resumeToken,
+            snapshot: snap.snapshot,
+            roomCode: partyMatch.roomCode ?? existing.roomCode,
+          };
+        }
+        if (priorSeat) {
+          // Left the rematch lobby earlier — allow a fresh seat.
+          existing.seatsBySourcePlayerId.delete(playerId);
+        }
+
         const seated = await this.joinMatch(existing.newMatchId, identity);
         existing.seatsBySourcePlayerId.set(playerId, {
           playerId: seated.playerId,
           resumeToken: seated.resumeToken,
         });
-        // Heal rematch lobbies that never armed a fill wait (pre-fix state).
-        let lobbyFillWaitMs: number | undefined;
-        if (partyMatch.mode === 'quick_survival') {
-          lobbyFillWaitMs = await this.enqueue(
-            existing.newMatchId,
-            async () => {
-              const current = await this.requireMatch(existing.newMatchId);
-              if (
-                current.phase !== 'lobby' ||
-                current.players.size < MIN_LIVE_MATCH_PLAYERS ||
-                current.players.size >= current.playerCapacity
-              ) {
-                return undefined;
-              }
-              if (
-                current.lobbyFillDeadlineMonoMs != null &&
-                this.clock.monoMs() < current.lobbyFillDeadlineMonoMs
-              ) {
-                return Math.max(
-                  1,
-                  current.lobbyFillDeadlineMonoMs - this.clock.monoMs(),
-                );
-              }
-              this.armLobbyFillWait(current, QUICK_LOBBY_FILL_WAIT_MS);
-              await this.store.save(current);
-              return QUICK_LOBBY_FILL_WAIT_MS;
-            },
-          );
-        }
+        // Arm open-lobby fill only once a live table (≥2) can actually start.
+        const lobbyFillWaitMs = await this.ensureRematchLobbyFillWait(
+          existing.newMatchId,
+        );
         const snap = await this.requestSnapshot(existing.newMatchId);
         return {
           matchId: existing.newMatchId,
@@ -1409,17 +1405,11 @@ export class MatchService implements OnModuleDestroy, OnModuleInit {
     }
 
     const seated = await this.joinMatch(next.matchId, identity);
-    // First rematch clicker is always the new host. Quick rematch also needs
-    // the same open-lobby fill deadline as matchmaking — otherwise Start now
-    // never appears (mobile gates that chrome on lobbyFillDeadlineAtMs).
-    let lobbyFillWaitMs: number | undefined;
+    // First rematch clicker is always the new host. Do not arm the fill-abort
+    // timer yet — a solo rematch lobby must stay joinable for the party.
     await this.enqueue(next.matchId, async () => {
       const current = await this.requireMatch(next.matchId);
-      let updated = this.engine.setHostPlayerId(current, seated.playerId);
-      if (updated.mode === 'quick_survival') {
-        this.armLobbyFillWait(updated, QUICK_LOBBY_FILL_WAIT_MS);
-        lobbyFillWaitMs = QUICK_LOBBY_FILL_WAIT_MS;
-      }
+      const updated = this.engine.setHostPlayerId(current, seated.playerId);
       await this.store.save(updated);
     });
 
@@ -1444,8 +1434,52 @@ export class MatchService implements OnModuleDestroy, OnModuleInit {
       resumeToken: seated.resumeToken,
       snapshot: snap.snapshot,
       roomCode,
-      lobbyFillWaitMs,
     };
+  }
+
+  /**
+   * Once a rematch quick lobby has ≥2 seats, arm (or report) the open-lobby
+   * fill wait so partial-start / Start now behave like matchmaking.
+   * Emits a bumped snapshot so seats already bound (first rematcher / host)
+   * refresh lobbyFillDeadlineAtMs — without that, Start now stays hidden.
+   */
+  private async ensureRematchLobbyFillWait(
+    matchId: string,
+  ): Promise<number | undefined> {
+    return this.enqueue(matchId, async () => {
+      const current = await this.requireMatch(matchId);
+      if (current.mode !== 'quick_survival') {
+        return undefined;
+      }
+      if (
+        current.phase !== 'lobby' ||
+        current.players.size < MIN_LIVE_MATCH_PLAYERS ||
+        current.players.size >= current.playerCapacity
+      ) {
+        return undefined;
+      }
+      if (
+        current.lobbyFillDeadlineMonoMs != null &&
+        this.clock.monoMs() < current.lobbyFillDeadlineMonoMs
+      ) {
+        return Math.max(
+          1,
+          current.lobbyFillDeadlineMonoMs - this.clock.monoMs(),
+        );
+      }
+      const deadlineAtMs = this.clock.nowMs() + QUICK_LOBBY_FILL_WAIT_MS;
+      const deadlineMonoMs = this.clock.monoMs() + QUICK_LOBBY_FILL_WAIT_MS;
+      const result = this.engine.setLobbyFillDeadline(
+        current,
+        deadlineAtMs,
+        deadlineMonoMs,
+      );
+      await this.store.save(result.match);
+      if (result.events.length > 0) {
+        this.emit(result.match, result.events);
+      }
+      return QUICK_LOBBY_FILL_WAIT_MS;
+    });
   }
 
   /**
@@ -1712,6 +1746,12 @@ export class MatchService implements OnModuleDestroy, OnModuleInit {
         return { outcome: 'started' as const, playerIds };
       }
 
+      // Rematch party lobbies stay open for late "إعادة التحدي" clicks. Solo
+      // abort is for matchmaking-only seats that still have a queue ticket.
+      if (size === 1 && this.isRematchLobbyTarget(matchId)) {
+        return { outcome: 'noop' as const, playerIds };
+      }
+
       this.clearTimer(matchId);
       this.roomCodes.unregisterMatch(matchId);
       await this.store.delete(matchId);
@@ -1720,6 +1760,16 @@ export class MatchService implements OnModuleDestroy, OnModuleInit {
         playerIds,
       };
     });
+  }
+
+  /** True when any rematch party still points at this lobby matchId. */
+  private isRematchLobbyTarget(matchId: string): boolean {
+    for (const party of this.rematchParties.values()) {
+      if (party.newMatchId === matchId) {
+        return true;
+      }
+    }
+    return false;
   }
 
   async startDevRound(
@@ -2212,10 +2262,19 @@ export class MatchService implements OnModuleDestroy, OnModuleInit {
     if (match.phase !== 'power_defense') return;
     const expired = this.engine.expirePowerDefense(match);
     if (expired.events.length === 0) return;
+    if (expired.match.phase === 'round_result') {
+      const holdMs = ROUND_RESULT_MS;
+      expired.match.phaseDeadlineAtMs = this.clock.nowMs() + holdMs;
+      expired.match.phaseDeadlineMonoMs = this.clock.monoMs() + holdMs;
+      expired.match.nextPhaseAtMs = expired.match.phaseDeadlineAtMs;
+    }
     await this.store.save(expired.match);
     this.emit(expired.match, expired.events);
     if (expired.match.phase === 'round_result') {
-      await this.startNextChallengeAfterPowers(matchId, expired.match);
+      this.schedulePhaseTimer(
+        matchId,
+        Math.max(1, (expired.match.phaseDeadlineAtMs ?? 0) - this.clock.nowMs()),
+      );
     } else if (expired.match.phase === 'power_defense') {
       const windowMs =
         expired.match.pendingAttack!.defenseDeadlineAtMs - this.clock.nowMs();

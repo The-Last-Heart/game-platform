@@ -332,7 +332,7 @@ export const playerPublicSchema = z
   .object({
     playerId: uuidLike,
     hearts: z.number().int().min(0).max(3),
-    /** Current meter segments (0..energyThreshold-1 after convert; 0..4 before). */
+    /** Current meter segments (0..4). Stays at threshold while a granted power is unused. */
     energy: z.number().int().min(0).max(4),
     status: z.enum(['active', 'spectator', 'left']),
     presence: z.enum(['connected', 'disconnected']),

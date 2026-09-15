@@ -266,18 +266,27 @@ class _AppEntryScreenState extends State<AppEntryScreen>
 
     final String? backendUrl = widget.backendBaseUrl;
     if (backendUrl != null && backendUrl.isNotEmpty) {
-      await ContentAssetCache.instance.sync(
-        backendBaseUrl: backendUrl,
-        onProgress: (double p) {
-          if (!mounted) return;
-          setState(() {
-            _assetProgress = p.clamp(0.0, 1.0);
-            _assetStatusKey = p >= 1
-                ? TranslationKeys.splashAssetsReady
-                : TranslationKeys.splashDownloadingAssets;
-          });
-        },
-      );
+      bool packReady = false;
+      for (int attempt = 0; attempt < 3 && !packReady; attempt++) {
+        packReady = await ContentAssetCache.instance.sync(
+          backendBaseUrl: backendUrl,
+          onProgress: (double p) {
+            if (!mounted) return;
+            setState(() {
+              _assetProgress = p.clamp(0.0, 1.0);
+              _assetStatusKey = TranslationKeys.splashDownloadingAssets;
+            });
+          },
+        );
+      }
+      if (mounted) {
+        setState(() {
+          _assetProgress = 1;
+          _assetStatusKey = packReady
+              ? TranslationKeys.splashAssetsReady
+              : TranslationKeys.errorsContentUnavailable;
+        });
+      }
     } else if (mounted) {
       setState(() {
         _assetProgress = 1;

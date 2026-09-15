@@ -1,6 +1,7 @@
 'use client';
 
 import type { ReactNode } from 'react';
+import { AssetThumb } from './AssetThumb';
 import { Field, FieldGroup } from './Field';
 import type { CatalogOption } from './studio-catalog-options';
 
@@ -415,6 +416,16 @@ export function TargetPad({
   );
 }
 
+function looksLikeAssetId(value: string): boolean {
+  return value.includes('.') && !value.startsWith('challenge.') && !value.startsWith('result.');
+}
+
+function shortAssetLabel(label: string): string {
+  return (
+    label.replace(/^(Reveal|كشف)\s*[—–-]\s*/i, '').trim() || label
+  );
+}
+
 export function OrderedChipEditor({
   label,
   hint,
@@ -432,6 +443,75 @@ export function OrderedChipEditor({
   localize: (labelKey: string) => string;
   disabled?: boolean;
 }) {
+  const assetMode =
+    values.some(looksLikeAssetId) || options.some((o) => looksLikeAssetId(o.value));
+
+  if (assetMode) {
+    const available = options.filter((opt) => !values.includes(opt.value));
+    return (
+      <Field label={label} hint={hint}>
+        <div className="studio-asset-gallery" role="list">
+          {values.map((v, idx) => {
+            const opt = options.find((o) => o.value === v);
+            const display = shortAssetLabel(opt ? localize(opt.labelKey) : v);
+            return (
+              <div
+                key={`${v}-${idx}`}
+                className={`studio-asset-tile${idx === 0 ? ' is-active' : ''}`}
+                role="listitem"
+              >
+                <div className="studio-asset-tile-media">
+                  <AssetThumb assetId={v} size={96} label={display} showCaption={false} />
+                  {idx === 0 ? <span className="studio-asset-tile-badge">1st</span> : null}
+                  <button
+                    type="button"
+                    className="studio-asset-tile-remove"
+                    disabled={disabled}
+                    aria-label={`Remove ${display}`}
+                    onClick={() => onChange(values.filter((_, i) => i !== idx))}
+                  >
+                    ×
+                  </button>
+                </div>
+                <span className="studio-asset-tile-label" title={v}>
+                  {display}
+                </span>
+              </div>
+            );
+          })}
+        </div>
+        {available.length > 0 ? (
+          <div className="studio-asset-add-row">
+            <span className="studio-asset-add-label">Add</span>
+            <div className="studio-asset-gallery studio-asset-gallery--add">
+              {available.map((opt) => {
+                const display = shortAssetLabel(localize(opt.labelKey));
+                return (
+                  <button
+                    key={opt.value}
+                    type="button"
+                    className="studio-asset-add-tile"
+                    disabled={disabled}
+                    title={`Add ${display}`}
+                    onClick={() => onChange([...values, opt.value])}
+                  >
+                    <AssetThumb
+                      assetId={opt.value}
+                      size={64}
+                      label={display}
+                      showCaption={false}
+                    />
+                    <span className="studio-asset-add-caption">{display}</span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        ) : null}
+      </Field>
+    );
+  }
+
   return (
     <Field label={label} hint={hint}>
       <div className="studio-ordered-chips">

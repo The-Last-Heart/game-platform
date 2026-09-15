@@ -6,6 +6,7 @@ import {
   dailyGoalsReleasePayloadSchema,
   gameModeRuleReleasePayloadSchema,
   localizationReleasePayloadSchema,
+  matchModeEligibilitySchema,
   matchReleasePinsSchema,
   powerConfigurationReleasePayloadSchema,
   releaseIdSchema,
@@ -203,10 +204,45 @@ export const adminContentTemplateDetailSchema = z
     /** Live catalog pause override for the latest definition (survives refresh). */
     catalogPaused: z.boolean(),
     pauseReason: z.string().nullable(),
+    /**
+     * True when any version of this template is pinned in the current
+     * challenge_catalog release (required for eligibleModes to affect live play).
+     */
+    inLiveCatalog: z.boolean(),
+    /**
+     * Effective modes used by the live resolver (override ?? pinned definition).
+     */
+    liveEligibleModes: z.array(matchModeEligibilitySchema).nullable(),
+    /**
+     * Explicit override array from content_catalog_entry_overrides.eligible_modes.
+     * Null means the live resolver falls back to the pinned definition.
+     */
+    liveEligibleModesOverride: z.array(matchModeEligibilitySchema).nullable(),
     versions: z.array(adminContentTemplateVersionSchema),
   })
   .strict();
 export type AdminContentTemplateDetail = z.infer<typeof adminContentTemplateDetailSchema>;
+
+export const adminContentLiveEligibilityRequestSchema = z
+  .object({
+    definitionId: z.string().min(1).max(128),
+    eligibleModes: z.array(matchModeEligibilitySchema).min(1),
+    reason: z.string().min(3).max(500),
+  })
+  .strict();
+export type AdminContentLiveEligibilityRequest = z.infer<
+  typeof adminContentLiveEligibilityRequestSchema
+>;
+
+export const adminContentLiveEligibilityResponseSchema = z
+  .object({
+    definitionId: z.string().min(1).max(128),
+    eligibleModes: z.array(matchModeEligibilitySchema).min(1),
+  })
+  .strict();
+export type AdminContentLiveEligibilityResponse = z.infer<
+  typeof adminContentLiveEligibilityResponseSchema
+>;
 
 // ── Reject ─────────────────────────────────────────────────────────────────
 
@@ -341,3 +377,37 @@ export const adminContentDiffResponseSchema = z
   })
   .strict();
 export type AdminContentDiffResponse = z.infer<typeof adminContentDiffResponseSchema>;
+
+// ── Content pack assets (admin) ────────────────────────────────────────────
+
+export const contentPackAssetMetaSchema = z
+  .object({
+    assetId: z.string().min(1).max(128),
+    relativePath: z.string().min(1).max(512),
+    contentType: z.string().min(1).max(128),
+    bytes: z.number().int().nonnegative(),
+    sha256: z.string().min(1).max(128),
+  })
+  .strict();
+export type ContentPackAssetMetaDto = z.infer<typeof contentPackAssetMetaSchema>;
+
+export const adminContentPackAssetListResponseSchema = z
+  .object({
+    packId: z.string().min(1),
+    packVersion: z.number().int().nonnegative(),
+    assets: z.array(contentPackAssetMetaSchema),
+  })
+  .strict();
+export type AdminContentPackAssetListResponse = z.infer<
+  typeof adminContentPackAssetListResponseSchema
+>;
+
+export const adminContentPackRegisterAssetResponseSchema = z
+  .object({
+    packVersion: z.number().int().positive(),
+    asset: contentPackAssetMetaSchema,
+  })
+  .strict();
+export type AdminContentPackRegisterAssetResponse = z.infer<
+  typeof adminContentPackRegisterAssetResponseSchema
+>;

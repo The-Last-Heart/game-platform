@@ -82,7 +82,14 @@ export async function proxyAdminRequest(
   }
 
   const headers = new Headers();
-  headers.set('accept', 'application/json');
+  const wantsBinaryAsset =
+    method === 'GET' &&
+    pathSegments[0] === 'content' &&
+    pathSegments[1] === 'pack' &&
+    pathSegments[2] === 'assets' &&
+    typeof pathSegments[3] === 'string' &&
+    pathSegments[3].length > 0;
+  headers.set('accept', wantsBinaryAsset ? '*/*' : 'application/json');
 
   const contentType = request.headers.get('content-type');
   if (contentType) {
@@ -139,6 +146,35 @@ export async function proxyAdminRequest(
     });
   } catch {
     return NextResponse.json(safeInternalError(), { status: 502 });
+  }
+
+  if (wantsBinaryAsset) {
+    if (!upstream.ok) {
+      const rawText = await upstream.text();
+      const parsed = readJsonSafe(rawText);
+      const safe = toSafeAdminError(upstream.status, parsed);
+      const response = NextResponse.json(safe, { status: upstream.status });
+      if (
+        upstream.status === 401 ||
+        safe.error.code === 'SESSION_EXPIRED' ||
+        safe.error.code === 'UNAUTHORIZED'
+      ) {
+        clearAuthCookies(response, request);
+      }
+      return response;
+    }
+    const bytes = await upstream.arrayBuffer();
+    const response = new NextResponse(bytes, { status: 200 });
+    const upstreamType = upstream.headers.get('content-type');
+    if (upstreamType) {
+      response.headers.set('content-type', upstreamType);
+    }
+    const sha = upstream.headers.get('x-content-sha256');
+    if (sha) {
+      response.headers.set('x-content-sha256', sha);
+    }
+    response.headers.set('cache-control', 'private, max-age=300');
+    return response;
   }
 
   const rawText = await upstream.text();

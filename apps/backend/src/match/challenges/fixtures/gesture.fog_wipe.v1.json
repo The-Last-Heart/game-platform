@@ -12,13 +12,14 @@
     "promptKey": "challenge.fog_wipe.prompt",
     "footerKey": "challenge.fog_wipe.footer",
     "assetIds": {
-      "revealContent": "fog_wipe.reveal_content",
+      "revealContent": "fog_wipe.reveal.petsev",
       "fogDensity": "fog_wipe.fog_density",
       "dropletHeight": "fog_wipe.droplets_height",
       "frostedEdges": "fog_wipe.frosted_edges",
       "scratchMask": "fog_wipe.scratch_mask",
       "wetSmudgeMask": "fog_wipe.wet_smudge_mask",
-      "glassReflections": "fog_wipe.glass_reflections"
+      "glassReflections": "fog_wipe.glass_reflections",
+      "swipeSfx": "fog_wipe.swipe"
     },
     "brushDiameterNorm": 0.12,
     "brushFeatherNorm": 0.28,
@@ -26,14 +27,23 @@
   },
   "serverConfig": {
     "assetIds": {
-      "revealContent": "fog_wipe.reveal_content",
+      "revealContent": "fog_wipe.reveal.petsev",
       "fogDensity": "fog_wipe.fog_density",
       "dropletHeight": "fog_wipe.droplets_height",
       "frostedEdges": "fog_wipe.frosted_edges",
       "scratchMask": "fog_wipe.scratch_mask",
       "wetSmudgeMask": "fog_wipe.wet_smudge_mask",
-      "glassReflections": "fog_wipe.glass_reflections"
+      "glassReflections": "fog_wipe.glass_reflections",
+      "swipeSfx": "fog_wipe.swipe"
     },
+    "revealContentVariants": [
+      "fog_wipe.reveal.petsev",
+      "fog_wipe.reveal.gta_vi",
+      "fog_wipe.reveal.snowman",
+      "fog_wipe.reveal.cucumber",
+      "fog_wipe.reveal.wrap",
+      "fog_wipe.reveal.watermelon"
+    ],
     "brushDiameterNorm": 0.12,
     "brushFeatherNorm": 0.28,
     "clearanceRatioMin": 0.55

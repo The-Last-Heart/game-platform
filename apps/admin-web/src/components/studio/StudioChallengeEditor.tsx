@@ -1,6 +1,7 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useRouter } from 'next/navigation';
 import type {
   AdminContentTemplateDetail,
   ChallengeDefinitionContract,
@@ -20,7 +21,7 @@ import { adminApiFetch } from '@/lib/api/client';
 import { localizeAdminError } from '@/i18n/localize-admin-error';
 import { scheduleEffectTask } from '@/lib/react/schedule-effect-task';
 import { DevicePreviewFrame } from './DevicePreviewFrame';
-import { FamilyParamsFields, defaultClientConfig, defaultServerConfig } from './FamilyParamsFields';
+import { FamilyParamsFields, defaultClientConfig, defaultServerConfig, mergeFogWipeRequiredAssets } from './FamilyParamsFields';
 import { FieldInput, FieldSelect, FieldTextarea, FieldCheckboxGroup, FieldGroup } from './Field';
 import {
   CatalogKeyField,
@@ -135,7 +136,7 @@ function defaultDraft(): DraftDefinition {
     energyRewardOnSuccess: 1,
     clientConfig: defaultClientConfig(engineId),
     serverConfig: defaultServerConfig(engineId),
-    eligibleModes: ['quick_survival', 'private'],
+    eligibleModes: ['quick_survival', 'private', 'training', 'dev'],
     roundMin: '',
     roundMax: '',
     selectionWeight: 100,
@@ -230,12 +231,28 @@ type StudioChallengeEditorProps = {
   locale: Locale;
   canDraft: boolean;
   canReview: boolean;
+  canPublish?: boolean;
   mode: 'create' | 'edit';
   templateId?: string;
   initialDefinition?: ChallengeDefinitionContract;
 };
 
 function definitionToDraft(def: ChallengeDefinitionContract): DraftDefinition {
+  const clientConfig = { ...(def.clientConfig ?? {}) };
+  const serverConfig = { ...(def.serverConfig ?? {}) };
+  let requiredAssetIds = [...(def.requiredAssetIds ?? [])];
+  if (def.engineId === 'gesture.fog_wipe') {
+    const variants =
+      (serverConfig.revealContentVariants as string[] | undefined) ?? [];
+    const revealContent = (
+      clientConfig.assetIds as { revealContent?: string } | undefined
+    )?.revealContent;
+    requiredAssetIds = mergeFogWipeRequiredAssets(
+      requiredAssetIds,
+      variants,
+      revealContent,
+    );
+  }
   return {
     definitionId: def.definitionId,
     definitionVersion: def.definitionVersion,
@@ -252,8 +269,8 @@ function definitionToDraft(def: ChallengeDefinitionContract): DraftDefinition {
     resultHoldMs: def.resultHoldMs ?? 3000,
     heartPenaltyOnFailure: def.heartPenaltyOnFailure,
     energyRewardOnSuccess: def.energyRewardOnSuccess,
-    clientConfig: { ...(def.clientConfig ?? {}) },
-    serverConfig: { ...(def.serverConfig ?? {}) },
+    clientConfig,
+    serverConfig,
     eligibleModes: [...def.eligibleModes],
     roundMin: def.roundMin?.toString() ?? '',
     roundMax: def.roundMax?.toString() ?? '',
@@ -262,7 +279,7 @@ function definitionToDraft(def: ChallengeDefinitionContract): DraftDefinition {
     minAppVersion: def.minAppVersion,
     requiredCapabilities: [...(def.requiredCapabilities ?? [])],
     accessibilityFallbackKey: def.accessibilityFallbackKey,
-    requiredAssetIds: [...(def.requiredAssetIds ?? [])],
+    requiredAssetIds,
     choiceKeys: [...(def.choiceKeys ?? [])],
     outcomeReasonKeys: { ...(def.outcomeReasonKeys ?? {}) },
     validationNotes: '',
@@ -273,25 +290,40 @@ export function StudioChallengeEditor({
   locale,
   canDraft,
   canReview: _canReview,
+  canPublish = false,
   mode,
   templateId,
   initialDefinition,
 }: StudioChallengeEditorProps) {
   void _canReview;
+  const router = useRouter();
   const { pushToast } = useToast();
   const [activeSection, setActiveSection] = useState<EditorSection>('identity');
   const [saving, setSaving] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const [applyingLiveModes, setApplyingLiveModes] = useState(false);
+  const [liveModes, setLiveModes] = useState<string[]>([]);
+  const [liveReason, setLiveReason] = useState('Studio live mode update');
   const [loadState, setLoadState] = useState<'idle' | 'loading' | 'ready' | 'error' | 'forbidden'>(
     mode === 'edit' && !initialDefinition ? 'loading' : 'ready',
   );
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [liveEligibility, setLiveEligibility] = useState<{
+    catalogPaused: boolean;
+    pauseReason: string | null;
+    inLiveCatalog: boolean;
+    liveEligibleModes: string[] | null;
+    liveEligibleModesOverride: string[] | null;
+    definitionId: string | null;
+  } | null>(null);
   const [draft, setDraft] = useState<DraftDefinition>(() => {
     if (initialDefinition) {
       return definitionToDraft(initialDefinition);
     }
     return defaultDraft();
   });
+
+  const parsedClientConfig = useMemo(() => draft.clientConfig, [draft.clientConfig]);
 
   const loadExisting = useCallback(async () => {
     if (mode !== 'edit' || !templateId || initialDefinition) {
@@ -320,6 +352,19 @@ export function StudioChallengeEditor({
       return;
     }
     setDraft(definitionToDraft(latest.definition));
+    const effectiveModes =
+      result.data.liveEligibleModesOverride ??
+      result.data.liveEligibleModes ??
+      latest.definition.eligibleModes;
+    setLiveModes([...effectiveModes]);
+    setLiveEligibility({
+      catalogPaused: result.data.catalogPaused,
+      pauseReason: result.data.pauseReason,
+      inLiveCatalog: result.data.inLiveCatalog,
+      liveEligibleModes: result.data.liveEligibleModes,
+      liveEligibleModesOverride: result.data.liveEligibleModesOverride,
+      definitionId: latest.definition.definitionId,
+    });
     setLoadError(null);
     setLoadState('ready');
   }, [mode, templateId, initialDefinition, locale]);
@@ -348,9 +393,16 @@ export function StudioChallengeEditor({
   function goToSection(section: EditorSection) {
     setActiveSection(section);
     requestAnimationFrame(() => {
-      document.getElementById(`section-${section}`)?.scrollIntoView({
-        behavior: 'smooth',
-        block: 'start',
+      requestAnimationFrame(() => {
+        const form = document.querySelector('.studio-editor-form');
+        if (form instanceof HTMLElement) {
+          form.scrollTop = 0;
+        }
+        const workspace = document.querySelector('.studio-editor-workspace');
+        if (workspace instanceof HTMLElement) {
+          workspace.scrollTop = 0;
+        }
+        window.scrollTo({ top: 0, behavior: 'smooth' });
       });
     });
   }
@@ -362,18 +414,34 @@ export function StudioChallengeEditor({
   function handleEngineChange(newEngineId: string) {
     const entry = registryEntryForEngine(newEngineId);
     if (!entry) return;
+    const clientConfig = defaultClientConfig(entry.engineId);
+    const serverConfig = defaultServerConfig(entry.engineId);
+    const fogVariants =
+      entry.engineId === 'gesture.fog_wipe'
+        ? ((serverConfig.revealContentVariants as string[] | undefined) ?? [])
+        : [];
+    const revealContent =
+      entry.engineId === 'gesture.fog_wipe'
+        ? ((clientConfig.assetIds as { revealContent?: string } | undefined)?.revealContent)
+        : undefined;
     setDraft((prev) => ({
       ...prev,
       engineId: entry.engineId,
       familyId: entry.familyId,
       categoryId: entry.categoryId,
-      clientConfig: defaultClientConfig(entry.engineId),
-      serverConfig: defaultServerConfig(entry.engineId),
+      clientConfig,
+      serverConfig,
       accessibilityFallbackKey: `${entry.engineId}.v1`,
       promptKey:
         entry.engineId === 'reaction.wait_for_signal'
           ? 'challenge.wait_for_signal.intro'
-          : prev.promptKey,
+          : entry.engineId === 'gesture.fog_wipe'
+            ? 'challenge.fog_wipe.intro'
+            : prev.promptKey,
+      requiredAssetIds:
+        entry.engineId === 'gesture.fog_wipe'
+          ? mergeFogWipeRequiredAssets(prev.requiredAssetIds, fogVariants, revealContent)
+          : prev.requiredAssetIds,
     }));
   }
 
@@ -415,17 +483,19 @@ export function StudioChallengeEditor({
     if (templateId) body.templateId = templateId;
     if (draft.definitionId) body.slug = draft.definitionId;
 
-    const result = await adminApiFetch<{ templateVersionId: string }>(
-      '/content/drafts',
-      { method: 'POST', body: JSON.stringify(body) },
-    );
+    const result = await adminApiFetch<{
+      templateId: string;
+      templateVersionId: string;
+    }>('/content/drafts', {
+      method: 'POST',
+      body: JSON.stringify(body),
+    });
     if (!result.ok) {
       pushToast(localizeAdminError(locale, result.error.code, result.error.message), 'error');
       setSubmitting(false);
       return;
     }
 
-    // Submit
     const submitResult = await adminApiFetch<{ templateVersionId: string }>(
       '/content/submit',
       {
@@ -442,6 +512,49 @@ export function StudioChallengeEditor({
       return;
     }
     pushToast(t(locale, 'studio.editor.submitSuccess'), 'success');
+    router.push(
+      `/${locale}/content/templates/${result.data.templateId}`,
+    );
+  }
+
+  async function applyLiveModes() {
+    if (!canPublish || !liveEligibility?.definitionId) return;
+    if (liveModes.length === 0) {
+      pushToast(t(locale, 'studio.validation.required'), 'error');
+      return;
+    }
+    if (liveReason.trim().length < 3) {
+      pushToast(t(locale, 'studio.ops.reasonHint'), 'error');
+      return;
+    }
+    setApplyingLiveModes(true);
+    const result = await adminApiFetch<{
+      definitionId: string;
+      eligibleModes: string[];
+    }>('/content/live-eligibility', {
+      method: 'POST',
+      body: JSON.stringify({
+        definitionId: liveEligibility.definitionId,
+        eligibleModes: liveModes,
+        reason: liveReason.trim(),
+      }),
+    });
+    setApplyingLiveModes(false);
+    if (!result.ok) {
+      pushToast(localizeAdminError(locale, result.error.code, result.error.message), 'error');
+      return;
+    }
+    setLiveEligibility((prev) =>
+      prev
+        ? {
+            ...prev,
+            liveEligibleModes: result.data.eligibleModes,
+            liveEligibleModesOverride: result.data.eligibleModes,
+            catalogPaused: false,
+          }
+        : prev,
+    );
+    pushToast(t(locale, 'studio.editor.liveModesApplied'), 'success');
   }
 
   const isCreate = mode === 'create';
@@ -670,6 +783,8 @@ export function StudioChallengeEditor({
               serverConfig={draft.serverConfig}
               onClientChange={(config) => updateField('clientConfig', config)}
               onServerChange={(config) => updateField('serverConfig', config)}
+              requiredAssetIds={draft.requiredAssetIds}
+              onRequiredAssetIdsChange={(ids) => updateField('requiredAssetIds', ids)}
               disabled={!canDraft}
             />
           </div>
@@ -754,13 +869,131 @@ export function StudioChallengeEditor({
           <div className="section-group" id="section-eligibility" data-active={activeSection === 'eligibility' ? 'true' : undefined} hidden={activeSection !== 'eligibility'}>
             <h3>{t(locale, 'studio.section.eligibility')}</h3>
             <p className="studio-section-lead">{t(locale, 'studio.editor.eligibilityLead')}</p>
+            {liveEligibility ? (
+              <div
+                className="panel"
+                style={{
+                  marginBottom: '1rem',
+                  borderColor: liveEligibility.catalogPaused || !liveEligibility.inLiveCatalog
+                    ? 'var(--lh-danger, #c45)'
+                    : 'var(--lh-border)',
+                }}
+              >
+                <p style={{ margin: 0, fontSize: '0.88rem', fontWeight: 600 }}>
+                  {t(locale, 'studio.editor.liveEligibilityTitle')}
+                </p>
+                <ul style={{ margin: '0.5rem 0 0', paddingInlineStart: '1.2rem', fontSize: '0.85rem' }}>
+                  <li>
+                    {liveEligibility.inLiveCatalog
+                      ? t(locale, 'studio.editor.liveEligibilityInCatalog')
+                      : t(locale, 'studio.editor.liveEligibilityNotInCatalog')}
+                  </li>
+                  <li>
+                    {liveEligibility.catalogPaused
+                      ? t(locale, 'studio.editor.liveEligibilityPaused').replace(
+                          '{reason}',
+                          liveEligibility.pauseReason?.trim() || '—',
+                        )
+                      : t(locale, 'studio.editor.liveEligibilityActive')}
+                  </li>
+                  <li>
+                    {t(locale, 'studio.editor.liveEligibilityModes').replace(
+                      '{modes}',
+                      liveEligibility.liveEligibleModes &&
+                        liveEligibility.liveEligibleModes.length > 0
+                        ? liveEligibility.liveEligibleModes
+                            .map((modeValue) =>
+                              t(
+                                locale,
+                                `studio.field.mode.${modeValue}` as MessageKey,
+                              ),
+                            )
+                            .join(' · ')
+                        : t(locale, 'studio.editor.liveEligibilityModesNone'),
+                    )}
+                  </li>
+                </ul>
+                <p style={{ margin: '0.65rem 0 0', fontSize: '0.8rem', color: 'var(--lh-text-muted)' }}>
+                  {t(locale, 'studio.editor.eligibilityPublishHint')}
+                </p>
+              </div>
+            ) : null}
             <FieldGroup>
               <FieldCheckboxGroup
-                label={t(locale, 'studio.field.eligibleModes')}
+                label={t(locale, 'studio.field.draftEligibleModes')}
                 options={localizedModeOptions}
                 selected={draft.eligibleModes}
                 onChange={(selected) => updateField('eligibleModes', selected)}
               />
+              <p className="field-hint" style={{ marginTop: '-0.35rem', fontSize: '0.8rem', color: 'var(--lh-text-muted)' }}>
+                {t(locale, 'studio.field.eligibleModesHint')}
+              </p>
+              {liveEligibility?.inLiveCatalog ? (
+                <>
+                  <FieldCheckboxGroup
+                    label={t(locale, 'studio.field.liveEligibleModes')}
+                    options={localizedModeOptions}
+                    selected={liveModes}
+                    onChange={setLiveModes}
+                  />
+                  <FieldInput
+                    id="live-mode-reason"
+                    label={t(locale, 'studio.ops.reason')}
+                    value={liveReason}
+                    onChange={(e) => setLiveReason(e.currentTarget.value)}
+                    disabled={!canPublish || applyingLiveModes}
+                  />
+                  <div className="inline-actions">
+                    <button
+                      type="button"
+                      className="btn btn-primary"
+                      disabled={!canPublish || applyingLiveModes || liveModes.length === 0}
+                      onClick={() => void applyLiveModes()}
+                    >
+                      {applyingLiveModes
+                        ? t(locale, 'common.loading')
+                        : t(locale, 'studio.editor.applyLiveModes')}
+                    </button>
+                    {liveEligibility.catalogPaused ? (
+                      <button
+                        type="button"
+                        className="btn btn-secondary"
+                        disabled={!canPublish}
+                        onClick={() => {
+                          void (async () => {
+                            if (!liveEligibility.definitionId) return;
+                            const resume = await adminApiFetch('/content/pause', {
+                              method: 'POST',
+                              body: JSON.stringify({
+                                definitionId: liveEligibility.definitionId,
+                                paused: false,
+                                reason: 'Studio resume for live modes',
+                              }),
+                            });
+                            if (!resume.ok) {
+                              pushToast(
+                                localizeAdminError(
+                                  locale,
+                                  resume.error.code,
+                                  resume.error.message,
+                                ),
+                                'error',
+                              );
+                              return;
+                            }
+                            setLiveEligibility((prev) =>
+                              prev ? { ...prev, catalogPaused: false } : prev,
+                            );
+                            pushToast(t(locale, 'studio.ops.pauseSuccess'), 'success');
+                          })();
+                        }}
+                      >
+                        {t(locale, 'studio.ops.resumeAction')}
+                      </button>
+                    ) : null}
+                  </div>
+                </>
+              ) : null}
               <SegmentedChoice
                 label={t(locale, 'studio.field.roundBand')}
                 hint={t(locale, 'studio.field.roundBandHint')}
@@ -881,6 +1114,9 @@ export function StudioChallengeEditor({
           instructionAr={draft.instructionAr}
           durationMs={draft.durationMs}
           engineId={draft.engineId}
+          clientConfig={parsedClientConfig}
+          serverConfig={draft.serverConfig}
+          requiredAssetIds={draft.requiredAssetIds}
         />
       </div>
 

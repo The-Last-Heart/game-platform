@@ -1,9 +1,10 @@
 'use client';
 
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { t } from '@/i18n/get-dictionary';
 import type { Locale } from '@/i18n/locale';
 import type { MessageKey } from '@/i18n/messages/en';
+import { AssetThumb, collectImageAssetIds } from './AssetThumb';
 
 export type PreviewState = 'intro' | 'active' | 'success' | 'failure' | 'timeout' | 'unsupported';
 
@@ -24,6 +25,9 @@ type DevicePreviewFrameProps = {
   instructionAr?: string;
   durationMs?: number;
   engineId?: string;
+  clientConfig?: Record<string, unknown>;
+  serverConfig?: Record<string, unknown>;
+  requiredAssetIds?: string[];
 };
 
 export function DevicePreviewFrame({
@@ -32,10 +36,18 @@ export function DevicePreviewFrame({
   instructionAr,
   durationMs,
   engineId,
+  clientConfig,
+  serverConfig,
+  requiredAssetIds = [],
 }: DevicePreviewFrameProps) {
   const [activeState, setActiveState] = useState<PreviewState>('intro');
 
-  const hasChallenge = Boolean(challengeTitle || instructionAr);
+  const imageIds = useMemo(
+    () => collectImageAssetIds(clientConfig, requiredAssetIds, serverConfig).slice(0, 6),
+    [clientConfig, serverConfig, requiredAssetIds],
+  );
+
+  const hasChallenge = Boolean(challengeTitle || instructionAr || imageIds.length > 0);
 
   return (
     <div className="device-preview-frame">
@@ -67,92 +79,64 @@ export function DevicePreviewFrame({
               {t(locale, 'studio.preview.noChallenge')}
             </p>
           ) : (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', alignItems: 'center' }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', alignItems: 'center', width: '100%' }}>
               {engineId ? (
                 <span style={{ fontSize: '0.7rem', opacity: 0.5, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
                   {engineId}
                 </span>
               ) : null}
 
-              {activeState === 'intro' ? (
-                <>
-                  <span style={{ fontSize: '1.1rem', fontWeight: 700 }}>
-                    {instructionAr || challengeTitle}
-                  </span>
-                  {durationMs ? (
-                    <span style={{ fontSize: '2rem', fontFamily: 'var(--lh-font-display)', fontWeight: 700 }}>
-                      {(durationMs / 1000).toFixed(1)}s
-                    </span>
-                  ) : null}
-                </>
+              {imageIds.length > 0 && (activeState === 'intro' || activeState === 'active') ? (
+                <div
+                  style={{
+                    display: 'grid',
+                    gridTemplateColumns: imageIds.length === 1 ? '1fr' : '1fr 1fr',
+                    gap: 8,
+                    width: '100%',
+                    justifyItems: 'center',
+                  }}
+                >
+                  {imageIds.map((id) => (
+                    <AssetThumb key={id} assetId={id} size={imageIds.length === 1 ? 160 : 96} />
+                  ))}
+                </div>
               ) : null}
 
-              {activeState === 'active' ? (
+              {activeState === 'intro' || activeState === 'active' ? (
                 <>
-                  <span style={{ fontSize: '1rem', fontWeight: 600 }}>
+                  <span style={{ fontSize: '1.05rem', fontWeight: 700, textAlign: 'center' }}>
                     {instructionAr || challengeTitle}
                   </span>
-                  <div style={{
-                    width: '4rem',
-                    height: '4rem',
-                    borderRadius: '50%',
-                    border: '3px solid var(--lh-accent)',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    fontSize: '1.5rem',
-                  }}>
-                    ♥
-                  </div>
                   {durationMs ? (
-                    <span style={{ fontSize: '0.9rem', opacity: 0.7 }}>
-                      {(durationMs / 1000).toFixed(1)}s
+                    <span style={{ fontSize: '0.8rem', opacity: 0.65 }}>
+                      {(durationMs / 1000).toFixed(0)}s
                     </span>
                   ) : null}
                 </>
               ) : null}
 
               {activeState === 'success' ? (
-                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.5rem' }}>
-                  <span style={{ fontSize: '2.5rem' }}>✓</span>
-                  <span style={{ fontSize: '1rem', fontWeight: 600, color: '#4ade80' }}>
-                    {t(locale, 'studio.preview.success')}
-                  </span>
-                </div>
+                <span style={{ fontSize: '1.1rem', fontWeight: 700, color: 'var(--lh-success, #3d8)' }}>
+                  {t(locale, 'studio.preview.success')}
+                </span>
               ) : null}
-
               {activeState === 'failure' ? (
-                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.5rem' }}>
-                  <span style={{ fontSize: '2.5rem' }}>✗</span>
-                  <span style={{ fontSize: '1rem', fontWeight: 600, color: '#f87171' }}>
-                    {t(locale, 'studio.preview.failure')}
-                  </span>
-                </div>
+                <span style={{ fontSize: '1.1rem', fontWeight: 700, color: 'var(--lh-danger, #c45)' }}>
+                  {t(locale, 'studio.preview.failure')}
+                </span>
               ) : null}
-
               {activeState === 'timeout' ? (
-                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.5rem' }}>
-                  <span style={{ fontSize: '2.5rem' }}>⏱</span>
-                  <span style={{ fontSize: '1rem', fontWeight: 600, color: '#fbbf24' }}>
-                    {t(locale, 'studio.preview.timeout')}
-                  </span>
-                </div>
+                <span style={{ fontSize: '1.1rem', fontWeight: 700 }}>
+                  {t(locale, 'studio.preview.timeout')}
+                </span>
               ) : null}
-
               {activeState === 'unsupported' ? (
-                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.5rem' }}>
-                  <span style={{ fontSize: '2.5rem' }}>⚠</span>
-                  <span style={{ fontSize: '1rem', fontWeight: 600, opacity: 0.6 }}>
-                    {t(locale, 'studio.preview.unsupported')}
-                  </span>
-                </div>
+                <span style={{ fontSize: '0.9rem', opacity: 0.7, textAlign: 'center' }}>
+                  {t(locale, 'studio.preview.unsupported')}
+                </span>
               ) : null}
             </div>
           )}
-        </div>
-
-        <div className="device-preview-home-bar">
-          <div className="device-preview-home-indicator" />
         </div>
       </div>
     </div>

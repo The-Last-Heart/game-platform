@@ -63,11 +63,10 @@ class _MatchShellState extends State<MatchShell> {
   Widget _buildPhase(BuildContext context, MatchViewState state) {
     // Spectators watch remaining challenges; do not steal round_result so a
     // last-heart miss can still show the fail screen for the hold window.
+    // Power phases stay on tactical views so the whole room sees strike events.
     if (state.isSpectator &&
         (state.phase == MatchPhase.challengeIntro ||
-            state.phase == MatchPhase.challengeActive ||
-            state.phase == MatchPhase.powerAction ||
-            state.phase == MatchPhase.powerDefense)) {
+            state.phase == MatchPhase.challengeActive)) {
       return SpectatorView(state: state);
     }
 

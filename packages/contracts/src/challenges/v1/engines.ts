@@ -22,6 +22,7 @@ export const LAUNCH_ENGINE_IDS = [
   'precision.maze_path',
   'precision.neon_cable',
   'gesture.fog_wipe',
+  'precision.circuit_rotation',
   'logic.balance_scale',
   'focus.stroop',
   'search.select_occurrences',
@@ -1071,6 +1072,8 @@ export const fogWipeAssetIdsSchema = z
     scratchMask: z.string().min(1).max(128),
     wetSmudgeMask: z.string().min(1).max(128),
     glassReflections: z.string().min(1).max(128),
+    /** Optional content-pack SFX played while the player wipes fog. */
+    swipeSfx: z.string().min(1).max(128).optional(),
   })
   .strict();
 export type FogWipeAssetIds = z.infer<typeof fogWipeAssetIdsSchema>;
@@ -1096,6 +1099,11 @@ export type GestureFogWipeClientConfig = z.infer<
 export const gestureFogWipeServerConfigSchema = z
   .object({
     assetIds: fogWipeAssetIdsSchema,
+    revealContentVariants: z
+      .array(z.string().min(1).max(128))
+      .min(1)
+      .max(32)
+      .optional(),
     brushDiameterNorm: z.number().min(0.04).max(0.3),
     brushFeatherNorm: z.number().min(0.1).max(0.6),
     clearanceRatioMin: unitFraction,
@@ -1112,6 +1120,228 @@ export const gestureFogWipeAnswerSchema = z
   })
   .strict();
 export type GestureFogWipeAnswer = z.infer<typeof gestureFogWipeAnswerSchema>;
+
+// ---------------------------------------------------------------------------
+// 16d. precision.circuit_rotation
+// ---------------------------------------------------------------------------
+
+export const circuitRotationSideSchema = z.enum([
+  'north',
+  'east',
+  'south',
+  'west',
+]);
+export type CircuitRotationSide = z.infer<typeof circuitRotationSideSchema>;
+
+export const circuitRotationCellSchema = z.tuple([
+  z.number().int().nonnegative(),
+  z.number().int().nonnegative(),
+]);
+export type CircuitRotationCell = z.infer<typeof circuitRotationCellSchema>;
+
+export const circuitRotationGridSchema = z
+  .object({
+    rows: z.number().int().min(1).max(8),
+    columns: z.number().int().min(1).max(8),
+  })
+  .strict();
+export type CircuitRotationGrid = z.infer<typeof circuitRotationGridSchema>;
+
+export const circuitRotationSourceSchema = z
+  .object({
+    cell: circuitRotationCellSchema,
+    side: circuitRotationSideSchema,
+  })
+  .strict();
+export type CircuitRotationSource = z.infer<typeof circuitRotationSourceSchema>;
+
+export const circuitRotationTargetSchema = z
+  .object({
+    cell: circuitRotationCellSchema,
+    side: circuitRotationSideSchema,
+    kind: z.literal('heart'),
+  })
+  .strict();
+export type CircuitRotationTarget = z.infer<typeof circuitRotationTargetSchema>;
+
+export const circuitRotationShapeSchema = z.enum(['straight', 'corner']);
+export type CircuitRotationShape = z.infer<typeof circuitRotationShapeSchema>;
+
+export const circuitRotationTileSchema = z
+  .object({
+    id: z.string().min(1).max(64),
+    cell: circuitRotationCellSchema,
+    shape: circuitRotationShapeSchema,
+    initialQuarterTurns: z.number().int().min(0).max(3),
+    movable: z.boolean(),
+  })
+  .strict();
+export type CircuitRotationTile = z.infer<typeof circuitRotationTileSchema>;
+
+export const circuitRotationStationaryConnectionSchema = z
+  .object({
+    cell: circuitRotationCellSchema,
+    side: circuitRotationSideSchema,
+  })
+  .strict();
+export type CircuitRotationStationaryConnection = z.infer<
+  typeof circuitRotationStationaryConnectionSchema
+>;
+
+export const circuitRotationAssetIdsSchema = z
+  .object({
+    boardBase: z.string().min(1).max(128),
+    gridPlate: z.string().min(1).max(128),
+    sparkRive: z.string().min(1).max(128),
+  })
+  .strict();
+export type CircuitRotationAssetIds = z.infer<
+  typeof circuitRotationAssetIdsSchema
+>;
+
+const hexColor = z.string().regex(/^#[0-9a-fA-F]{6}$/);
+export const circuitRotationThemeSchema = z
+  .object({
+    inactivePipeColor: hexColor,
+    energyColor: hexColor,
+    energyCoreColor: hexColor,
+    socketColor: hexColor,
+  })
+  .strict();
+export type CircuitRotationTheme = z.infer<typeof circuitRotationThemeSchema>;
+
+type CircuitRotationPuzzleLike = {
+  grid: CircuitRotationGrid;
+  source: CircuitRotationSource;
+  target: CircuitRotationTarget;
+  tiles: CircuitRotationTile[];
+  stationaryConnections: CircuitRotationStationaryConnection[];
+};
+
+function refineCircuitRotationPuzzle(
+  puzzle: CircuitRotationPuzzleLike,
+  ctx: z.RefinementCtx,
+): void {
+  const inBounds = ([row, column]: CircuitRotationCell) =>
+    row < puzzle.grid.rows && column < puzzle.grid.columns;
+  const validateCell = (
+    cell: CircuitRotationCell,
+    path: (string | number)[],
+  ) => {
+    if (!inBounds(cell)) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'cell must be within grid bounds',
+        path,
+      });
+    }
+  };
+
+  validateCell(puzzle.source.cell, ['source', 'cell']);
+  validateCell(puzzle.target.cell, ['target', 'cell']);
+
+  const tileIds = new Set<string>();
+  const tileCells = new Set<string>();
+  puzzle.tiles.forEach((tile, index) => {
+    validateCell(tile.cell, ['tiles', index, 'cell']);
+    if (tileIds.has(tile.id)) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: `duplicate tile id "${tile.id}"`,
+        path: ['tiles', index, 'id'],
+      });
+    }
+    tileIds.add(tile.id);
+
+    const cellKey = tile.cell.join(',');
+    if (tileCells.has(cellKey)) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'multiple tiles cannot occupy the same cell',
+        path: ['tiles', index, 'cell'],
+      });
+    }
+    tileCells.add(cellKey);
+  });
+
+  const stationaryConnections = new Set<string>();
+  puzzle.stationaryConnections.forEach((connection, index) => {
+    validateCell(connection.cell, ['stationaryConnections', index, 'cell']);
+    const connectionKey = `${connection.cell.join(',')}:${connection.side}`;
+    if (stationaryConnections.has(connectionKey)) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'duplicate stationary connection',
+        path: ['stationaryConnections', index],
+      });
+    }
+    stationaryConnections.add(connectionKey);
+  });
+}
+
+const circuitRotationPuzzleShape = {
+  grid: circuitRotationGridSchema,
+  source: circuitRotationSourceSchema,
+  target: circuitRotationTargetSchema,
+  tiles: z.array(circuitRotationTileSchema).min(1).max(64),
+  stationaryConnections: z
+    .array(circuitRotationStationaryConnectionSchema)
+    .max(64),
+} as const;
+
+export const circuitRotationVariantSchema = z
+  .object({
+    ...circuitRotationPuzzleShape,
+    requireAllConfiguredTilesPowered: z.boolean().optional(),
+  })
+  .strict()
+  .superRefine(refineCircuitRotationPuzzle);
+export type CircuitRotationVariant = z.infer<
+  typeof circuitRotationVariantSchema
+>;
+
+export const precisionCircuitRotationClientConfigSchema = z
+  .object({
+    categoryKey: translationKey,
+    promptKey: translationKey,
+    footerKey: translationKey.optional(),
+    assetIds: circuitRotationAssetIdsSchema,
+    ...circuitRotationPuzzleShape,
+    theme: circuitRotationThemeSchema,
+    rotationDegrees: z.literal(90).default(90),
+  })
+  .strict()
+  .superRefine(refineCircuitRotationPuzzle);
+export type PrecisionCircuitRotationClientConfig = z.infer<
+  typeof precisionCircuitRotationClientConfigSchema
+>;
+
+export const precisionCircuitRotationServerConfigSchema = z
+  .object({
+    assetIds: circuitRotationAssetIdsSchema,
+    ...circuitRotationPuzzleShape,
+    theme: circuitRotationThemeSchema,
+    rotationDegrees: z.literal(90).default(90),
+    requireAllConfiguredTilesPowered: z.boolean(),
+    variants: z.array(circuitRotationVariantSchema).min(1).max(16).optional(),
+  })
+  .strict()
+  .superRefine(refineCircuitRotationPuzzle);
+export type PrecisionCircuitRotationServerConfig = z.infer<
+  typeof precisionCircuitRotationServerConfigSchema
+>;
+
+export const precisionCircuitRotationAnswerSchema = z
+  .object({
+    tileQuarterTurns: z.record(
+      z.string().min(1).max(64),
+      z.number().int().min(0).max(3),
+    ),
+  })
+  .strict();
+export type PrecisionCircuitRotationAnswer = z.infer<
+  typeof precisionCircuitRotationAnswerSchema
+>;
 
 // ---------------------------------------------------------------------------
 // 17. logic.balance_scale
@@ -1289,6 +1519,7 @@ export const ENGINE_RUNTIME_READINESS: Record<LaunchEngineId, 'live' | 'schema_o
   'precision.maze_path': 'live',
   'precision.neon_cable': 'live',
   'gesture.fog_wipe': 'live',
+  'precision.circuit_rotation': 'live',
   'logic.balance_scale': 'live',
   'focus.stroop': 'live',
   'search.select_occurrences': 'live',
@@ -1390,6 +1621,11 @@ const ENGINE_SCHEMAS: Record<LaunchEngineId, EngineSchemaPair> = {
     client: gestureFogWipeClientConfigSchema,
     server: gestureFogWipeServerConfigSchema,
     answer: gestureFogWipeAnswerSchema,
+  },
+  'precision.circuit_rotation': {
+    client: precisionCircuitRotationClientConfigSchema,
+    server: precisionCircuitRotationServerConfigSchema,
+    answer: precisionCircuitRotationAnswerSchema,
   },
   'logic.balance_scale': {
     client: logicBalanceScaleClientConfigSchema,
@@ -1500,6 +1736,11 @@ export type ValidatedEngineConfigs =
       serverConfig: GestureFogWipeServerConfig;
     }
   | {
+      engineId: 'precision.circuit_rotation';
+      clientConfig: PrecisionCircuitRotationClientConfig;
+      serverConfig: PrecisionCircuitRotationServerConfig;
+    }
+  | {
       engineId: 'logic.balance_scale';
       clientConfig: LogicBalanceScaleClientConfig;
       serverConfig: LogicBalanceScaleServerConfig;
@@ -1540,6 +1781,10 @@ export type ValidatedEngineAnswer =
   | { engineId: 'precision.maze_path'; answer: PrecisionMazePathAnswer }
   | { engineId: 'precision.neon_cable'; answer: PrecisionNeonCableAnswer }
   | { engineId: 'gesture.fog_wipe'; answer: GestureFogWipeAnswer }
+  | {
+      engineId: 'precision.circuit_rotation';
+      answer: PrecisionCircuitRotationAnswer;
+    }
   | { engineId: 'logic.balance_scale'; answer: LogicBalanceScaleAnswer }
   | { engineId: 'focus.stroop'; answer: FocusStroopAnswer }
   | { engineId: 'search.select_occurrences'; answer: SearchSelectOccurrencesAnswer };
@@ -1728,6 +1973,51 @@ export function validateEngineConfigs(
           path: ['serverConfig', 'clearanceRatioMin'],
         },
       ]);
+    }
+    if (c.assetIds.revealContent !== s.assetIds.revealContent) {
+      throw new z.ZodError([
+        {
+          code: z.ZodIssueCode.custom,
+          message: 'client and server assetIds.revealContent must match',
+          path: ['serverConfig', 'assetIds', 'revealContent'],
+        },
+      ]);
+    }
+    if (
+      s.revealContentVariants &&
+      s.revealContentVariants.length > 0 &&
+      s.assetIds.revealContent !== s.revealContentVariants[0]
+    ) {
+      throw new z.ZodError([
+        {
+          code: z.ZodIssueCode.custom,
+          message:
+            'assetIds.revealContent must equal revealContentVariants[0]',
+          path: ['serverConfig', 'assetIds', 'revealContent'],
+        },
+      ]);
+    }
+  }
+
+  if (id === 'precision.circuit_rotation') {
+    const c = client as PrecisionCircuitRotationClientConfig;
+    const s = server as PrecisionCircuitRotationServerConfig;
+    for (const field of [
+      'grid',
+      'source',
+      'target',
+      'tiles',
+      'stationaryConnections',
+    ] as const) {
+      if (JSON.stringify(c[field]) !== JSON.stringify(s[field])) {
+        throw new z.ZodError([
+          {
+            code: z.ZodIssueCode.custom,
+            message: `client and server ${field} must match`,
+            path: ['serverConfig', field],
+          },
+        ]);
+      }
     }
   }
 

@@ -454,6 +454,42 @@ export function assignSeatVariants(
     return seats;
   }
 
+  if (challenge.engineId === 'gesture.fog_wipe') {
+    const baseAssetIds = challenge.definition.serverConfig['assetIds'];
+    if (!baseAssetIds || typeof baseAssetIds !== 'object') {
+      return seats;
+    }
+    const base = { ...(baseAssetIds as Record<string, unknown>) };
+    const variantsRaw = challenge.definition.serverConfig['revealContentVariants'];
+    const pool = Array.isArray(variantsRaw)
+      ? variantsRaw.filter((id): id is string => typeof id === 'string' && id.length > 0)
+      : [];
+    const fallback =
+      typeof base['revealContent'] === 'string'
+        ? [base['revealContent']]
+        : [];
+    const deck = [...(pool.length > 0 ? pool : fallback)];
+    if (deck.length === 0) {
+      return seats;
+    }
+    for (let i = deck.length - 1; i > 0; i -= 1) {
+      const j = randomInt(0, i + 1);
+      const tmp = deck[i]!;
+      deck[i] = deck[j]!;
+      deck[j] = tmp;
+    }
+    ids.forEach((playerId, index) => {
+      const revealContent = deck[index % deck.length]!;
+      // Shallow merge replaces nested assetIds — send the full map.
+      const assetIds = { ...base, revealContent };
+      seats.set(playerId, {
+        clientOverlay: { assetIds },
+        serverOverlay: { assetIds },
+      });
+    });
+    return seats;
+  }
+
   return seats;
 }
 

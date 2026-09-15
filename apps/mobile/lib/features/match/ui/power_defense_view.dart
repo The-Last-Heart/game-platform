@@ -14,6 +14,7 @@ import 'widgets/hearts_display.dart';
 import 'widgets/lh_buttons.dart';
 import 'widgets/lh_heart_logo.dart';
 import 'widgets/challenge_sfx.dart';
+import 'widgets/power_narrative_banner.dart';
 
 /// Incoming Danger Pulse defense window.
 class PowerDefenseView extends StatefulWidget {
@@ -151,7 +152,9 @@ class _PowerDefenseViewState extends State<PowerDefenseView> {
           ),
           const SizedBox(height: 12),
           EnergyDisplay(energy: local?.energy ?? 0),
-          const SizedBox(height: 28),
+          const SizedBox(height: 16),
+          PowerNarrativeBanner(state: widget.state, resolver: resolver),
+          const SizedBox(height: 12),
           CountdownRing(
             progress: _progress,
             label: '$_secondsLabel',
@@ -160,7 +163,9 @@ class _PowerDefenseViewState extends State<PowerDefenseView> {
           const SizedBox(height: 20),
           if (!isTarget)
             Text(
-              resolver.resolve(TranslationKeys.powerDefenseWaiting),
+              widget.state.tactical?.lastNarrative != null
+                  ? resolver.resolve(TranslationKeys.powerDefenseWatching)
+                  : resolver.resolve(TranslationKeys.powerDefenseWaiting),
               style: Theme.of(context).textTheme.titleMedium?.copyWith(
                 color: LhColors.textMuted,
               ),

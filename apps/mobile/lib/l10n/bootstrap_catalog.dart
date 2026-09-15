@@ -339,6 +339,13 @@ TranslationCatalog createBootstrapCatalog() {
         'challenge.fog_wipe.a11y_fallback': 'امسح الضباب بإصبعك',
         'result.fog_wipe.incomplete': 'لم يُمسح بما يكفي',
         'engine.gesture.fog_wipe': 'مسح الضباب',
+        'challenge.circuit_rotation.intro': 'أكمل الدائرة',
+        'challenge.circuit_rotation.prompt': 'اضغط لتدوير القطع وإكمال المسار',
+        'challenge.circuit_rotation.footer': 'أوصل الطاقة إلى القلب',
+        'challenge.circuit_rotation.a11y_fallback':
+            'اضغط على قطع الأنابيب لتدويرها وإكمال الدائرة',
+        'result.circuit_rotation.incomplete': 'الدائرة غير مكتملة',
+        'engine.precision.circuit_rotation': 'تدوير الدائرة',
         'challenge.balance.intro': 'ميزان الأوزان',
         'challenge.balance.prompt': 'وازن الميزان',
         'challenge.balance.footer': 'اسحب الوزن الصحيح',
@@ -427,7 +434,7 @@ TranslationCatalog createBootstrapCatalog() {
             'نفّذ الإجراء في الوقت الصحيح. الموعد النهائي دقيق ويُحسب من الخادم.',
         TranslationKeys.onboardingEnergyTitle: 'الطاقة والقوى',
         TranslationKeys.onboardingEnergyBody:
-            'النجاح يملأ الطاقة. عند اكتمالها تحصل على قوة تكتيكية',
+            'النجاح يملأ الطاقة. عند الامتلاء تحصل على قدرة عشوائية، ويبقى العداد ممتلئاً حتى تستخدمها.',
         TranslationKeys.onboardingDone: 'ابدأ',
         TranslationKeys.identityTitle: 'هويتك في اللعبة',
         TranslationKeys.identitySubtitle:
@@ -477,6 +484,11 @@ TranslationCatalog createBootstrapCatalog() {
         'power.reflection.explanation': 'أعد الهجوم إلى مرسله مرة واحدة',
         'power.inventory_full': 'الحقيبة ممتلئة',
         'power.granted': 'حصلت على قدرة',
+        'power.granted.meter_ready':
+            'العداد ممتلئ — يبقى كذلك حتى تستخدم القدرة',
+        'power.granted.meter_ready_short': 'ممتلئ · جاهز',
+        'power.granted.strike_next':
+            'العداد ممتلئ — بعد النتيجة ستختار لاعباً لضربه',
         'power.no_targets': 'لا يوجد هدف صالح',
         'errors.power.not_available': 'القدرة غير متاحة',
         'errors.power.phase_invalid': 'ليس وقت استخدام القدرة',
@@ -487,12 +499,20 @@ TranslationCatalog createBootstrapCatalog() {
         TranslationKeys.powerActionChooseTarget: 'اختر هدفاً',
         TranslationKeys.powerActionSkip: 'تخطّي',
         TranslationKeys.powerActionWaiting: 'بانتظار اللاعبين…',
+        TranslationKeys.powerActionWatching: 'شاهد ما يحدث في الغرفة',
         TranslationKeys.powerDefenseTitle: 'دفاع',
         TranslationKeys.powerDefenseIncoming: 'هجوم قادم!',
         TranslationKeys.powerDefenseReflectedIncoming: 'هجوم منعكس قادم!',
         TranslationKeys.powerDefenseWaiting: 'بانتظار الدفاع…',
+        TranslationKeys.powerDefenseWatching: 'شاهد نتيجة الضربة',
         TranslationKeys.powerDefenseNone: 'بدون دفاع',
         TranslationKeys.powerDefenseFrom: 'من {name}',
+        TranslationKeys.powerNarrativeStruck: 'هجوم من {attacker} على {target}',
+        TranslationKeys.powerNarrativeReversed:
+            '{defender} عكس الضربة نحو {attacker}',
+        TranslationKeys.powerNarrativeShielded: '{defender} دافع عن نفسه بالدرع',
+        TranslationKeys.powerNarrativeHit: '{attacker} أصاب {target}',
+        TranslationKeys.powerNarrativeExpired: '{target} لم يدافع',
       },
       'en': <String, String>{
         // ── Foundation ──
@@ -823,6 +843,14 @@ TranslationCatalog createBootstrapCatalog() {
         'challenge.fog_wipe.a11y_fallback': 'Wipe the fog with your finger',
         'result.fog_wipe.incomplete': 'Not cleared enough',
         'engine.gesture.fog_wipe': 'Fog wipe',
+        'challenge.circuit_rotation.intro': 'Complete the circuit',
+        'challenge.circuit_rotation.prompt':
+            'Tap to rotate pieces and complete the path',
+        'challenge.circuit_rotation.footer': 'Power the path to the heart',
+        'challenge.circuit_rotation.a11y_fallback':
+            'Tap pipe pieces to rotate them and complete the circuit',
+        'result.circuit_rotation.incomplete': 'Circuit incomplete',
+        'engine.precision.circuit_rotation': 'Circuit rotation',
         'challenge.balance.intro': 'Balance scale',
         'challenge.balance.prompt': 'Balance the scale',
         'challenge.balance.footer': 'Drag the correct weight',
@@ -911,7 +939,7 @@ TranslationCatalog createBootstrapCatalog() {
             'Act at the right moment. The exact deadline is authoritative on the server.',
         TranslationKeys.onboardingEnergyTitle: 'Energy and powers',
         TranslationKeys.onboardingEnergyBody:
-            'Success fills energy. A full meter grants one tactical power.',
+            'Success fills energy. A full meter unlocks one random power and stays full until you use it.',
         TranslationKeys.onboardingDone: 'Start',
         TranslationKeys.identityTitle: 'Your in-game identity',
         TranslationKeys.identitySubtitle:
@@ -966,6 +994,11 @@ TranslationCatalog createBootstrapCatalog() {
             'Return an attack to its sender once',
         'power.inventory_full': 'Inventory full',
         'power.granted': 'Power unlocked',
+        'power.granted.meter_ready':
+            'Meter stays full until you use this power',
+        'power.granted.meter_ready_short': 'Full · ready',
+        'power.granted.strike_next':
+            'Meter stays full — after this result you choose a player to strike',
         'power.no_targets': 'No eligible target',
         'errors.power.not_available': 'Power not available',
         'errors.power.phase_invalid': 'Not a power action moment',
@@ -977,13 +1010,22 @@ TranslationCatalog createBootstrapCatalog() {
         TranslationKeys.powerActionChooseTarget: 'Choose a target',
         TranslationKeys.powerActionSkip: 'Skip',
         TranslationKeys.powerActionWaiting: 'Waiting for players…',
+        TranslationKeys.powerActionWatching: 'Watch what happens in the room',
         TranslationKeys.powerDefenseTitle: 'Defense',
         TranslationKeys.powerDefenseIncoming: 'Incoming attack!',
         TranslationKeys.powerDefenseReflectedIncoming:
             'Reflected attack incoming!',
         TranslationKeys.powerDefenseWaiting: 'Waiting for defense…',
+        TranslationKeys.powerDefenseWatching: 'Watch the strike outcome',
         TranslationKeys.powerDefenseNone: 'No defense',
         TranslationKeys.powerDefenseFrom: 'From {name}',
+        TranslationKeys.powerNarrativeStruck: '{attacker} struck {target}',
+        TranslationKeys.powerNarrativeReversed:
+            '{defender} reversed the strike to {attacker}',
+        TranslationKeys.powerNarrativeShielded:
+            '{defender} defended with a shield',
+        TranslationKeys.powerNarrativeHit: '{attacker} hit {target}',
+        TranslationKeys.powerNarrativeExpired: '{target} did not defend',
       },
     },
   );

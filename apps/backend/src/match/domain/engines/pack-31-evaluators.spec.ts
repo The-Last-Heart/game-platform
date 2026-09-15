@@ -1,4 +1,5 @@
 import {
+  CircuitRotationEvaluator,
   FocusOddOneOutEvaluator,
   FocusStroopEvaluator,
   GeographySelectOnMapEvaluator,
@@ -175,6 +176,95 @@ describe('pack-31 evaluators', () => {
     });
   });
 
+  describe('CircuitRotationEvaluator', () => {
+    const evaluator = new CircuitRotationEvaluator();
+    const definition = def('precision.circuit_rotation', {
+      assetIds: {
+        boardBase: 'circuit_rotation.board_base',
+        gridPlate: 'circuit_rotation.grid_plate',
+        sparkRive: 'neon_cable.cable_spark',
+      },
+      grid: { rows: 1, columns: 2 },
+      source: { cell: [0, 0], side: 'west' },
+      target: { cell: [0, 1], side: 'east', kind: 'heart' },
+      tiles: [
+        {
+          id: 'source-tile',
+          cell: [0, 0],
+          shape: 'straight',
+          initialQuarterTurns: 0,
+          movable: true,
+        },
+        {
+          id: 'target-tile',
+          cell: [0, 1],
+          shape: 'straight',
+          initialQuarterTurns: 0,
+          movable: true,
+        },
+      ],
+      stationaryConnections: [
+        { cell: [0, 0], side: 'west' },
+        { cell: [0, 1], side: 'east' },
+      ],
+      theme: {
+        inactivePipeColor: '#173746',
+        energyColor: '#55E9FF',
+        energyCoreColor: '#EFFFFF',
+        socketColor: '#B7C3CB',
+      },
+      rotationDegrees: 90,
+      requireAllConfiguredTilesPowered: true,
+    });
+
+    it('succeeds only when submitted rotations power the full path', () => {
+      expect(
+        evaluator.evaluate({
+          definition,
+          answer: {
+            tileQuarterTurns: {
+              'source-tile': 1,
+              'target-tile': 1,
+            },
+          },
+          receivedMonoMs: 100,
+          deadlineMonoMs: 8000,
+        }),
+      ).toMatchObject({
+        success: true,
+        reasonKey: 'result.success',
+      });
+
+      expect(
+        evaluator.evaluate({
+          definition,
+          answer: {
+            tileQuarterTurns: {
+              'source-tile': 1,
+              'target-tile': 0,
+            },
+          },
+          receivedMonoMs: 100,
+          deadlineMonoMs: 8000,
+        }),
+      ).toMatchObject({
+        success: false,
+        reasonKey: 'result.circuit_rotation.incomplete',
+      });
+    });
+
+    it('rejects malformed rotation answers', () => {
+      expect(
+        evaluator.evaluate({
+          definition,
+          answer: { tileQuarterTurns: { 'source-tile': 4 } },
+          receivedMonoMs: 100,
+          deadlineMonoMs: 8000,
+        }).reasonKey,
+      ).toBe('result.circuit_rotation.incomplete');
+    });
+  });
+
   describe('OrderSequenceSortEvaluator', () => {
     const evaluator = new OrderSequenceSortEvaluator();
     const definition = def('order.sequence_sort', {
@@ -331,7 +421,9 @@ describe('pack-31 materialize + geography seats', () => {
     const targets = [...seats.values()].map(
       (s) => s.serverOverlay['targetRegionId'],
     );
-    expect(new Set(targets).size).toBe(Math.min(targets.length, regions.length));
+    expect(new Set(targets).size).toBe(
+      Math.min(targets.length, regions.length),
+    );
     for (const seat of seats.values()) {
       expect(seat.clientOverlay['targetRegionId']).toBeUndefined();
       expect(seat.clientOverlay['targetLabelKey']).toBeTruthy();

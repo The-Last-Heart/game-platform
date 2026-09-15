@@ -172,6 +172,28 @@ export function StudioTemplateDetail({
               <dd>{detail.pauseReason}</dd>
             </div>
           ) : null}
+          <div>
+            <dt>{t(locale, 'studio.editor.liveEligibilityTitle')}</dt>
+            <dd>
+              {detail.inLiveCatalog
+                ? t(locale, 'studio.editor.liveEligibilityInCatalog')
+                : t(locale, 'studio.editor.liveEligibilityNotInCatalog')}
+              {' · '}
+              {detail.catalogPaused
+                ? t(locale, 'studio.editor.liveEligibilityPaused').replace(
+                    '{reason}',
+                    detail.pauseReason?.trim() || '—',
+                  )
+                : t(locale, 'studio.editor.liveEligibilityActive')}
+              {' · '}
+              {t(locale, 'studio.editor.liveEligibilityModes').replace(
+                '{modes}',
+                detail.liveEligibleModes && detail.liveEligibleModes.length > 0
+                  ? detail.liveEligibleModes.join(', ')
+                  : t(locale, 'studio.editor.liveEligibilityModesNone'),
+              )}
+            </dd>
+          </div>
         </dl>
       </div>
 
@@ -202,7 +224,37 @@ export function StudioTemplateDetail({
 
       {canReview ? (
         <div className="inline-actions">
-          <button type="button" className="btn btn-primary" disabled>
+          <button
+            type="button"
+            className="btn btn-primary"
+            disabled={
+              pauseBusy ||
+              !latest ||
+              (latest.status !== 'submitted' && latest.status !== 'in_review')
+            }
+            onClick={() => {
+              if (!latest) return;
+              void (async () => {
+                setPauseBusy(true);
+                const result = await adminApiFetch('/content/approve', {
+                  method: 'POST',
+                  body: JSON.stringify({
+                    templateVersionId: latest.templateVersionId,
+                  }),
+                });
+                setPauseBusy(false);
+                if (!result.ok) {
+                  pushToast(
+                    localizeAdminError(locale, result.error.code, result.error.message),
+                    'error',
+                  );
+                  return;
+                }
+                pushToast(t(locale, 'studio.detail.approveSuccess'), 'success');
+                await load();
+              })();
+            }}
+          >
             {t(locale, 'studio.detail.approve')}
           </button>
         </div>

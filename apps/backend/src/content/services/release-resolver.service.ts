@@ -30,7 +30,7 @@ export const DEFAULT_POWER_CONFIGURATION: PowerConfigurationReleasePayload = {
   energyThreshold: 4,
   inventoryMaxTotal: 3,
   inventoryMaxPerPower: 1,
-  actionWindowMs: 8000,
+  actionWindowMs: 5000,
   defenseWindowMs: 5000,
   powers: [
     {
@@ -159,12 +159,28 @@ export class ReleaseResolverService implements ChallengeDefinitionProvider {
       return [this.getDefaultDev()];
     }
 
-    const overrides = await this.db.query<{ definition_id: string; paused: boolean }>(
-      `SELECT definition_id, paused FROM content_catalog_entry_overrides`,
+    const overrides = await this.db.query<{
+      definition_id: string;
+      paused: boolean;
+      eligible_modes: unknown;
+    }>(
+      `SELECT definition_id, paused, eligible_modes FROM content_catalog_entry_overrides`,
     );
     const paused = new Set(
       overrides.rows.filter((r) => r.paused).map((r) => r.definition_id),
     );
+    const modeOverrides = new Map<string, ChallengeDefinitionContract['eligibleModes']>();
+    for (const row of overrides.rows) {
+      if (!Array.isArray(row.eligible_modes)) continue;
+      const modes = row.eligible_modes.filter(
+        (m): m is ChallengeDefinitionContract['eligibleModes'][number] =>
+          m === 'quick_survival' ||
+          m === 'private' ||
+          m === 'training' ||
+          m === 'dev',
+      );
+      modeOverrides.set(row.definition_id, modes);
+    }
 
     const defs: ChallengeDefinition[] = [];
     for (const entry of payload.entries) {
@@ -188,12 +204,16 @@ export class ReleaseResolverService implements ChallengeDefinitionProvider {
       const engineId = parsed.data.engineId as LaunchEngineId;
       if (ENGINE_RUNTIME_READINESS[engineId] === 'schema_only') continue;
 
-      // Filter by eligible modes if a match mode is provided
+      // Live mode override wins over published definition.eligibleModes.
+      const effectiveModes =
+        modeOverrides.get(entry.definitionId) ?? parsed.data.eligibleModes;
       if (
         options?.mode &&
-        parsed.data.eligibleModes &&
-        parsed.data.eligibleModes.length > 0 &&
-        !parsed.data.eligibleModes.includes(options.mode as ChallengeDefinitionContract['eligibleModes'][number])
+        effectiveModes &&
+        effectiveModes.length > 0 &&
+        !effectiveModes.includes(
+          options.mode as ChallengeDefinitionContract['eligibleModes'][number],
+        )
       ) {
         continue;
       }
