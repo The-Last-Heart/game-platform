@@ -7,6 +7,7 @@ import '../../../l10n/app_localization.dart';
 import '../../../l10n/translation_catalog.dart';
 import '../../../l10n/translation_resolver.dart';
 import '../../../theme/lh_tokens.dart';
+import '../../content/content_asset_cache.dart';
 import '../../identity/data/identity_store.dart';
 import '../../match/protocol/realtime_messages.dart';
 import '../../match/session/match_session_controller.dart';
@@ -37,6 +38,7 @@ class AppEntryScreen extends StatefulWidget {
     this.identityStore,
     this.entryPreferences,
     this.appVersionLabel,
+    this.backendBaseUrl,
     super.key,
   });
 
@@ -46,6 +48,9 @@ class AppEntryScreen extends StatefulWidget {
 
   /// Optional override for tests / splash footer (defaults to pubspec version).
   final String? appVersionLabel;
+
+  /// Backend HTTP origin used to sync the content pack (challenge assets).
+  final String? backendBaseUrl;
 
   @override
   State<AppEntryScreen> createState() => _AppEntryScreenState();
@@ -61,10 +66,15 @@ class _AppEntryScreenState extends State<AppEntryScreen>
   int _queueSeats = 0;
   String? _ticketId;
   String _versionLabel = '0.0.1';
+  double _assetProgress = 0;
+  String? _assetStatusKey;
   final TextEditingController _roomCodeController = TextEditingController();
   late final AnimationController _splashPulse;
   late final Animation<double> _splashScale;
   DateTime? _lastBackAt;
+  Timer? _searchTimeoutTimer;
+
+  static const Duration _liveSearchTimeout = Duration(minutes: 1);
 
   @override
   void initState() {
@@ -85,6 +95,7 @@ class _AppEntryScreenState extends State<AppEntryScreen>
 
   @override
   void dispose() {
+    _searchTimeoutTimer?.cancel();
     WidgetsBinding.instance.removeObserver(this);
     widget.controller.state.removeListener(_onMatchState);
     _roomCodeController.dispose();
@@ -166,6 +177,10 @@ class _AppEntryScreenState extends State<AppEntryScreen>
     if (!mounted) return;
     final MatchViewState s = widget.controller.state.value;
     if (s.inMatch) {
+      // Real table forming — stop the solo-search timeout once 2+ seats exist.
+      if (s.players.length >= 2 || s.phase != MatchPhase.lobby) {
+        _searchTimeoutTimer?.cancel();
+      }
       setState(() {
         _queueError = null;
         _ticketId = null;
@@ -185,17 +200,34 @@ class _AppEntryScreenState extends State<AppEntryScreen>
         : TranslationKeys.errorsServiceUnavailable;
     debugPrint('AppEntryScreen connectionError=$err mapped=$mapped');
 
-    if (_phase == _EntryPhase.matchmaking) {
-      setState(() {
-        _phase = _EntryPhase.home;
-        _queueError = mapped;
-        _ticketId = null;
-        _queueSeats = 0;
-      });
-    } else if (_phase == _EntryPhase.home ||
-        _phase == _EntryPhase.privateAccess) {
-      setState(() => _queueError = mapped);
+    _searchTimeoutTimer?.cancel();
+    final bool showToast = mapped == TranslationKeys.errorsQueueTimeout ||
+        mapped == 'errors.queue_timeout' ||
+        _phase == _EntryPhase.matchmaking;
+    setState(() {
+      _phase = _EntryPhase.home;
+      _queueError = mapped;
+      _ticketId = null;
+      _queueSeats = 0;
+    });
+    if (showToast) {
+      _showQueueToast(mapped);
     }
+    widget.controller.clearConnectionError();
+  }
+
+  void _showQueueToast(String errorKey) {
+    if (!mounted) return;
+    final TranslationResolver resolver = AppLocalization.of(context);
+    final ScaffoldMessengerState messenger = ScaffoldMessenger.of(context);
+    messenger.hideCurrentSnackBar();
+    messenger.showSnackBar(
+      SnackBar(
+        content: Text(displayEntryError(resolver, errorKey)),
+        duration: const Duration(seconds: 4),
+        behavior: SnackBarBehavior.floating,
+      ),
+    );
   }
 
   String _mapConnectError(Object error) {
@@ -224,6 +256,35 @@ class _AppEntryScreenState extends State<AppEntryScreen>
 
   Future<void> _bootstrapEntry() async {
     final String versionLabel = widget.appVersionLabel ?? '0.0.1';
+    if (mounted) {
+      setState(() {
+        _versionLabel = versionLabel;
+        _assetStatusKey = TranslationKeys.splashDownloadingAssets;
+        _assetProgress = 0.02;
+      });
+    }
+
+    final String? backendUrl = widget.backendBaseUrl;
+    if (backendUrl != null && backendUrl.isNotEmpty) {
+      await ContentAssetCache.instance.sync(
+        backendBaseUrl: backendUrl,
+        onProgress: (double p) {
+          if (!mounted) return;
+          setState(() {
+            _assetProgress = p.clamp(0.0, 1.0);
+            _assetStatusKey = p >= 1
+                ? TranslationKeys.splashAssetsReady
+                : TranslationKeys.splashDownloadingAssets;
+          });
+        },
+      );
+    } else if (mounted) {
+      setState(() {
+        _assetProgress = 1;
+        _assetStatusKey = TranslationKeys.splashAssetsReady;
+      });
+    }
+
     final bool onboarded = await _entryPreferences.isOnboardingCompleted();
     final PlayerIdentity? identity = await _identityStore.load();
     if (!mounted) return;
@@ -265,6 +326,7 @@ class _AppEntryScreenState extends State<AppEntryScreen>
       _queueError = null;
       _queueSeats = 1;
     });
+    _armSearchTimeout();
     try {
       final String? ticketId = await widget.controller.enqueueMatchmaking(
         identity,
@@ -273,6 +335,7 @@ class _AppEntryScreenState extends State<AppEntryScreen>
       setState(() => _ticketId = ticketId);
     } catch (error) {
       if (!mounted) return;
+      _searchTimeoutTimer?.cancel();
       setState(() {
         _phase = _EntryPhase.home;
         _queueError = _mapConnectError(error);
@@ -280,7 +343,42 @@ class _AppEntryScreenState extends State<AppEntryScreen>
     }
   }
 
+  void _armSearchTimeout() {
+    _searchTimeoutTimer?.cancel();
+    _searchTimeoutTimer = Timer(_liveSearchTimeout, () {
+      unawaited(_onLiveSearchTimeout());
+    });
+  }
+
+  Future<void> _onLiveSearchTimeout() async {
+    if (!mounted) return;
+    final MatchViewState matchState = widget.controller.state.value;
+    final bool soloQuickSearch = !widget.controller.isRematchLobby &&
+        matchState.inMatch &&
+        matchState.mode == MatchMode.quickSurvival &&
+        matchState.phase == MatchPhase.lobby &&
+        matchState.players.length < 2;
+    final bool stillSearching =
+        _phase == _EntryPhase.matchmaking || soloQuickSearch;
+    if (!stillSearching) return;
+
+    if (soloQuickSearch || matchState.inMatch) {
+      await widget.controller.leaveMatch();
+    } else {
+      await widget.controller.cancelMatchmaking(_ticketId);
+    }
+    if (!mounted) return;
+    setState(() {
+      _phase = _EntryPhase.home;
+      _ticketId = null;
+      _queueSeats = 0;
+      _queueError = TranslationKeys.errorsQueueTimeout;
+    });
+    _showQueueToast(TranslationKeys.errorsQueueTimeout);
+  }
+
   Future<void> _cancelQueue() async {
+    _searchTimeoutTimer?.cancel();
     await widget.controller.cancelMatchmaking(_ticketId);
     if (!mounted) return;
     setState(() {
@@ -418,6 +516,8 @@ class _AppEntryScreenState extends State<AppEntryScreen>
             _EntryPhase.loading => _SplashView(
               versionLabel: _versionLabel,
               scale: _splashScale,
+              progress: _assetProgress,
+              statusKey: _assetStatusKey,
             ),
             _EntryPhase.onboarding || _EntryPhase.onboardingReplay =>
               OnboardingScreen(
@@ -468,10 +568,17 @@ class _AppEntryScreenState extends State<AppEntryScreen>
 }
 
 class _SplashView extends StatelessWidget {
-  const _SplashView({required this.versionLabel, required this.scale});
+  const _SplashView({
+    required this.versionLabel,
+    required this.scale,
+    required this.progress,
+    this.statusKey,
+  });
 
   final String versionLabel;
   final Animation<double> scale;
+  final double progress;
+  final String? statusKey;
 
   @override
   Widget build(BuildContext context) {
@@ -504,14 +611,25 @@ class _SplashView extends StatelessWidget {
                 textAlign: TextAlign.center,
               ),
               const SizedBox(height: 28),
-              const ClipRRect(
+              ClipRRect(
                 borderRadius: LhRadii.pillAll,
                 child: LinearProgressIndicator(
-                  minHeight: 6,
+                  value: progress <= 0 ? null : progress.clamp(0.0, 1.0),
+                  minHeight: 8,
                   backgroundColor: LhColors.border,
-                  color: LhColors.primary,
+                  color: LhColors.success,
                 ),
               ),
+              if (statusKey != null) ...<Widget>[
+                const SizedBox(height: 12),
+                Text(
+                  resolver.resolve(statusKey!),
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    color: LhColors.textMuted,
+                  ),
+                  textAlign: TextAlign.center,
+                ),
+              ],
               const Spacer(flex: 3),
               Text(
                 resolver.resolve(

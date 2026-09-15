@@ -619,30 +619,47 @@ export class MatchGateway
       });
       return;
     }
+    let ackSent = false;
+    const sendAck = (ack: {
+      accepted: boolean;
+      reason?: string;
+      duplicate: boolean;
+    }) => {
+      if (ackSent) return;
+      ackSent = true;
+      this.emitToClient(
+        client,
+        MessageTypes.ChallengeSubmissionAck,
+        {
+          accepted: ack.accepted,
+          reasonKey: ack.reason
+            ? `errors.match.submission_${ack.reason}`
+            : undefined,
+          duplicate: ack.duplicate,
+        },
+        {
+          commandId,
+          correlationId,
+          matchId: state.matchId,
+        },
+      );
+    };
+
     const result = await this.matches.submitAnswer({
       matchId: state.matchId,
       playerId: state.playerId,
       challengeInstanceId: payload.challengeInstanceId,
       commandId,
       answer: payload.answer,
+      onAck: sendAck,
     });
 
-    this.emitToClient(
-      client,
-      MessageTypes.ChallengeSubmissionAck,
-      {
-        accepted: result.ack.accepted,
-        reasonKey: result.ack.reason
-          ? `errors.match.submission_${result.ack.reason}`
-          : undefined,
-        duplicate: result.duplicate,
-      },
-      {
-        commandId,
-        correlationId,
-        matchId: state.matchId,
-      },
-    );
+    // Fallback if onAck did not run (e.g. older call sites).
+    sendAck({
+      accepted: result.ack.accepted,
+      reason: result.ack.reason,
+      duplicate: result.duplicate,
+    });
   }
 
   private async handleSnapshot(
@@ -670,7 +687,7 @@ export class MatchGateway
       });
       return;
     }
-    const result = await this.matches.requestSnapshot(matchId);
+    const result = await this.matches.requestSnapshot(matchId, state.playerId);
     this.emitToClient(client, MessageTypes.MatchSnapshot, result.snapshot, {
       commandId,
       correlationId,
@@ -1176,11 +1193,7 @@ export class MatchGateway
   private async handleMatchmakingStatus(
     event: MatchmakingStatusEvent,
   ): Promise<void> {
-    const socketId = this.queueSockets.get(event.ticketId);
-    if (!socketId) {
-      return;
-    }
-    const client = this.server?.sockets?.sockets?.get(socketId);
+    const client = await this.resolveMatchmakingClient(event);
     if (!client) {
       this.queueSockets.delete(event.ticketId);
       return;
@@ -1208,7 +1221,32 @@ export class MatchGateway
         state.ticketId = undefined;
       }
       this.queueSockets.delete(event.ticketId);
+      // Solo lobby abort deletes the match — drop the seat binding so the
+      // client can return to home and enqueue again.
+      if (state.matchId || state.playerId) {
+        await this.clearClientBinding(client);
+      }
     }
+  }
+
+  private async resolveMatchmakingClient(
+    event: MatchmakingStatusEvent,
+  ): Promise<Socket | undefined> {
+    const queuedSocketId = this.queueSockets.get(event.ticketId);
+    if (queuedSocketId) {
+      return this.server?.sockets?.sockets?.get(queuedSocketId);
+    }
+    const playerId = event.assignment?.playerId;
+    if (!playerId) {
+      return undefined;
+    }
+    for (const [key, socketId] of this.connectionLeases) {
+      if (!key.endsWith(`:${playerId}`)) {
+        continue;
+      }
+      return this.server?.sockets?.sockets?.get(socketId);
+    }
+    return undefined;
   }
 
   private async bindAssignedMatchmaking(
@@ -1224,21 +1262,16 @@ export class MatchGateway
     const { playerId, resumeToken } = status.assignment;
     const state = client.data as SocketState;
     if (state.matchId === matchId && state.playerId === playerId) {
-      this.queueSockets.delete(status.ticketId);
-      if (state.ticketId === status.ticketId) {
-        state.ticketId = undefined;
-      }
+      // Keep queueSockets + ticketId until lobby starts or search times out
+      // so solo-abort timed_out can still reach this socket.
       return;
     }
-    if (state.ticketId === status.ticketId) {
-      state.ticketId = undefined;
-    }
-    this.queueSockets.delete(status.ticketId);
+    // Keep ticketId/queueSockets for open-lobby fill abort.
     if (this.isSocketGone(client)) {
       await this.matches.abandonOrphanedJoin(matchId, playerId);
       return;
     }
-    const snap = await this.matches.requestSnapshot(matchId);
+    const snap = await this.matches.requestSnapshot(matchId, playerId);
     await this.finalizeSeatBind(
       client,
       commandId,
@@ -1326,52 +1359,82 @@ export class MatchGateway
   }
 
   private publishBroadcast(broadcast: MatchBroadcast): void {
+    const room = this.room(broadcast.matchId);
     for (const event of broadcast.events) {
       if (event.kind === 'sequence') {
         continue;
       }
       if (event.kind === 'challenge_started') {
-        this.server.to(this.room(broadcast.matchId)).emit('event', {
-          schemaVersion: REALTIME_SCHEMA_VERSION,
-          type: MessageTypes.ChallengeStarted,
-          messageId: randomUUID(),
-          matchId: broadcast.matchId,
-          serverSequence: event.sequence,
-          serverTimestampMs: event.serverTimestampMs,
-          payload: toPublicChallengeView(event.challenge, event.serverNowMs),
-        });
+        if (broadcast.personalizeSeats) {
+          this.emitPersonalizedChallengeStarted(broadcast.matchId, event);
+        } else {
+          this.server.to(room).emit('event', {
+            schemaVersion: REALTIME_SCHEMA_VERSION,
+            type: MessageTypes.ChallengeStarted,
+            messageId: randomUUID(),
+            matchId: broadcast.matchId,
+            serverSequence: event.sequence,
+            serverTimestampMs: event.serverTimestampMs,
+            payload: toPublicChallengeView(event.challenge, event.serverNowMs),
+          });
+        }
       } else if (event.kind === 'challenge_signal') {
-        this.server.to(this.room(broadcast.matchId)).emit('event', {
-          schemaVersion: REALTIME_SCHEMA_VERSION,
-          type: MessageTypes.ChallengeSignal,
-          messageId: randomUUID(),
-          matchId: broadcast.matchId,
-          serverSequence: event.sequence,
-          serverTimestampMs: event.serverTimestampMs,
-          payload: {
-            challengeInstanceId: event.challengeInstanceId,
-            signalToken: event.signalToken,
-            signaledAtMs: event.signaledAtMs,
-            signalEndsAtMs: event.signalEndsAtMs,
-            serverNowMs: event.serverNowMs,
-          },
-        });
+        const payload = {
+          challengeInstanceId: event.challengeInstanceId,
+          signalToken: event.signalToken,
+          signaledAtMs: event.signaledAtMs,
+          signalEndsAtMs: event.signalEndsAtMs,
+          serverNowMs: event.serverNowMs,
+        };
+        if (event.playerId) {
+          this.emitToPlayer(broadcast.matchId, event.playerId, {
+            schemaVersion: REALTIME_SCHEMA_VERSION,
+            type: MessageTypes.ChallengeSignal,
+            messageId: randomUUID(),
+            matchId: broadcast.matchId,
+            // Private seat signals are unsequenced so other seats do not see gaps.
+            serverTimestampMs: event.serverTimestampMs,
+            payload,
+          });
+        } else {
+          this.server.to(room).emit('event', {
+            schemaVersion: REALTIME_SCHEMA_VERSION,
+            type: MessageTypes.ChallengeSignal,
+            messageId: randomUUID(),
+            matchId: broadcast.matchId,
+            serverSequence: event.sequence,
+            serverTimestampMs: event.serverTimestampMs,
+            payload,
+          });
+        }
       } else if (event.kind === 'challenge_signal_ended') {
-        this.server.to(this.room(broadcast.matchId)).emit('event', {
-          schemaVersion: REALTIME_SCHEMA_VERSION,
-          type: MessageTypes.ChallengeSignalEnded,
-          messageId: randomUUID(),
-          matchId: broadcast.matchId,
-          serverSequence: event.sequence,
-          serverTimestampMs: event.serverTimestampMs,
-          payload: {
-            challengeInstanceId: event.challengeInstanceId,
-            signalEndsAtMs: event.signalEndsAtMs,
-            serverNowMs: event.serverNowMs,
-          },
-        });
+        const payload = {
+          challengeInstanceId: event.challengeInstanceId,
+          signalEndsAtMs: event.signalEndsAtMs,
+          serverNowMs: event.serverNowMs,
+        };
+        if (event.playerId) {
+          this.emitToPlayer(broadcast.matchId, event.playerId, {
+            schemaVersion: REALTIME_SCHEMA_VERSION,
+            type: MessageTypes.ChallengeSignalEnded,
+            messageId: randomUUID(),
+            matchId: broadcast.matchId,
+            serverTimestampMs: event.serverTimestampMs,
+            payload,
+          });
+        } else {
+          this.server.to(room).emit('event', {
+            schemaVersion: REALTIME_SCHEMA_VERSION,
+            type: MessageTypes.ChallengeSignalEnded,
+            messageId: randomUUID(),
+            matchId: broadcast.matchId,
+            serverSequence: event.sequence,
+            serverTimestampMs: event.serverTimestampMs,
+            payload,
+          });
+        }
       } else if (event.kind === 'challenge_resolved') {
-        this.server.to(this.room(broadcast.matchId)).emit('event', {
+        this.server.to(room).emit('event', {
           schemaVersion: REALTIME_SCHEMA_VERSION,
           type: MessageTypes.ChallengeResolved,
           messageId: randomUUID(),
@@ -1384,7 +1447,7 @@ export class MatchGateway
           },
         });
       } else if (event.kind === 'match_finished') {
-        this.server.to(this.room(broadcast.matchId)).emit('event', {
+        this.server.to(room).emit('event', {
           schemaVersion: REALTIME_SCHEMA_VERSION,
           type: MessageTypes.MatchFinished,
           messageId: randomUUID(),
@@ -1394,7 +1457,7 @@ export class MatchGateway
           payload: { winnerId: event.winnerId },
         });
       } else if (event.kind === 'match_drawn') {
-        this.server.to(this.room(broadcast.matchId)).emit('event', {
+        this.server.to(room).emit('event', {
           schemaVersion: REALTIME_SCHEMA_VERSION,
           type: MessageTypes.MatchDrawn,
           messageId: randomUUID(),
@@ -1404,7 +1467,7 @@ export class MatchGateway
           payload: {},
         });
       } else if (event.kind === 'power_granted') {
-        this.server.to(this.room(broadcast.matchId)).emit('event', {
+        this.server.to(room).emit('event', {
           schemaVersion: REALTIME_SCHEMA_VERSION,
           type: MessageTypes.PowerGranted,
           messageId: randomUUID(),
@@ -1418,7 +1481,7 @@ export class MatchGateway
           },
         });
       } else if (event.kind === 'power_inventory_full') {
-        this.server.to(this.room(broadcast.matchId)).emit('event', {
+        this.server.to(room).emit('event', {
           schemaVersion: REALTIME_SCHEMA_VERSION,
           type: MessageTypes.PowerInventoryFull,
           messageId: randomUUID(),
@@ -1431,7 +1494,7 @@ export class MatchGateway
           },
         });
       } else if (event.kind === 'power_offered') {
-        this.server.to(this.room(broadcast.matchId)).emit('event', {
+        this.server.to(room).emit('event', {
           schemaVersion: REALTIME_SCHEMA_VERSION,
           type: MessageTypes.PowerOffered,
           messageId: randomUUID(),
@@ -1444,7 +1507,7 @@ export class MatchGateway
           },
         });
       } else if (event.kind === 'power_used') {
-        this.server.to(this.room(broadcast.matchId)).emit('event', {
+        this.server.to(room).emit('event', {
           schemaVersion: REALTIME_SCHEMA_VERSION,
           type: MessageTypes.PowerUsed,
           messageId: randomUUID(),
@@ -1459,7 +1522,7 @@ export class MatchGateway
           },
         });
       } else if (event.kind === 'power_defense_required') {
-        this.server.to(this.room(broadcast.matchId)).emit('event', {
+        this.server.to(room).emit('event', {
           schemaVersion: REALTIME_SCHEMA_VERSION,
           type: MessageTypes.PowerDefenseRequired,
           messageId: randomUUID(),
@@ -1475,7 +1538,7 @@ export class MatchGateway
           },
         });
       } else if (event.kind === 'power_resolved') {
-        this.server.to(this.room(broadcast.matchId)).emit('event', {
+        this.server.to(room).emit('event', {
           schemaVersion: REALTIME_SCHEMA_VERSION,
           type: MessageTypes.PowerResolved,
           messageId: randomUUID(),
@@ -1496,7 +1559,7 @@ export class MatchGateway
         event.kind === 'player_joined' ||
         event.kind === 'presence_changed'
       ) {
-        this.server.to(this.room(broadcast.matchId)).emit('event', {
+        this.server.to(room).emit('event', {
           schemaVersion: REALTIME_SCHEMA_VERSION,
           type: MessageTypes.PlayerPresence,
           messageId: randomUUID(),
@@ -1517,7 +1580,7 @@ export class MatchGateway
                 },
         });
       } else if (event.kind === 'unsafe_zero_survivors') {
-        this.server.to(this.room(broadcast.matchId)).emit('event', {
+        this.server.to(room).emit('event', {
           schemaVersion: REALTIME_SCHEMA_VERSION,
           type: MessageTypes.MatchStateChanged,
           messageId: randomUUID(),
@@ -1532,15 +1595,78 @@ export class MatchGateway
       }
     }
 
-    this.server.to(this.room(broadcast.matchId)).emit('event', {
-      schemaVersion: REALTIME_SCHEMA_VERSION,
-      type: MessageTypes.MatchSnapshot,
-      messageId: randomUUID(),
-      matchId: broadcast.matchId,
-      serverSequence: broadcast.snapshot.sequence,
-      serverTimestampMs: Date.now(),
-      payload: broadcast.snapshot,
-    });
+    if (broadcast.personalizeSeats) {
+      this.emitPersonalizedSnapshots(broadcast);
+    } else {
+      this.server.to(room).emit('event', {
+        schemaVersion: REALTIME_SCHEMA_VERSION,
+        type: MessageTypes.MatchSnapshot,
+        messageId: randomUUID(),
+        matchId: broadcast.matchId,
+        serverSequence: broadcast.snapshot.sequence,
+        serverTimestampMs: Date.now(),
+        payload: broadcast.snapshot,
+      });
+    }
+  }
+
+  private emitPersonalizedChallengeStarted(
+    matchId: string,
+    event: Extract<
+      import('../domain/types').DomainEvent,
+      { kind: 'challenge_started' }
+    >,
+  ): void {
+    for (const [key, socketId] of this.connectionLeases) {
+      if (!key.startsWith(`${matchId}:`)) continue;
+      const playerId = key.slice(matchId.length + 1);
+      const socket = this.server?.sockets?.sockets?.get(socketId);
+      if (!socket) continue;
+      socket.emit('event', {
+        schemaVersion: REALTIME_SCHEMA_VERSION,
+        type: MessageTypes.ChallengeStarted,
+        messageId: randomUUID(),
+        matchId,
+        serverSequence: event.sequence,
+        serverTimestampMs: event.serverTimestampMs,
+        payload: toPublicChallengeView(
+          event.challenge,
+          event.serverNowMs,
+          playerId,
+        ),
+      });
+    }
+  }
+
+  private emitPersonalizedSnapshots(broadcast: MatchBroadcast): void {
+    const byPlayer = broadcast.snapshotsByPlayerId ?? {};
+    for (const [key, socketId] of this.connectionLeases) {
+      if (!key.startsWith(`${broadcast.matchId}:`)) continue;
+      const playerId = key.slice(broadcast.matchId.length + 1);
+      const socket = this.server?.sockets?.sockets?.get(socketId);
+      if (!socket) continue;
+      const snapshot = byPlayer[playerId] ?? broadcast.snapshot;
+      socket.emit('event', {
+        schemaVersion: REALTIME_SCHEMA_VERSION,
+        type: MessageTypes.MatchSnapshot,
+        messageId: randomUUID(),
+        matchId: broadcast.matchId,
+        serverSequence: snapshot.sequence,
+        serverTimestampMs: Date.now(),
+        payload: snapshot,
+      });
+    }
+  }
+
+  private emitToPlayer(
+    matchId: string,
+    playerId: string,
+    envelope: Record<string, unknown>,
+  ): void {
+    const socketId = this.connectionLeases.get(this.leaseKey(matchId, playerId));
+    if (!socketId) return;
+    const socket = this.server?.sockets?.sockets?.get(socketId);
+    socket?.emit('event', envelope);
   }
 
   private emitToClient(

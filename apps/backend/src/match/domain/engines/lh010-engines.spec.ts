@@ -155,8 +155,8 @@ describe('LH-010 engine extensions', () => {
       expect(ENGINE_RUNTIME_READINESS['tactical.risk_choice']).toBe('live');
     });
 
-    it('covers all 11 engines as live', () => {
-      expect(Object.keys(ENGINE_RUNTIME_READINESS)).toHaveLength(11);
+    it('marks every registered engine as live', () => {
+      expect(Object.keys(ENGINE_RUNTIME_READINESS).length).toBeGreaterThanOrEqual(11);
       expect(
         Object.values(ENGINE_RUNTIME_READINESS).every((v) => v === 'live'),
       ).toBe(true);

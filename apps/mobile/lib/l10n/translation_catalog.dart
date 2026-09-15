@@ -140,6 +140,7 @@ abstract final class TranslationKeys {
   static const String spectatorCurrentStandings = 'spectator.current_standings';
   static const String spectatorRemainingPlayers = 'spectator.remaining_players';
   static const String spectatorEliminatedBadge = 'spectator.eliminated_badge';
+  static const String playerStatusLeft = 'player.status.left';
 
   // ── LH-003 Winner Chrome ──
   static const String winnerMatchEnded = 'winner.match_ended';
@@ -200,6 +201,8 @@ abstract final class TranslationKeys {
   static const String errorsProtocolUnauthorized = 'errors.protocol.unauthorized';
   static const String splashTagline = 'splash.tagline';
   static const String splashVersion = 'splash.version';
+  static const String splashDownloadingAssets = 'splash.downloading_assets';
+  static const String splashAssetsReady = 'splash.assets_ready';
   static const String homeHeroSubtitle = 'home.hero_subtitle';
   static const String homeModesTitle = 'home.modes_title';
   static const String homeGreeting = 'home.greeting';

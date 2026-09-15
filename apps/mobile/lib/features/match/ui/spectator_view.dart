@@ -120,7 +120,9 @@ class SpectatorView extends StatelessWidget {
             itemCount: state.players.length,
             itemBuilder: (BuildContext context, int index) {
               final PlayerPublic player = state.players[index];
-              final bool isEliminated = player.status == PlayerStatus.spectator;
+              final bool hasLeft = player.status == PlayerStatus.left;
+              final bool isEliminated =
+                  player.status == PlayerStatus.spectator || hasLeft;
               final Color avatarColor =
                   kPlayerAvatarColors[index % kPlayerAvatarColors.length];
               final String name = _playerDisplayName(player);
@@ -170,7 +172,23 @@ class SpectatorView extends StatelessWidget {
                         ),
                       ),
                     ),
-                    if (isEliminated)
+                    if (hasLeft)
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 10,
+                          vertical: 4,
+                        ),
+                        decoration: const BoxDecoration(
+                          color: LhColors.surface,
+                          borderRadius: LhRadii.pillAll,
+                        ),
+                        child: Text(
+                          resolver.resolve(TranslationKeys.playerStatusLeft),
+                          style: Theme.of(context).textTheme.bodySmall
+                              ?.copyWith(color: LhColors.textMuted),
+                        ),
+                      )
+                    else if (isEliminated)
                       Container(
                         padding: const EdgeInsets.symmetric(
                           horizontal: 10,

@@ -38,11 +38,13 @@ class _ReactionWaitForSignalWidget extends StatefulWidget {
 }
 
 class _ReactionWaitForSignalWidgetState
-    extends State<_ReactionWaitForSignalWidget> {
+    extends State<_ReactionWaitForSignalWidget>
+    with SingleTickerProviderStateMixin {
   Timer? _timer;
   double _progress = 1.0;
   String _timerLabel = '';
   bool _submitted = false;
+  late final AnimationController _heartPulse;
 
   PublicChallenge get challenge => widget.challengeContext.challenge;
 
@@ -67,6 +69,10 @@ class _ReactionWaitForSignalWidgetState
   @override
   void initState() {
     super.initState();
+    _heartPulse = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 900),
+    )..repeat(reverse: true);
     _computeProgress();
     _timer = Timer.periodic(const Duration(milliseconds: 50), (_) {
       _computeProgress();
@@ -93,6 +99,7 @@ class _ReactionWaitForSignalWidgetState
   @override
   void dispose() {
     _timer?.cancel();
+    _heartPulse.dispose();
     super.dispose();
   }
 
@@ -183,9 +190,19 @@ class _ReactionWaitForSignalWidgetState
                 glow: _isSignalActive,
               ),
               const SizedBox(height: 32),
-              LhHeartLogo(
-                size: 120,
-                color: locked ? LhColors.disabled : accentColor,
+              AnimatedBuilder(
+                animation: _heartPulse,
+                builder: (BuildContext context, Widget? child) {
+                  // Stronger pulse while the signal is active (blue window).
+                  final double pulse = _isSignalActive
+                      ? 0.35 + _heartPulse.value * 0.65
+                      : 0.15 + _heartPulse.value * 0.35;
+                  return LhHeartLogo(
+                    size: 120,
+                    color: locked ? LhColors.disabled : accentColor,
+                    pulse: pulse,
+                  );
+                },
               ),
               const SizedBox(height: 28),
               Text(

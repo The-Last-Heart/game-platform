@@ -11,9 +11,12 @@
     "categoryKey": "challenge.category.audio",
     "promptKey": "challenge.audio.prompt",
     "visualFallbackKey": "challenge.audio.visual_fallback",
-    "hapticFallbackKey": "challenge.audio.haptic_fallback"
+    "hapticFallbackKey": "challenge.audio.haptic_fallback",
+    "pulseSfxAssetId": "sfx.pulse"
   },
   "serverConfig": {
-    "pulseCount": 3
-  }
+    "pulseCount": 3,
+    "pulseCountOptions": [2, 3, 4, 5]
+  },
+  "difficulty": "hard"
 }

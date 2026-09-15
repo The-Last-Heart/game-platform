@@ -335,12 +335,14 @@ enum RoundPhase {
 /// Player status matching the protocol.
 enum PlayerStatus {
   active,
-  spectator;
+  spectator,
+  left;
 
   static PlayerStatus fromString(String value) {
     return switch (value) {
       'active' => PlayerStatus.active,
       'spectator' => PlayerStatus.spectator,
+      'left' => PlayerStatus.left,
       _ => throw ArgumentError('Unknown PlayerStatus: $value'),
     };
   }

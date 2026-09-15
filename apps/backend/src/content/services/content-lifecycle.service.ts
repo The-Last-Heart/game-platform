@@ -427,6 +427,29 @@ export class ContentLifecycleService {
            SET paused = EXCLUDED.paused, reason = EXCLUDED.reason, updated_at = now()`,
         [definitionId, input.paused, input.reason],
       );
+      // Keep Studio template status in sync with the catalog override so Pause
+      // is visible after refresh (library filters + lifecycle timeline).
+      if (input.paused) {
+        await client.query(
+          `UPDATE content_templates t
+           SET status = 'paused', updated_at = now()
+           FROM content_template_versions v
+           WHERE v.template_id = t.id
+             AND v.definition->>'definitionId' = $1
+             AND t.status IN ('published', 'approved', 'scheduled', 'paused')`,
+          [definitionId],
+        );
+      } else {
+        await client.query(
+          `UPDATE content_templates t
+           SET status = 'published', updated_at = now()
+           FROM content_template_versions v
+           WHERE v.template_id = t.id
+             AND v.definition->>'definitionId' = $1
+             AND t.status = 'paused'`,
+          [definitionId],
+        );
+      }
       await this.audit.write(
         {
           actorAdminId,
@@ -507,9 +530,11 @@ export class ContentLifecycleService {
   // ── LH-010 Studio methods ───────────────────────────────────────────────
 
   async getStudioHomeSummary(): Promise<AdminStudioHomeSummary> {
+    // Count templates (not versions) so cards match library filters and Pause,
+    // which flips content_templates.status + catalog overrides.
     const statusCounts = await this.db.query<{ status: string; cnt: string }>(
       `SELECT status, count(*)::text AS cnt
-       FROM content_template_versions
+       FROM content_templates
        GROUP BY status`,
     );
     const counts = {
@@ -533,6 +558,19 @@ export class ContentLifecycleService {
         case 'paused': counts.paused = n; break;
       }
     }
+
+    // Also count catalog overrides that paused a definition whose template row
+    // was never flipped (legacy / ops path using definitionId only).
+    const overridePaused = await this.db.query<{ cnt: string }>(
+      `SELECT count(DISTINCT t.id)::text AS cnt
+       FROM content_catalog_entry_overrides o
+       JOIN content_template_versions v
+         ON v.definition->>'definitionId' = o.definition_id
+       JOIN content_templates t ON t.id = v.template_id
+       WHERE o.paused = true
+         AND t.status <> 'paused'`,
+    );
+    counts.paused += parseInt(overridePaused.rows[0]?.cnt ?? '0', 10);
 
     const recent = await this.db.query<{
       id: string;
@@ -681,13 +719,42 @@ export class ContentLifecycleService {
       [templateId],
     );
 
+    const latestDefinitionId =
+      versions.rows[0] != null
+        ? (challengeDefinitionSchema.parse(versions.rows[0].definition)
+            .definitionId as string)
+        : null;
+
+    let catalogPaused = false;
+    let pauseReason: string | null = null;
+    if (latestDefinitionId) {
+      const override = await this.db.query<{
+        paused: boolean;
+        reason: string | null;
+      }>(
+        `SELECT paused, reason FROM content_catalog_entry_overrides
+         WHERE definition_id = $1`,
+        [latestDefinitionId],
+      );
+      catalogPaused = override.rows[0]?.paused === true;
+      pauseReason = override.rows[0]?.reason ?? null;
+    }
+
+    // Prefer catalog override for display when template row was never flipped.
+    const displayStatus: ContentLifecycleStatus =
+      catalogPaused && t.status === 'published'
+        ? 'paused'
+        : (t.status as ContentLifecycleStatus);
+
     return {
       templateId: t.id,
       slug: t.slug,
       internalTitle: t.internal_title,
       familyId: t.family_id,
       categoryId: t.category_id,
-      status: t.status as ContentLifecycleStatus,
+      status: displayStatus,
+      catalogPaused,
+      pauseReason,
       versions: versions.rows.map((v) => ({
         templateVersionId: v.id,
         templateId: v.template_id,

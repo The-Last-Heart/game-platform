@@ -14,6 +14,17 @@ export const LAUNCH_ENGINE_IDS = [
   'audio.cue',
   'social.pair_sync',
   'tactical.risk_choice',
+  // Challenges 31–38
+  'trivia.multiple_choice',
+  'geography.select_on_map',
+  'focus.odd_one_out',
+  'order.sequence_sort',
+  'precision.maze_path',
+  'precision.neon_cable',
+  'gesture.fog_wipe',
+  'logic.balance_scale',
+  'focus.stroop',
+  'search.select_occurrences',
 ] as const;
 
 export const launchEngineIdSchema = z.enum(LAUNCH_ENGINE_IDS);
@@ -64,8 +75,26 @@ export const reactionWaitForSignalServerConfigSchema = z
   .object({
     signalDelayMs: nonNegMs,
     signalWindowMs: positiveMs,
+    /** Optional per-player delay spread; when omitted the server still randomizes. */
+    signalDelayRangeMs: z
+      .object({
+        min: nonNegMs,
+        max: nonNegMs,
+      })
+      .strict()
+      .optional(),
   })
-  .strict();
+  .strict()
+  .superRefine((cfg, ctx) => {
+    if (!cfg.signalDelayRangeMs) return;
+    if (cfg.signalDelayRangeMs.max < cfg.signalDelayRangeMs.min) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'signalDelayRangeMs.max must be >= min',
+        path: ['signalDelayRangeMs', 'max'],
+      });
+    }
+  });
 export type ReactionWaitForSignalServerConfig = z.infer<
   typeof reactionWaitForSignalServerConfigSchema
 >;
@@ -280,6 +309,27 @@ export function parseTapPrecisionAnswer(input: unknown) {
 // ---------------------------------------------------------------------------
 
 /**
+ * Catalog pool group: one visual family (shapes / symbols / marks).
+ * Runtime picks one group per challenge instance, then samples optionKeys.
+ */
+export const memoryObjectGroupSchema = z
+  .object({
+    groupId: z.string().min(1).max(64),
+    keys: z.array(optionKey).min(4).max(24),
+  })
+  .strict()
+  .superRefine((value, ctx) => {
+    if (new Set(value.keys).size !== value.keys.length) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'object group keys must be unique',
+        path: ['keys'],
+      });
+    }
+  });
+export type MemoryObjectGroup = z.infer<typeof memoryObjectGroupSchema>;
+
+/**
  * Public client config. Must not include the authoritative sequence —
  * server owns order; answer-phase optionKeys may be shuffled without leaking it.
  */
@@ -309,6 +359,10 @@ export const memorySequenceServerConfigSchema = z
     sequence: z.array(optionKey).min(1).max(12),
     previewMs: positiveMs,
     optionKeys: z.array(optionKey).min(2).max(12),
+    /** When set, each challenge instance samples a random group + options. */
+    objectGroups: z.array(memoryObjectGroupSchema).min(1).max(12).optional(),
+    optionCount: z.number().int().min(2).max(8).optional(),
+    sequenceLength: z.number().int().min(1).max(12).optional(),
   })
   .strict()
   .superRefine((value, ctx) => {
@@ -329,6 +383,23 @@ export const memorySequenceServerConfigSchema = z
           path: ['sequence', i],
         });
       }
+    }
+    const optionCount = value.optionCount ?? 4;
+    const sequenceLength = value.sequenceLength ?? value.sequence.length;
+    if (value.objectGroups) {
+      for (let g = 0; g < value.objectGroups.length; g++) {
+        const group = value.objectGroups[g]!;
+        if (group.keys.length < optionCount) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: `objectGroups[${g}] needs at least optionCount (${optionCount}) keys`,
+            path: ['objectGroups', g, 'keys'],
+          });
+        }
+      }
+    }
+    if (sequenceLength > optionCount && !value.objectGroups) {
+      // Static catalogs may still use repeats inside sequence; only warn via length cap.
     }
   });
 export type MemorySequenceServerConfig = z.infer<
@@ -430,6 +501,14 @@ export type MotionShakeAnswer = z.infer<typeof motionShakeAnswerSchema>;
 // 8. motion.tilt_balance
 // ---------------------------------------------------------------------------
 
+export const motionTiltTargetShapeSchema = z.enum([
+  'circle',
+  'square',
+  'diamond',
+  'heart',
+]);
+export type MotionTiltTargetShape = z.infer<typeof motionTiltTargetShapeSchema>;
+
 export const motionTiltBalanceClientConfigSchema = z
   .object({
     categoryKey: translationKey,
@@ -444,6 +523,20 @@ export const motionTiltBalanceServerConfigSchema = z
     targetY: z.number().min(-1).max(1),
     holdMs: positiveMs,
     varianceTolerance: z.number().min(0).max(1).default(0.15),
+    /** Optional seat palette; server picks one variant per player. */
+    targetVariants: z
+      .array(
+        z
+          .object({
+            targetX: z.number().min(-1).max(1),
+            targetY: z.number().min(-1).max(1),
+            targetShape: motionTiltTargetShapeSchema.default('circle'),
+          })
+          .strict(),
+      )
+      .min(1)
+      .max(12)
+      .optional(),
   })
   .strict();
 export type MotionTiltBalanceServerConfig = z.infer<typeof motionTiltBalanceServerConfigSchema>;
@@ -474,6 +567,12 @@ export type AudioCueClientConfig = z.infer<typeof audioCueClientConfigSchema>;
 export const audioCueServerConfigSchema = z
   .object({
     pulseCount: z.number().int().positive().max(20),
+    /** Optional pool for per-seat pulse counts; runtime falls back near pulseCount. */
+    pulseCountOptions: z
+      .array(z.number().int().positive().max(8))
+      .min(2)
+      .max(8)
+      .optional(),
   })
   .strict();
 export type AudioCueServerConfig = z.infer<typeof audioCueServerConfigSchema>;
@@ -509,6 +608,11 @@ export type SocialPairSyncServerConfig = z.infer<typeof socialPairSyncServerConf
 export const socialPairSyncAnswerSchema = z
   .object({
     synced: z.boolean(),
+    /** How long the player held the sync control (ms). */
+    heldMs: z.number().int().nonnegative().max(60_000).optional(),
+    /** True when the player lifted before the hold completed. */
+    releasedEarly: z.boolean().optional(),
+    final: z.boolean().optional(),
   })
   .strict();
 export type SocialPairSyncAnswer = z.infer<typeof socialPairSyncAnswerSchema>;
@@ -560,6 +664,608 @@ export const tacticalRiskChoiceAnswerSchema = z
 export type TacticalRiskChoiceAnswer = z.infer<typeof tacticalRiskChoiceAnswerSchema>;
 
 // ---------------------------------------------------------------------------
+// 12. trivia.multiple_choice
+// ---------------------------------------------------------------------------
+
+export const triviaMultipleChoiceClientConfigSchema = z
+  .object({
+    categoryKey: translationKey,
+    promptKey: translationKey,
+    questionKey: translationKey,
+    optionKeys: z.array(optionKey).min(2).max(6),
+    footerKey: translationKey.optional(),
+  })
+  .strict();
+export type TriviaMultipleChoiceClientConfig = z.infer<
+  typeof triviaMultipleChoiceClientConfigSchema
+>;
+
+export const triviaMultipleChoiceServerConfigSchema = z
+  .object({
+    questions: z
+      .array(
+        z
+          .object({
+            questionKey: translationKey,
+            optionKeys: z.array(optionKey).min(2).max(6),
+            correctOptionKey: optionKey,
+          })
+          .strict(),
+      )
+      .min(1)
+      .max(64),
+    questionKey: translationKey.optional(),
+    optionKeys: z.array(optionKey).min(2).max(6).optional(),
+    correctOptionKey: optionKey.optional(),
+  })
+  .strict();
+export type TriviaMultipleChoiceServerConfig = z.infer<
+  typeof triviaMultipleChoiceServerConfigSchema
+>;
+
+export const triviaMultipleChoiceAnswerSchema = z
+  .object({
+    chosenOptionKey: optionKey,
+  })
+  .strict();
+export type TriviaMultipleChoiceAnswer = z.infer<
+  typeof triviaMultipleChoiceAnswerSchema
+>;
+
+// ---------------------------------------------------------------------------
+// 13. geography.select_on_map
+// ---------------------------------------------------------------------------
+
+const mapPointSchema = z
+  .object({
+    x: z.number().finite(),
+    y: z.number().finite(),
+  })
+  .strict();
+
+const mapRegionSchema = z
+  .object({
+    regionId: z.string().min(1).max(64),
+    labelKey: translationKey,
+    polygon: z.array(mapPointSchema).min(3).max(256),
+  })
+  .strict();
+
+export const geographyMapSchema = z
+  .object({
+    mapId: z.string().min(1).max(64),
+    assetId: z.string().min(1).max(128),
+    imageWidth: z.number().int().positive().max(8192),
+    imageHeight: z.number().int().positive().max(8192),
+    regions: z.array(mapRegionSchema).min(1).max(64),
+  })
+  .strict();
+export type GeographyMap = z.infer<typeof geographyMapSchema>;
+
+export const geographySelectOnMapClientConfigSchema = z
+  .object({
+    categoryKey: translationKey,
+    promptKey: translationKey,
+    footerKey: translationKey.optional(),
+    mapId: z.string().min(1).max(64),
+    assetId: z.string().min(1).max(128),
+    imageWidth: z.number().int().positive().max(8192),
+    imageHeight: z.number().int().positive().max(8192),
+    targetLabelKey: translationKey,
+    regions: z.array(mapRegionSchema).min(1).max(64),
+  })
+  .strict();
+export type GeographySelectOnMapClientConfig = z.infer<
+  typeof geographySelectOnMapClientConfigSchema
+>;
+
+export const geographySelectOnMapServerConfigSchema = z
+  .object({
+    maps: z.array(geographyMapSchema).min(1).max(32),
+    mapId: z.string().min(1).max(64).optional(),
+    assetId: z.string().min(1).max(128).optional(),
+    imageWidth: z.number().int().positive().max(8192).optional(),
+    imageHeight: z.number().int().positive().max(8192).optional(),
+    regions: z.array(mapRegionSchema).min(1).max(64).optional(),
+    targetRegionId: z.string().min(1).max(64).optional(),
+  })
+  .strict();
+export type GeographySelectOnMapServerConfig = z.infer<
+  typeof geographySelectOnMapServerConfigSchema
+>;
+
+export const geographySelectOnMapAnswerSchema = z
+  .object({
+    regionId: z.string().min(1).max(64).nullable(),
+  })
+  .strict();
+export type GeographySelectOnMapAnswer = z.infer<
+  typeof geographySelectOnMapAnswerSchema
+>;
+
+// ---------------------------------------------------------------------------
+// 14. focus.odd_one_out
+// ---------------------------------------------------------------------------
+
+export const focusOddOneOutClientConfigSchema = z
+  .object({
+    categoryKey: translationKey,
+    promptKey: translationKey,
+    footerKey: translationKey.optional(),
+    columns: z.number().int().min(2).max(6),
+    glyphKeys: z.array(optionKey).min(4).max(36),
+  })
+  .strict();
+export type FocusOddOneOutClientConfig = z.infer<
+  typeof focusOddOneOutClientConfigSchema
+>;
+
+export const focusOddOneOutServerConfigSchema = z
+  .object({
+    columns: z.number().int().min(2).max(6),
+    glyphKeys: z.array(optionKey).min(4).max(36),
+    oddIndex: z.number().int().min(0).max(35),
+    variants: z
+      .array(
+        z
+          .object({
+            columns: z.number().int().min(2).max(6),
+            glyphKeys: z.array(optionKey).min(4).max(36),
+            oddIndex: z.number().int().min(0).max(35),
+          })
+          .strict(),
+      )
+      .min(1)
+      .max(32)
+      .optional(),
+  })
+  .strict();
+export type FocusOddOneOutServerConfig = z.infer<
+  typeof focusOddOneOutServerConfigSchema
+>;
+
+export const focusOddOneOutAnswerSchema = z
+  .object({
+    selectedIndex: z.number().int().min(0).max(35),
+  })
+  .strict();
+export type FocusOddOneOutAnswer = z.infer<typeof focusOddOneOutAnswerSchema>;
+
+// ---------------------------------------------------------------------------
+// 15. order.sequence_sort
+// ---------------------------------------------------------------------------
+
+export const orderSequenceSortClientConfigSchema = z
+  .object({
+    categoryKey: translationKey,
+    promptKey: translationKey,
+    footerKey: translationKey.optional(),
+    itemKeys: z.array(optionKey).min(2).max(8),
+    ascending: z.boolean(),
+  })
+  .strict();
+export type OrderSequenceSortClientConfig = z.infer<
+  typeof orderSequenceSortClientConfigSchema
+>;
+
+export const orderSequenceSortServerConfigSchema = z
+  .object({
+    itemKeys: z.array(optionKey).min(2).max(8),
+    correctOrder: z.array(optionKey).min(2).max(8),
+    ascending: z.boolean(),
+    variants: z
+      .array(
+        z
+          .object({
+            itemKeys: z.array(optionKey).min(2).max(8),
+            correctOrder: z.array(optionKey).min(2).max(8),
+            ascending: z.boolean(),
+          })
+          .strict(),
+      )
+      .min(1)
+      .max(32)
+      .optional(),
+  })
+  .strict();
+export type OrderSequenceSortServerConfig = z.infer<
+  typeof orderSequenceSortServerConfigSchema
+>;
+
+export const orderSequenceSortAnswerSchema = z
+  .object({
+    orderedKeys: z.array(optionKey).min(2).max(8),
+  })
+  .strict();
+export type OrderSequenceSortAnswer = z.infer<typeof orderSequenceSortAnswerSchema>;
+
+// ---------------------------------------------------------------------------
+// 16. precision.maze_path
+// ---------------------------------------------------------------------------
+
+export const precisionMazePathClientConfigSchema = z
+  .object({
+    categoryKey: translationKey,
+    promptKey: translationKey,
+    footerKey: translationKey.optional(),
+    cols: z.number().int().min(3).max(12),
+    rows: z.number().int().min(3).max(12),
+    /** 0 = wall, 1 = path */
+    cells: z.array(z.union([z.literal(0), z.literal(1)])).min(9).max(144),
+    startIndex: z.number().int().min(0).max(143),
+    goalIndex: z.number().int().min(0).max(143),
+  })
+  .strict();
+export type PrecisionMazePathClientConfig = z.infer<
+  typeof precisionMazePathClientConfigSchema
+>;
+
+export const precisionMazePathServerConfigSchema = z
+  .object({
+    cols: z.number().int().min(3).max(12),
+    rows: z.number().int().min(3).max(12),
+    cells: z.array(z.union([z.literal(0), z.literal(1)])).min(9).max(144),
+    startIndex: z.number().int().min(0).max(143),
+    goalIndex: z.number().int().min(0).max(143),
+    variants: z
+      .array(
+        z
+          .object({
+            cols: z.number().int().min(3).max(12),
+            rows: z.number().int().min(3).max(12),
+            cells: z.array(z.union([z.literal(0), z.literal(1)])).min(9).max(144),
+            startIndex: z.number().int().min(0).max(143),
+            goalIndex: z.number().int().min(0).max(143),
+          })
+          .strict(),
+      )
+      .min(1)
+      .max(16)
+      .optional(),
+  })
+  .strict();
+export type PrecisionMazePathServerConfig = z.infer<
+  typeof precisionMazePathServerConfigSchema
+>;
+
+export const precisionMazePathAnswerSchema = z
+  .object({
+    reachedGoal: z.boolean(),
+    hitWall: z.boolean(),
+  })
+  .strict();
+export type PrecisionMazePathAnswer = z.infer<typeof precisionMazePathAnswerSchema>;
+
+// ---------------------------------------------------------------------------
+// 16b. precision.neon_cable
+// ---------------------------------------------------------------------------
+
+export const neonCableColorSchema = z.enum(['cyan', 'red']);
+export type NeonCableColor = z.infer<typeof neonCableColorSchema>;
+
+export const neonCableWrongDropPolicySchema = z.enum([
+  'fail_final',
+  'reset_allow_retry',
+]);
+export type NeonCableWrongDropPolicy = z.infer<
+  typeof neonCableWrongDropPolicySchema
+>;
+
+export const neonCableSocketSchema = z
+  .object({
+    socketId: z.string().min(1).max(64),
+    color: neonCableColorSchema,
+    /** Normalized panel coordinates (0..1) for socket center. */
+    xNorm: unitFraction,
+    yNorm: unitFraction,
+  })
+  .strict();
+export type NeonCableSocket = z.infer<typeof neonCableSocketSchema>;
+
+export const neonCableAssetIdsSchema = z
+  .object({
+    panel: z.string().min(1).max(128),
+    socketHousing: z.string().min(1).max(128),
+    socketRingCyan: z.string().min(1).max(128),
+    socketRingRed: z.string().min(1).max(128),
+    socketGlowCyan: z.string().min(1).max(128),
+    socketGlowRed: z.string().min(1).max(128),
+    plugBody: z.string().min(1).max(128),
+    plugGlow: z.string().min(1).max(128),
+    plugShadow: z.string().min(1).max(128),
+    snapSparksCyan: z.string().min(1).max(128),
+    snapSparksRed: z.string().min(1).max(128),
+    /** Dual-artboard Rive (`Cyan Spark` / `Red Spark`); PNG sparks remain as fallback. */
+    sparkRive: z.string().min(1).max(128).optional(),
+    /** Snap spark SFX (content-pack download). */
+    sparkSfx: z.string().min(1).max(128).optional(),
+    composition: z.string().min(1).max(128).optional(),
+  })
+  .strict();
+export type NeonCableAssetIds = z.infer<typeof neonCableAssetIdsSchema>;
+
+export const precisionNeonCableClientConfigSchema = z
+  .object({
+    categoryKey: translationKey,
+    promptKey: translationKey,
+    footerKey: translationKey.optional(),
+    assetIds: neonCableAssetIdsSchema,
+    sockets: z.array(neonCableSocketSchema).min(2).max(4),
+    /** Plug start position (normalized panel coords). */
+    plugStartXNorm: unitFraction,
+    plugStartYNorm: unitFraction,
+    /** Fixed cable anchor on the panel (normalized). */
+    cableAnchorXNorm: unitFraction,
+    cableAnchorYNorm: unitFraction,
+    plugCableAnchorNorm: z.tuple([unitFraction, unitFraction]),
+    plugTipAnchorNorm: z.tuple([unitFraction, unitFraction]),
+    socketTargetAnchorNorm: z.tuple([unitFraction, unitFraction]),
+    /** Snap radius as a fraction of the panel's shortest side. */
+    snapRadiusNorm: z.number().min(0.02).max(0.25),
+    wrongDropPolicy: neonCableWrongDropPolicySchema,
+    /** Public so the client can give immediate snap feedback; server still authorizes. */
+    correctSocketId: z.string().min(1).max(64),
+    plugColor: neonCableColorSchema,
+  })
+  .strict();
+export type PrecisionNeonCableClientConfig = z.infer<
+  typeof precisionNeonCableClientConfigSchema
+>;
+
+export const precisionNeonCableServerConfigSchema = z
+  .object({
+    assetIds: neonCableAssetIdsSchema,
+    sockets: z.array(neonCableSocketSchema).min(2).max(4),
+    plugStartXNorm: unitFraction,
+    plugStartYNorm: unitFraction,
+    cableAnchorXNorm: unitFraction,
+    cableAnchorYNorm: unitFraction,
+    plugCableAnchorNorm: z.tuple([unitFraction, unitFraction]),
+    plugTipAnchorNorm: z.tuple([unitFraction, unitFraction]),
+    socketTargetAnchorNorm: z.tuple([unitFraction, unitFraction]),
+    snapRadiusNorm: z.number().min(0.02).max(0.25),
+    wrongDropPolicy: neonCableWrongDropPolicySchema,
+    correctSocketId: z.string().min(1).max(64),
+    plugColor: neonCableColorSchema,
+    variants: z
+      .array(
+        z
+          .object({
+            sockets: z.array(neonCableSocketSchema).min(2).max(4),
+            correctSocketId: z.string().min(1).max(64),
+            plugColor: neonCableColorSchema,
+            plugStartXNorm: unitFraction.optional(),
+            plugStartYNorm: unitFraction.optional(),
+          })
+          .strict(),
+      )
+      .min(1)
+      .max(16)
+      .optional(),
+  })
+  .strict();
+export type PrecisionNeonCableServerConfig = z.infer<
+  typeof precisionNeonCableServerConfigSchema
+>;
+
+export const precisionNeonCableAnswerSchema = z
+  .object({
+    socketId: z.string().min(1).max(64).nullable(),
+    snapped: z.boolean(),
+  })
+  .strict();
+export type PrecisionNeonCableAnswer = z.infer<
+  typeof precisionNeonCableAnswerSchema
+>;
+
+// ---------------------------------------------------------------------------
+// 16c. gesture.fog_wipe
+// ---------------------------------------------------------------------------
+
+export const fogWipeAssetIdsSchema = z
+  .object({
+    revealContent: z.string().min(1).max(128),
+    fogDensity: z.string().min(1).max(128),
+    dropletHeight: z.string().min(1).max(128),
+    frostedEdges: z.string().min(1).max(128),
+    scratchMask: z.string().min(1).max(128),
+    wetSmudgeMask: z.string().min(1).max(128),
+    glassReflections: z.string().min(1).max(128),
+  })
+  .strict();
+export type FogWipeAssetIds = z.infer<typeof fogWipeAssetIdsSchema>;
+
+export const gestureFogWipeClientConfigSchema = z
+  .object({
+    categoryKey: translationKey,
+    promptKey: translationKey,
+    footerKey: translationKey.optional(),
+    assetIds: fogWipeAssetIdsSchema,
+    /** Brush diameter as a fraction of panel width. */
+    brushDiameterNorm: z.number().min(0.04).max(0.3),
+    /** Soft edge feather as a fraction of brush radius. */
+    brushFeatherNorm: z.number().min(0.1).max(0.6),
+    /** Public win threshold so the client can auto-submit; server re-checks. */
+    clearanceRatioMin: unitFraction,
+  })
+  .strict();
+export type GestureFogWipeClientConfig = z.infer<
+  typeof gestureFogWipeClientConfigSchema
+>;
+
+export const gestureFogWipeServerConfigSchema = z
+  .object({
+    assetIds: fogWipeAssetIdsSchema,
+    brushDiameterNorm: z.number().min(0.04).max(0.3),
+    brushFeatherNorm: z.number().min(0.1).max(0.6),
+    clearanceRatioMin: unitFraction,
+  })
+  .strict();
+export type GestureFogWipeServerConfig = z.infer<
+  typeof gestureFogWipeServerConfigSchema
+>;
+
+export const gestureFogWipeAnswerSchema = z
+  .object({
+    /** Fraction of fog-weighted panel cleared by the wipe mask (0..1). */
+    clearanceRatio: unitFraction,
+  })
+  .strict();
+export type GestureFogWipeAnswer = z.infer<typeof gestureFogWipeAnswerSchema>;
+
+// ---------------------------------------------------------------------------
+// 17. logic.balance_scale
+// ---------------------------------------------------------------------------
+
+export const logicBalanceScaleClientConfigSchema = z
+  .object({
+    categoryKey: translationKey,
+    promptKey: translationKey,
+    footerKey: translationKey.optional(),
+    leftWeights: z.array(z.number().int().min(1).max(9)).min(1).max(4),
+    rightKnownWeights: z.array(z.number().int().min(1).max(9)).max(4),
+    optionWeights: z.array(z.number().int().min(1).max(9)).min(2).max(6),
+  })
+  .strict();
+export type LogicBalanceScaleClientConfig = z.infer<
+  typeof logicBalanceScaleClientConfigSchema
+>;
+
+export const logicBalanceScaleServerConfigSchema = z
+  .object({
+    leftWeights: z.array(z.number().int().min(1).max(9)).min(1).max(4),
+    rightKnownWeights: z.array(z.number().int().min(1).max(9)).max(4),
+    optionWeights: z.array(z.number().int().min(1).max(9)).min(2).max(6),
+    correctWeight: z.number().int().min(1).max(9),
+    variants: z
+      .array(
+        z
+          .object({
+            leftWeights: z.array(z.number().int().min(1).max(9)).min(1).max(4),
+            rightKnownWeights: z.array(z.number().int().min(1).max(9)).max(4),
+            optionWeights: z.array(z.number().int().min(1).max(9)).min(2).max(6),
+            correctWeight: z.number().int().min(1).max(9),
+          })
+          .strict(),
+      )
+      .min(1)
+      .max(32)
+      .optional(),
+  })
+  .strict();
+export type LogicBalanceScaleServerConfig = z.infer<
+  typeof logicBalanceScaleServerConfigSchema
+>;
+
+export const logicBalanceScaleAnswerSchema = z
+  .object({
+    chosenWeight: z.number().int().min(1).max(9),
+  })
+  .strict();
+export type LogicBalanceScaleAnswer = z.infer<typeof logicBalanceScaleAnswerSchema>;
+
+// ---------------------------------------------------------------------------
+// 18. focus.stroop
+// ---------------------------------------------------------------------------
+
+export const focusStroopClientConfigSchema = z
+  .object({
+    categoryKey: translationKey,
+    promptKey: translationKey,
+    footerKey: translationKey.optional(),
+    wordKey: translationKey,
+    inkColorId: optionKey,
+    optionKeys: z.array(optionKey).min(2).max(6),
+  })
+  .strict();
+export type FocusStroopClientConfig = z.infer<typeof focusStroopClientConfigSchema>;
+
+export const focusStroopServerConfigSchema = z
+  .object({
+    wordKey: translationKey,
+    inkColorId: optionKey,
+    optionKeys: z.array(optionKey).min(2).max(6),
+    correctOptionKey: optionKey,
+    variants: z
+      .array(
+        z
+          .object({
+            wordKey: translationKey,
+            inkColorId: optionKey,
+            optionKeys: z.array(optionKey).min(2).max(6),
+            correctOptionKey: optionKey,
+          })
+          .strict(),
+      )
+      .min(1)
+      .max(32)
+      .optional(),
+  })
+  .strict();
+export type FocusStroopServerConfig = z.infer<typeof focusStroopServerConfigSchema>;
+
+export const focusStroopAnswerSchema = z
+  .object({
+    chosenOptionKey: optionKey,
+  })
+  .strict();
+export type FocusStroopAnswer = z.infer<typeof focusStroopAnswerSchema>;
+
+// ---------------------------------------------------------------------------
+// 19. search.select_occurrences
+// ---------------------------------------------------------------------------
+
+export const searchSelectOccurrencesClientConfigSchema = z
+  .object({
+    categoryKey: translationKey,
+    promptKey: translationKey,
+    footerKey: translationKey.optional(),
+    columns: z.number().int().min(2).max(6),
+    cells: z.array(z.string().min(1).max(8)).min(4).max(36),
+    targetValue: z.string().min(1).max(8),
+  })
+  .strict();
+export type SearchSelectOccurrencesClientConfig = z.infer<
+  typeof searchSelectOccurrencesClientConfigSchema
+>;
+
+export const searchSelectOccurrencesServerConfigSchema = z
+  .object({
+    columns: z.number().int().min(2).max(6),
+    cells: z.array(z.string().min(1).max(8)).min(4).max(36),
+    targetValue: z.string().min(1).max(8),
+    requiredIndices: z.array(z.number().int().min(0).max(35)).min(1).max(36),
+    variants: z
+      .array(
+        z
+          .object({
+            columns: z.number().int().min(2).max(6),
+            cells: z.array(z.string().min(1).max(8)).min(4).max(36),
+            targetValue: z.string().min(1).max(8),
+            requiredIndices: z.array(z.number().int().min(0).max(35)).min(1).max(36),
+          })
+          .strict(),
+      )
+      .min(1)
+      .max(32)
+      .optional(),
+  })
+  .strict();
+export type SearchSelectOccurrencesServerConfig = z.infer<
+  typeof searchSelectOccurrencesServerConfigSchema
+>;
+
+export const searchSelectOccurrencesAnswerSchema = z
+  .object({
+    selectedIndices: z.array(z.number().int().min(0).max(35)).min(0).max(36),
+    final: z.boolean().optional(),
+  })
+  .strict();
+export type SearchSelectOccurrencesAnswer = z.infer<
+  typeof searchSelectOccurrencesAnswerSchema
+>;
+
+// ---------------------------------------------------------------------------
 // Cross-engine validators
 // ---------------------------------------------------------------------------
 
@@ -576,6 +1282,16 @@ export const ENGINE_RUNTIME_READINESS: Record<LaunchEngineId, 'live' | 'schema_o
   'audio.cue': 'live',
   'social.pair_sync': 'live',
   'tactical.risk_choice': 'live',
+  'trivia.multiple_choice': 'live',
+  'geography.select_on_map': 'live',
+  'focus.odd_one_out': 'live',
+  'order.sequence_sort': 'live',
+  'precision.maze_path': 'live',
+  'precision.neon_cable': 'live',
+  'gesture.fog_wipe': 'live',
+  'logic.balance_scale': 'live',
+  'focus.stroop': 'live',
+  'search.select_occurrences': 'live',
 };
 
 type EngineSchemaPair = {
@@ -640,6 +1356,56 @@ const ENGINE_SCHEMAS: Record<LaunchEngineId, EngineSchemaPair> = {
     server: tacticalRiskChoiceServerConfigSchema,
     answer: tacticalRiskChoiceAnswerSchema,
   },
+  'trivia.multiple_choice': {
+    client: triviaMultipleChoiceClientConfigSchema,
+    server: triviaMultipleChoiceServerConfigSchema,
+    answer: triviaMultipleChoiceAnswerSchema,
+  },
+  'geography.select_on_map': {
+    client: geographySelectOnMapClientConfigSchema,
+    server: geographySelectOnMapServerConfigSchema,
+    answer: geographySelectOnMapAnswerSchema,
+  },
+  'focus.odd_one_out': {
+    client: focusOddOneOutClientConfigSchema,
+    server: focusOddOneOutServerConfigSchema,
+    answer: focusOddOneOutAnswerSchema,
+  },
+  'order.sequence_sort': {
+    client: orderSequenceSortClientConfigSchema,
+    server: orderSequenceSortServerConfigSchema,
+    answer: orderSequenceSortAnswerSchema,
+  },
+  'precision.maze_path': {
+    client: precisionMazePathClientConfigSchema,
+    server: precisionMazePathServerConfigSchema,
+    answer: precisionMazePathAnswerSchema,
+  },
+  'precision.neon_cable': {
+    client: precisionNeonCableClientConfigSchema,
+    server: precisionNeonCableServerConfigSchema,
+    answer: precisionNeonCableAnswerSchema,
+  },
+  'gesture.fog_wipe': {
+    client: gestureFogWipeClientConfigSchema,
+    server: gestureFogWipeServerConfigSchema,
+    answer: gestureFogWipeAnswerSchema,
+  },
+  'logic.balance_scale': {
+    client: logicBalanceScaleClientConfigSchema,
+    server: logicBalanceScaleServerConfigSchema,
+    answer: logicBalanceScaleAnswerSchema,
+  },
+  'focus.stroop': {
+    client: focusStroopClientConfigSchema,
+    server: focusStroopServerConfigSchema,
+    answer: focusStroopAnswerSchema,
+  },
+  'search.select_occurrences': {
+    client: searchSelectOccurrencesClientConfigSchema,
+    server: searchSelectOccurrencesServerConfigSchema,
+    answer: searchSelectOccurrencesAnswerSchema,
+  },
 };
 
 export type ValidatedEngineConfigs =
@@ -697,6 +1463,56 @@ export type ValidatedEngineConfigs =
       engineId: 'tactical.risk_choice';
       clientConfig: TacticalRiskChoiceClientConfig;
       serverConfig: TacticalRiskChoiceServerConfig;
+    }
+  | {
+      engineId: 'trivia.multiple_choice';
+      clientConfig: TriviaMultipleChoiceClientConfig;
+      serverConfig: TriviaMultipleChoiceServerConfig;
+    }
+  | {
+      engineId: 'geography.select_on_map';
+      clientConfig: GeographySelectOnMapClientConfig;
+      serverConfig: GeographySelectOnMapServerConfig;
+    }
+  | {
+      engineId: 'focus.odd_one_out';
+      clientConfig: FocusOddOneOutClientConfig;
+      serverConfig: FocusOddOneOutServerConfig;
+    }
+  | {
+      engineId: 'order.sequence_sort';
+      clientConfig: OrderSequenceSortClientConfig;
+      serverConfig: OrderSequenceSortServerConfig;
+    }
+  | {
+      engineId: 'precision.maze_path';
+      clientConfig: PrecisionMazePathClientConfig;
+      serverConfig: PrecisionMazePathServerConfig;
+    }
+  | {
+      engineId: 'precision.neon_cable';
+      clientConfig: PrecisionNeonCableClientConfig;
+      serverConfig: PrecisionNeonCableServerConfig;
+    }
+  | {
+      engineId: 'gesture.fog_wipe';
+      clientConfig: GestureFogWipeClientConfig;
+      serverConfig: GestureFogWipeServerConfig;
+    }
+  | {
+      engineId: 'logic.balance_scale';
+      clientConfig: LogicBalanceScaleClientConfig;
+      serverConfig: LogicBalanceScaleServerConfig;
+    }
+  | {
+      engineId: 'focus.stroop';
+      clientConfig: FocusStroopClientConfig;
+      serverConfig: FocusStroopServerConfig;
+    }
+  | {
+      engineId: 'search.select_occurrences';
+      clientConfig: SearchSelectOccurrencesClientConfig;
+      serverConfig: SearchSelectOccurrencesServerConfig;
     };
 
 export type ValidatedEngineAnswer =
@@ -716,7 +1532,17 @@ export type ValidatedEngineAnswer =
   | { engineId: 'motion.tilt_balance'; answer: MotionTiltBalanceAnswer }
   | { engineId: 'audio.cue'; answer: AudioCueAnswer }
   | { engineId: 'social.pair_sync'; answer: SocialPairSyncAnswer }
-  | { engineId: 'tactical.risk_choice'; answer: TacticalRiskChoiceAnswer };
+  | { engineId: 'tactical.risk_choice'; answer: TacticalRiskChoiceAnswer }
+  | { engineId: 'trivia.multiple_choice'; answer: TriviaMultipleChoiceAnswer }
+  | { engineId: 'geography.select_on_map'; answer: GeographySelectOnMapAnswer }
+  | { engineId: 'focus.odd_one_out'; answer: FocusOddOneOutAnswer }
+  | { engineId: 'order.sequence_sort'; answer: OrderSequenceSortAnswer }
+  | { engineId: 'precision.maze_path'; answer: PrecisionMazePathAnswer }
+  | { engineId: 'precision.neon_cable'; answer: PrecisionNeonCableAnswer }
+  | { engineId: 'gesture.fog_wipe'; answer: GestureFogWipeAnswer }
+  | { engineId: 'logic.balance_scale'; answer: LogicBalanceScaleAnswer }
+  | { engineId: 'focus.stroop'; answer: FocusStroopAnswer }
+  | { engineId: 'search.select_occurrences'; answer: SearchSelectOccurrencesAnswer };
 
 function assertKnownEngineId(engineId: string): LaunchEngineId {
   return launchEngineIdSchema.parse(engineId);
@@ -854,6 +1680,52 @@ export function validateEngineConfigs(
           code: z.ZodIssueCode.custom,
           message: 'client and server optionKeys must be the same set',
           path: ['serverConfig', 'optionKeys'],
+        },
+      ]);
+    }
+  }
+
+  if (id === 'precision.neon_cable') {
+    const c = client as PrecisionNeonCableClientConfig;
+    const s = server as PrecisionNeonCableServerConfig;
+    if (c.correctSocketId !== s.correctSocketId) {
+      throw new z.ZodError([
+        {
+          code: z.ZodIssueCode.custom,
+          message: 'client and server correctSocketId must match',
+          path: ['serverConfig', 'correctSocketId'],
+        },
+      ]);
+    }
+    if (!s.sockets.some((sock) => sock.socketId === s.correctSocketId)) {
+      throw new z.ZodError([
+        {
+          code: z.ZodIssueCode.custom,
+          message: 'correctSocketId must reference a socket in sockets',
+          path: ['serverConfig', 'correctSocketId'],
+        },
+      ]);
+    }
+    if (c.wrongDropPolicy !== s.wrongDropPolicy) {
+      throw new z.ZodError([
+        {
+          code: z.ZodIssueCode.custom,
+          message: 'client and server wrongDropPolicy must match',
+          path: ['serverConfig', 'wrongDropPolicy'],
+        },
+      ]);
+    }
+  }
+
+  if (id === 'gesture.fog_wipe') {
+    const c = client as GestureFogWipeClientConfig;
+    const s = server as GestureFogWipeServerConfig;
+    if (c.clearanceRatioMin !== s.clearanceRatioMin) {
+      throw new z.ZodError([
+        {
+          code: z.ZodIssueCode.custom,
+          message: 'client and server clearanceRatioMin must match',
+          path: ['serverConfig', 'clearanceRatioMin'],
         },
       ]);
     }

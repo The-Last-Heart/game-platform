@@ -729,6 +729,47 @@ describe('MatchService', () => {
     service.onModuleDestroy();
   });
 
+  it('concurrent rematch from two seats lands in one lobby', async () => {
+    const clock = new FakeClock(5_000_000);
+    const service = MatchService.forTests({ clock, nodeEnv: 'test' });
+    const created = await service.createQuickSurvivalMatch([
+      { displayName: 'Wajdi', avatarColor: '#111111' },
+      { displayName: 'Mahmoud', avatarColor: '#222222' },
+    ]);
+    const a = created.assignments[0]!;
+    const b = created.assignments[1]!;
+    for (const seat of created.assignments) {
+      await service.finalizeJoin(created.matchId, seat.playerId);
+    }
+
+    const store = service.getStoreForTests();
+    const match = await store.get(created.matchId);
+    match!.phase = 'completed';
+    match!.status = 'completed';
+    match!.winnerId = a.playerId;
+    await store.save(match!);
+
+    const [first, second] = await Promise.all([
+      service.rematch(created.matchId, a.playerId),
+      service.rematch(created.matchId, b.playerId),
+    ]);
+
+    expect(second.matchId).toBe(first.matchId);
+    expect(first.playerId).not.toBe(second.playerId);
+    const lobby = await store.get(first.matchId);
+    expect(lobby!.phase).toBe('lobby');
+    expect(lobby!.status).toBe('waiting');
+    expect(lobby!.players.size).toBe(2);
+    expect([first.playerId, second.playerId]).toContain(lobby!.hostPlayerId);
+
+    const again = await service.rematch(created.matchId, a.playerId);
+    expect(again.matchId).toBe(first.matchId);
+    expect(again.playerId).toBe(first.playerId);
+    expect((await store.get(first.matchId))!.players.size).toBe(2);
+
+    service.onModuleDestroy();
+  });
+
   it('bot fill exposes isBot true in snapshot', async () => {
     const clock = new FakeClock(5_000_000);
     const service = MatchService.forTests({ clock, nodeEnv: 'development' });
@@ -772,7 +813,7 @@ describe('MatchService', () => {
     service.onModuleDestroy();
   });
 
-  it('after the last playlist round, equal hearts ends in a draw', async () => {
+  it('after the last playlist round, equal hearts continues sudden-death', async () => {
     const clock = new FakeClock(5_000_000);
     const service = MatchService.forTests({ clock, nodeEnv: 'test' });
     const created = await service.createQuickSurvivalMatch([
@@ -788,7 +829,12 @@ describe('MatchService', () => {
     const store = service.getStoreForTests();
     const match = await store.get(created.matchId);
     expect(match).toBeTruthy();
-    // One-item (or exhausted) catalog: roundNumber past last index.
+    expect(match!.pinnedPlaylist).toHaveLength(15);
+    expect(match!.hardLoopPlaylist.length).toBeGreaterThan(0);
+    expect(
+      match!.hardLoopPlaylist.every((d) => d.difficulty === 'hard'),
+    ).toBe(true);
+    // Exhausted base playlist with 2+ hearts still alive → recycle, do not draw yet.
     match!.phase = 'round_result';
     match!.status = 'waiting';
     match!.roundNumber = Math.max(match!.pinnedPlaylist.length, 1);
@@ -800,10 +846,186 @@ describe('MatchService', () => {
 
     await service.tickDue(created.matchId);
     const after = await store.get(created.matchId);
+    expect(after?.winnerId).toBeNull();
+    expect(after?.phase).not.toBe('draw');
+    expect(after?.status === 'challenge_active' || after?.phase === 'power_action').toBe(
+      true,
+    );
+    expect(after!.roundNumber).toBeGreaterThan(match!.roundNumber);
+    if (after?.status === 'challenge_active') {
+      expect(after.currentChallenge?.definition.difficulty).toBe('hard');
+    }
+
+    service.onModuleDestroy();
+  });
+
+  it('training advances to the next playlist challenge while hearts remain', async () => {
+    const clock = new FakeClock(5_000_000);
+    const service = MatchService.forTests({ clock, nodeEnv: 'test' });
+    const started = await service.startTraining({
+      displayName: 'Trainee',
+      avatarColor: '#ABCDEF',
+    });
+    await service.finalizeJoin(started.matchId, started.playerId);
+    const store = service.getStoreForTests();
+
+    const match = await store.get(started.matchId);
+    expect(match!.pinnedPlaylist.length).toBe(15);
+    expect(
+      match!.pinnedPlaylist.some((d) => d.engineId === 'social.pair_sync'),
+    ).toBe(false);
+    expect(
+      match!.pinnedPlaylist.slice(0, 5).map((d) => d.difficulty),
+    ).toEqual(['easy', 'easy', 'easy', 'easy', 'easy']);
+    expect(
+      match!.pinnedPlaylist.slice(5, 10).map((d) => d.difficulty),
+    ).toEqual(['medium', 'medium', 'medium', 'medium', 'medium']);
+    expect(
+      match!.pinnedPlaylist.slice(10, 15).map((d) => d.difficulty),
+    ).toEqual(['hard', 'hard', 'hard', 'hard', 'hard']);
+    expect(
+      match!.pinnedPlaylist.map((d) => d.engineId),
+    ).toEqual(
+      expect.arrayContaining([
+        'reaction.wait_for_signal',
+        'trap.no_touch',
+        'gesture.reverse_swipe',
+        'tap.precision',
+        'memory.sequence',
+        'hold.multitouch',
+        'motion.shake',
+        'motion.tilt_balance',
+        'audio.cue',
+      ]),
+    );
+    expect(
+      match!.powerConfig == null ||
+        match!.powerConfig.powers.every(
+          (p) => !p.eligibleModes.includes('training'),
+        ),
+    ).toBe(true);
+    match!.phase = 'round_result';
+    match!.status = 'waiting';
+    match!.roundNumber = 1;
+    match!.phaseDeadlineAtMs = clock.nowMs();
+    match!.phaseDeadlineMonoMs = clock.monoMs();
+    match!.players.get(started.playerId)!.hearts = 2;
+    await store.save(match!);
+
+    await service.tickDue(started.matchId);
+    const after = await store.get(started.matchId);
+    expect(after?.winnerId).toBeNull();
+    expect(after?.phase).not.toBe('completed');
+    expect(after?.status).toBe('challenge_active');
+    expect(after!.roundNumber).toBe(2);
+    expect(after!.currentChallenge?.definitionId).toBe(
+      match!.pinnedPlaylist[1]!.definitionId,
+    );
+
+    service.onModuleDestroy();
+  });
+
+  it('live mid-playlist with 2+ hearts does not end the match', async () => {
+    const clock = new FakeClock(5_000_000);
+    const service = MatchService.forTests({ clock, nodeEnv: 'test' });
+    const created = await service.createQuickSurvivalMatch([
+      { displayName: 'Host', avatarColor: '#111111' },
+      { displayName: 'Guest', avatarColor: '#222222' },
+    ]);
+    const hostId = created.assignments[0]!.playerId;
+    const guestId = created.assignments[1]!.playerId;
+    for (const a of created.assignments) {
+      await service.finalizeJoin(created.matchId, a.playerId);
+    }
+
+    const store = service.getStoreForTests();
+    const match = await store.get(created.matchId);
+    expect(match!.pinnedPlaylist.length).toBeGreaterThan(2);
+    match!.phase = 'round_result';
+    match!.status = 'waiting';
+    match!.roundNumber = 2;
+    match!.phaseDeadlineAtMs = clock.nowMs();
+    match!.phaseDeadlineMonoMs = clock.monoMs();
+    match!.players.get(hostId)!.hearts = 2;
+    match!.players.get(guestId)!.hearts = 1;
+    await store.save(match!);
+
+    await service.tickDue(created.matchId);
+    const after = await store.get(created.matchId);
+    expect(after?.winnerId).toBeNull();
+    expect(after?.phase).not.toBe('completed');
+    expect(after?.phase).not.toBe('draw');
+    expect(after!.roundNumber).toBeGreaterThan(2);
+
+    service.onModuleDestroy();
+  });
+
+  it('mid-match leave keeps the player on the roster as left', async () => {
+    const clock = new FakeClock(5_000_000);
+    const service = MatchService.forTests({ clock, nodeEnv: 'test' });
+    const created = await service.createQuickSurvivalMatch([
+      { displayName: 'Host', avatarColor: '#111111' },
+      { displayName: 'Guest', avatarColor: '#222222' },
+    ]);
+    const hostId = created.assignments[0]!.playerId;
+    const guestId = created.assignments[1]!.playerId;
+    for (const a of created.assignments) {
+      await service.finalizeJoin(created.matchId, a.playerId);
+    }
+
+    const store = service.getStoreForTests();
+    let match = await store.get(created.matchId);
+    match!.phase = 'challenge_active';
+    match!.status = 'challenge_active';
+    await store.save(match!);
+
+    const left = await service.leaveMatch(created.matchId, guestId);
+    expect(left.left).toBe(true);
+    expect(left.emptied).toBe(false);
+    const guest = left.snapshot?.players.find((p) => p.playerId === guestId);
+    expect(guest?.status).toBe('left');
+    expect(guest?.presence).toBe('disconnected');
+    expect(left.snapshot?.players.some((p) => p.playerId === hostId)).toBe(
+      true,
+    );
+
+    match = await store.get(created.matchId);
+    expect(match!.players.get(guestId)!.status).toBe('left');
+
+    service.onModuleDestroy();
+  });
+
+  it('equal hearts with no survivors ends in a draw', async () => {
+    const clock = new FakeClock(5_000_000);
+    const service = MatchService.forTests({ clock, nodeEnv: 'test' });
+    const created = await service.createQuickSurvivalMatch([
+      { displayName: 'Host', avatarColor: '#111111' },
+      { displayName: 'Guest', avatarColor: '#222222' },
+    ]);
+    const hostId = created.assignments[0]!.playerId;
+    const guestId = created.assignments[1]!.playerId;
+    for (const a of created.assignments) {
+      await service.finalizeJoin(created.matchId, a.playerId);
+    }
+
+    const store = service.getStoreForTests();
+    const match = await store.get(created.matchId);
+    match!.phase = 'round_result';
+    match!.status = 'waiting';
+    match!.roundNumber = Math.max(match!.pinnedPlaylist.length, 1);
+    match!.phaseDeadlineAtMs = clock.nowMs();
+    match!.phaseDeadlineMonoMs = clock.monoMs();
+    match!.players.get(hostId)!.hearts = 0;
+    match!.players.get(hostId)!.status = 'spectator';
+    match!.players.get(guestId)!.hearts = 0;
+    match!.players.get(guestId)!.status = 'spectator';
+    await store.save(match!);
+
+    await service.tickDue(created.matchId);
+    const after = await store.get(created.matchId);
     expect(after?.phase).toBe('draw');
     expect(after?.status).toBe('completed');
     expect(after?.winnerId).toBeNull();
-    expect(after?.currentChallenge).toBeNull();
 
     service.onModuleDestroy();
   });

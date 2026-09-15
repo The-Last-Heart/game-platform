@@ -106,6 +106,179 @@ export function defaultClientConfig(engineId: LaunchEngineId): Record<string, un
         promptKey: 'challenge.risk_choice.prompt',
         optionKeys: ['option.safe', 'option.risky'],
       };
+    case 'trivia.multiple_choice':
+      return {
+        categoryKey: 'challenge.category.trivia',
+        promptKey: 'challenge.trivia.prompt',
+        questionKey: 'trivia.q.japan_capital',
+        optionKeys: [
+          'trivia.opt.osaka',
+          'trivia.opt.tokyo',
+          'trivia.opt.seoul',
+          'trivia.opt.kyoto',
+        ],
+        footerKey: 'challenge.trivia.footer',
+      };
+    case 'geography.select_on_map':
+      return {
+        categoryKey: 'challenge.category.geography',
+        promptKey: 'challenge.map.prompt',
+        footerKey: 'challenge.map.footer',
+        mapId: 'map.levant',
+        assetId: 'map.levant',
+        imageWidth: 1233,
+        imageHeight: 1276,
+        targetLabelKey: 'geo.country.jordan',
+        regions: [
+          {
+            regionId: 'jordan',
+            labelKey: 'geo.country.jordan',
+            polygon: [
+              { x: 0, y: 0 },
+              { x: 1, y: 0 },
+              { x: 1, y: 1 },
+            ],
+          },
+        ],
+      };
+    case 'focus.odd_one_out':
+      return {
+        categoryKey: 'challenge.category.focus',
+        promptKey: 'challenge.odd.prompt',
+        footerKey: 'challenge.odd.footer',
+        columns: 4,
+        glyphKeys: [
+          'pulse.a',
+          'pulse.a',
+          'pulse.a',
+          'pulse.b',
+          'pulse.a',
+          'pulse.a',
+          'pulse.a',
+          'pulse.a',
+        ],
+      };
+    case 'order.sequence_sort':
+      return {
+        categoryKey: 'challenge.category.order',
+        promptKey: 'challenge.order.prompt',
+        footerKey: 'challenge.order.footer',
+        itemKeys: ['num.4', 'num.9', 'num.2', 'num.7'],
+        ascending: true,
+      };
+    case 'precision.maze_path':
+      return {
+        categoryKey: 'challenge.category.precision',
+        promptKey: 'challenge.maze.prompt',
+        footerKey: 'challenge.maze.footer',
+        cols: 5,
+        rows: 5,
+        cells: [
+          1, 1, 0, 0, 0, 0, 1, 1, 1, 0, 0, 0, 0, 1, 0, 0, 1, 1, 1, 0, 0, 1, 0, 1,
+          1,
+        ],
+        startIndex: 0,
+        goalIndex: 24,
+      };
+    case 'precision.neon_cable':
+      return {
+        categoryKey: 'challenge.category.precision',
+        promptKey: 'challenge.neon_cable.prompt',
+        footerKey: 'challenge.neon_cable.footer',
+        assetIds: {
+          panel: 'neon_cable.panel_background',
+          socketHousing: 'neon_cable.socket_housing',
+          socketRingCyan: 'neon_cable.socket_ring_cyan',
+          socketRingRed: 'neon_cable.socket_ring_red',
+          socketGlowCyan: 'neon_cable.socket_glow_cyan',
+          socketGlowRed: 'neon_cable.socket_glow_red',
+          plugBody: 'neon_cable.plug_body',
+          plugGlow: 'neon_cable.plug_glow_cyan',
+          plugShadow: 'neon_cable.plug_shadow',
+          snapSparksCyan: 'neon_cable.snap_sparks_cyan',
+          snapSparksRed: 'neon_cable.snap_sparks_red',
+          sparkRive: 'neon_cable.cable_spark',
+          sparkSfx: 'neon_cable.spark',
+          composition: 'neon_cable.composition',
+        },
+        sockets: [
+          { socketId: 'socket.cyan', color: 'cyan', xNorm: 0.78, yNorm: 0.34 },
+          { socketId: 'socket.red', color: 'red', xNorm: 0.78, yNorm: 0.66 },
+        ],
+        plugStartXNorm: 0.28,
+        plugStartYNorm: 0.5,
+        cableAnchorXNorm: 0.08,
+        cableAnchorYNorm: 0.5,
+        plugCableAnchorNorm: [0.105, 0.5],
+        plugTipAnchorNorm: [0.895, 0.5],
+        socketTargetAnchorNorm: [0.5, 0.5],
+        snapRadiusNorm: 0.09,
+        wrongDropPolicy: 'fail_final',
+        correctSocketId: 'socket.cyan',
+        plugColor: 'cyan',
+      };
+    case 'gesture.fog_wipe':
+      return {
+        categoryKey: 'challenge.category.gesture',
+        promptKey: 'challenge.fog_wipe.prompt',
+        footerKey: 'challenge.fog_wipe.footer',
+        assetIds: {
+          revealContent: 'fog_wipe.reveal_content',
+          fogDensity: 'fog_wipe.fog_density',
+          dropletHeight: 'fog_wipe.droplets_height',
+          frostedEdges: 'fog_wipe.frosted_edges',
+          scratchMask: 'fog_wipe.scratch_mask',
+          wetSmudgeMask: 'fog_wipe.wet_smudge_mask',
+          glassReflections: 'fog_wipe.glass_reflections',
+        },
+        brushDiameterNorm: 0.12,
+        brushFeatherNorm: 0.28,
+        clearanceRatioMin: 0.55,
+      };
+    case 'logic.balance_scale':
+      return {
+        categoryKey: 'challenge.category.logic',
+        promptKey: 'challenge.balance.prompt',
+        footerKey: 'challenge.balance.footer',
+        leftWeights: [1, 2],
+        rightKnownWeights: [1],
+        optionWeights: [1, 2, 3],
+      };
+    case 'focus.stroop':
+      return {
+        categoryKey: 'challenge.category.focus',
+        promptKey: 'challenge.stroop.prompt',
+        footerKey: 'challenge.stroop.footer',
+        wordKey: 'color.red',
+        inkColorId: 'cyan',
+        optionKeys: ['cyan', 'red', 'yellow'],
+      };
+    case 'search.select_occurrences':
+      return {
+        categoryKey: 'challenge.category.search',
+        promptKey: 'challenge.search.prompt',
+        footerKey: 'challenge.search.footer',
+        columns: 4,
+        cells: [
+          '3',
+          '8',
+          '0',
+          '5',
+          '2',
+          '9',
+          '6',
+          '8',
+          '0',
+          '5',
+          '8',
+          '2',
+          '9',
+          '3',
+          '6',
+          '0',
+        ],
+        targetValue: '8',
+      };
   }
 }
 
@@ -133,6 +306,162 @@ export function defaultServerConfig(engineId: LaunchEngineId): Record<string, un
       return { partnerRoleKeys: ['role.leader', 'role.follower'], syncWindowMs: 2000 };
     case 'tactical.risk_choice':
       return { optionKeys: ['option.safe', 'option.risky'], riskWeights: [30, 70] };
+    case 'trivia.multiple_choice':
+      return {
+        questions: [
+          {
+            questionKey: 'trivia.q.japan_capital',
+            optionKeys: [
+              'trivia.opt.osaka',
+              'trivia.opt.tokyo',
+              'trivia.opt.seoul',
+              'trivia.opt.kyoto',
+            ],
+            correctOptionKey: 'trivia.opt.tokyo',
+          },
+        ],
+      };
+    case 'geography.select_on_map':
+      return {
+        maps: [
+          {
+            mapId: 'map.levant',
+            assetId: 'map.levant',
+            imageWidth: 1233,
+            imageHeight: 1276,
+            regions: [
+              {
+                regionId: 'jordan',
+                labelKey: 'geo.country.jordan',
+                polygon: [
+                  { x: 0, y: 0 },
+                  { x: 1, y: 0 },
+                  { x: 1, y: 1 },
+                ],
+              },
+            ],
+          },
+        ],
+      };
+    case 'focus.odd_one_out':
+      return {
+        columns: 4,
+        glyphKeys: [
+          'pulse.a',
+          'pulse.a',
+          'pulse.a',
+          'pulse.b',
+          'pulse.a',
+          'pulse.a',
+          'pulse.a',
+          'pulse.a',
+        ],
+        oddIndex: 3,
+      };
+    case 'order.sequence_sort':
+      return {
+        itemKeys: ['num.4', 'num.9', 'num.2', 'num.7'],
+        correctOrder: ['num.2', 'num.4', 'num.7', 'num.9'],
+        ascending: true,
+      };
+    case 'precision.maze_path':
+      return {
+        cols: 5,
+        rows: 5,
+        cells: [
+          1, 1, 0, 0, 0, 0, 1, 1, 1, 0, 0, 0, 0, 1, 0, 0, 1, 1, 1, 0, 0, 1, 0, 1,
+          1,
+        ],
+        startIndex: 0,
+        goalIndex: 24,
+      };
+    case 'precision.neon_cable':
+      return {
+        assetIds: {
+          panel: 'neon_cable.panel_background',
+          socketHousing: 'neon_cable.socket_housing',
+          socketRingCyan: 'neon_cable.socket_ring_cyan',
+          socketRingRed: 'neon_cable.socket_ring_red',
+          socketGlowCyan: 'neon_cable.socket_glow_cyan',
+          socketGlowRed: 'neon_cable.socket_glow_red',
+          plugBody: 'neon_cable.plug_body',
+          plugGlow: 'neon_cable.plug_glow_cyan',
+          plugShadow: 'neon_cable.plug_shadow',
+          snapSparksCyan: 'neon_cable.snap_sparks_cyan',
+          snapSparksRed: 'neon_cable.snap_sparks_red',
+          sparkRive: 'neon_cable.cable_spark',
+          sparkSfx: 'neon_cable.spark',
+          composition: 'neon_cable.composition',
+        },
+        sockets: [
+          { socketId: 'socket.cyan', color: 'cyan', xNorm: 0.78, yNorm: 0.34 },
+          { socketId: 'socket.red', color: 'red', xNorm: 0.78, yNorm: 0.66 },
+        ],
+        plugStartXNorm: 0.28,
+        plugStartYNorm: 0.5,
+        cableAnchorXNorm: 0.08,
+        cableAnchorYNorm: 0.5,
+        plugCableAnchorNorm: [0.105, 0.5],
+        plugTipAnchorNorm: [0.895, 0.5],
+        socketTargetAnchorNorm: [0.5, 0.5],
+        snapRadiusNorm: 0.09,
+        wrongDropPolicy: 'fail_final',
+        correctSocketId: 'socket.cyan',
+        plugColor: 'cyan',
+      };
+    case 'gesture.fog_wipe':
+      return {
+        assetIds: {
+          revealContent: 'fog_wipe.reveal_content',
+          fogDensity: 'fog_wipe.fog_density',
+          dropletHeight: 'fog_wipe.droplets_height',
+          frostedEdges: 'fog_wipe.frosted_edges',
+          scratchMask: 'fog_wipe.scratch_mask',
+          wetSmudgeMask: 'fog_wipe.wet_smudge_mask',
+          glassReflections: 'fog_wipe.glass_reflections',
+        },
+        brushDiameterNorm: 0.12,
+        brushFeatherNorm: 0.28,
+        clearanceRatioMin: 0.55,
+      };
+    case 'logic.balance_scale':
+      return {
+        leftWeights: [1, 2],
+        rightKnownWeights: [1],
+        optionWeights: [1, 2, 3],
+        correctWeight: 2,
+      };
+    case 'focus.stroop':
+      return {
+        wordKey: 'color.red',
+        inkColorId: 'cyan',
+        optionKeys: ['cyan', 'red', 'yellow'],
+        correctOptionKey: 'cyan',
+      };
+    case 'search.select_occurrences':
+      return {
+        columns: 4,
+        cells: [
+          '3',
+          '8',
+          '0',
+          '5',
+          '2',
+          '9',
+          '6',
+          '8',
+          '0',
+          '5',
+          '8',
+          '2',
+          '9',
+          '3',
+          '6',
+          '0',
+        ],
+        targetValue: '8',
+        requiredIndices: [1, 7, 10],
+      };
   }
 }
 

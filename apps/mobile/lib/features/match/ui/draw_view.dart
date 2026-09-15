@@ -4,9 +4,11 @@ import '../../../l10n/app_localization.dart';
 import '../../../l10n/translation_catalog.dart';
 import '../../../l10n/translation_resolver.dart';
 import '../../../theme/lh_tokens.dart';
+import '../protocol/realtime_messages.dart';
 import '../state/match_snapshot.dart';
 import 'widgets/lh_buttons.dart';
 import 'widgets/lh_heart_logo.dart';
+import 'widgets/player_standing_row.dart';
 
 /// Terminal draw: tied top hearts after the catalog is exhausted.
 class DrawView extends StatelessWidget {
@@ -24,6 +26,9 @@ class DrawView extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final TranslationResolver resolver = AppLocalization.of(context);
+    final List<PlayerPublic> standings = PlayerStandingRow.sortedStandings(
+      state.players,
+    );
 
     return SingleChildScrollView(
       padding: const EdgeInsets.symmetric(horizontal: 20),
@@ -54,7 +59,18 @@ class DrawView extends StatelessWidget {
             style: Theme.of(context).textTheme.headlineSmall,
             textAlign: TextAlign.center,
           ),
-          const SizedBox(height: 48),
+          const SizedBox(height: 28),
+          Align(
+            alignment: AlignmentDirectional.centerStart,
+            child: Text(
+              resolver.resolve(TranslationKeys.winnerStandings),
+              style: Theme.of(context).textTheme.headlineMedium,
+            ),
+          ),
+          const SizedBox(height: 12),
+          for (final PlayerPublic player in standings)
+            PlayerStandingRow(player: player, resolver: resolver),
+          const SizedBox(height: 32),
           LhPrimaryButton(
             label: resolver.resolve(
               onRematch != null

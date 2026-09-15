@@ -10,10 +10,17 @@
   "clientConfig": {
     "categoryKey": "challenge.category.trap",
     "promptKey": "challenge.no_touch.prompt",
+    "baitActionKey": "challenge.no_touch.bait",
     "zoneHintKey": "challenge.no_touch.zone_hint",
-    "zone": { "x": 0.25, "y": 0.3, "width": 0.5, "height": 0.4 }
+    "zone": {
+      "x": 0.15,
+      "y": 0.28,
+      "width": 0.7,
+      "height": 0.42
+    }
   },
   "serverConfig": {
     "allowSystemGestures": true
-  }
+  },
+  "difficulty": "easy"
 }

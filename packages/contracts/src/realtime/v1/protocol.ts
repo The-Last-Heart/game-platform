@@ -292,7 +292,7 @@ export const challengeDurationMsSchema = z
   .number()
   .int()
   .min(3000, 'challenge duration must be at least 3000ms')
-  .max(8000, 'challenge duration must be at most 8000ms');
+  .max(15_000, 'challenge duration must be at most 15000ms');
 
 export const matchPhaseSchema = z.enum([
   'lobby',
@@ -334,7 +334,7 @@ export const playerPublicSchema = z
     hearts: z.number().int().min(0).max(3),
     /** Current meter segments (0..energyThreshold-1 after convert; 0..4 before). */
     energy: z.number().int().min(0).max(4),
-    status: z.enum(['active', 'spectator']),
+    status: z.enum(['active', 'spectator', 'left']),
     presence: z.enum(['connected', 'disconnected']),
     submittedForCurrentChallenge: z.boolean(),
     inventory: playerPowerInventorySchema.optional(),
@@ -419,12 +419,18 @@ export const publicChallengeSchema = z
 export const playerChallengeResolutionSchema = z
   .object({
     playerId: uuidLike,
-    outcome: z.enum(['success', 'failure', 'timeout', 'skipped_spectator']),
+    outcome: z.enum([
+      'success',
+      'failure',
+      'timeout',
+      'skipped_spectator',
+      'left',
+    ]),
     heartsDelta: z.number().int(),
     energyDelta: z.number().int(),
     heartsAfter: z.number().int().min(0).max(3),
     energyAfter: z.number().int().min(0).max(4),
-    statusAfter: z.enum(['active', 'spectator']),
+    statusAfter: z.enum(['active', 'spectator', 'left']),
     /** Translation key explaining the outcome (success/failure/timeout reason). */
     reasonKey: nonEmpty.optional(),
     /** Measured player performance for this challenge when applicable. */

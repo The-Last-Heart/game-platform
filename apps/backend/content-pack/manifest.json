@@ -1,0 +1,209 @@
+{
+  "packId": "lh.local.content.v1",
+  "packVersion": 8,
+  "assets": [
+    {
+      "assetId": "sfx.pulse",
+      "relativePath": "assets/sfx.pulse.wav",
+      "contentType": "audio/wav",
+      "bytes": 194192,
+      "sha256": "c7719e58bf79c3067f608b4859e54f66c0ebdd2f58b059290569fc597c380cac"
+    },
+    {
+      "assetId": "sfx.strike",
+      "relativePath": "assets/sfx.strike.mp3",
+      "contentType": "audio/mpeg",
+      "bytes": 172199,
+      "sha256": "e387d65bf8d17d3efa88eecab324b842f2ee8af934e3d42ccf2c691781e24fc2"
+    },
+    {
+      "assetId": "sfx.win",
+      "relativePath": "assets/sfx.win.mp3",
+      "contentType": "audio/mpeg",
+      "bytes": 326844,
+      "sha256": "949000c984bfb154ffd774722fdd6788be970eb220104a6184c8d19d6d8db0c3"
+    },
+    {
+      "assetId": "sfx.lose",
+      "relativePath": "assets/sfx.lose.wav",
+      "contentType": "audio/wav",
+      "bytes": 1068680,
+      "sha256": "94c1dc7f26f0fd0fe1eedd1f8dad61e18683ed8e28de84bef5c33fe4bd43643f"
+    },
+    {
+      "assetId": "map.africa",
+      "relativePath": "assets/map.africa.png",
+      "contentType": "image/png",
+      "bytes": 489977,
+      "sha256": "d12d2c8b55e711ce7856b7ac0462cd0e72c6630ab2b6f3a0b892624966801207"
+    },
+    {
+      "assetId": "map.gcc",
+      "relativePath": "assets/map.gcc.png",
+      "contentType": "image/png",
+      "bytes": 868459,
+      "sha256": "d82091dd47b1ec06bd66cf519ae8fab66d368f80ebb212fc3cbe002f6f88c076"
+    },
+    {
+      "assetId": "map.gcc_mena",
+      "relativePath": "assets/map.gcc_mena.png",
+      "contentType": "image/png",
+      "bytes": 733430,
+      "sha256": "5b2a2dc84855e9fb6ace03817231f07beb1c7e5d8022acc4feb4c362cb8d0913"
+    },
+    {
+      "assetId": "map.levant",
+      "relativePath": "assets/map.levant.png",
+      "contentType": "image/png",
+      "bytes": 720181,
+      "sha256": "2cae229d5df8950c1a9007b01826b8197eaf2166c77bac90eb1b4697ecd1421d"
+    },
+    {
+      "assetId": "neon_cable.panel_background",
+      "relativePath": "assets/neon_cable.panel_background.png",
+      "contentType": "image/png",
+      "bytes": 1522676,
+      "sha256": "31f90b193bec3f7ab87b89f7d83b1c06d97da040097db5b26a4dcf6eaf8e8079"
+    },
+    {
+      "assetId": "neon_cable.socket_housing",
+      "relativePath": "assets/neon_cable.socket_housing.png",
+      "contentType": "image/png",
+      "bytes": 401927,
+      "sha256": "a559899ec9b3fb145291cf4f144aa063e0d1ced232191bd59bfc3f9313226f66"
+    },
+    {
+      "assetId": "neon_cable.socket_ring_cyan",
+      "relativePath": "assets/neon_cable.socket_ring_cyan.png",
+      "contentType": "image/png",
+      "bytes": 97291,
+      "sha256": "8f2ca25d708cff73b3b0738bc1dbe3d68ea1c8855fd0c3267d7b8b051dc25a1e"
+    },
+    {
+      "assetId": "neon_cable.socket_ring_red",
+      "relativePath": "assets/neon_cable.socket_ring_red.png",
+      "contentType": "image/png",
+      "bytes": 97316,
+      "sha256": "464c3cda09c371330470b7bf51463437a5e2c5936e6e9d0dc10bb3ec50968b17"
+    },
+    {
+      "assetId": "neon_cable.socket_glow_cyan",
+      "relativePath": "assets/neon_cable.socket_glow_cyan.png",
+      "contentType": "image/png",
+      "bytes": 53755,
+      "sha256": "3085f1b50286292efa63dc099f5e572976e4cee3fb4459ca5e926434af6bdbeb"
+    },
+    {
+      "assetId": "neon_cable.socket_glow_red",
+      "relativePath": "assets/neon_cable.socket_glow_red.png",
+      "contentType": "image/png",
+      "bytes": 60748,
+      "sha256": "1064ca18f4049c88ae168629f0024e0f5d7a83c5ada60cdeaaf9c2f1082fbc31"
+    },
+    {
+      "assetId": "neon_cable.plug_body",
+      "relativePath": "assets/neon_cable.plug_body.png",
+      "contentType": "image/png",
+      "bytes": 299905,
+      "sha256": "8437b973da43f7abdcc3f7526a6da0184c22f430a82e8862d5e9e0570f17ba61"
+    },
+    {
+      "assetId": "neon_cable.plug_glow_cyan",
+      "relativePath": "assets/neon_cable.plug_glow_cyan.png",
+      "contentType": "image/png",
+      "bytes": 77738,
+      "sha256": "d3999e76fea09686f675ea890005922ec3ab03198421f6d4dfb3dfacc10f4baf"
+    },
+    {
+      "assetId": "neon_cable.plug_shadow",
+      "relativePath": "assets/neon_cable.plug_shadow.png",
+      "contentType": "image/png",
+      "bytes": 32541,
+      "sha256": "5210883b38712270da973f31e07c4bc9c950608c03459ad5459667c090056335"
+    },
+    {
+      "assetId": "neon_cable.snap_sparks_cyan",
+      "relativePath": "assets/neon_cable.snap_sparks_cyan.png",
+      "contentType": "image/png",
+      "bytes": 240612,
+      "sha256": "30494f5aaf8811e6490667fa34ff28f31c57ec5b9c1169610e846e3962978b0f"
+    },
+    {
+      "assetId": "neon_cable.snap_sparks_red",
+      "relativePath": "assets/neon_cable.snap_sparks_red.png",
+      "contentType": "image/png",
+      "bytes": 237024,
+      "sha256": "42ea4b7373efbbe2f91ab6b6bda3c67810f15e3258af578d3fbfcdaed4e7f59f"
+    },
+    {
+      "assetId": "neon_cable.cable_spark",
+      "relativePath": "assets/neon_cable.cable_spark.riv",
+      "contentType": "application/octet-stream",
+      "bytes": 5226,
+      "sha256": "f6e3491e0a281618af99c4f5647ee8c0d2ac0bbced056bd4979e1f6d3ba90761"
+    },
+    {
+      "assetId": "neon_cable.spark",
+      "relativePath": "assets/neon_cable.spark.mp3",
+      "contentType": "audio/mpeg",
+      "bytes": 7488,
+      "sha256": "5896de985ec814faa38f2fd34c7cb4e9fdbe79989d7144d55cf032047dc36161"
+    },
+    {
+      "assetId": "neon_cable.composition",
+      "relativePath": "assets/neon_cable.composition.json",
+      "contentType": "application/json",
+      "bytes": 3674,
+      "sha256": "40a69536db09cc6c366f017c5952901a1bf582847ef9c34d315c5820c858172d"
+    },
+    {
+      "assetId": "fog_wipe.reveal_content",
+      "relativePath": "assets/fog_wipe.reveal_content.png",
+      "contentType": "image/png",
+      "bytes": 3119507,
+      "sha256": "5ee266d664c7740b6e3be1368ea5d8071806f83658ec6844f97b235162fea98f"
+    },
+    {
+      "assetId": "fog_wipe.fog_density",
+      "relativePath": "assets/fog_wipe.fog_density.png",
+      "contentType": "image/png",
+      "bytes": 3546095,
+      "sha256": "8bd53277919557c6d10e9bc43a3757455fbc4b89ddbd47a2dacabdbaf87ebecc"
+    },
+    {
+      "assetId": "fog_wipe.droplets_height",
+      "relativePath": "assets/fog_wipe.droplets_height.png",
+      "contentType": "image/png",
+      "bytes": 1292848,
+      "sha256": "fe5473739b7658db5da6653a8c089f4d2b31c532616efd277299285ff00c43da"
+    },
+    {
+      "assetId": "fog_wipe.frosted_edges",
+      "relativePath": "assets/fog_wipe.frosted_edges.png",
+      "contentType": "image/png",
+      "bytes": 1938017,
+      "sha256": "9fec3b3c7c36a68a892e79a104a1b519caa3afdec4716dd6f5d5fdee1646ae20"
+    },
+    {
+      "assetId": "fog_wipe.scratch_mask",
+      "relativePath": "assets/fog_wipe.scratch_mask.png",
+      "contentType": "image/png",
+      "bytes": 505541,
+      "sha256": "fae537d044a0a2011f6e2a6c80290d270930ca930946f67d8e5cf1b00880d675"
+    },
+    {
+      "assetId": "fog_wipe.wet_smudge_mask",
+      "relativePath": "assets/fog_wipe.wet_smudge_mask.png",
+      "contentType": "image/png",
+      "bytes": 1520066,
+      "sha256": "986af032a43b8712996345294ac008058223c22f0ed4eebe47ecfcae7448934e"
+    },
+    {
+      "assetId": "fog_wipe.glass_reflections",
+      "relativePath": "assets/fog_wipe.glass_reflections.png",
+      "contentType": "image/png",
+      "bytes": 1282173,
+      "sha256": "3dc43d3fd370f760a2ef9883175c1c517cd18c35651d9c9bdcffb8c6e0205401"
+    }
+  ]
+}

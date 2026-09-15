@@ -69,9 +69,13 @@ export class GestureReverseSwipeEvaluator implements ChallengeEvaluator {
     if (input.receivedMonoMs > input.deadlineMonoMs) {
       return { success: false, reasonKey: 'result.timeout' };
     }
-    const displayed = str(
-      input.definition.clientConfig['displayedDirection'],
-    ) as SwipeDirection | null;
+    const displayed =
+      (str(input.definition.serverConfig['displayedDirection']) as
+        | SwipeDirection
+        | null) ??
+      (str(input.definition.clientConfig['displayedDirection']) as
+        | SwipeDirection
+        | null);
     const required =
       (str(input.definition.serverConfig['requiredDirection']) as
         | SwipeDirection
@@ -83,12 +87,16 @@ export class GestureReverseSwipeEvaluator implements ChallengeEvaluator {
     );
     const maxDuration = num(
       input.definition.serverConfig['maxDurationMs'],
-      1500,
+      5000,
     );
     const dx = num(input.answer['dx']);
     const dy = num(input.answer['dy']);
     const durationMs = num(input.answer['durationMs']);
-    if (!required || durationMs <= 0 || durationMs > maxDuration) {
+    if (!required || durationMs <= 0) {
+      return { success: false, reasonKey: 'result.swipe.invalid' };
+    }
+    // Slow deliberate pulls are valid; only reject absurdly long holds.
+    if (durationMs > Math.max(maxDuration, 5000)) {
       return { success: false, reasonKey: 'result.swipe.invalid' };
     }
     const distance = Math.hypot(dx, dy);

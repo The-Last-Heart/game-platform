@@ -13,7 +13,8 @@
     "progressKey": "challenge.shake.progress"
   },
   "serverConfig": {
-    "requiredShakeCount": 5,
+    "requiredShakeCount": 3,
     "noiseThreshold": 5
-  }
+  },
+  "difficulty": "easy"
 }

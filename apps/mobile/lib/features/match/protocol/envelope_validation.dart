@@ -92,7 +92,7 @@ const Set<String> _roundPhases = <String>{
   'resolved',
 };
 
-const Set<String> _playerStatuses = <String>{'active', 'spectator'};
+const Set<String> _playerStatuses = <String>{'active', 'spectator', 'left'};
 const Set<String> _presences = <String>{'connected', 'disconnected'};
 const Set<String> _outcomes = <String>{
   'success',

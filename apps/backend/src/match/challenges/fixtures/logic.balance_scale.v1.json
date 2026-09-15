@@ -1,0 +1,72 @@
+{
+  "definitionId": "logic.balance_scale.dev",
+  "definitionVersion": 1,
+  "engineId": "logic.balance_scale",
+  "durationMs": 8000,
+  "heartPenaltyOnFailure": 1,
+  "energyRewardOnSuccess": 1,
+  "promptKey": "challenge.balance.intro",
+  "choiceKeys": [],
+  "clientConfig": {
+    "categoryKey": "challenge.category.logic",
+    "promptKey": "challenge.balance.prompt",
+    "footerKey": "challenge.balance.footer",
+    "leftWeights": [
+      1,
+      2
+    ],
+    "rightKnownWeights": [
+      1
+    ],
+    "optionWeights": [
+      1,
+      2,
+      3
+    ]
+  },
+  "serverConfig": {
+    "leftWeights": [
+      1,
+      2
+    ],
+    "rightKnownWeights": [
+      1
+    ],
+    "optionWeights": [
+      1,
+      2,
+      3
+    ],
+    "correctWeight": 2,
+    "variants": [
+      {
+        "leftWeights": [
+          1,
+          2
+        ],
+        "rightKnownWeights": [
+          1
+        ],
+        "optionWeights": [
+          1,
+          2,
+          3
+        ],
+        "correctWeight": 2
+      },
+      {
+        "leftWeights": [
+          3
+        ],
+        "rightKnownWeights": [],
+        "optionWeights": [
+          1,
+          2,
+          3
+        ],
+        "correctWeight": 3
+      }
+    ]
+  },
+  "difficulty": "hard"
+}

@@ -1,0 +1,156 @@
+{
+  "definitionId": "precision.neon_cable.dev",
+  "definitionVersion": 1,
+  "engineId": "precision.neon_cable",
+  "durationMs": 8000,
+  "heartPenaltyOnFailure": 1,
+  "energyRewardOnSuccess": 1,
+  "promptKey": "challenge.neon_cable.intro",
+  "choiceKeys": [],
+  "clientConfig": {
+    "categoryKey": "challenge.category.precision",
+    "promptKey": "challenge.neon_cable.prompt",
+    "footerKey": "challenge.neon_cable.footer",
+    "assetIds": {
+      "panel": "neon_cable.panel_background",
+      "socketHousing": "neon_cable.socket_housing",
+      "socketRingCyan": "neon_cable.socket_ring_cyan",
+      "socketRingRed": "neon_cable.socket_ring_red",
+      "socketGlowCyan": "neon_cable.socket_glow_cyan",
+      "socketGlowRed": "neon_cable.socket_glow_red",
+      "plugBody": "neon_cable.plug_body",
+      "plugGlow": "neon_cable.plug_glow_cyan",
+      "plugShadow": "neon_cable.plug_shadow",
+      "snapSparksCyan": "neon_cable.snap_sparks_cyan",
+      "snapSparksRed": "neon_cable.snap_sparks_red",
+      "sparkRive": "neon_cable.cable_spark",
+      "sparkSfx": "neon_cable.spark",
+      "composition": "neon_cable.composition"
+    },
+    "sockets": [
+      {
+        "socketId": "socket.cyan",
+        "color": "cyan",
+        "xNorm": 0.78,
+        "yNorm": 0.34
+      },
+      {
+        "socketId": "socket.red",
+        "color": "red",
+        "xNorm": 0.78,
+        "yNorm": 0.66
+      }
+    ],
+    "plugStartXNorm": 0.28,
+    "plugStartYNorm": 0.5,
+    "cableAnchorXNorm": 0.08,
+    "cableAnchorYNorm": 0.5,
+    "plugCableAnchorNorm": [
+      0.105,
+      0.5
+    ],
+    "plugTipAnchorNorm": [
+      0.895,
+      0.5
+    ],
+    "socketTargetAnchorNorm": [
+      0.5,
+      0.5
+    ],
+    "snapRadiusNorm": 0.09,
+    "wrongDropPolicy": "fail_final",
+    "correctSocketId": "socket.cyan",
+    "plugColor": "cyan"
+  },
+  "serverConfig": {
+    "assetIds": {
+      "panel": "neon_cable.panel_background",
+      "socketHousing": "neon_cable.socket_housing",
+      "socketRingCyan": "neon_cable.socket_ring_cyan",
+      "socketRingRed": "neon_cable.socket_ring_red",
+      "socketGlowCyan": "neon_cable.socket_glow_cyan",
+      "socketGlowRed": "neon_cable.socket_glow_red",
+      "plugBody": "neon_cable.plug_body",
+      "plugGlow": "neon_cable.plug_glow_cyan",
+      "plugShadow": "neon_cable.plug_shadow",
+      "snapSparksCyan": "neon_cable.snap_sparks_cyan",
+      "snapSparksRed": "neon_cable.snap_sparks_red",
+      "sparkRive": "neon_cable.cable_spark",
+      "sparkSfx": "neon_cable.spark",
+      "composition": "neon_cable.composition"
+    },
+    "sockets": [
+      {
+        "socketId": "socket.cyan",
+        "color": "cyan",
+        "xNorm": 0.78,
+        "yNorm": 0.34
+      },
+      {
+        "socketId": "socket.red",
+        "color": "red",
+        "xNorm": 0.78,
+        "yNorm": 0.66
+      }
+    ],
+    "plugStartXNorm": 0.28,
+    "plugStartYNorm": 0.5,
+    "cableAnchorXNorm": 0.08,
+    "cableAnchorYNorm": 0.5,
+    "plugCableAnchorNorm": [
+      0.105,
+      0.5
+    ],
+    "plugTipAnchorNorm": [
+      0.895,
+      0.5
+    ],
+    "socketTargetAnchorNorm": [
+      0.5,
+      0.5
+    ],
+    "snapRadiusNorm": 0.09,
+    "wrongDropPolicy": "fail_final",
+    "correctSocketId": "socket.cyan",
+    "plugColor": "cyan",
+    "variants": [
+      {
+        "sockets": [
+          {
+            "socketId": "socket.cyan",
+            "color": "cyan",
+            "xNorm": 0.78,
+            "yNorm": 0.34
+          },
+          {
+            "socketId": "socket.red",
+            "color": "red",
+            "xNorm": 0.78,
+            "yNorm": 0.66
+          }
+        ],
+        "correctSocketId": "socket.cyan",
+        "plugColor": "cyan"
+      },
+      {
+        "sockets": [
+          {
+            "socketId": "socket.red",
+            "color": "red",
+            "xNorm": 0.78,
+            "yNorm": 0.34
+          },
+          {
+            "socketId": "socket.cyan",
+            "color": "cyan",
+            "xNorm": 0.78,
+            "yNorm": 0.66
+          }
+        ],
+        "correctSocketId": "socket.cyan",
+        "plugColor": "cyan"
+      }
+    ]
+  },
+  "difficulty": "easy"
+}

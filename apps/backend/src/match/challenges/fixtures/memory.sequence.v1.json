@@ -2,7 +2,7 @@
   "definitionId": "memory.sequence.dev",
   "definitionVersion": 1,
   "engineId": "memory.sequence",
-  "durationMs": 6000,
+  "durationMs": 8000,
   "heartPenaltyOnFailure": 1,
   "energyRewardOnSuccess": 1,
   "promptKey": "challenge.memory.intro",
@@ -10,12 +10,65 @@
   "clientConfig": {
     "categoryKey": "challenge.category.memory",
     "promptKey": "challenge.memory.prompt",
-    "previewMs": 1500,
-    "optionKeys": ["memory.opt.a", "memory.opt.b", "memory.opt.c", "memory.opt.d"]
+    "previewMs": 4000,
+    "optionKeys": [
+      "memory.glyph.circle",
+      "memory.glyph.triangle",
+      "memory.glyph.square",
+      "memory.glyph.diamond"
+    ]
   },
   "serverConfig": {
-    "sequence": ["memory.opt.a", "memory.opt.c", "memory.opt.b"],
-    "previewMs": 1500,
-    "optionKeys": ["memory.opt.a", "memory.opt.b", "memory.opt.c", "memory.opt.d"]
-  }
+    "sequence": [
+      "memory.glyph.circle",
+      "memory.glyph.triangle",
+      "memory.glyph.square",
+      "memory.glyph.diamond"
+    ],
+    "previewMs": 4000,
+    "optionKeys": [
+      "memory.glyph.circle",
+      "memory.glyph.triangle",
+      "memory.glyph.square",
+      "memory.glyph.diamond"
+    ],
+    "optionCount": 4,
+    "sequenceLength": 4,
+    "objectGroups": [
+      {
+        "groupId": "shapes",
+        "keys": [
+          "memory.glyph.circle",
+          "memory.glyph.triangle",
+          "memory.glyph.square",
+          "memory.glyph.diamond",
+          "memory.glyph.hexagon",
+          "memory.glyph.pentagon"
+        ]
+      },
+      {
+        "groupId": "symbols",
+        "keys": [
+          "memory.glyph.heart",
+          "memory.glyph.star",
+          "memory.glyph.bolt",
+          "memory.glyph.moon",
+          "memory.glyph.sun",
+          "memory.glyph.cloud"
+        ]
+      },
+      {
+        "groupId": "marks",
+        "keys": [
+          "memory.glyph.cross",
+          "memory.glyph.plus",
+          "memory.glyph.ring",
+          "memory.glyph.arrow",
+          "memory.glyph.check",
+          "memory.glyph.crescent"
+        ]
+      }
+    ]
+  },
+  "difficulty": "hard"
 }

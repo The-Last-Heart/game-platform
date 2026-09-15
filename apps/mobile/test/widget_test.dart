@@ -194,6 +194,59 @@ void main() {
         }
       }
     });
+
+    test('domain and protocol error keys exist in bootstrap catalog', () {
+      final TranslationCatalog bootstrap = createBootstrapCatalog();
+      const List<String> errorKeys = <String>[
+        'errors.match.not_found',
+        'errors.match.full',
+        'errors.match.not_joinable',
+        'errors.match.challenge_not_active',
+        'errors.match.spectator_cannot_submit',
+        'errors.match.submission_late',
+        'errors.match.submission_already_submitted',
+        'errors.match.submission_progress',
+        'errors.match.already_in_match',
+        'errors.match.not_in_match',
+        'errors.match.not_host',
+        'errors.match.not_enough_players',
+        'errors.match.rematch_unavailable',
+        'errors.match.not_lobby',
+        'errors.match.unsafe_zero_survivors',
+        'errors.room.code_invalid',
+        'errors.room.code_expired',
+        'errors.room.full',
+        'errors.queue.cancelled',
+        'errors.queue.timeout',
+        'errors.queue.not_found',
+        'errors.queue.already_in_queue',
+        'errors.queue.paused',
+        'errors.training.unavailable',
+        'errors.protocol.unauthorized',
+        'errors.protocol.internal',
+        'errors.protocol.invalid_payload',
+        'errors.protocol.invalid_schema_version',
+        'errors.protocol.unknown_message_type',
+        'errors.protocol.dev_only_forbidden',
+        'errors.protocol.session_expired',
+        'errors.power.not_available',
+        'errors.power.phase_invalid',
+        'errors.power.illegal_target',
+        'errors.power.attack_not_found',
+        'errors.power.offensive_disabled',
+        TranslationKeys.errorsQueueTimeout,
+        TranslationKeys.errorsQueueFailed,
+        TranslationKeys.errorsMatchFull,
+        TranslationKeys.errorsProtocol,
+      ];
+      for (final String locale in <String>['ar', 'en']) {
+        for (final String key in errorKeys) {
+          final String? value = bootstrap.lookup(locale, key);
+          expect(value, isNotNull, reason: '$locale:$key');
+          expect(value!.trim(), isNotEmpty, reason: '$locale:$key blank');
+        }
+      }
+    });
   });
 
   group('TranslationResolver', () {

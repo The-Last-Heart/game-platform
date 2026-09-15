@@ -1,0 +1,72 @@
+{
+  "definitionId": "search.select_occurrences.dev",
+  "definitionVersion": 1,
+  "engineId": "search.select_occurrences",
+  "durationMs": 8000,
+  "heartPenaltyOnFailure": 1,
+  "energyRewardOnSuccess": 1,
+  "promptKey": "challenge.search.intro",
+  "choiceKeys": [],
+  "clientConfig": {
+    "categoryKey": "challenge.category.search",
+    "promptKey": "challenge.search.prompt",
+    "footerKey": "challenge.search.footer",
+    "columns": 4,
+    "cells": [
+      "3",
+      "8",
+      "0",
+      "5",
+      "2",
+      "9",
+      "6",
+      "8",
+      "0",
+      "5",
+      "8",
+      "2",
+      "9",
+      "3",
+      "6",
+      "0",
+      "8",
+      "5",
+      "2",
+      "9"
+    ],
+    "targetValue": "8"
+  },
+  "serverConfig": {
+    "columns": 4,
+    "cells": [
+      "3",
+      "8",
+      "0",
+      "5",
+      "2",
+      "9",
+      "6",
+      "8",
+      "0",
+      "5",
+      "8",
+      "2",
+      "9",
+      "3",
+      "6",
+      "0",
+      "8",
+      "5",
+      "2",
+      "9"
+    ],
+    "targetValue": "8",
+    "requiredIndices": [
+      1,
+      7,
+      10,
+      16
+    ]
+  },
+  "difficulty": "medium"
+}

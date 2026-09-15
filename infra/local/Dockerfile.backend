@@ -32,6 +32,7 @@ ENV NODE_ENV=production \
 WORKDIR /app
 RUN useradd --create-home --uid 10001 lh
 COPY --from=build --chown=lh:lh /deploy/backend/ ./
+COPY --from=build --chown=lh:lh /app/apps/backend/content-pack ./content-pack
 COPY --chmod=755 infra/local/docker-entrypoint-backend.sh /entrypoint.sh
 USER lh
 EXPOSE 3000

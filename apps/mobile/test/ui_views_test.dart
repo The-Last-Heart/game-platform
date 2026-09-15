@@ -331,6 +331,47 @@ void main() {
       );
     });
 
+    testWidgets('shows left badge for departed players in standings', (
+      WidgetTester tester,
+    ) async {
+      const MatchViewState state = MatchViewState(
+        playerId: 'p1',
+        winnerId: 'p1',
+        phase: MatchPhase.completed,
+        players: <PlayerPublic>[
+          PlayerPublic(
+            playerId: 'p1',
+            hearts: 2,
+            energy: 1,
+            status: PlayerStatus.active,
+            presence: Presence.connected,
+            submittedForCurrentChallenge: false,
+            displayName: 'أحمد',
+          ),
+          PlayerPublic(
+            playerId: 'p2',
+            hearts: 2,
+            energy: 0,
+            status: PlayerStatus.left,
+            presence: Presence.disconnected,
+            submittedForCurrentChallenge: false,
+            displayName: 'ليان',
+          ),
+        ],
+      );
+
+      await tester.pumpWidget(
+        wrapWithL10n(WinnerView(state: state, onBackHome: () {})),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.text('ليان'), findsOneWidget);
+      expect(
+        find.text(resolver.resolve(TranslationKeys.playerStatusLeft)),
+        findsOneWidget,
+      );
+    });
+
     testWidgets('does not show truncated playerId as winner name', (
       WidgetTester tester,
     ) async {
@@ -385,16 +426,21 @@ void main() {
         find.text(resolver.resolve(TranslationKeys.winnerYouLastHeart)),
         findsNothing,
       );
-      expect(
-        find.text(resolver.resolve(TranslationKeys.winnerOther)),
-        findsNothing,
-      );
+      expect(find.textContaining('فاز'), findsNothing);
       expect(
         find.text(resolver.resolve(TranslationKeys.winnerFirstPlace)),
         findsNothing,
       );
       expect(find.byIcon(Icons.emoji_events), findsNothing);
 
+      expect(
+        find.text(resolver.resolve(TranslationKeys.winnerPlayAgain)),
+        findsOneWidget,
+      );
+
+      await tester.ensureVisible(
+        find.text(resolver.resolve(TranslationKeys.winnerPlayAgain)),
+      );
       await tester.tap(
         find.text(resolver.resolve(TranslationKeys.winnerPlayAgain)),
       );
@@ -533,10 +579,16 @@ void main() {
         findsOneWidget,
       );
 
+      await tester.ensureVisible(
+        find.text(resolver.resolve(TranslationKeys.trainingRetry)),
+      );
       await tester.tap(find.text(resolver.resolve(TranslationKeys.trainingRetry)));
       await tester.pump();
       expect(retryPressed, isTrue);
 
+      await tester.ensureVisible(
+        find.text(resolver.resolve(TranslationKeys.winnerBackHome)),
+      );
       await tester.tap(
         find.text(resolver.resolve(TranslationKeys.winnerBackHome)),
       );

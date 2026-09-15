@@ -1,11 +1,12 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 
 import '../../../l10n/app_localization.dart';
 import '../../../l10n/translation_resolver.dart';
 import '../../../theme/lh_tokens.dart';
+import '../ui/widgets/challenge_countdown.dart';
+import '../ui/widgets/challenge_sfx.dart';
 import 'challenge_engine.dart';
 
 class AudioCueEngine implements ChallengeEngine {
@@ -27,12 +28,14 @@ class _AudioCueWidget extends StatefulWidget {
   State<_AudioCueWidget> createState() => _AudioCueWidgetState();
 }
 
-class _AudioCueWidgetState extends State<_AudioCueWidget> {
+class _AudioCueWidgetState extends State<_AudioCueWidget>
+    with SingleTickerProviderStateMixin {
   int _played = 0;
   bool _pulseOn = false;
   bool _listening = false;
   bool _submitted = false;
   Timer? _pulseTimer;
+  late final AnimationController _breathe;
 
   int get _pulseCount {
     final num? v =
@@ -43,12 +46,17 @@ class _AudioCueWidgetState extends State<_AudioCueWidget> {
   @override
   void initState() {
     super.initState();
+    _breathe = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 1400),
+    )..repeat(reverse: true);
     _startPulses();
   }
 
   @override
   void dispose() {
     _pulseTimer?.cancel();
+    _breathe.dispose();
     super.dispose();
   }
 
@@ -67,7 +75,11 @@ class _AudioCueWidgetState extends State<_AudioCueWidget> {
         return;
       }
       _played += 1;
-      HapticFeedback.mediumImpact();
+      final String pulseAssetId =
+          (widget.challengeContext.challenge.clientConfig['pulseSfxAssetId']
+              as String?) ??
+          ChallengeSfx.defaultPulseAssetId;
+      unawaited(ChallengeSfx.instance.pulse(assetId: pulseAssetId));
       setState(() => _pulseOn = true);
       Future<void>.delayed(const Duration(milliseconds: 220), () {
         if (mounted) setState(() => _pulseOn = false);
@@ -95,6 +107,12 @@ class _AudioCueWidgetState extends State<_AudioCueWidget> {
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: <Widget>[
+          ChallengeCountdown(
+            challenge: widget.challengeContext.challenge,
+            estimateServerNowMs: widget.challengeContext.estimateServerNowMs,
+            ringColor: LhColors.success,
+          ),
+          const SizedBox(height: 20),
           Text(
             resolver.resolve(promptKey),
             textAlign: TextAlign.center,
@@ -117,16 +135,35 @@ class _AudioCueWidgetState extends State<_AudioCueWidget> {
             ),
           ),
           const SizedBox(height: 28),
-          AnimatedContainer(
-            duration: const Duration(milliseconds: 120),
-            width: _pulseOn ? 96 : 72,
-            height: _pulseOn ? 96 : 72,
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              color: _pulseOn
-                  ? LhColors.success
-                  : LhColors.border.withValues(alpha: 0.5),
-            ),
+          AnimatedBuilder(
+            animation: _breathe,
+            builder: (BuildContext context, Widget? child) {
+              final double breath = 1 + (_breathe.value * 0.06);
+              final double scale = _pulseOn ? 1.35 * breath : breath;
+              return Transform.scale(
+                scale: scale,
+                child: AnimatedContainer(
+                  duration: const Duration(milliseconds: 120),
+                  width: 84,
+                  height: 84,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: _pulseOn
+                        ? LhColors.success
+                        : LhColors.border.withValues(alpha: 0.5),
+                    boxShadow: _pulseOn
+                        ? <BoxShadow>[
+                            BoxShadow(
+                              color: LhColors.success.withValues(alpha: 0.55),
+                              blurRadius: 28,
+                              spreadRadius: 4,
+                            ),
+                          ]
+                        : null,
+                  ),
+                ),
+              );
+            },
           ),
           const SizedBox(height: 28),
           if (_listening)
@@ -135,6 +172,10 @@ class _AudioCueWidgetState extends State<_AudioCueWidget> {
               children: <Widget>[
                 for (int n = 1; n <= 5; n++)
                   ElevatedButton(
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: LhColors.elevated,
+                      foregroundColor: LhColors.text,
+                    ),
                     onPressed:
                         widget.challengeContext.isInteractionLocked || _submitted
                         ? null

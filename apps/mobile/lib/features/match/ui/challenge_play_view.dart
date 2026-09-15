@@ -47,13 +47,20 @@ class _ChallengePlayViewState extends State<ChallengePlayView> {
         !widget.state.isConnected;
     final bool showRecoveryOverlay = recovering || reconnecting;
 
-    final bool answerInFlight =
-        widget.state.answerStatus == AnswerSubmissionStatus.pending ||
+    // Only block the play surface while the ACK is in flight. After confirm,
+    // keep the engine visible so multiplayer wait-for-others does not feel like
+    // submit lag / "المحتوى غير متاح" freezes.
+    final bool answerPending =
+        widget.state.answerStatus == AnswerSubmissionStatus.pending;
+    final bool answerConfirmed =
         widget.state.answerStatus == AnswerSubmissionStatus.confirmed;
     final bool showEarlyFailPanel =
-        answerInFlight && widget.state.answerSubmittedEarly;
+        (answerPending || answerConfirmed) &&
+        widget.state.answerSubmittedEarly;
     final bool showWaitingPanel =
-        answerInFlight && !widget.state.answerSubmittedEarly;
+        answerPending && !widget.state.answerSubmittedEarly;
+    final bool showSubmittedChip =
+        answerConfirmed && !widget.state.answerSubmittedEarly;
 
     final bool inputEnabled =
         !widget.state.blocksGameplayInput &&
@@ -77,6 +84,8 @@ class _ChallengePlayViewState extends State<ChallengePlayView> {
                   estimateServerNowMs: widget.estimateServerNowMs,
                   answerStatus: widget.state.answerStatus,
                   inputEnabled: inputEnabled,
+                  localPlayerId: widget.state.playerId,
+                  players: widget.state.players,
                 ),
               ),
             ),
@@ -149,6 +158,32 @@ class _ChallengePlayViewState extends State<ChallengePlayView> {
                     resolver.resolve(TranslationKeys.challengeAnswerWaiting),
                     style: Theme.of(context).textTheme.titleMedium,
                     textAlign: TextAlign.center,
+                  ),
+                ),
+              ),
+            ),
+          )
+        else if (showSubmittedChip)
+          Positioned(
+            left: 20,
+            right: 20,
+            bottom: 28,
+            child: IgnorePointer(
+              child: DecoratedBox(
+                decoration: BoxDecoration(
+                  color: LhColors.elevated.withValues(alpha: 0.92),
+                  borderRadius: LhRadii.mdAll,
+                  border: Border.all(color: LhColors.border),
+                ),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 16,
+                    vertical: 12,
+                  ),
+                  child: Text(
+                    resolver.resolve(TranslationKeys.challengeAnswerWaiting),
+                    textAlign: TextAlign.center,
+                    style: Theme.of(context).textTheme.bodyMedium,
                   ),
                 ),
               ),

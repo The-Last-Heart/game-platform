@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:math';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/scheduler.dart';
 import 'package:sensors_plus/sensors_plus.dart';
 
 import '../../../l10n/app_localization.dart';
@@ -28,17 +29,27 @@ class _MotionTiltWidget extends StatefulWidget {
   State<_MotionTiltWidget> createState() => _MotionTiltWidgetState();
 }
 
-class _MotionTiltWidgetState extends State<_MotionTiltWidget> {
+class _MotionTiltWidgetState extends State<_MotionTiltWidget>
+    with SingleTickerProviderStateMixin {
   StreamSubscription<AccelerometerEvent>? _sub;
+  late final Ticker _ticker;
+
+  /// Smoothed display position in [-1, 1].
   double _x = 0;
   double _y = 0;
+
+  /// Filtered sensor target.
+  double _sensorX = 0;
+  double _sensorY = 0;
+
   DateTime? _inTargetSince;
   bool _submitted = false;
+  int _holdProgressMs = 0;
 
   double get _targetX {
     final num? v =
         widget.challengeContext.challenge.clientConfig['targetX'] as num?;
-    return v?.toDouble() ?? 0;
+    return v?.toDouble() ?? 0.35;
   }
 
   double get _targetY {
@@ -51,7 +62,7 @@ class _MotionTiltWidgetState extends State<_MotionTiltWidget> {
     final num? v =
         widget.challengeContext.challenge.clientConfig['varianceTolerance']
             as num?;
-    return v?.toDouble() ?? 0.2;
+    return v?.toDouble() ?? 0.22;
   }
 
   int get _holdMs {
@@ -60,41 +71,69 @@ class _MotionTiltWidgetState extends State<_MotionTiltWidget> {
     return v?.toInt() ?? 1500;
   }
 
+  String get _targetShape {
+    final Object? raw =
+        widget.challengeContext.challenge.clientConfig['targetShape'];
+    if (raw is String && raw.isNotEmpty) return raw;
+    return 'circle';
+  }
+
   @override
   void initState() {
     super.initState();
-    _sub = accelerometerEventStream().listen((AccelerometerEvent e) {
+    // Default target offset so the goal is not under the resting ball.
+    _ticker = createTicker(_onTick)..start();
+    _sub = accelerometerEventStream(
+      samplingPeriod: SensorInterval.gameInterval,
+    ).listen((AccelerometerEvent e) {
       if (_submitted || widget.challengeContext.isInteractionLocked) return;
-      // Map gravity into [-1,1] plane roughly.
-      final double nx = (e.x / 9.8).clamp(-1.0, 1.0);
-      final double ny = (e.y / 9.8).clamp(-1.0, 1.0);
-      setState(() {
-        _x = nx;
-        _y = ny;
-      });
-      final double dist = sqrt(
-        (nx - _targetX) * (nx - _targetX) + (ny - _targetY) * (ny - _targetY),
-      );
-      if (dist <= _tolerance) {
-        _inTargetSince ??= DateTime.now();
-        final int held = DateTime.now().difference(_inTargetSince!).inMilliseconds;
-        if (held >= _holdMs) {
-          _submitted = true;
-          widget.challengeContext.onSubmit(<String, dynamic>{
-            'finalX': nx,
-            'finalY': ny,
-            'heldMs': held,
-          });
-        }
-      } else {
-        _inTargetSince = null;
+      // Gravity → plane; invert X for natural "tilt left moves ball left".
+      final double rawX = (-e.x / 9.8).clamp(-1.0, 1.0);
+      final double rawY = (e.y / 9.8).clamp(-1.0, 1.0);
+      // Heavy low-pass to kill jitter.
+      const double alpha = 0.12;
+      _sensorX = _sensorX + (rawX - _sensorX) * alpha;
+      _sensorY = _sensorY + (rawY - _sensorY) * alpha;
+    });
+  }
+
+  void _onTick(Duration elapsed) {
+    if (!mounted || _submitted) return;
+    // Ease display toward filtered sensor (extra smoothing).
+    const double follow = 0.18;
+    final double nextX = _x + (_sensorX - _x) * follow;
+    final double nextY = _y + (_sensorY - _y) * follow;
+    final double dist = sqrt(
+      (nextX - _targetX) * (nextX - _targetX) +
+          (nextY - _targetY) * (nextY - _targetY),
+    );
+    int held = 0;
+    if (dist <= _tolerance) {
+      _inTargetSince ??= DateTime.now();
+      held = DateTime.now().difference(_inTargetSince!).inMilliseconds;
+      if (held >= _holdMs) {
+        _submitted = true;
+        widget.challengeContext.onSubmit(<String, dynamic>{
+          'finalX': nextX,
+          'finalY': nextY,
+          'heldMs': held,
+        });
       }
+    } else {
+      _inTargetSince = null;
+      held = 0;
+    }
+    setState(() {
+      _x = nextX;
+      _y = nextY;
+      _holdProgressMs = held;
     });
   }
 
   @override
   void dispose() {
     _sub?.cancel();
+    _ticker.dispose();
     super.dispose();
   }
 
@@ -105,14 +144,11 @@ class _MotionTiltWidgetState extends State<_MotionTiltWidget> {
         (widget.challengeContext.challenge.clientConfig['promptKey']
             as String?) ??
         widget.challengeContext.challenge.promptKey;
-    final int held = _inTargetSince == null
-        ? 0
-        : DateTime.now().difference(_inTargetSince!).inMilliseconds;
 
     return Column(
       children: <Widget>[
         Padding(
-          padding: const EdgeInsets.all(16),
+          padding: const EdgeInsets.fromLTRB(16, 48, 16, 8),
           child: Text(
             resolver.resolve(promptKey),
             textAlign: TextAlign.center,
@@ -122,46 +158,58 @@ class _MotionTiltWidgetState extends State<_MotionTiltWidget> {
         Expanded(
           child: LayoutBuilder(
             builder: (BuildContext context, BoxConstraints c) {
-              final double size = min(c.maxWidth, c.maxHeight) * 0.7;
-              final double dotX = (size / 2) + _x * (size / 2);
-              final double dotY = (size / 2) + _y * (size / 2);
+              final double width = min(c.maxWidth * 0.92, 360);
+              final double height = min(c.maxHeight * 0.7, 220);
+              const double ball = 28;
+              final double goal = max(56.0, width * _tolerance);
+              final double ballLeft =
+                  (width / 2) + _x * ((width - ball) / 2) - ball / 2;
+              final double ballTop =
+                  (height / 2) + _y * ((height - ball) / 2) - ball / 2;
+              final double goalLeft =
+                  (width / 2) +
+                  _targetX * ((width - goal) / 2) -
+                  goal / 2;
+              final double goalTop =
+                  (height / 2) +
+                  _targetY * ((height - goal) / 2) -
+                  goal / 2;
               return Center(
                 child: SizedBox(
-                  width: size,
-                  height: size,
+                  width: width,
+                  height: height,
                   child: Stack(
+                    clipBehavior: Clip.none,
                     children: <Widget>[
-                      Container(
-                        decoration: BoxDecoration(
-                          shape: BoxShape.circle,
-                          border: Border.all(color: LhColors.border, width: 2),
-                        ),
-                      ),
-                      Positioned(
-                        left: (size / 2) +
-                            _targetX * (size / 2) -
-                            (size * _tolerance) / 2,
-                        top: (size / 2) +
-                            _targetY * (size / 2) -
-                            (size * _tolerance) / 2,
-                        child: Container(
-                          width: size * _tolerance,
-                          height: size * _tolerance,
+                      Positioned.fill(
+                        child: DecoratedBox(
                           decoration: BoxDecoration(
-                            shape: BoxShape.circle,
-                            color: LhColors.success.withValues(alpha: 0.2),
-                            border: Border.all(color: LhColors.success),
+                            borderRadius: BorderRadius.circular(18),
+                            border: Border.all(
+                              color: LhColors.border,
+                              width: 2,
+                            ),
                           ),
                         ),
                       ),
                       Positioned(
-                        left: dotX - 12,
-                        top: dotY - 12,
-                        child: Container(
-                          width: 24,
-                          height: 24,
-                          decoration: const BoxDecoration(
-                            color: LhColors.success,
+                        left: goalLeft,
+                        top: goalTop,
+                        width: goal,
+                        height: goal,
+                        child: _TiltTargetShape(
+                          shape: _targetShape,
+                          color: LhColors.success,
+                        ),
+                      ),
+                      Positioned(
+                        left: ballLeft,
+                        top: ballTop,
+                        width: ball,
+                        height: ball,
+                        child: const DecoratedBox(
+                          decoration: BoxDecoration(
+                            color: LhColors.primary,
                             shape: BoxShape.circle,
                           ),
                         ),
@@ -174,10 +222,135 @@ class _MotionTiltWidgetState extends State<_MotionTiltWidget> {
           ),
         ),
         Padding(
-          padding: const EdgeInsets.only(bottom: 16),
-          child: Text((held / _holdMs).clamp(0, 1).toStringAsFixed(1)),
+          padding: const EdgeInsets.only(bottom: 20),
+          child: Column(
+            children: <Widget>[
+              Text(
+                resolver.resolve('challenge.tilt.hint'),
+                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                  color: LhColors.textMuted,
+                ),
+              ),
+              const SizedBox(height: 10),
+              SizedBox(
+                width: 180,
+                child: LinearProgressIndicator(
+                  value: (_holdProgressMs / _holdMs).clamp(0, 1),
+                  minHeight: 8,
+                  color: LhColors.success,
+                  backgroundColor: LhColors.border,
+                ),
+              ),
+            ],
+          ),
         ),
       ],
     );
   }
+}
+
+class _TiltTargetShape extends StatelessWidget {
+  const _TiltTargetShape({required this.shape, required this.color});
+
+  final String shape;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    switch (shape) {
+      case 'square':
+        return DecoratedBox(
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(10),
+            border: Border.all(color: color, width: 2),
+          ),
+        );
+      case 'diamond':
+        return Transform.rotate(
+          angle: pi / 4,
+          child: DecoratedBox(
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(color: color, width: 2),
+            ),
+          ),
+        );
+      case 'heart':
+        return CustomPaint(painter: _HeartOutlinePainter(color: color));
+      case 'circle':
+      default:
+        return DecoratedBox(
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            border: Border.all(color: color, width: 2),
+          ),
+          child: CustomPaint(
+            painter: _DashedCirclePainter(
+              color: color.withValues(alpha: 0.85),
+            ),
+          ),
+        );
+    }
+  }
+}
+
+class _HeartOutlinePainter extends CustomPainter {
+  _HeartOutlinePainter({required this.color});
+
+  final Color color;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final Paint paint = Paint()
+      ..color = color
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 2.2;
+    final Path path = Path();
+    final double w = size.width;
+    final double h = size.height;
+    path.moveTo(w * 0.5, h * 0.78);
+    path.cubicTo(w * 0.12, h * 0.55, w * 0.08, h * 0.22, w * 0.32, h * 0.18);
+    path.cubicTo(w * 0.44, h * 0.16, w * 0.5, h * 0.28, w * 0.5, h * 0.34);
+    path.cubicTo(w * 0.5, h * 0.28, w * 0.56, h * 0.16, w * 0.68, h * 0.18);
+    path.cubicTo(w * 0.92, h * 0.22, w * 0.88, h * 0.55, w * 0.5, h * 0.78);
+    path.close();
+    canvas.drawPath(path, paint);
+  }
+
+  @override
+  bool shouldRepaint(covariant _HeartOutlinePainter oldDelegate) =>
+      oldDelegate.color != color;
+}
+
+class _DashedCirclePainter extends CustomPainter {
+  _DashedCirclePainter({required this.color});
+
+  final Color color;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final Paint paint = Paint()
+      ..color = color
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 2;
+    const int dashes = 18;
+    final double radius = size.width / 2;
+    final Offset center = Offset(size.width / 2, size.height / 2);
+    for (int i = 0; i < dashes; i++) {
+      if (i.isOdd) continue;
+      final double start = (i / dashes) * pi * 2;
+      final double end = ((i + 0.7) / dashes) * pi * 2;
+      canvas.drawArc(
+        Rect.fromCircle(center: center, radius: radius - 1),
+        start,
+        end - start,
+        false,
+        paint,
+      );
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant _DashedCirclePainter oldDelegate) =>
+      oldDelegate.color != color;
 }

@@ -102,6 +102,44 @@ describe('LH-008 energy and powers', () => {
     ).toBe(1);
   });
 
+  it('power.granted events use sequences after challenge.resolved', () => {
+    const { engine } = setup();
+    let match = fillTwo(engine);
+    match.players.get('p0')!.energy = 3;
+    match.players.get('p1')!.energy = 3;
+    const started = engine.startChallenge(
+      match,
+      createDevChallengeDefinition({
+        durationMs: 3000,
+        energyRewardOnSuccess: 1,
+      }),
+    );
+    match = started.match;
+    const cid = match.currentChallenge!.challengeInstanceId;
+    let lastEvents = started.events;
+    for (const id of ['p0', 'p1']) {
+      const result = engine.submitAnswer(match, {
+        playerId: id,
+        challengeInstanceId: cid,
+        commandId: randomUUID(),
+        answer: { choice: 'a' },
+      });
+      match = result.match;
+      lastEvents = result.events;
+    }
+    const resolved = lastEvents.find((e) => e.kind === 'challenge_resolved');
+    const grantEvents = lastEvents.filter(
+      (e) => e.kind === 'power_granted' || e.kind === 'power_inventory_full',
+    );
+    expect(resolved).toBeDefined();
+    expect(grantEvents.length).toBe(2);
+    const resolveSeq = resolved!.sequence;
+    for (const grant of grantEvents) {
+      expect(grant.sequence).toBeGreaterThan(resolveSeq);
+    }
+    expect(new Set(grantEvents.map((e) => e.sequence)).size).toBe(2);
+  });
+
   it('inventory full yields explicit outcome without silent drop', () => {
     const { engine } = setup();
     let match = fillTwo(engine);

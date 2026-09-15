@@ -13,6 +13,7 @@ import 'widgets/energy_display.dart';
 import 'widgets/hearts_display.dart';
 import 'widgets/lh_buttons.dart';
 import 'widgets/lh_heart_logo.dart';
+import 'widgets/challenge_sfx.dart';
 
 /// Incoming Danger Pulse defense window.
 class PowerDefenseView extends StatefulWidget {
@@ -46,6 +47,10 @@ class _PowerDefenseViewState extends State<PowerDefenseView> {
     _timer = Timer.periodic(const Duration(milliseconds: 50), (_) {
       _computeRemaining();
     });
+    // Only the targeted seat hears the strike alarm.
+    if (_localIsTarget) {
+      unawaited(ChallengeSfx.instance.strike());
+    }
   }
 
   @override
@@ -55,6 +60,11 @@ class _PowerDefenseViewState extends State<PowerDefenseView> {
     final String? newId = widget.state.tactical?.pendingAttack?.attackId;
     if (oldId != newId) {
       _acted = false;
+      if (newId != null && _localIsTarget) {
+        unawaited(ChallengeSfx.instance.strike());
+      } else {
+        unawaited(ChallengeSfx.instance.stop());
+      }
     }
   }
 
@@ -77,9 +87,24 @@ class _PowerDefenseViewState extends State<PowerDefenseView> {
     });
   }
 
+  bool get _localIsTarget {
+    final PendingPowerAttack? pending = widget.state.tactical?.pendingAttack;
+    return pending != null &&
+        widget.state.playerId != null &&
+        pending.targetId == widget.state.playerId;
+  }
+
+  void _defend(PowerDefenseChoice choice) {
+    if (_acted) return;
+    setState(() => _acted = true);
+    unawaited(ChallengeSfx.instance.stop());
+    widget.onDefend(choice);
+  }
+
   @override
   void dispose() {
     _timer?.cancel();
+    unawaited(ChallengeSfx.instance.stop());
     super.dispose();
   }
 
@@ -170,10 +195,7 @@ class _PowerDefenseViewState extends State<PowerDefenseView> {
                   icon: Icons.shield,
                   onPressed: _acted
                       ? null
-                      : () {
-                          setState(() => _acted = true);
-                          widget.onDefend(PowerDefenseChoice.shield);
-                        },
+                      : () => _defend(PowerDefenseChoice.shield),
                 ),
               ),
             if (canReflect)
@@ -184,20 +206,14 @@ class _PowerDefenseViewState extends State<PowerDefenseView> {
                   icon: Icons.sync,
                   onPressed: _acted
                       ? null
-                      : () {
-                          setState(() => _acted = true);
-                          widget.onDefend(PowerDefenseChoice.reflect);
-                        },
+                      : () => _defend(PowerDefenseChoice.reflect),
                 ),
               ),
             LhSecondaryButton(
               label: resolver.resolve(TranslationKeys.powerDefenseNone),
               onPressed: _acted
                   ? null
-                  : () {
-                      setState(() => _acted = true);
-                      widget.onDefend(PowerDefenseChoice.none);
-                    },
+                  : () => _defend(PowerDefenseChoice.none),
             ),
           ],
           const SizedBox(height: 24),

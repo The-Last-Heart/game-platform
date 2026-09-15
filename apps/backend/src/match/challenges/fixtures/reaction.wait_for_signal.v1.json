@@ -16,6 +16,11 @@
   },
   "serverConfig": {
     "signalDelayMs": 1500,
-    "signalWindowMs": 750
-  }
+    "signalWindowMs": 750,
+    "signalDelayRangeMs": {
+      "min": 700,
+      "max": 2800
+    }
+  },
+  "difficulty": "easy"
 }

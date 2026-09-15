@@ -16,6 +16,7 @@
   "serverConfig": {
     "requiredDirection": "left",
     "minDistancePx": 80,
-    "maxDurationMs": 1500
-  }
+    "maxDurationMs": 5000
+  },
+  "difficulty": "medium"
 }

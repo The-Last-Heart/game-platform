@@ -79,7 +79,11 @@ function waitForSignalDef(
       activePromptKey: 'challenge.wait_for_signal.active',
       actionKey: 'challenge.wait_for_signal.action',
     },
-    serverConfig: { signalDelayMs: 1500, signalWindowMs: 1000 },
+    serverConfig: {
+      signalDelayMs: 1500,
+      signalWindowMs: 1000,
+      signalDelayRangeMs: { min: 1500, max: 1500 },
+    },
     ...overrides,
     engineId: WAIT_FOR_SIGNAL_ENGINE_ID,
   });
@@ -150,7 +154,7 @@ function memorySequenceDef(
   overrides: Partial<ChallengeDefinition> = {},
 ): ChallengeDefinition {
   return baseDef(MEMORY_SEQUENCE_ENGINE_ID, {
-    durationMs: 6000,
+    durationMs: 8000,
     promptKey: 'challenge.memory.intro',
     clientConfig: {
       categoryKey: 'challenge.category.memory',
@@ -176,6 +180,27 @@ function memorySequenceDef(
     ...overrides,
     engineId: MEMORY_SEQUENCE_ENGINE_ID,
   });
+}
+
+function advanceMemoryToAnswer(
+  clock: FakeClock,
+  engine: MatchEngine,
+  match: MatchState,
+  previewMs = 1500,
+): MatchState {
+  clock.advance(previewMs);
+  return engine.advancePreview(match).match;
+}
+
+function resolveMemoryAfterSubmits(
+  clock: FakeClock,
+  engine: MatchEngine,
+  match: MatchState,
+  durationMs = 8000,
+): MatchState {
+  // Memory does not early-resolve; advance past deadline then resolve.
+  clock.advance(durationMs + 1);
+  return engine.resolveDueTimeouts(match).match;
 }
 
 function multitouchHoldDef(
@@ -234,10 +259,18 @@ describe('LH-007 pack simulation matrix', () => {
       const { clock, engine } = setup();
       let match = fillSix(engine, 'wfs-ok');
       match = engine.startChallenge(match, waitForSignalDef()).match;
-      const token = match.currentChallenge!.signalToken!;
       clock.advance(1500);
       match = engine.activateSignal(match).match;
-      match = submitAll(engine, match, () => ({ signalToken: token }), 'ok');
+      match = submitAll(
+        engine,
+        match,
+        (playerId) => ({
+          signalToken:
+            match.currentChallenge?.seatVariants?.get(playerId)?.signalToken ??
+            match.currentChallenge!.signalToken!,
+        }),
+        'ok',
+      );
       expect(match.currentChallenge?.status).toBe('resolved');
       expectAllHearts(match, INITIAL_HEARTS, 1);
     });
@@ -296,7 +329,14 @@ describe('LH-007 pack simulation matrix', () => {
       match = submitAll(
         engine,
         match,
-        () => ({ dx: -100, dy: 0, durationMs: 200 }),
+        (playerId) => {
+          const required =
+            (match.currentChallenge?.seatVariants?.get(playerId)?.serverOverlay[
+              'requiredDirection'
+            ] as string | undefined) ?? 'left';
+          const dx = required === 'left' ? -100 : 100;
+          return { dx, dy: 0, durationMs: 200 };
+        },
         'ok',
       );
       expectAllHearts(match, INITIAL_HEARTS, 1);
@@ -309,7 +349,14 @@ describe('LH-007 pack simulation matrix', () => {
       match = submitAll(
         engine,
         match,
-        () => ({ dx: 100, dy: 0, durationMs: 200 }),
+        (playerId) => {
+          const required =
+            (match.currentChallenge?.seatVariants?.get(playerId)?.serverOverlay[
+              'requiredDirection'
+            ] as string | undefined) ?? 'left';
+          const dx = required === 'left' ? 100 : -100;
+          return { dx, dy: 0, durationMs: 200 };
+        },
         'bad',
       );
       expectAllHearts(match, INITIAL_HEARTS - 1, 0);
@@ -364,9 +411,10 @@ describe('LH-007 pack simulation matrix', () => {
 
   describe('memory.sequence', () => {
     it('success: ordered sequence matches', () => {
-      const { engine } = setup();
+      const { clock, engine } = setup();
       let match = fillSix(engine, 'mem-ok');
       match = engine.startChallenge(match, memorySequenceDef()).match;
+      match = advanceMemoryToAnswer(clock, engine, match);
       match = submitAll(
         engine,
         match,
@@ -375,13 +423,15 @@ describe('LH-007 pack simulation matrix', () => {
         }),
         'ok',
       );
+      match = resolveMemoryAfterSubmits(clock, engine, match);
       expectAllHearts(match, INITIAL_HEARTS, 1);
     });
 
     it('failure: wrong order', () => {
-      const { engine } = setup();
+      const { clock, engine } = setup();
       let match = fillSix(engine, 'mem-fail');
       match = engine.startChallenge(match, memorySequenceDef()).match;
+      match = advanceMemoryToAnswer(clock, engine, match);
       match = submitAll(
         engine,
         match,
@@ -390,6 +440,7 @@ describe('LH-007 pack simulation matrix', () => {
         }),
         'wrong',
       );
+      match = resolveMemoryAfterSubmits(clock, engine, match);
       expectAllHearts(match, INITIAL_HEARTS - 1, 0);
     });
 
@@ -397,9 +448,31 @@ describe('LH-007 pack simulation matrix', () => {
       const { clock, engine } = setup();
       let match = fillSix(engine, 'mem-timeout');
       match = engine.startChallenge(match, memorySequenceDef()).match;
-      clock.advance(6001);
+      clock.advance(8001);
       match = engine.resolveDueTimeouts(match).match;
       expectAllHearts(match, INITIAL_HEARTS - 1, 0);
+    });
+
+    it('does not early-resolve when only one seat has answered', () => {
+      const { clock, engine } = setup();
+      let match = fillSix(engine, 'mem-no-early');
+      match = engine.startChallenge(match, memorySequenceDef()).match;
+      match = advanceMemoryToAnswer(clock, engine, match);
+      const challengeId = match.currentChallenge!.challengeInstanceId;
+      match = engine.submitAnswer(match, {
+        playerId: 'p0',
+        challengeInstanceId: challengeId,
+        commandId: 'solo-ok',
+        answer: {
+          sequence: ['memory.opt.a', 'memory.opt.c', 'memory.opt.b'],
+        },
+      }).match;
+      expect(match.currentChallenge?.status).toBe('active');
+      expect(match.status).toBe('challenge_active');
+      // Other seats still have time — round waits for the shared deadline.
+      clock.advance(2000);
+      match = engine.resolveDueTimeouts(match).match;
+      expect(match.currentChallenge?.status).toBe('active');
     });
   });
 
@@ -450,10 +523,18 @@ describe('LH-007 pack simulation matrix', () => {
       // Round 1: everyone succeeds wait-for-signal
       match = engine.startChallenge(match, playlist[0]!).match;
       expect(match.roundNumber).toBe(1);
-      const token = match.currentChallenge!.signalToken!;
       clock.advance(1500);
       match = engine.activateSignal(match).match;
-      match = submitAll(engine, match, () => ({ signalToken: token }), 'r1');
+      match = submitAll(
+        engine,
+        match,
+        (playerId) => ({
+          signalToken:
+            match.currentChallenge?.seatVariants?.get(playerId)?.signalToken ??
+            match.currentChallenge!.signalToken!,
+        }),
+        'r1',
+      );
       expectAllHearts(match, INITIAL_HEARTS, 1);
 
       // Round 2: everyone succeeds via no-touch absence

@@ -106,7 +106,10 @@ class _TheLastHeartAppState extends State<TheLastHeartApp> {
             child: child ?? const SizedBox.shrink(),
           );
         },
-        home: AppEntryScreen(controller: _controller),
+        home: AppEntryScreen(
+          controller: _controller,
+          backendBaseUrl: _backendUrl,
+        ),
       ),
     );
   }

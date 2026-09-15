@@ -309,8 +309,26 @@ class MatchReducer {
       case MessageTypes.challengeResolved:
         final ChallengeResolvedPayload resolved =
             ChallengeResolvedPayload.fromJson(envelope.payload!);
+        // Merge absolute vitals from each seat resolution. Energy is per-player;
+        // other seats failing must never wipe a successful seat's meter, and the
+        // roster must not stay stale until a later snapshot arrives.
+        final Map<String, PlayerChallengeResolution> byPlayer =
+            <String, PlayerChallengeResolution>{
+          for (final PlayerChallengeResolution r in resolved.resolutions)
+            r.playerId: r,
+        };
+        final List<PlayerPublic> players = state.players.map((PlayerPublic p) {
+          final PlayerChallengeResolution? r = byPlayer[p.playerId];
+          if (r == null) return p;
+          return p.copyWith(
+            hearts: r.heartsAfter,
+            energy: r.energyAfter,
+            status: r.statusAfter,
+          );
+        }).toList();
         return state.copyWith(
           phase: MatchPhase.roundResult,
+          players: players,
           lastRoundResult: () => LastRoundResult(
             challengeInstanceId: resolved.challengeInstanceId,
             resolutions: resolved.resolutions,

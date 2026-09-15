@@ -62,8 +62,9 @@ describe('realtime contracts v1', () => {
 
   it('rejects invalid challenge durations', () => {
     expect(challengeDurationMsSchema.safeParse(2999).success).toBe(false);
-    expect(challengeDurationMsSchema.safeParse(8001).success).toBe(false);
+    expect(challengeDurationMsSchema.safeParse(15_001).success).toBe(false);
     expect(challengeDurationMsSchema.safeParse(5000).success).toBe(true);
+    expect(challengeDurationMsSchema.safeParse(10_000).success).toBe(true);
   });
 
   it('rejects client attempts to provide authoritative result fields', () => {

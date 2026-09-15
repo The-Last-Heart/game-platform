@@ -1,0 +1,47 @@
+{
+  "definitionId": "trivia.multiple_choice.dev",
+  "definitionVersion": 1,
+  "engineId": "trivia.multiple_choice",
+  "durationMs": 8000,
+  "heartPenaltyOnFailure": 1,
+  "energyRewardOnSuccess": 1,
+  "promptKey": "challenge.trivia.intro",
+  "choiceKeys": [],
+  "clientConfig": {
+    "categoryKey": "challenge.category.trivia",
+    "promptKey": "challenge.trivia.prompt",
+    "questionKey": "trivia.q.japan_capital",
+    "optionKeys": [
+      "trivia.opt.osaka",
+      "trivia.opt.tokyo",
+      "trivia.opt.seoul",
+      "trivia.opt.kyoto"
+    ],
+    "footerKey": "challenge.trivia.footer"
+  },
+  "serverConfig": {
+    "questions": [
+      {
+        "questionKey": "trivia.q.japan_capital",
+        "optionKeys": [
+          "trivia.opt.osaka",
+          "trivia.opt.tokyo",
+          "trivia.opt.seoul",
+          "trivia.opt.kyoto"
+        ],
+        "correctOptionKey": "trivia.opt.tokyo"
+      },
+      {
+        "questionKey": "trivia.q.egypt_capital",
+        "optionKeys": [
+          "trivia.opt.cairo",
+          "trivia.opt.alex",
+          "trivia.opt.giza",
+          "trivia.opt.aswan"
+        ],
+        "correctOptionKey": "trivia.opt.cairo"
+      }
+    ]
+  },
+  "difficulty": "easy"
+}

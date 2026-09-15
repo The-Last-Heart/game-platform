@@ -1,0 +1,70 @@
+{
+  "definitionId": "order.sequence_sort.dev",
+  "definitionVersion": 1,
+  "engineId": "order.sequence_sort",
+  "durationMs": 8000,
+  "heartPenaltyOnFailure": 1,
+  "energyRewardOnSuccess": 1,
+  "promptKey": "challenge.order.intro",
+  "choiceKeys": [],
+  "clientConfig": {
+    "categoryKey": "challenge.category.order",
+    "promptKey": "challenge.order.prompt",
+    "footerKey": "challenge.order.footer",
+    "itemKeys": [
+      "num.4",
+      "num.9",
+      "num.2",
+      "num.7"
+    ],
+    "ascending": true
+  },
+  "serverConfig": {
+    "itemKeys": [
+      "num.4",
+      "num.9",
+      "num.2",
+      "num.7"
+    ],
+    "correctOrder": [
+      "num.2",
+      "num.4",
+      "num.7",
+      "num.9"
+    ],
+    "ascending": true,
+    "variants": [
+      {
+        "itemKeys": [
+          "num.4",
+          "num.9",
+          "num.2",
+          "num.7"
+        ],
+        "correctOrder": [
+          "num.2",
+          "num.4",
+          "num.7",
+          "num.9"
+        ],
+        "ascending": true
+      },
+      {
+        "itemKeys": [
+          "num.5",
+          "num.1",
+          "num.8",
+          "num.3"
+        ],
+        "correctOrder": [
+          "num.1",
+          "num.3",
+          "num.5",
+          "num.8"
+        ],
+        "ascending": true
+      }
+    ]
+  },
+  "difficulty": "medium"
+}

@@ -84,8 +84,15 @@ class _RoundResultViewState extends State<RoundResultView> {
       }
     }
 
-    final bool survived = localResolution?.outcome == 'success';
+    // Pair-sync waiters / skipped seats are not failures — they keep energy.
+    final bool localFailed = localResolution != null &&
+        (localResolution.outcome == 'failure' ||
+            localResolution.outcome == 'timeout');
+    final bool survived = !localFailed;
     final bool isTraining = widget.state.mode == MatchMode.training;
+    final int localEnergy = localResolution?.energyAfter ??
+        widget.state.localPlayer?.energy ??
+        0;
 
     return SingleChildScrollView(
       padding: const EdgeInsets.symmetric(horizontal: 20),
@@ -127,10 +134,15 @@ class _RoundResultViewState extends State<RoundResultView> {
               context,
               resolver,
               result,
-              localResolution,
+              localEnergy,
             ),
           if (!survived && localResolution != null)
-            ..._buildFailedContent(context, resolver, localResolution),
+            ..._buildFailedContent(
+              context,
+              resolver,
+              localResolution,
+              localEnergy,
+            ),
 
           const SizedBox(height: 24),
           if (isTraining)
@@ -294,7 +306,7 @@ class _RoundResultViewState extends State<RoundResultView> {
     BuildContext context,
     TranslationResolver resolver,
     LastRoundResult result,
-    PlayerChallengeResolution? localResolution,
+    int localEnergy,
   ) {
     return <Widget>[
       const SizedBox(height: 20),
@@ -307,11 +319,7 @@ class _RoundResultViewState extends State<RoundResultView> {
           outcomeLabel: _outcomeLabel(resolver, result.resolutions[i].outcome),
         ),
       const SizedBox(height: 16),
-      _buildEnergyBar(
-        context,
-        resolver,
-        localResolution?.energyAfter ?? widget.state.localPlayer?.energy ?? 0,
-      ),
+      _buildEnergyBar(context, resolver, localEnergy),
     ];
   }
 
@@ -319,6 +327,7 @@ class _RoundResultViewState extends State<RoundResultView> {
     BuildContext context,
     TranslationResolver resolver,
     PlayerChallengeResolution resolution,
+    int localEnergy,
   ) {
     return <Widget>[
       Text(
@@ -359,6 +368,9 @@ class _RoundResultViewState extends State<RoundResultView> {
           ],
         ),
       ),
+      const SizedBox(height: 16),
+      // Failure costs a heart, never energy — keep the meter visible.
+      _buildEnergyBar(context, resolver, localEnergy),
     ];
   }
 
@@ -446,6 +458,7 @@ class _RoundResultViewState extends State<RoundResultView> {
       'skipped_spectator' => resolver.resolve(
         TranslationKeys.resultOutcomeSkipped,
       ),
+      'left' => resolver.resolve(TranslationKeys.playerStatusLeft),
       _ => resolver.resolve(TranslationKeys.resultFailure),
     };
   }

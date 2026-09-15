@@ -359,13 +359,16 @@ export class MatchmakingService implements OnModuleDestroy {
         if (!ticket) {
           continue;
         }
+        const timedOut = this.toStatus(ticket, 'timed_out', {
+          acceptedSeats: 0,
+          matchId: null,
+          assignment: {
+            playerId: ticket.playerId,
+            resumeToken: ticket.resumeToken ?? '',
+          },
+        });
         this.removeTicket(ticket);
-        this.emit(
-          this.toStatus(ticket, 'timed_out', {
-            acceptedSeats: 0,
-            matchId: null,
-          }),
-        );
+        this.emit(timedOut);
       }
     }
     if (result.outcome === 'started') {

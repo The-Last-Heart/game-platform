@@ -1,0 +1,103 @@
+{
+  "definitionId": "focus.odd_one_out.dev",
+  "definitionVersion": 1,
+  "engineId": "focus.odd_one_out",
+  "durationMs": 6000,
+  "heartPenaltyOnFailure": 1,
+  "energyRewardOnSuccess": 1,
+  "promptKey": "challenge.odd.intro",
+  "choiceKeys": [],
+  "clientConfig": {
+    "categoryKey": "challenge.category.focus",
+    "promptKey": "challenge.odd.prompt",
+    "footerKey": "challenge.odd.footer",
+    "columns": 4,
+    "glyphKeys": [
+      "pulse.a",
+      "pulse.a",
+      "pulse.a",
+      "pulse.a",
+      "pulse.a",
+      "pulse.a",
+      "pulse.a",
+      "pulse.a",
+      "pulse.a",
+      "pulse.b",
+      "pulse.a",
+      "pulse.a",
+      "pulse.a",
+      "pulse.a",
+      "pulse.a",
+      "pulse.a"
+    ]
+  },
+  "serverConfig": {
+    "columns": 4,
+    "glyphKeys": [
+      "pulse.a",
+      "pulse.a",
+      "pulse.a",
+      "pulse.a",
+      "pulse.a",
+      "pulse.a",
+      "pulse.a",
+      "pulse.a",
+      "pulse.a",
+      "pulse.b",
+      "pulse.a",
+      "pulse.a",
+      "pulse.a",
+      "pulse.a",
+      "pulse.a",
+      "pulse.a"
+    ],
+    "oddIndex": 9,
+    "variants": [
+      {
+        "columns": 4,
+        "glyphKeys": [
+          "pulse.a",
+          "pulse.a",
+          "pulse.a",
+          "pulse.a",
+          "pulse.a",
+          "pulse.a",
+          "pulse.a",
+          "pulse.a",
+          "pulse.a",
+          "pulse.b",
+          "pulse.a",
+          "pulse.a",
+          "pulse.a",
+          "pulse.a",
+          "pulse.a",
+          "pulse.a"
+        ],
+        "oddIndex": 9
+      },
+      {
+        "columns": 4,
+        "glyphKeys": [
+          "pulse.a",
+          "pulse.a",
+          "pulse.a",
+          "pulse.b",
+          "pulse.a",
+          "pulse.a",
+          "pulse.a",
+          "pulse.a",
+          "pulse.a",
+          "pulse.a",
+          "pulse.a",
+          "pulse.a",
+          "pulse.a",
+          "pulse.a",
+          "pulse.a",
+          "pulse.a"
+        ],
+        "oddIndex": 3
+      }
+    ]
+  },
+  "difficulty": "easy"
+}

@@ -1,4 +1,4 @@
-import { randomBytes, randomUUID } from 'node:crypto';
+import { randomInt, randomUUID } from 'node:crypto';
 import type {
   ChallengeDefinition,
   ChallengeEvaluatorRegistry,
@@ -23,6 +23,13 @@ import {
   MIN_LIVE_MATCH_PLAYERS,
 } from './types';
 import { WAIT_FOR_SIGNAL_ENGINE_ID } from './wait-for-signal.evaluator';
+import {
+  assignSeatVariants,
+  cloneSeatVariants,
+  type SeatChallengeVariant,
+} from './seat-variants';
+import { materializeMemoryRound } from './memory-round';
+import { materializePack31Round } from './engines/pack-31-evaluators';
 import {
   cloneInventory,
   convertEnergyForPlayer,
@@ -213,34 +220,97 @@ export function validateChallengeDefinition(
   }
 }
 
-function assignPairPartners(playerIds: string[]): Map<string, string> {
-  const assignments = new Map<string, string>();
+/** Pick exactly two random seats for pair sync (solo → fair one-seat fallback). */
+export function selectPairSyncRound(playerIds: string[]): {
+  participants: string[];
+  assignments: Map<string, string>;
+} {
   const ids = [...playerIds];
-  for (let i = 0; i + 1 < ids.length; i += 2) {
-    const a = ids[i]!;
-    const b = ids[i + 1]!;
-    assignments.set(a, b);
-    assignments.set(b, a);
+  for (let i = ids.length - 1; i > 0; i -= 1) {
+    const j = randomInt(0, i + 1);
+    const tmp = ids[i]!;
+    ids[i] = ids[j]!;
+    ids[j] = tmp;
   }
-  return assignments;
+  if (ids.length === 0) {
+    return { participants: [], assignments: new Map() };
+  }
+  if (ids.length === 1) {
+    return { participants: [ids[0]!], assignments: new Map() };
+  }
+  const a = ids[0]!;
+  const b = ids[1]!;
+  return {
+    participants: [a, b],
+    assignments: new Map([
+      [a, b],
+      [b, a],
+    ]),
+  };
+}
+
+function assignPairSyncSeatOverlays(
+  challenge: ChallengeRound,
+  allActiveIds: string[],
+  players: Map<string, { displayName?: string }>,
+): Map<string, SeatChallengeVariant> {
+  const syncWindowRaw = challenge.definition.serverConfig['syncWindowMs'];
+  const syncWindowMs =
+    typeof syncWindowRaw === 'number' && Number.isFinite(syncWindowRaw)
+      ? syncWindowRaw
+      : 500;
+  const seats = new Map<string, SeatChallengeVariant>();
+  for (const id of allActiveIds) {
+    const isParticipant = challenge.participatingPlayerIds.includes(id);
+    const partnerId = challenge.pairAssignments?.get(id);
+    const partnerDisplayName =
+      partnerId != null
+        ? (players.get(partnerId)?.displayName ?? null)
+        : null;
+    seats.set(id, {
+      clientOverlay: {
+        isParticipant,
+        partnerPlayerId: partnerId ?? null,
+        partnerDisplayName,
+        syncWindowMs,
+      },
+      serverOverlay: {},
+    });
+  }
+  return seats;
 }
 
 export function toPublicChallengeView(
   challenge: ChallengeRound,
   serverNowMs: number,
+  viewerPlayerId?: string,
 ): PublicChallengeView {
   const clientConfig = deepCloneJsonRecord(challenge.definition.clientConfig);
+  const seat =
+    viewerPlayerId != null
+      ? challenge.seatVariants?.get(viewerPlayerId)
+      : undefined;
 
   // Memory preview: reveal the authoritative sequence only while preview is live.
-  if (
-    challenge.roundPhase === 'preview' &&
-    challenge.engineId === 'memory.sequence'
-  ) {
-    const sequence = challenge.definition.serverConfig['sequence'];
-    if (Array.isArray(sequence)) {
-      clientConfig['previewSequence'] = sequence.filter(
+  if (challenge.engineId === 'memory.sequence') {
+    if (challenge.roundPhase === 'preview') {
+      const sequence = challenge.definition.serverConfig['sequence'];
+      if (Array.isArray(sequence)) {
+        clientConfig['previewSequence'] = sequence.filter(
+          (v): v is string => typeof v === 'string',
+        );
+      }
+    }
+    // Always mirror option keys from server so answer tiles never go empty.
+    const optionKeys = challenge.definition.serverConfig['optionKeys'];
+    if (Array.isArray(optionKeys) && clientConfig['optionKeys'] == null) {
+      clientConfig['optionKeys'] = optionKeys.filter(
         (v): v is string => typeof v === 'string',
       );
+    }
+    const previewMs = challenge.definition.serverConfig['previewMs'];
+    if (typeof previewMs === 'number' && clientConfig['previewMs'] == null) {
+      clientConfig['previewMs'] = previewMs;
     }
   }
 
@@ -250,6 +320,10 @@ export function toPublicChallengeView(
     const required = challenge.definition.serverConfig['requiredShakeCount'];
     if (typeof required === 'number') {
       clientConfig['requiredShakeCount'] = required;
+    }
+    const noise = challenge.definition.serverConfig['noiseThreshold'];
+    if (typeof noise === 'number') {
+      clientConfig['noiseThreshold'] = noise;
     }
   }
   if (challenge.engineId === 'motion.tilt_balance') {
@@ -272,18 +346,27 @@ export function toPublicChallengeView(
     }
   }
 
-  // Pair sync: surface assigned partner + role for the participating player via
-  // per-player overlay is applied by the gateway/service when emitting; the
-  // shared view carries pair map keys on clientConfig when present.
-  if (
-    challenge.engineId === 'social.pair_sync' &&
-    challenge.pairAssignments &&
-    challenge.pairAssignments.size > 0
-  ) {
-    clientConfig['pairAssignments'] = Object.fromEntries(
-      challenge.pairAssignments.entries(),
-    );
+  // Pair sync: viewer-private participation flags (seat overlay preferred).
+  if (challenge.engineId === 'social.pair_sync') {
+    const syncWindowRaw = challenge.definition.serverConfig['syncWindowMs'];
+    if (typeof syncWindowRaw === 'number') {
+      clientConfig['syncWindowMs'] = syncWindowRaw;
+    }
+    if (viewerPlayerId != null) {
+      clientConfig['isParticipant'] =
+        challenge.participatingPlayerIds.includes(viewerPlayerId);
+      const partnerId = challenge.pairAssignments?.get(viewerPlayerId);
+      clientConfig['partnerPlayerId'] = partnerId ?? null;
+    }
   }
+
+  // Seat-private overlays (tilt targets/shapes, pair partner, etc.) — viewer only.
+  if (seat) {
+    Object.assign(clientConfig, seat.clientOverlay);
+  }
+
+  const publicRoundPhase =
+    seat?.signalPhase != null ? seat.signalPhase : challenge.roundPhase;
 
   const view: PublicChallengeView = {
     challengeInstanceId: challenge.challengeInstanceId,
@@ -297,25 +380,29 @@ export function toPublicChallengeView(
     startsAtMs: challenge.startsAtMs,
     deadlineAtMs: challenge.deadlineAtMs,
     durationMs: challenge.definition.durationMs,
-    roundPhase: challenge.roundPhase,
+    roundPhase: publicRoundPhase,
   };
 
-  // Only expose signal token while the blue window is open.
-  if (challenge.roundPhase === 'signal_active') {
-    if (challenge.signalToken) {
-      view.signalToken = challenge.signalToken;
+  const signalToken = seat?.signalToken ?? challenge.signalToken;
+  const signaledAtMs = seat?.signaledAtMs ?? challenge.signaledAtMs;
+  const signalEndsAtMs = seat?.signalEndsAtMs ?? challenge.signalEndsAtMs;
+
+  // Only expose signal token while this viewer's blue window is open.
+  if (publicRoundPhase === 'signal_active') {
+    if (signalToken) {
+      view.signalToken = signalToken;
     }
   }
   if (
-    challenge.roundPhase === 'signal_active' ||
-    challenge.roundPhase === 'signal_expired' ||
-    challenge.roundPhase === 'resolved'
+    publicRoundPhase === 'signal_active' ||
+    publicRoundPhase === 'signal_expired' ||
+    publicRoundPhase === 'resolved'
   ) {
-    if (challenge.signaledAtMs != null) {
-      view.signaledAtMs = challenge.signaledAtMs;
+    if (signaledAtMs != null) {
+      view.signaledAtMs = signaledAtMs;
     }
-    if (challenge.signalEndsAtMs != null) {
-      view.signalEndsAtMs = challenge.signalEndsAtMs;
+    if (signalEndsAtMs != null) {
+      view.signalEndsAtMs = signalEndsAtMs;
     }
   }
 
@@ -363,6 +450,9 @@ export class MatchEngine {
       releasePins: options?.releasePins ?? null,
       pinnedPlaylist: options?.pinnedPlaylist
         ? [...options.pinnedPlaylist]
+        : [],
+      hardLoopPlaylist: options?.hardLoopPlaylist
+        ? [...options.hardLoopPlaylist]
         : [],
       powerConfig: options?.powerConfig ?? defaultPowerConfig(),
       pendingAttack: null,
@@ -612,6 +702,92 @@ export class MatchEngine {
   }
 
   /**
+   * Voluntary leave. Lobby seats are deleted; mid-match seats stay on the
+   * roster as `left` so results/standings can still show them.
+   */
+  leavePlayer(
+    match: MatchState,
+    playerId: string,
+  ): {
+    match: MatchState;
+    events: DomainEvent[];
+    left: boolean;
+    removedFromLobby: boolean;
+  } {
+    if (!match.players.has(playerId)) {
+      return { match, events: [], left: false, removedFromLobby: false };
+    }
+    if (
+      match.status === 'waiting' &&
+      (match.phase === 'lobby' || match.phase === 'ready_countdown')
+    ) {
+      const removed = this.removeLobbyPlayer(match, playerId);
+      return {
+        match: removed.match,
+        events: removed.events,
+        left: removed.removed,
+        removedFromLobby: removed.removed,
+      };
+    }
+
+    const player = match.players.get(playerId)!;
+    if (player.status === 'left') {
+      return { match, events: [], left: true, removedFromLobby: false };
+    }
+
+    // Terminal matches: keep final standings; still stamp left for display.
+    const next = this.cloneMatch(match);
+    const updated = next.players.get(playerId)!;
+    updated.status = 'left';
+    updated.presence = 'disconnected';
+    updated.submittedForCurrentChallenge = true;
+    const bump = this.bump(next);
+    const events: DomainEvent[] = [
+      bump,
+      {
+        kind: 'presence_changed',
+        sequence: next.sequence,
+        revision: next.revision,
+        serverTimestampMs: bump.serverTimestampMs,
+        playerId,
+        presence: 'disconnected',
+      },
+    ];
+
+    // Mid-challenge: do not make remaining seats wait on a departed player.
+    if (
+      next.currentChallenge?.status === 'active' &&
+      next.phase === 'challenge_active'
+    ) {
+      const challenge = next.currentChallenge;
+      const allSettled = challenge.participatingPlayerIds.every((id) => {
+        const seat = next.players.get(id);
+        if (!seat || seat.status === 'spectator' || seat.status === 'left') {
+          return true;
+        }
+        const sub = challenge.submissions.get(id);
+        return sub != null && sub.final !== false;
+      });
+      if (allSettled) {
+        const resolved = this.resolveChallenge(next);
+        return {
+          match: resolved.match,
+          events: [...events, ...resolved.events],
+          left: true,
+          removedFromLobby: false,
+        };
+      }
+    }
+
+    return {
+      match: next,
+      events,
+      left: true,
+      removedFromLobby: false,
+    };
+  }
+
+  /**
    * Replace resume token hash without bumping sequence (private credential rotation).
    */
   replaceResumeTokenHash(
@@ -771,15 +947,26 @@ export class MatchEngine {
 
     if (challenge.engineId === WAIT_FOR_SIGNAL_ENGINE_ID) {
       challenge.roundPhase = 'waiting_signal';
-      const signalDelay =
-        (challenge.definition.serverConfig['signalDelayMs'] as number) ?? 1500;
-      challenge.signalAtMonoMs = nowMono + signalDelay;
-      challenge.signalToken = randomBytes(16).toString('base64url');
+      challenge.seatVariants = assignSeatVariants(challenge, nowMono);
+      // Round-level fields mirror the earliest seat for legacy timers/tests.
+      let earliest: SeatChallengeVariant | undefined;
+      for (const seat of challenge.seatVariants.values()) {
+        if (
+          seat.signalAtMonoMs != null &&
+          (earliest?.signalAtMonoMs == null ||
+            seat.signalAtMonoMs < earliest.signalAtMonoMs)
+        ) {
+          earliest = seat;
+        }
+      }
+      challenge.signalAtMonoMs = earliest?.signalAtMonoMs ?? null;
+      challenge.signalToken = earliest?.signalToken ?? null;
       challenge.previewEndsAtMonoMs = null;
       challenge.signaledAtMs = null;
       challenge.signalEndsAtMs = null;
       challenge.signalEndsAtMonoMs = null;
     } else if (challenge.engineId === 'memory.sequence') {
+      materializeMemoryRound(challenge.definition);
       const previewMs =
         (challenge.definition.serverConfig['previewMs'] as number) ?? 1500;
       challenge.roundPhase = 'preview';
@@ -789,6 +976,45 @@ export class MatchEngine {
       challenge.signaledAtMs = null;
       challenge.signalEndsAtMs = null;
       challenge.signalEndsAtMonoMs = null;
+      challenge.seatVariants = assignSeatVariants(challenge, nowMono);
+    } else if (
+      challenge.engineId === 'trivia.multiple_choice' ||
+      challenge.engineId === 'geography.select_on_map' ||
+      challenge.engineId === 'focus.odd_one_out' ||
+      challenge.engineId === 'order.sequence_sort' ||
+      challenge.engineId === 'precision.maze_path' ||
+      challenge.engineId === 'precision.neon_cable' ||
+      challenge.engineId === 'gesture.fog_wipe' ||
+      challenge.engineId === 'logic.balance_scale' ||
+      challenge.engineId === 'focus.stroop' ||
+      challenge.engineId === 'search.select_occurrences'
+    ) {
+      materializePack31Round(challenge.definition);
+      challenge.roundPhase = 'answer';
+      challenge.previewEndsAtMonoMs = null;
+      challenge.signalToken = null;
+      challenge.signalAtMonoMs = null;
+      challenge.signaledAtMs = null;
+      challenge.signalEndsAtMs = null;
+      challenge.signalEndsAtMonoMs = null;
+      challenge.seatVariants = assignSeatVariants(challenge, nowMono);
+    } else if (challenge.engineId === 'social.pair_sync') {
+      challenge.roundPhase = 'answer';
+      challenge.previewEndsAtMonoMs = null;
+      challenge.signalToken = null;
+      challenge.signalAtMonoMs = null;
+      challenge.signaledAtMs = null;
+      challenge.signalEndsAtMs = null;
+      challenge.signalEndsAtMonoMs = null;
+      const pool = [...challenge.participatingPlayerIds];
+      const selected = selectPairSyncRound(pool);
+      challenge.participatingPlayerIds = selected.participants;
+      challenge.pairAssignments = selected.assignments;
+      challenge.seatVariants = assignPairSyncSeatOverlays(
+        challenge,
+        pool,
+        next.players,
+      );
     } else {
       challenge.roundPhase = 'answer';
       challenge.previewEndsAtMonoMs = null;
@@ -797,12 +1023,7 @@ export class MatchEngine {
       challenge.signaledAtMs = null;
       challenge.signalEndsAtMs = null;
       challenge.signalEndsAtMonoMs = null;
-    }
-
-    if (challenge.engineId === 'social.pair_sync') {
-      challenge.pairAssignments = assignPairPartners(
-        challenge.participatingPlayerIds,
-      );
+      challenge.seatVariants = assignSeatVariants(challenge, nowMono);
     }
 
     next.status = 'challenge_active';
@@ -925,24 +1146,58 @@ export class MatchEngine {
 
     if (pinned.engineId === WAIT_FOR_SIGNAL_ENGINE_ID) {
       round.roundPhase = 'waiting_signal';
-      const signalDelay =
-        (pinned.serverConfig['signalDelayMs'] as number) ?? 1500;
-      round.signalAtMonoMs = nowMono + signalDelay;
-      round.signalToken = randomBytes(16).toString('base64url');
+      round.seatVariants = assignSeatVariants(round, nowMono);
+      let earliest: SeatChallengeVariant | undefined;
+      for (const seat of round.seatVariants.values()) {
+        if (
+          seat.signalAtMonoMs != null &&
+          (earliest?.signalAtMonoMs == null ||
+            seat.signalAtMonoMs < earliest.signalAtMonoMs)
+        ) {
+          earliest = seat;
+        }
+      }
+      round.signalAtMonoMs = earliest?.signalAtMonoMs ?? null;
+      round.signalToken = earliest?.signalToken ?? null;
       round.previewEndsAtMonoMs = null;
     } else if (pinned.engineId === 'memory.sequence') {
+      materializeMemoryRound(pinned);
       const previewMs = (pinned.serverConfig['previewMs'] as number) ?? 1500;
       round.roundPhase = 'preview';
       round.previewEndsAtMonoMs = nowMono + previewMs;
+      round.seatVariants = assignSeatVariants(round, nowMono);
+    } else if (
+      pinned.engineId === 'trivia.multiple_choice' ||
+      pinned.engineId === 'geography.select_on_map' ||
+      pinned.engineId === 'focus.odd_one_out' ||
+      pinned.engineId === 'order.sequence_sort' ||
+      pinned.engineId === 'precision.maze_path' ||
+      pinned.engineId === 'precision.neon_cable' ||
+      pinned.engineId === 'gesture.fog_wipe' ||
+      pinned.engineId === 'logic.balance_scale' ||
+      pinned.engineId === 'focus.stroop' ||
+      pinned.engineId === 'search.select_occurrences'
+    ) {
+      materializePack31Round(pinned);
+      round.roundPhase = 'answer';
+      round.previewEndsAtMonoMs = null;
+      round.seatVariants = assignSeatVariants(round, nowMono);
+    } else if (pinned.engineId === 'social.pair_sync') {
+      round.roundPhase = 'answer';
+      round.previewEndsAtMonoMs = null;
+      const pool = [...round.participatingPlayerIds];
+      const selected = selectPairSyncRound(pool);
+      round.participatingPlayerIds = selected.participants;
+      round.pairAssignments = selected.assignments;
+      round.seatVariants = assignPairSyncSeatOverlays(
+        round,
+        pool,
+        next.players,
+      );
     } else {
       round.roundPhase = 'answer';
       round.previewEndsAtMonoMs = null;
-    }
-
-    if (pinned.engineId === 'social.pair_sync') {
-      round.pairAssignments = assignPairPartners(
-        round.participatingPlayerIds,
-      );
+      round.seatVariants = assignSeatVariants(round, nowMono);
     }
 
     for (const player of next.players.values()) {
@@ -980,13 +1235,8 @@ export class MatchEngine {
     if (
       !match.currentChallenge ||
       match.currentChallenge.status !== 'active' ||
-      match.currentChallenge.roundPhase !== 'waiting_signal'
+      match.currentChallenge.engineId !== WAIT_FOR_SIGNAL_ENGINE_ID
     ) {
-      return { match, events: [] };
-    }
-
-    const signalAtMono = match.currentChallenge.signalAtMonoMs;
-    if (signalAtMono == null || this.clock.monoMs() < signalAtMono) {
       return { match, events: [] };
     }
 
@@ -996,27 +1246,90 @@ export class MatchEngine {
     const nowMono = this.clock.monoMs();
     const windowMs =
       (challenge.definition.serverConfig['signalWindowMs'] as number) ?? 1000;
-    challenge.roundPhase = 'signal_active';
-    challenge.signaledAtMs = nowWall;
-    challenge.signalEndsAtMs = nowWall + windowMs;
-    challenge.signalEndsAtMonoMs = nowMono + windowMs;
+    const events: DomainEvent[] = [];
+
+    if (challenge.seatVariants && challenge.seatVariants.size > 0) {
+      let activated = 0;
+      for (const [playerId, seat] of challenge.seatVariants) {
+        if (
+          seat.signalPhase !== 'waiting_signal' ||
+          seat.signalAtMonoMs == null ||
+          nowMono < seat.signalAtMonoMs ||
+          !seat.signalToken
+        ) {
+          continue;
+        }
+        seat.signalPhase = 'signal_active';
+        seat.signaledAtMs = nowWall;
+        seat.signalEndsAtMs = nowWall + windowMs;
+        seat.signalEndsAtMonoMs = nowMono + windowMs;
+        challenge.seatVariants.set(playerId, seat);
+        activated += 1;
+        events.push({
+          kind: 'challenge_signal',
+          sequence: 0,
+          revision: 0,
+          serverTimestampMs: nowWall,
+          challengeInstanceId: challenge.challengeInstanceId,
+          signalToken: seat.signalToken,
+          signaledAtMs: nowWall,
+          signalEndsAtMs: seat.signalEndsAtMs,
+          serverNowMs: nowWall,
+          playerId,
+        });
+      }
+      if (activated === 0) {
+        return { match, events: [] };
+      }
+      // Round-level mirrors any currently active seat (for legacy readers).
+      const activeSeat = [...challenge.seatVariants.values()].find(
+        (s) => s.signalPhase === 'signal_active',
+      );
+      challenge.roundPhase = 'signal_active';
+      challenge.signalToken = activeSeat?.signalToken ?? challenge.signalToken;
+      challenge.signaledAtMs = activeSeat?.signaledAtMs ?? nowWall;
+      challenge.signalEndsAtMs = activeSeat?.signalEndsAtMs ?? null;
+      challenge.signalEndsAtMonoMs = activeSeat?.signalEndsAtMonoMs ?? null;
+    } else {
+      if (challenge.roundPhase !== 'waiting_signal') {
+        return { match, events: [] };
+      }
+      const signalAtMono = challenge.signalAtMonoMs;
+      if (signalAtMono == null || nowMono < signalAtMono) {
+        return { match, events: [] };
+      }
+      challenge.roundPhase = 'signal_active';
+      challenge.signaledAtMs = nowWall;
+      challenge.signalEndsAtMs = nowWall + windowMs;
+      challenge.signalEndsAtMonoMs = nowMono + windowMs;
+      events.push({
+        kind: 'challenge_signal',
+        sequence: 0,
+        revision: 0,
+        serverTimestampMs: nowWall,
+        challengeInstanceId: challenge.challengeInstanceId,
+        signalToken: challenge.signalToken!,
+        signaledAtMs: nowWall,
+        signalEndsAtMs: challenge.signalEndsAtMs,
+        serverNowMs: nowWall,
+      });
+    }
 
     const bump = this.bump(next);
     return {
       match: next,
       events: [
         bump,
-        {
-          kind: 'challenge_signal',
-          sequence: next.sequence,
-          revision: next.revision,
-          serverTimestampMs: bump.serverTimestampMs,
-          challengeInstanceId: challenge.challengeInstanceId,
-          signalToken: challenge.signalToken!,
-          signaledAtMs: nowWall,
-          signalEndsAtMs: challenge.signalEndsAtMs,
-          serverNowMs: nowWall,
-        },
+        ...events.map((event) =>
+          event.kind === 'challenge_signal'
+            ? {
+                ...event,
+                sequence: next.sequence,
+                revision: next.revision,
+                serverTimestampMs: bump.serverTimestampMs,
+              }
+            : event,
+        ),
       ],
     };
   }
@@ -1056,36 +1369,91 @@ export class MatchEngine {
     if (
       !match.currentChallenge ||
       match.currentChallenge.status !== 'active' ||
-      match.currentChallenge.roundPhase !== 'signal_active'
+      match.currentChallenge.engineId !== WAIT_FOR_SIGNAL_ENGINE_ID
     ) {
-      return { match, events: [] };
-    }
-
-    const endsAtMono = match.currentChallenge.signalEndsAtMonoMs;
-    // Inclusive blue window: expire only after the end instant.
-    if (endsAtMono == null || this.clock.monoMs() <= endsAtMono) {
       return { match, events: [] };
     }
 
     const next = this.cloneMatch(match);
     const challenge = next.currentChallenge!;
     const nowWall = this.clock.nowMs();
-    challenge.roundPhase = 'signal_expired';
+    const nowMono = this.clock.monoMs();
+    const events: DomainEvent[] = [];
+
+    if (challenge.seatVariants && challenge.seatVariants.size > 0) {
+      let expired = 0;
+      for (const [playerId, seat] of challenge.seatVariants) {
+        if (
+          seat.signalPhase !== 'signal_active' ||
+          seat.signalEndsAtMonoMs == null ||
+          nowMono <= seat.signalEndsAtMonoMs
+        ) {
+          continue;
+        }
+        seat.signalPhase = 'signal_expired';
+        challenge.seatVariants.set(playerId, seat);
+        expired += 1;
+        events.push({
+          kind: 'challenge_signal_ended',
+          sequence: 0,
+          revision: 0,
+          serverTimestampMs: nowWall,
+          challengeInstanceId: challenge.challengeInstanceId,
+          signalEndsAtMs: seat.signalEndsAtMs ?? nowWall,
+          serverNowMs: nowWall,
+          playerId,
+        });
+      }
+      if (expired === 0) {
+        return { match, events: [] };
+      }
+      const stillWaiting = [...challenge.seatVariants.values()].some(
+        (s) => s.signalPhase === 'waiting_signal',
+      );
+      const stillActive = [...challenge.seatVariants.values()].some(
+        (s) => s.signalPhase === 'signal_active',
+      );
+      challenge.roundPhase = stillWaiting
+        ? 'waiting_signal'
+        : stillActive
+          ? 'signal_active'
+          : 'signal_expired';
+    } else {
+      if (challenge.roundPhase !== 'signal_active') {
+        return { match, events: [] };
+      }
+      const endsAtMono = challenge.signalEndsAtMonoMs;
+      // Inclusive blue window: expire only after the end instant.
+      if (endsAtMono == null || nowMono <= endsAtMono) {
+        return { match, events: [] };
+      }
+      challenge.roundPhase = 'signal_expired';
+      events.push({
+        kind: 'challenge_signal_ended',
+        sequence: 0,
+        revision: 0,
+        serverTimestampMs: nowWall,
+        challengeInstanceId: challenge.challengeInstanceId,
+        signalEndsAtMs: challenge.signalEndsAtMs ?? nowWall,
+        serverNowMs: nowWall,
+      });
+    }
 
     const bump = this.bump(next);
     return {
       match: next,
       events: [
         bump,
-        {
-          kind: 'challenge_signal_ended',
-          sequence: next.sequence,
-          revision: next.revision,
-          serverTimestampMs: bump.serverTimestampMs,
-          challengeInstanceId: challenge.challengeInstanceId,
-          signalEndsAtMs: challenge.signalEndsAtMs ?? nowWall,
-          serverNowMs: nowWall,
-        },
+        ...events.map((event) =>
+          event.kind === 'challenge_signal_ended'
+            ? {
+                ...event,
+                sequence: next.sequence,
+                revision: next.revision,
+                serverTimestampMs: bump.serverTimestampMs,
+              }
+            : event,
+        ),
       ],
     };
   }
@@ -1133,19 +1501,20 @@ export class MatchEngine {
       (p) => p.status === 'active' && p.hearts > 0,
     );
     if (alive.length === 0) {
-      next.status = 'resolving';
-      next.phase = 'halted';
+      next.status = 'completed';
+      next.phase = 'draw';
+      next.winnerId = null;
       next.currentChallenge = null;
-      const haltBump = this.bump(next);
+      const drawBump = this.bump(next);
       return {
         match: next,
         events: [
-          haltBump,
+          drawBump,
           {
-            kind: 'unsafe_zero_survivors',
+            kind: 'match_drawn',
             sequence: next.sequence,
             revision: next.revision,
-            serverTimestampMs: haltBump.serverTimestampMs,
+            serverTimestampMs: drawBump.serverTimestampMs,
           },
         ],
       };
@@ -1237,11 +1606,29 @@ export class MatchEngine {
     if (!player) {
       throw new DomainError('PLAYER_NOT_FOUND', 'player not found');
     }
-    if (player.status === 'spectator') {
+    if (player.status === 'spectator' || player.status === 'left') {
       throw new DomainError(
         'SPECTATOR_CANNOT_SUBMIT',
         'spectator cannot submit',
       );
+    }
+    if (!challenge.participatingPlayerIds.includes(input.playerId)) {
+      const ack = { accepted: false, reason: 'not_participating' };
+      const next = this.cloneMatch(match);
+      next.commandAcks.set(input.commandId, ack);
+      next.updatedAtMs = this.clock.nowMs();
+      return { match: next, events: [], duplicate: false, ack };
+    }
+    // Memory: answers are only valid in the answer phase (after preview).
+    if (
+      challenge.engineId === 'memory.sequence' &&
+      challenge.roundPhase === 'preview'
+    ) {
+      const ack = { accepted: false, reason: 'preview_active' };
+      const next = this.cloneMatch(match);
+      next.commandAcks.set(input.commandId, ack);
+      next.updatedAtMs = this.clock.nowMs();
+      return { match: next, events: [], duplicate: false, ack };
     }
 
     // Inclusive deadline boundary: late only when strictly after deadline
@@ -1291,11 +1678,18 @@ export class MatchEngine {
     next.updatedAtMs = this.clock.nowMs();
 
     // Early resolve when every participating active player has a final submission.
+    // Memory is simultaneous recall: keep the shared deadline so one fast seat
+    // cannot end the round while others are still answering.
+    const allowEarlyResolve = nextChallenge.engineId !== 'memory.sequence';
     const allSubmitted = nextChallenge.participatingPlayerIds.every((id) => {
+      const seat = next.players.get(id);
+      if (!seat || seat.status === 'spectator' || seat.status === 'left') {
+        return true;
+      }
       const sub = nextChallenge.submissions.get(id);
       return sub != null && sub.final !== false;
     });
-    if (allSubmitted && isFinal) {
+    if (allowEarlyResolve && allSubmitted && isFinal) {
       const resolved = this.resolveChallenge(next);
       return {
         match: resolved.match,
@@ -1362,6 +1756,19 @@ export class MatchEngine {
         });
         continue;
       }
+      if (player.status === 'left') {
+        resolutions.push({
+          playerId,
+          outcome: 'left',
+          heartsDelta: 0,
+          energyDelta: 0,
+          heartsAfter: player.hearts,
+          energyAfter: player.energy,
+          statusAfter: player.status,
+          reasonKey: 'player.status.left',
+        });
+        continue;
+      }
 
       const submission = challenge.submissions.get(playerId);
       let outcome: PlayerChallengeResolution['outcome'];
@@ -1382,16 +1789,23 @@ export class MatchEngine {
         reasonKey = 'result.timeout';
       } else {
         const answerForEval = { ...submission.answer };
-        if (
-          challenge.engineId === WAIT_FOR_SIGNAL_ENGINE_ID &&
-          challenge.signalToken &&
-          challenge.signalAtMonoMs != null &&
-          challenge.signalEndsAtMonoMs != null &&
-          submission.receivedMonoMs >= challenge.signalAtMonoMs &&
-          submission.receivedMonoMs <= challenge.signalEndsAtMonoMs
-        ) {
-          // Inject expected token only inside the inclusive blue window.
-          answerForEval['_expectedSignalToken'] = challenge.signalToken;
+        const seatVariant = challenge.seatVariants?.get(playerId);
+        if (challenge.engineId === WAIT_FOR_SIGNAL_ENGINE_ID) {
+          const token = seatVariant?.signalToken ?? challenge.signalToken;
+          const startMono =
+            seatVariant?.signalAtMonoMs ?? challenge.signalAtMonoMs;
+          const endMono =
+            seatVariant?.signalEndsAtMonoMs ?? challenge.signalEndsAtMonoMs;
+          if (
+            token &&
+            startMono != null &&
+            endMono != null &&
+            submission.receivedMonoMs >= startMono &&
+            submission.receivedMonoMs <= endMono
+          ) {
+            // Inject expected token only inside the inclusive blue window.
+            answerForEval['_expectedSignalToken'] = token;
+          }
         }
         if (challenge.engineId === 'social.pair_sync') {
           const partnerId = challenge.pairAssignments?.get(playerId);
@@ -1403,10 +1817,27 @@ export class MatchEngine {
           if (partnerSub) {
             answerForEval['_partnerReceivedMonoMs'] = partnerSub.receivedMonoMs;
             answerForEval['_selfReceivedMonoMs'] = submission.receivedMonoMs;
+            answerForEval['_partnerHeldMs'] =
+              typeof partnerSub.answer['heldMs'] === 'number' &&
+              Number.isFinite(partnerSub.answer['heldMs'])
+                ? partnerSub.answer['heldMs']
+                : 0;
+            answerForEval['_partnerReleasedEarly'] =
+              partnerSub.answer['releasedEarly'] === true;
           }
         }
+        const definitionForEval =
+          seatVariant && Object.keys(seatVariant.serverOverlay).length > 0
+            ? {
+                ...challenge.definition,
+                serverConfig: {
+                  ...challenge.definition.serverConfig,
+                  ...seatVariant.serverOverlay,
+                },
+              }
+            : challenge.definition;
         const evaluation = evaluator.evaluate({
-          definition: challenge.definition,
+          definition: definitionForEval,
           answer: answerForEval,
           receivedMonoMs: submission.receivedMonoMs,
           deadlineMonoMs: challenge.deadlineMonoMs,
@@ -1428,21 +1859,23 @@ export class MatchEngine {
           energyDelta = challenge.definition.energyRewardOnSuccess;
         }
         player.energy += energyDelta;
-        const config = match.powerConfig ?? defaultPowerConfig();
-        const { grant } = convertEnergyForPlayer(
-          player,
-          match.mode,
-          config,
-          () => Math.random(),
-        );
-        if (grant) {
-          // Defer event emission until after sequence bump below.
-          (player as PlayerState & { __pendingGrant?: typeof grant }).__pendingGrant =
-            grant;
-        }
-        // Cap public energy at threshold (segments remaining after convert).
-        if (player.energy > ENERGY_THRESHOLD) {
-          player.energy = ENERGY_THRESHOLD;
+        if (match.mode !== 'training') {
+          const config = match.powerConfig ?? defaultPowerConfig();
+          const { grant } = convertEnergyForPlayer(
+            player,
+            match.mode,
+            config,
+            () => Math.random(),
+          );
+          if (grant) {
+            // Defer event emission until after sequence bump below.
+            (player as PlayerState & { __pendingGrant?: typeof grant }).__pendingGrant =
+              grant;
+          }
+          // Cap public energy at threshold (segments remaining after convert).
+          if (player.energy > ENERGY_THRESHOLD) {
+            player.energy = ENERGY_THRESHOLD;
+          }
         }
       } else {
         heartsDelta = -challenge.definition.heartPenaltyOnFailure;
@@ -1461,6 +1894,29 @@ export class MatchEngine {
         statusAfter: player.status,
         reasonKey,
         measureMs,
+      });
+    }
+
+    // Pair-sync / subset rounds: active seats that did not participate must
+    // still report absolute vitals so clients never treat "missing local
+    // resolution" as a wipe of previously earned energy.
+    const resolvedIds = new Set(resolutions.map((r) => r.playerId));
+    for (const player of match.players.values()) {
+      if (resolvedIds.has(player.playerId)) {
+        continue;
+      }
+      resolutions.push({
+        playerId: player.playerId,
+        outcome: player.status === 'left' ? 'left' : 'skipped_spectator',
+        heartsDelta: 0,
+        energyDelta: 0,
+        heartsAfter: player.hearts,
+        energyAfter: Math.min(ENERGY_THRESHOLD, player.energy),
+        statusAfter: player.status,
+        reasonKey:
+          player.status === 'left'
+            ? 'player.status.left'
+            : 'result.outcome.skipped_spectator',
       });
     }
 
@@ -1496,14 +1952,18 @@ export class MatchEngine {
         }
       ).__pendingGrant;
       if (pending) {
+        // Each grant is its own sequenced client event. Sharing the resolve
+        // sequence caused mobile to drop power.granted after challenge.resolved.
+        const grantBump = this.bump(match);
         events.push(
+          grantBump,
           ...grantEventsFromConversion(
             match,
             p.playerId,
             pending,
             match.sequence,
             match.revision,
-            bump.serverTimestampMs,
+            grantBump.serverTimestampMs,
           ),
         );
         delete (
@@ -1513,21 +1973,17 @@ export class MatchEngine {
     }
 
     if (survivors.length === 1) {
-      const sole = survivors[0]!;
-      const soleResolution = resolutions.find((r) => r.playerId === sole.playerId);
-      // Training is capacity-1: "one survivor" is always true after any round.
-      // Only crown a winner on an authoritative success; failure/timeout must
-      // surface as round feedback (precise practice), not a false victory.
-      const trainingFalseVictory =
-        match.mode === 'training' && soleResolution?.outcome !== 'success';
-      if (trainingFalseVictory) {
+      // Training is capacity-1: the sole seat is always "one survivor". Never
+      // crown here — MatchService advances through the playlist while hearts
+      // remain, then completes when the pack is done (or after a wipe → retry).
+      if (match.mode === 'training') {
         match.status = 'waiting';
         match.phase = 'challenge_active';
         match.currentChallenge = challenge;
       } else {
         match.status = 'completed';
         match.phase = 'completed';
-        match.winnerId = sole.playerId;
+        match.winnerId = survivors[0]!.playerId;
         match.currentChallenge = challenge;
         const finishBump = this.bump(match);
         events.push(finishBump, {
@@ -1546,44 +2002,18 @@ export class MatchEngine {
         match.phase = 'challenge_active';
         match.currentChallenge = challenge;
       } else {
-        // Best-performer among players eliminated this round (hit 0 hearts).
-        const eliminated = resolutions.filter(
-          (r) => r.heartsAfter === 0 && r.heartsDelta < 0,
-        );
-        const withMeasure = eliminated.filter(
-          (r) => typeof r.measureMs === 'number',
-        );
-        if (withMeasure.length > 0) {
-          withMeasure.sort((a, b) => {
-            const am = a.measureMs!;
-            const bm = b.measureMs!;
-            if (am !== bm) return am - bm;
-            return a.playerId.localeCompare(b.playerId);
-          });
-          const winnerId = withMeasure[0]!.playerId;
-          match.status = 'completed';
-          match.phase = 'completed';
-          match.winnerId = winnerId;
-          match.currentChallenge = challenge;
-          const finishBump = this.bump(match);
-          events.push(finishBump, {
-            kind: 'match_finished',
-            sequence: match.sequence,
-            revision: match.revision,
-            serverTimestampMs: finishBump.serverTimestampMs,
-            winnerId,
-          });
-        } else {
-          match.status = 'resolving';
-          match.phase = 'halted';
-          const haltBump = this.bump(match);
-          events.push(haltBump, {
-            kind: 'unsafe_zero_survivors',
-            sequence: match.sequence,
-            revision: match.revision,
-            serverTimestampMs: haltBump.serverTimestampMs,
-          });
-        }
+        // Simultaneous wipe — no Last Heart remains. Equal elimination → draw.
+        match.status = 'completed';
+        match.phase = 'draw';
+        match.winnerId = null;
+        match.currentChallenge = challenge;
+        const drawBump = this.bump(match);
+        events.push(drawBump, {
+          kind: 'match_drawn',
+          sequence: match.sequence,
+          revision: match.revision,
+          serverTimestampMs: drawBump.serverTimestampMs,
+        });
       }
     } else {
       // Keep the resolved challenge until the service enters round_result
@@ -1596,7 +2026,10 @@ export class MatchEngine {
     return { match, events };
   }
 
-  toPublicSnapshot(match: MatchState): {
+  toPublicSnapshot(
+    match: MatchState,
+    viewerPlayerId?: string,
+  ): {
     matchId: string;
     status: MatchState['status'];
     phase: MatchPhase;
@@ -1700,7 +2133,11 @@ export class MatchEngine {
       })),
       currentChallenge:
         match.currentChallenge && match.currentChallenge.status === 'active'
-          ? toPublicChallengeView(match.currentChallenge, now)
+          ? toPublicChallengeView(
+              match.currentChallenge,
+              now,
+              viewerPlayerId,
+            )
           : null,
       releasePins: match.releasePins,
       tactical: {
@@ -2038,6 +2475,7 @@ export class MatchEngine {
       players: clonePlayers(match.players),
       commandAcks: new Map(match.commandAcks),
       pinnedPlaylist: [...match.pinnedPlaylist],
+      hardLoopPlaylist: [...(match.hardLoopPlaylist ?? [])],
       releasePins: match.releasePins ? { ...match.releasePins } : null,
       powerConfig: match.powerConfig
         ? {
@@ -2073,6 +2511,9 @@ export class MatchEngine {
             pairAssignments: match.currentChallenge.pairAssignments
               ? new Map(match.currentChallenge.pairAssignments)
               : undefined,
+            seatVariants: cloneSeatVariants(
+              match.currentChallenge.seatVariants,
+            ),
             definition: pinDefinition(match.currentChallenge.definition),
           }
         : null,

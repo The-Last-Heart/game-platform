@@ -12,12 +12,24 @@
     "promptKey": "challenge.precision.prompt",
     "attemptCount": 2,
     "targets": [
-      { "id": "t1", "x": 0.3, "y": 0.4 },
-      { "id": "t2", "x": 0.7, "y": 0.6 }
+      {
+        "id": "t1",
+        "x": 0.3,
+        "y": 0.4
+      },
+      {
+        "id": "t2",
+        "x": 0.7,
+        "y": 0.6
+      }
     ]
   },
   "serverConfig": {
-    "targetIds": ["t1", "t2"],
+    "targetIds": [
+      "t1",
+      "t2"
+    ],
     "attemptCount": 2
-  }
+  },
+  "difficulty": "medium"
 }

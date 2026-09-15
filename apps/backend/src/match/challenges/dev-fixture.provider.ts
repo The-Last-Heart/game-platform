@@ -15,9 +15,19 @@ const FIXTURE_FILES = [
   'audio.cue.v1.json',
   'social.pair_sync.v1.json',
   'tactical.risk_choice.v1.json',
+  'trivia.multiple_choice.v1.json',
+  'geography.select_on_map.v1.json',
+  'focus.odd_one_out.v1.json',
+  'order.sequence_sort.v1.json',
+  'precision.maze_path.v1.json',
+  'precision.neon_cable.v1.json',
+  'gesture.fog_wipe.v1.json',
+  'logic.balance_scale.v1.json',
+  'focus.stroop.v1.json',
+  'search.select_occurrences.v1.json',
 ] as const;
 
-/** Mixed launch playlist — one of each live engine for device testing. */
+/** Mixed launch playlist — live engines except paused risk choice / pair-sync (training filters pair). */
 const PLAYLIST_DEFINITION_IDS = [
   'reaction.wait_for_signal.dev',
   'trap.no_touch.dev',
@@ -29,7 +39,16 @@ const PLAYLIST_DEFINITION_IDS = [
   'motion.tilt_balance.dev',
   'audio.cue.dev',
   'social.pair_sync.dev',
-  'tactical.risk_choice.dev',
+  'trivia.multiple_choice.dev',
+  'geography.select_on_map.dev',
+  'focus.odd_one_out.dev',
+  'order.sequence_sort.dev',
+  'precision.maze_path.dev',
+  'precision.neon_cable.dev',
+  'gesture.fog_wipe.dev',
+  'logic.balance_scale.dev',
+  'focus.stroop.dev',
+  'search.select_occurrences.dev',
 ] as const;
 
 /**
@@ -65,7 +84,7 @@ export class DevFixtureProvider implements ChallengeDefinitionProvider {
     return def;
   }
 
-  /** Finite mixed pack — played in order once (no infinite cycle). */
+  /** Finite pool — MatchService structures into 5 easy + 5 medium + 5 hard. */
   getPlaylist(): readonly ChallengeDefinition[] {
     return this.playlist;
   }

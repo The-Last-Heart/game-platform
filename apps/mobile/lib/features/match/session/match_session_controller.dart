@@ -435,18 +435,23 @@ class MatchSessionController {
   Future<void> requestRematch() async {
     final String? matchId = state.value.matchId;
     if (matchId == null) return;
+    // Ignore double-taps / concurrent rematch while handshake is open.
+    if (_handshake != null) return;
     final String commandId = generateSecureId();
     _rematchLobbyActive = true;
     _handshake = _PendingHandshake(
       kind: _HandshakeKind.join,
       commandId: commandId,
     );
-    // Leave terminal chrome immediately so the lobby can paint after accept.
+    // Leave terminal chrome, but clear the prior roster/host so LobbyView
+    // cannot paint the finished match as a second live waiting room.
     if (state.value.lifecycle == SessionLifecycle.terminal) {
       state.value = state.value.copyWith(
         lifecycle: SessionLifecycle.connecting,
         winnerId: () => null,
         phase: MatchPhase.lobby,
+        players: const <PlayerPublic>[],
+        hostPlayerId: () => null,
       );
     }
     _sendCommandWithId(commandId, MessageTypes.matchRematch, <String, dynamic>{
@@ -1048,10 +1053,46 @@ class MatchSessionController {
       'cancelled' => null,
       _ => 'errors.queue_failed',
     };
+    final bool wasInMatch = state.value.inMatch;
+    if (wasInMatch &&
+        (status.state == 'timed_out' || status.state == 'failed')) {
+      // Drop the solo lobby seat immediately so entry leaves the search UI,
+      // then finish transport cleanup while keeping the timeout message.
+      unawaited(_endSearchWithError(errorKey));
+      return;
+    }
     state.value = state.value.copyWith(
       matchmakingAcceptedSeats: 0,
       connectionError: () => errorKey,
     );
+  }
+
+  Future<void> _endSearchWithError(String? errorKey) async {
+    _cleaningUp = true;
+    try {
+      _pending = null;
+      _handshake = null;
+      _rematchLobbyActive = false;
+      _devMatchStarting = false;
+      _matchmakingWaiter = null;
+      _pendingRetriedThisEpisode = false;
+      _clearRecoveryState(clearWatermark: true);
+      serverClock.setActiveDeadline(null);
+      await sessionStore.clear();
+      if (transport.isConnected) {
+        await transport.disconnect();
+      }
+      state.value = MatchViewState(
+        connectionError: errorKey,
+      );
+    } finally {
+      _cleaningUp = false;
+    }
+  }
+
+  void clearConnectionError() {
+    if (state.value.connectionError == null) return;
+    state.value = state.value.copyWith(connectionError: () => null);
   }
 
   Future<void> _handleSessionAccepted(Map<String, dynamic> raw) async {

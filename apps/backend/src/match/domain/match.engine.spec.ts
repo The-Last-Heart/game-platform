@@ -43,6 +43,11 @@ function fillSix(engine: MatchEngine) {
   return match;
 }
 
+function seatSignalToken(match: { currentChallenge: { seatVariants?: Map<string, { signalToken?: string | null }>; signalToken: string | null } | null }, playerId: string): string {
+  const seat = match.currentChallenge?.seatVariants?.get(playerId);
+  return seat?.signalToken ?? match.currentChallenge!.signalToken!;
+}
+
 function createWaitForSignalDefinition(
   overrides: Partial<ChallengeDefinition> = {},
 ): ChallengeDefinition {
@@ -65,6 +70,8 @@ function createWaitForSignalDefinition(
     serverConfig: overrides.serverConfig ?? {
       signalDelayMs: 1500,
       signalWindowMs: 1000,
+      // Deterministic for engine specs; production catalog uses a real spread.
+      signalDelayRangeMs: { min: 1500, max: 1500 },
     },
   };
 }
@@ -90,7 +97,7 @@ describe('MatchEngine', () => {
     expect(match.phaseDeadlineAtMs).toBeNull();
   });
 
-  it('rejects challenge durations outside 3–8 seconds', () => {
+  it('rejects challenge durations outside 3–15 seconds', () => {
     const { engine } = setup();
     const match = fillSix(engine);
     expect(() =>
@@ -102,7 +109,7 @@ describe('MatchEngine', () => {
     expect(() =>
       engine.startChallenge(
         match,
-        createDevChallengeDefinition({ durationMs: 8001 }),
+        createDevChallengeDefinition({ durationMs: 15_001 }),
       ),
     ).toThrow(DomainError);
   });
@@ -442,9 +449,10 @@ describe('MatchEngine', () => {
       match = engine.resolveDueTimeouts(match).match;
     }
     expect(match.winnerId).toBeNull();
+    expect(match.phase).toBe('draw');
+    expect(match.status).toBe('completed');
     expect(
-      match.status === 'resolving' ||
-        [...match.players.values()].every((p) => p.hearts === 0),
+      [...match.players.values()].every((p) => p.hearts === 0),
     ).toBe(true);
   });
 
@@ -622,13 +630,11 @@ describe('WaitForSignal engine', () => {
     const { clock, engine } = setup();
     let match = fillSix(engine);
     match = engine.startChallenge(match, createWaitForSignalDefinition()).match;
-    const token = match.currentChallenge!.signalToken!;
-
     clock.advance(1500);
     match = engine.activateSignal(match).match;
     expect(match.currentChallenge!.roundPhase).toBe('signal_active');
 
-    clock.advance(1000);
+    clock.advance(1001);
     const expired = engine.expireSignal(match);
     expect(expired.events.some((e) => e.kind === 'challenge_signal_ended')).toBe(
       true,
@@ -646,7 +652,7 @@ describe('WaitForSignal engine', () => {
         playerId: `p${i}`,
         challengeInstanceId: match.currentChallenge!.challengeInstanceId,
         commandId: `late-${i}`,
-        answer: { signalToken: token },
+        answer: { signalToken: seatSignalToken(match, `p${i}`) },
       }).match;
     }
 
@@ -700,20 +706,19 @@ describe('WaitForSignal engine', () => {
     const { clock, engine } = setup();
     let match = fillSix(engine);
     match = engine.startChallenge(match, createWaitForSignalDefinition()).match;
-    const token = match.currentChallenge!.signalToken!;
 
     // Activate signal
     clock.advance(1500);
     match = engine.activateSignal(match).match;
     expect(match.currentChallenge!.roundPhase).toBe('signal_active');
 
-    // Submit correct token — all 6 players
+    // Submit each seat's own token — all 6 players
     for (let i = 0; i < 6; i++) {
       match = engine.submitAnswer(match, {
         playerId: `p${i}`,
         challengeInstanceId: match.currentChallenge!.challengeInstanceId,
         commandId: `submit-${i}`,
-        answer: { signalToken: token },
+        answer: { signalToken: seatSignalToken(match, `p${i}`) },
       }).match;
     }
 
@@ -772,7 +777,7 @@ describe('WaitForSignal engine', () => {
       playerId: 'p0',
       challengeInstanceId: round.challengeInstanceId,
       commandId: 'first-attempt',
-      answer: { signalToken: match.currentChallenge!.signalToken! },
+      answer: { signalToken: seatSignalToken(match, 'p0') },
     });
     expect(first.ack.accepted).toBe(true);
 
@@ -780,7 +785,7 @@ describe('WaitForSignal engine', () => {
       playerId: 'p0',
       challengeInstanceId: first.match.currentChallenge!.challengeInstanceId,
       commandId: 'second-attempt',
-      answer: { signalToken: first.match.currentChallenge!.signalToken! },
+      answer: { signalToken: seatSignalToken(first.match, 'p0') },
     });
     expect(second.ack.reason).toBe('already_submitted');
   });
@@ -795,7 +800,6 @@ describe('WaitForSignal engine', () => {
         energyRewardOnSuccess: 2,
       }),
     ).match;
-    const token = match.currentChallenge!.signalToken!;
 
     clock.advance(1500);
     match = engine.activateSignal(match).match;
@@ -805,7 +809,7 @@ describe('WaitForSignal engine', () => {
       playerId: 'p0',
       challengeInstanceId: match.currentChallenge!.challengeInstanceId,
       commandId: 'ok-0',
-      answer: { signalToken: token },
+      answer: { signalToken: seatSignalToken(match, 'p0') },
     }).match;
 
     // p1 wrong token
@@ -824,6 +828,56 @@ describe('WaitForSignal engine', () => {
     expect(match.players.get('p0')!.hearts).toBe(3);
     expect(match.players.get('p1')!.hearts).toBe(2);
     expect(match.players.get('p2')!.hearts).toBe(2);
+  });
+
+  it('prior energy is kept when others fail in a later round', () => {
+    const { clock, engine } = setup();
+    let match = fillSix(engine);
+    match = engine.startChallenge(
+      match,
+      createWaitForSignalDefinition({
+        heartPenaltyOnFailure: 1,
+        energyRewardOnSuccess: 1,
+      }),
+    ).match;
+    clock.advance(1500);
+    match = engine.activateSignal(match).match;
+    match = engine.submitAnswer(match, {
+      playerId: 'p0',
+      challengeInstanceId: match.currentChallenge!.challengeInstanceId,
+      commandId: 'ok-round1',
+      answer: { signalToken: seatSignalToken(match, 'p0') },
+    }).match;
+    clock.advance(3501);
+    match = engine.resolveDueTimeouts(match).match;
+    expect(match.players.get('p0')!.energy).toBe(1);
+
+    match = engine.beginRoundResult(
+      match,
+      match.currentChallenge!.resolutions,
+      match.currentChallenge!.challengeInstanceId,
+      100,
+    ).match;
+    match = engine.startChallenge(
+      match,
+      createWaitForSignalDefinition({
+        heartPenaltyOnFailure: 1,
+        energyRewardOnSuccess: 1,
+      }),
+    ).match;
+    clock.advance(1500);
+    match = engine.activateSignal(match).match;
+    // Only p0 succeeds again; everyone else fails/timeouts.
+    match = engine.submitAnswer(match, {
+      playerId: 'p0',
+      challengeInstanceId: match.currentChallenge!.challengeInstanceId,
+      commandId: 'ok-round2',
+      answer: { signalToken: seatSignalToken(match, 'p0') },
+    }).match;
+    clock.advance(3501);
+    match = engine.resolveDueTimeouts(match).match;
+    expect(match.players.get('p0')!.energy).toBe(2);
+    expect(match.players.get('p1')!.energy).toBe(0);
   });
 
   it('countdown does not consume challenge duration', () => {
@@ -1313,7 +1367,7 @@ describe('Challenge definition pinning and validation', () => {
     expect(match.status).toBe('waiting');
   });
 
-  it('training success crowns the trainee as winner', () => {
+  it('training success does not crown mid-pack — stays waiting for next round', () => {
     const { clock, engine } = setup();
     let match = engine.createMatch('train-ok', {
       mode: 'training',
@@ -1338,7 +1392,23 @@ describe('Challenge definition pinning and validation', () => {
       answer: { signalToken: token },
     }).match;
 
-    expect(match.phase).toBe('completed');
-    expect(match.winnerId).toBe('trainee');
+    expect(match.phase).not.toBe('completed');
+    expect(match.winnerId).toBeNull();
+    expect(match.status).toBe('waiting');
+    expect(match.players.get('trainee')!.hearts).toBe(3);
+  });
+
+  it('mid-match leave keeps the seat as left for results', () => {
+    const { engine } = setup();
+    let match = fillSix(engine);
+    match = engine.startChallenge(match, createWaitForSignalDefinition()).match;
+
+    const left = engine.leavePlayer(match, 'p1');
+    expect(left.left).toBe(true);
+    expect(left.removedFromLobby).toBe(false);
+    expect(left.match.players.has('p1')).toBe(true);
+    expect(left.match.players.get('p1')!.status).toBe('left');
+    expect(left.match.players.get('p1')!.presence).toBe('disconnected');
+    expect(left.match.players.get('p2')!.status).toBe('active');
   });
 });

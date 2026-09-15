@@ -10,7 +10,8 @@ export const QUICK_LOBBY_FILL_MAX_REMAINING_MS = 120_000;
 export const INITIAL_HEARTS = 3;
 export const INITIAL_ENERGY = 0;
 export const MIN_CHALLENGE_DURATION_MS = 3000;
-export const MAX_CHALLENGE_DURATION_MS = 8000;
+/** Allows longer LH-009 gestures (e.g. fog wipe at 10s) while keeping rounds bounded. */
+export const MAX_CHALLENGE_DURATION_MS = 15_000;
 
 export type MatchMode = 'quick_survival' | 'private' | 'training' | 'dev';
 
@@ -92,7 +93,7 @@ export type RoundPhase =
   | 'answer'
   | 'resolved';
 
-export type PlayerStatus = 'active' | 'spectator';
+export type PlayerStatus = 'active' | 'spectator' | 'left';
 export type Presence = 'connected' | 'disconnected';
 
 export type PlayerIdentity = {
@@ -116,6 +117,11 @@ export type CreateMatchOptions = {
   releasePins?: MatchReleasePinsState | null;
   /** Playlist resolved from the pinned catalog (never re-reads "current"). */
   pinnedPlaylist?: readonly ChallengeDefinition[];
+  /**
+   * Hard-only pool for sudden-death after the structured 5+5+5 pack.
+   * Defaults to hard-tagged entries from the mode-filtered catalog pool.
+   */
+  hardLoopPlaylist?: readonly ChallengeDefinition[];
   /** Power configuration frozen at match create. */
   powerConfig?: PowerConfigurationRuntime | null;
 };
@@ -186,6 +192,8 @@ export type ChallengeDefinition = {
   heartPenaltyOnFailure: 0 | 1;
   energyRewardOnSuccess: number;
   promptKey: string;
+  /** Catalog difficulty used to order the room pack (easy → medium → hard). */
+  difficulty?: 'easy' | 'medium' | 'hard';
   /** Optional / empty for non-choice engines. */
   choiceKeys?: string[];
   /** Safe parameters for reusable mobile engines — may be sent to clients. */
@@ -223,7 +231,7 @@ export type PlayerState = {
 
 export type PlayerChallengeResolution = {
   playerId: string;
-  outcome: 'success' | 'failure' | 'timeout' | 'skipped_spectator';
+  outcome: 'success' | 'failure' | 'timeout' | 'skipped_spectator' | 'left';
   heartsDelta: number;
   energyDelta: number;
   heartsAfter: number;
@@ -270,6 +278,11 @@ export type ChallengeRound = {
   previewEndsAtMonoMs?: number | null;
   /** Pair sync: playerId → partner playerId (symmetric). */
   pairAssignments?: Map<string, string>;
+  /**
+   * Server-driven per-seat play params (signal timing, tilt targets, …).
+   * Never serialize the full map to clients — overlay only the viewer seat.
+   */
+  seatVariants?: Map<string, import('./seat-variants').SeatChallengeVariant>;
 };
 
 export type MatchState = {
@@ -307,8 +320,10 @@ export type MatchState = {
   commandAcks: Map<string, unknown>;
   /** Frozen at create; active matches never re-resolve current releases. */
   releasePins: MatchReleasePinsState | null;
-  /** Ordered definitions from the pinned catalog release. */
+  /** Ordered definitions: 5 easy → 5 medium → 5 hard (shuffled within tier). */
   pinnedPlaylist: ChallengeDefinition[];
+  /** Hard-only recycle pool while ≥2 players still have hearts. */
+  hardLoopPlaylist: ChallengeDefinition[];
   /** Frozen power rules for this match (LH-008). */
   powerConfig: PowerConfigurationRuntime | null;
   pendingAttack: PendingPowerAttack | null;
@@ -357,6 +372,8 @@ export type DomainEvent =
       signaledAtMs: number;
       signalEndsAtMs: number;
       serverNowMs: number;
+      /** When set, gateway unicasts to this seat only. */
+      playerId?: string;
     }
   | {
       kind: 'challenge_signal_ended';
@@ -366,6 +383,8 @@ export type DomainEvent =
       challengeInstanceId: string;
       signalEndsAtMs: number;
       serverNowMs: number;
+      /** When set, gateway unicasts to this seat only. */
+      playerId?: string;
     }
   | {
       kind: 'challenge_resolved';

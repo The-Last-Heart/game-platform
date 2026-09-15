@@ -125,34 +125,114 @@ describe('advanced evaluators (LH-009)', () => {
       expect(result.reasonKey).toBe('result.pair.fallback');
     });
 
-    it('succeeds when partner within sync window', () => {
+    it('succeeds when submitter held but partner missing', () => {
       const result = evaluator.evaluate({
         definition,
         answer: {
           synced: true,
+          heldMs: 4000,
           _hasPartner: true,
-          _partnerSubmitted: true,
-          _selfReceivedMonoMs: 1000,
-          _partnerReceivedMonoMs: 1200,
+          _partnerSubmitted: false,
         },
         receivedMonoMs: 1000,
         deadlineMonoMs: 5000,
       });
       expect(result.success).toBe(true);
+      expect(result.reasonKey).toBe('result.pair.partner_absent_ok');
     });
 
-    it('fails when out of sync', () => {
+    it('succeeds when both held and press starts within sync window', () => {
       const result = evaluator.evaluate({
         definition,
         answer: {
           synced: true,
+          heldMs: 4000,
           _hasPartner: true,
           _partnerSubmitted: true,
-          _selfReceivedMonoMs: 1000,
-          _partnerReceivedMonoMs: 2000,
+          _partnerHeldMs: 4100,
+          _partnerReleasedEarly: false,
+          // Finish times differ a lot, but press starts align (received - held).
+          _selfReceivedMonoMs: 4500,
+          _partnerReceivedMonoMs: 4900,
+        },
+        receivedMonoMs: 4500,
+        deadlineMonoMs: 5000,
+      });
+      expect(result.success).toBe(true);
+    });
+
+    it('fails both sides when partner released early (shared outcome)', () => {
+      const result = evaluator.evaluate({
+        definition,
+        answer: {
+          synced: true,
+          heldMs: 4000,
+          _hasPartner: true,
+          _partnerSubmitted: true,
+          _partnerHeldMs: 200,
+          _partnerReleasedEarly: true,
+          _selfReceivedMonoMs: 4500,
+          _partnerReceivedMonoMs: 4600,
+        },
+        receivedMonoMs: 4500,
+        deadlineMonoMs: 5000,
+      });
+      expect(result.success).toBe(false);
+      expect(result.reasonKey).toBe('result.pair.out_of_sync');
+    });
+
+    it('fails both sides when either held too briefly', () => {
+      const result = evaluator.evaluate({
+        definition,
+        answer: {
+          synced: true,
+          heldMs: 4000,
+          _hasPartner: true,
+          _partnerSubmitted: true,
+          _partnerHeldMs: 1000,
+          _partnerReleasedEarly: false,
+          _selfReceivedMonoMs: 4500,
+          _partnerReceivedMonoMs: 4600,
+        },
+        receivedMonoMs: 4500,
+        deadlineMonoMs: 5000,
+      });
+      expect(result.success).toBe(false);
+    });
+
+    it('fails when released early', () => {
+      const result = evaluator.evaluate({
+        definition,
+        answer: {
+          synced: false,
+          releasedEarly: true,
+          heldMs: 200,
+          _hasPartner: true,
+          _partnerSubmitted: true,
+          _partnerHeldMs: 4000,
+          _partnerReleasedEarly: false,
         },
         receivedMonoMs: 1000,
         deadlineMonoMs: 5000,
+      });
+      expect(result.success).toBe(false);
+    });
+
+    it('fails when press starts are out of sync', () => {
+      const result = evaluator.evaluate({
+        definition,
+        answer: {
+          synced: true,
+          heldMs: 4000,
+          _hasPartner: true,
+          _partnerSubmitted: true,
+          _partnerHeldMs: 4000,
+          _partnerReleasedEarly: false,
+          _selfReceivedMonoMs: 4500,
+          _partnerReceivedMonoMs: 5500,
+        },
+        receivedMonoMs: 4500,
+        deadlineMonoMs: 8000,
       });
       expect(result.success).toBe(false);
       expect(result.reasonKey).toBe('result.pair.out_of_sync');

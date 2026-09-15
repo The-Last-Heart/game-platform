@@ -284,6 +284,53 @@ void main() {
       expect(result.state.lastRoundResult!.resolutions.length, 2);
     });
 
+    test('challenge resolved merges per-seat energy; failures do not wipe others', () {
+      final Map<String, dynamic> lobbyRaw = clone(
+        fixtures['match_snapshot_lobby'] as Map<String, dynamic>,
+      );
+      final MatchViewState lobby = reducer
+          .reduce(
+            initialState(playerId: 'player-1'),
+            lobbyRaw,
+          )
+          .state;
+      expect(lobby.players[0].energy, 0);
+      expect(lobby.players[1].energy, 0);
+
+      final Map<String, dynamic> resolvedRaw = clone(
+        fixtures['challenge_resolved'] as Map<String, dynamic>,
+      );
+      // Consecutive after lobby snapshot sequence 3.
+      resolvedRaw['serverSequence'] = 4;
+      // Fixture: player-1 success energyAfter=1, player-2 failure energyAfter=0.
+      final ReducerResult result = reducer.reduce(lobby, resolvedRaw);
+      expect(result.disposition, ReducerDisposition.applied);
+      expect(
+        result.state.players
+            .firstWhere((PlayerPublic p) => p.playerId == 'player-1')
+            .energy,
+        1,
+      );
+      expect(
+        result.state.players
+            .firstWhere((PlayerPublic p) => p.playerId == 'player-1')
+            .hearts,
+        3,
+      );
+      expect(
+        result.state.players
+            .firstWhere((PlayerPublic p) => p.playerId == 'player-2')
+            .energy,
+        0,
+      );
+      expect(
+        result.state.players
+            .firstWhere((PlayerPublic p) => p.playerId == 'player-2')
+            .hearts,
+        2,
+      );
+    });
+
     test('match finished transitions to completed phase', () {
       final MatchViewState stateAtSeq12 = initialState(
         sequence: 12,

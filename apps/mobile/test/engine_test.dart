@@ -155,6 +155,20 @@ void main() {
       }
     });
 
+    test('resolves neon cable engine', () {
+      final ChallengeEngineRegistry registry = ChallengeEngineRegistry();
+      final ChallengeEngine engine = registry.resolve('precision.neon_cable');
+      expect(engine.engineId, 'precision.neon_cable');
+      expect(engine, isNot(isA<UnknownEngine>()));
+    });
+
+    test('resolves fog wipe engine', () {
+      final ChallengeEngineRegistry registry = ChallengeEngineRegistry();
+      final ChallengeEngine engine = registry.resolve('gesture.fog_wipe');
+      expect(engine.engineId, 'gesture.fog_wipe');
+      expect(engine, isNot(isA<UnknownEngine>()));
+    });
+
     test('unknown engine for unrecognized id', () {
       final ChallengeEngineRegistry registry = ChallengeEngineRegistry();
       final ChallengeEngine engine = registry.resolve('some.unknown.engine');

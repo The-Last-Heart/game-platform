@@ -1,0 +1,230 @@
+{
+  "pack": "the-last-heart-neon-cable-assets",
+  "version": 2,
+  "flutter_asset_root": "assets/neon_cable",
+  "resolution_variants": [
+    "1.0x",
+    "2.0x",
+    "3.0x"
+  ],
+  "composition": {
+    "panel_logical_size": [
+      512,
+      512
+    ],
+    "socket_logical_canvas": [
+      256,
+      256
+    ],
+    "plug_logical_canvas": [
+      384,
+      256
+    ],
+    "spark_logical_canvas": [
+      256,
+      256
+    ],
+    "socket_layers_share_origin": true,
+    "plug_layers_share_origin": true,
+    "plug_cable_anchor_normalized": [
+      0.105,
+      0.5
+    ],
+    "plug_tip_anchor_normalized": [
+      0.895,
+      0.5
+    ],
+    "socket_target_anchor_normalized": [
+      0.5,
+      0.5
+    ]
+  },
+  "layer_order": [
+    "panel_background",
+    "plug_shadow",
+    "socket_housing",
+    "socket_glow",
+    "socket_ring",
+    "runtime_cable",
+    "plug_glow",
+    "plug_body",
+    "snap_sparks"
+  ],
+  "transparency_validation": [
+    {
+      "file": "assets/neon_cable/socket_housing.png",
+      "size": [
+        256,
+        256
+      ],
+      "alpha_extrema": [
+        0,
+        255
+      ],
+      "corners_alpha": [
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "file": "assets/neon_cable/socket_ring_cyan.png",
+      "size": [
+        256,
+        256
+      ],
+      "alpha_extrema": [
+        0,
+        255
+      ],
+      "corners_alpha": [
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "file": "assets/neon_cable/socket_ring_red.png",
+      "size": [
+        256,
+        256
+      ],
+      "alpha_extrema": [
+        0,
+        255
+      ],
+      "corners_alpha": [
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "file": "assets/neon_cable/socket_glow_cyan.png",
+      "size": [
+        256,
+        256
+      ],
+      "alpha_extrema": [
+        0,
+        118
+      ],
+      "corners_alpha": [
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "file": "assets/neon_cable/socket_glow_red.png",
+      "size": [
+        256,
+        256
+      ],
+      "alpha_extrema": [
+        0,
+        118
+      ],
+      "corners_alpha": [
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "file": "assets/neon_cable/plug_body.png",
+      "size": [
+        384,
+        256
+      ],
+      "alpha_extrema": [
+        0,
+        255
+      ],
+      "corners_alpha": [
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "file": "assets/neon_cable/plug_glow_cyan.png",
+      "size": [
+        384,
+        256
+      ],
+      "alpha_extrema": [
+        0,
+        168
+      ],
+      "corners_alpha": [
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "file": "assets/neon_cable/plug_shadow.png",
+      "size": [
+        384,
+        256
+      ],
+      "alpha_extrema": [
+        0,
+        95
+      ],
+      "corners_alpha": [
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "file": "assets/neon_cable/snap_sparks_cyan.png",
+      "size": [
+        256,
+        256
+      ],
+      "alpha_extrema": [
+        0,
+        255
+      ],
+      "corners_alpha": [
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "file": "assets/neon_cable/snap_sparks_red.png",
+      "size": [
+        256,
+        256
+      ],
+      "alpha_extrema": [
+        0,
+        255
+      ],
+      "corners_alpha": [
+        0,
+        0,
+        0,
+        0
+      ]
+    }
+  ],
+  "notes": [
+    "panel_background.png is intentionally opaque.",
+    "All other runtime PNGs are RGBA cutouts with transparent corners.",
+    "The cable is intentionally rendered at runtime so it can bend during dragging."
+  ]
+}

@@ -27,6 +27,11 @@ import {
 } from '../domain/wait-for-signal.evaluator';
 import { createLaunchEvaluators } from '../domain/engines/launch-evaluators';
 import { createAdvancedEvaluators } from '../domain/engines/advanced-evaluators';
+import { createPack31Evaluators } from '../domain/engines/pack-31-evaluators';
+import { nextSeatSignalDelayMs } from '../domain/seat-variants';
+import { selectPlaylistDefinition } from '../domain/playlist-cycle';
+import { buildDifficultyOrderedPlaylist } from '../domain/playlist-difficulty';
+import { filterPlaylistForMode } from '../domain/training-eligibility';
 import type {
   ChallengeDefinition,
   Clock,
@@ -76,6 +81,11 @@ type RematchParty = {
   roomCode: string | null;
   hostPlayerId: string | null;
   expiresAtMs: number;
+  /** Source-seat → rematch-seat credentials (idempotent double-tap / race). */
+  seatsBySourcePlayerId: Map<
+    string,
+    { playerId: string; resumeToken: string }
+  >;
 };
 type ResumeReceipt = {
   type: 'match.resume';
@@ -124,7 +134,15 @@ function pruneResumeAcks(match: MatchState, playerId: string): void {
 export type MatchBroadcast = {
   matchId: string;
   events: DomainEvent[];
+  /** Shared snapshot without seat overlays (fallback / non-personalized). */
   snapshot: ReturnType<MatchEngine['toPublicSnapshot']>;
+  /** When true, gateway must emit per-seat challenge/snapshot payloads. */
+  personalizeSeats: boolean;
+  /** Pre-built viewer snapshots (avoids re-entering the match queue). */
+  snapshotsByPlayerId?: Record<
+    string,
+    ReturnType<MatchEngine['toPublicSnapshot']>
+  >;
 };
 
 export type FinalizeJoinResult = {
@@ -178,6 +196,9 @@ export class MatchService implements OnModuleDestroy, OnModuleInit {
       this.registry.register(evaluator);
     }
     for (const evaluator of createAdvancedEvaluators()) {
+      this.registry.register(evaluator);
+    }
+    for (const evaluator of createPack31Evaluators()) {
       this.registry.register(evaluator);
     }
     if (this.nodeEnv !== 'production') {
@@ -245,6 +266,9 @@ export class MatchService implements OnModuleDestroy, OnModuleInit {
       service['registry'].register(evaluator);
     }
     for (const evaluator of createAdvancedEvaluators()) {
+      service['registry'].register(evaluator);
+    }
+    for (const evaluator of createPack31Evaluators()) {
       service['registry'].register(evaluator);
     }
     if (service['nodeEnv'] !== 'production') {
@@ -446,7 +470,7 @@ export class MatchService implements OnModuleDestroy, OnModuleInit {
       const player = [...match.players.values()].find(
         (p) => p.resumeTokenHash === requestTokenHash,
       );
-      if (!player) {
+      if (!player || player.status === 'left') {
         throw new DomainError('PLAYER_NOT_FOUND', 'resume failed');
       }
       if (
@@ -586,6 +610,12 @@ export class MatchService implements OnModuleDestroy, OnModuleInit {
     challengeInstanceId: string;
     commandId: string;
     answer: Record<string, unknown>;
+    /** Called after durable save so the gateway can ACK before resolve fan-out. */
+    onAck?: (ack: {
+      accepted: boolean;
+      reason?: string;
+      duplicate: boolean;
+    }) => void;
   }): Promise<{
     ack: { accepted: boolean; reason?: string };
     duplicate: boolean;
@@ -600,6 +630,12 @@ export class MatchService implements OnModuleDestroy, OnModuleInit {
         receivedMonoMs,
       });
       await this.store.save(result.match);
+      // Unlock the submitting client before resolve/continue work.
+      input.onAck?.({
+        accepted: result.ack.accepted,
+        reason: result.ack.reason,
+        duplicate: result.duplicate,
+      });
       if (result.events.length > 0) {
         this.clearTimer(input.matchId);
         await this.publishResolveAndMaybeRoundResult(
@@ -612,19 +648,24 @@ export class MatchService implements OnModuleDestroy, OnModuleInit {
       return {
         ack: result.ack,
         duplicate: result.duplicate,
-        snapshot: this.engine.toPublicSnapshot(latest),
+        snapshot: this.engine.toPublicSnapshot(latest, input.playerId),
       };
     });
   }
 
-  async requestSnapshot(matchId: string): Promise<{
+  async requestSnapshot(
+    matchId: string,
+    viewerPlayerId?: string,
+  ): Promise<{
     snapshot: ReturnType<MatchEngine['toPublicSnapshot']>;
   }> {
     // Linearize with other match mutations via the per-match queue.
     // Client watermark/recovery is separate and still required on the client.
     return this.enqueue(matchId, async () => {
       const match = await this.requireMatch(matchId);
-      return { snapshot: this.engine.toPublicSnapshot(match) };
+      return {
+        snapshot: this.engine.toPublicSnapshot(match, viewerPlayerId),
+      };
     });
   }
 
@@ -831,6 +872,23 @@ export class MatchService implements OnModuleDestroy, OnModuleInit {
       }
     }
 
+    // Safety net for fixture / pin paths: training never gets multi-seat engines.
+    pinnedPlaylist = filterPlaylistForMode(
+      pinnedPlaylist,
+      options.mode ?? 'quick_survival',
+    );
+
+    const matchId = randomUUID();
+    const { structured, hardLoop } = buildDifficultyOrderedPlaylist(
+      pinnedPlaylist,
+      matchId,
+    );
+    pinnedPlaylist = structured;
+    const hardLoopPlaylist =
+      options.hardLoopPlaylist != null
+        ? [...options.hardLoopPlaylist]
+        : hardLoop;
+
     let powerConfig = options.powerConfig ?? undefined;
     if (this.releases && !powerConfig) {
       try {
@@ -863,10 +921,22 @@ export class MatchService implements OnModuleDestroy, OnModuleInit {
       }
     }
 
-    const match = this.engine.createMatch(undefined, {
+    // Training is solo practice — no Danger Pulse / shield / reflection.
+    if (options.mode === 'training' && powerConfig) {
+      powerConfig = {
+        ...powerConfig,
+        powers: powerConfig.powers.map((p) => ({
+          ...p,
+          eligibleModes: p.eligibleModes.filter((m) => m !== 'training'),
+        })),
+      };
+    }
+
+    const match = this.engine.createMatch(matchId, {
       ...options,
       releasePins,
       pinnedPlaylist,
+      hardLoopPlaylist,
       powerConfig: powerConfig ?? null,
     });
     await this.store.save(match);
@@ -959,46 +1029,92 @@ export class MatchService implements OnModuleDestroy, OnModuleInit {
   }> {
     return this.enqueue(matchId, async () => {
       const match = await this.requireMatch(matchId);
-      const removed = this.engine.removeLobbyPlayer(match, playerId);
-      if (!removed.removed) {
+      const departed = this.engine.leavePlayer(match, playerId);
+      if (!departed.left) {
         return {
           snapshot: this.engine.toPublicSnapshot(match),
           left: false,
           emptied: false,
         };
       }
-      this.clearTimer(matchId);
 
-      const next = removed.match;
+      let next = departed.match;
       let lobbyFillWaitMs: number | undefined;
-      // Vacating a seat before start re-opens the quick lobby for joins and
-      // refreshes the fill wait so remaining players are not sealed forever.
-      if (
-        next.mode === 'quick_survival' &&
-        next.phase === 'lobby' &&
-        next.players.size > 0 &&
-        next.players.size < next.playerCapacity
-      ) {
-        this.armLobbyFillWait(next, QUICK_LOBBY_FILL_WAIT_MS);
-        lobbyFillWaitMs = QUICK_LOBBY_FILL_WAIT_MS;
-      }
-      if (next.players.size > 0) {
-        this.ensureQuickHost(next, playerId);
+
+      if (departed.removedFromLobby) {
+        this.clearTimer(matchId);
+        // Vacating a seat before start re-opens the quick lobby for joins and
+        // refreshes the fill wait so remaining players are not sealed forever.
+        if (
+          next.mode === 'quick_survival' &&
+          next.phase === 'lobby' &&
+          next.players.size > 0 &&
+          next.players.size < next.playerCapacity
+        ) {
+          this.armLobbyFillWait(next, QUICK_LOBBY_FILL_WAIT_MS);
+          lobbyFillWaitMs = QUICK_LOBBY_FILL_WAIT_MS;
+        }
+        if (next.players.size > 0) {
+          this.ensureQuickHost(next, playerId);
+        }
+        await this.store.save(next);
+        if (departed.events.length > 0) {
+          this.emit(next, departed.events);
+        }
+        const emptied = next.players.size === 0;
+        if (emptied) {
+          this.roomCodes.unregisterMatch(matchId);
+          await this.store.delete(matchId);
+          return {
+            snapshot: null,
+            left: true,
+            emptied: true,
+            lobbyFillWaitMs,
+          };
+        }
+        return {
+          snapshot: this.engine.toPublicSnapshot(next),
+          left: true,
+          emptied: false,
+          lobbyFillWaitMs,
+        };
       }
 
+      // Mid-match / terminal: keep the seat as status=left for results.
       await this.store.save(next);
-      if (removed.events.length > 0) {
-        this.emit(next, removed.events);
+      if (next.currentChallenge?.status === 'resolved') {
+        this.clearTimer(matchId);
+        await this.publishResolveAndMaybeRoundResult(next, departed.events);
+        await this.maybeContinue(await this.requireMatch(matchId));
+      } else {
+        if (departed.events.length > 0) {
+          this.emit(next, departed.events);
+        }
+        const activeWithHearts = [...next.players.values()].filter(
+          (p) => p.status === 'active' && p.hearts > 0,
+        );
+        if (
+          next.mode !== 'training' &&
+          activeWithHearts.length <= 1 &&
+          next.phase !== 'completed' &&
+          next.phase !== 'draw' &&
+          next.phase !== 'halted' &&
+          next.currentChallenge?.status !== 'active'
+        ) {
+          const finished = this.engine.completeByStandings(next);
+          if (finished.events.length > 0) {
+            await this.store.save(finished.match);
+            this.emit(finished.match, finished.events);
+            next = finished.match;
+          }
+        }
       }
-      const emptied = next.players.size === 0;
-      if (emptied) {
-        this.roomCodes.unregisterMatch(matchId);
-        await this.store.delete(matchId);
-      }
+
+      const latest = await this.requireMatch(matchId);
       return {
-        snapshot: this.engine.toPublicSnapshot(next),
+        snapshot: this.engine.toPublicSnapshot(latest),
         left: true,
-        emptied,
+        emptied: false,
         lobbyFillWaitMs,
       };
     });
@@ -1172,8 +1288,18 @@ export class MatchService implements OnModuleDestroy, OnModuleInit {
    * - Later callers from the same source match (within REMATCH_WINDOW_MS) join
    *   that rematch lobby instead of creating another room.
    * - Private: room code is preserved on the rematch lobby when possible.
+   *
+   * Serialized on the *source* matchId so two devices cannot both miss the
+   * party map and open solo rematch lobbies (sync contract: one rematch room).
    */
   async rematch(
+    matchId: string,
+    playerId: string,
+  ): Promise<SeatCredentials> {
+    return this.enqueue(matchId, () => this.rematchLocked(matchId, playerId));
+  }
+
+  private async rematchLocked(
     matchId: string,
     playerId: string,
   ): Promise<SeatCredentials> {
@@ -1200,6 +1326,18 @@ export class MatchService implements OnModuleDestroy, OnModuleInit {
       existing.expiresAtMs > now &&
       existing.mode === source.mode
     ) {
+      const priorSeat = existing.seatsBySourcePlayerId.get(playerId);
+      if (priorSeat) {
+        const snap = await this.requestSnapshot(existing.newMatchId);
+        const partyMatch = await this.store.get(existing.newMatchId);
+        return {
+          matchId: existing.newMatchId,
+          playerId: priorSeat.playerId,
+          resumeToken: priorSeat.resumeToken,
+          snapshot: snap.snapshot,
+          roomCode: partyMatch?.roomCode ?? existing.roomCode,
+        };
+      }
       const partyMatch = await this.store.get(existing.newMatchId);
       if (
         partyMatch &&
@@ -1208,6 +1346,10 @@ export class MatchService implements OnModuleDestroy, OnModuleInit {
         partyMatch.players.size < partyMatch.playerCapacity
       ) {
         const seated = await this.joinMatch(existing.newMatchId, identity);
+        existing.seatsBySourcePlayerId.set(playerId, {
+          playerId: seated.playerId,
+          resumeToken: seated.resumeToken,
+        });
         // Heal rematch lobbies that never armed a fill wait (pre-fix state).
         let lobbyFillWaitMs: number | undefined;
         if (partyMatch.mode === 'quick_survival') {
@@ -1287,6 +1429,12 @@ export class MatchService implements OnModuleDestroy, OnModuleInit {
       roomCode,
       hostPlayerId: seated.playerId,
       expiresAtMs: now + REMATCH_WINDOW_MS,
+      seatsBySourcePlayerId: new Map([
+        [
+          playerId,
+          { playerId: seated.playerId, resumeToken: seated.resumeToken },
+        ],
+      ]),
     });
 
     const snap = await this.requestSnapshot(next.matchId);
@@ -1627,13 +1775,11 @@ export class MatchService implements OnModuleDestroy, OnModuleInit {
   private async tickDueLocked(matchId: string): Promise<void> {
     let match = await this.requireMatch(matchId);
 
-    // Check for signal activation
+    // Check for signal activation (shared or any due seat).
     if (
       match.currentChallenge &&
       match.currentChallenge.status === 'active' &&
-      match.currentChallenge.roundPhase === 'waiting_signal' &&
-      match.currentChallenge.signalAtMonoMs != null &&
-      this.clock.monoMs() >= match.currentChallenge.signalAtMonoMs
+      match.currentChallenge.engineId === WAIT_FOR_SIGNAL_ENGINE_ID
     ) {
       const signalResult = this.engine.activateSignal(match);
       if (signalResult.events.length > 0) {
@@ -1641,11 +1787,7 @@ export class MatchService implements OnModuleDestroy, OnModuleInit {
         await this.store.save(match);
         this.emit(match, signalResult.events);
         this.scheduleBotSubmissions(match);
-        const windowMs =
-          (match.currentChallenge?.definition.serverConfig[
-            'signalWindowMs'
-          ] as number) ?? 1000;
-        this.scheduleSignalExpiry(matchId, windowMs);
+        this.armSignalFollowUpTimers(match);
       }
     }
 
@@ -1653,9 +1795,7 @@ export class MatchService implements OnModuleDestroy, OnModuleInit {
     if (
       match.currentChallenge &&
       match.currentChallenge.status === 'active' &&
-      match.currentChallenge.roundPhase === 'signal_active' &&
-      match.currentChallenge.signalEndsAtMonoMs != null &&
-      this.clock.monoMs() > match.currentChallenge.signalEndsAtMonoMs
+      match.currentChallenge.engineId === WAIT_FOR_SIGNAL_ENGINE_ID
     ) {
       const expireResult = this.engine.expireSignal(match);
       if (expireResult.events.length > 0) {
@@ -1884,26 +2024,117 @@ export class MatchService implements OnModuleDestroy, OnModuleInit {
     this.armActiveChallengeTimers(match);
   }
 
-  /** Signal + timeout timers for a freshly started challenge. */
+  /** Signal + preview + timeout timers for a freshly started challenge. */
   private armActiveChallengeTimers(match: MatchState): void {
     const matchId = match.matchId;
-    if (
-      match.currentChallenge &&
-      match.currentChallenge.engineId === WAIT_FOR_SIGNAL_ENGINE_ID &&
-      match.currentChallenge.signalAtMonoMs != null
-    ) {
-      const signalDelay =
-        (match.currentChallenge.definition.serverConfig[
-          'signalDelayMs'
-        ] as number) ?? 1500;
-      this.scheduleSignalActivation(matchId, signalDelay);
+    const challenge = match.currentChallenge;
+    if (!challenge) {
+      return;
     }
-    if (match.currentChallenge) {
-      this.scheduleTimeout(
-        matchId,
-        match.currentChallenge.definition.durationMs,
+    if (challenge.engineId === WAIT_FOR_SIGNAL_ENGINE_ID) {
+      const seatDelay = nextSeatSignalDelayMs(
+        challenge,
+        this.clock.monoMs(),
       );
+      if (seatDelay != null) {
+        this.scheduleSignalActivation(matchId, Math.max(1, seatDelay));
+      } else if (challenge.signalAtMonoMs != null) {
+        const signalDelay =
+          (challenge.definition.serverConfig['signalDelayMs'] as number) ??
+          1500;
+        this.scheduleSignalActivation(matchId, signalDelay);
+      }
     }
+    if (
+      challenge.roundPhase === 'preview' &&
+      challenge.previewEndsAtMonoMs != null
+    ) {
+      const previewMs = Math.max(
+        1,
+        challenge.previewEndsAtMonoMs - this.clock.monoMs(),
+      );
+      this.schedulePreviewAdvance(matchId, previewMs);
+    }
+    this.scheduleTimeout(matchId, challenge.definition.durationMs);
+  }
+
+  /** After seat signal activation: expiry for active seats + next waiting seat. */
+  private armSignalFollowUpTimers(match: MatchState): void {
+    const challenge = match.currentChallenge;
+    if (!challenge || challenge.engineId !== WAIT_FOR_SIGNAL_ENGINE_ID) {
+      return;
+    }
+    const windowMs =
+      (challenge.definition.serverConfig['signalWindowMs'] as number) ?? 1000;
+    if (challenge.seatVariants && challenge.seatVariants.size > 0) {
+      for (const [playerId, seat] of challenge.seatVariants) {
+        if (
+          seat.signalPhase === 'signal_active' &&
+          seat.signalEndsAtMonoMs != null
+        ) {
+          const remaining = Math.max(
+            1,
+            seat.signalEndsAtMonoMs - this.clock.monoMs(),
+          );
+          this.scheduleSignalExpiry(match.matchId, remaining, playerId);
+        }
+      }
+      const nextDelay = nextSeatSignalDelayMs(
+        challenge,
+        this.clock.monoMs(),
+      );
+      if (nextDelay != null) {
+        this.scheduleSignalActivation(match.matchId, Math.max(1, nextDelay));
+      }
+      return;
+    }
+    this.scheduleSignalExpiry(match.matchId, windowMs);
+  }
+
+  private schedulePreviewAdvance(matchId: string, delayMs: number): void {
+    if (this.nodeEnv === 'test') return;
+    const key = `${matchId}:preview`;
+    const existing = this.timers.get(key);
+    if (existing) {
+      clearTimeout(existing);
+      this.timers.delete(key);
+    }
+    const timer = setTimeout(() => {
+      void this.enqueue(matchId, async () => {
+        const match = await this.requireMatch(matchId);
+        const challenge = match.currentChallenge;
+        if (
+          !challenge ||
+          challenge.status !== 'active' ||
+          challenge.roundPhase !== 'preview' ||
+          challenge.previewEndsAtMonoMs == null
+        ) {
+          return;
+        }
+        if (this.clock.monoMs() < challenge.previewEndsAtMonoMs) {
+          const remaining = challenge.previewEndsAtMonoMs - this.clock.monoMs();
+          this.schedulePreviewAdvance(matchId, Math.max(1, remaining));
+          return;
+        }
+        const result = this.engine.advancePreview(match);
+        if (result.events.length === 0) {
+          return;
+        }
+        await this.store.save(result.match);
+        this.emit(result.match, result.events);
+        if (result.match.currentChallenge?.engineId === 'memory.sequence') {
+          this.scheduleBotSubmissions(result.match);
+        }
+      }).catch((error: unknown) => {
+        this.logger.error({
+          event: 'preview_advance_failed',
+          matchId,
+          category: error instanceof Error ? error.name : 'UnknownError',
+        });
+      });
+    }, Math.max(1, delayMs));
+    timer.unref?.();
+    this.timers.set(key, timer);
   }
 
   private async advanceFromRoundResult(matchId: string): Promise<void> {
@@ -1911,11 +2142,39 @@ export class MatchService implements OnModuleDestroy, OnModuleInit {
     if (match.phase !== 'round_result') return;
     if (match.status === 'completed' || match.winnerId) return;
 
-    const survivors = [...match.players.values()].filter(
-      (p) => p.status === 'active',
+    const withHearts = [...match.players.values()].filter(
+      (p) => p.status === 'active' && p.hearts > 0,
     );
-    // Training is capacity-1: stay on round_result until retry/leave.
-    if (survivors.length < 2) return;
+
+    // Training is capacity-1: keep walking the playlist while the trainee still
+    // has hearts; only stop for wipe (retry) or pack exhaustion (complete).
+    if (match.mode === 'training') {
+      if (withHearts.length === 0) {
+        return;
+      }
+      const definition = this.definitionForNextRound(match);
+      if (!definition) {
+        const finished = this.engine.completeByStandings(match);
+        if (finished.events.length > 0) {
+          await this.store.save(finished.match);
+          this.emit(finished.match, finished.events);
+        }
+        return;
+      }
+      await this.startNextChallengeAfterPowers(matchId, match);
+      return;
+    }
+
+    // Live / private: The Last Heart ends the match. With 2+ hearts remaining,
+    // keep advancing (and recycle after the base playlist).
+    if (withHearts.length < 2) {
+      const finished = this.engine.completeByStandings(match);
+      if (finished.events.length > 0) {
+        await this.store.save(finished.match);
+        this.emit(finished.match, finished.events);
+      }
+      return;
+    }
 
     // Between-round tactical window when anyone can fire Danger Pulse.
     const offered = this.engine.beginPowerAction(match);
@@ -1969,6 +2228,20 @@ export class MatchService implements OnModuleDestroy, OnModuleInit {
     match: MatchState,
   ): Promise<void> {
     const cleared = this.engine.clearExpiredProtection(match);
+    const withHearts = [...cleared.players.values()].filter(
+      (p) => p.status === 'active' && p.hearts > 0,
+    );
+    // Power elimination / Last Heart between rounds — crown now (training is
+    // handled in advanceFromRoundResult so a solo trainee can keep practicing).
+    if (cleared.mode !== 'training' && withHearts.length <= 1) {
+      const finished = this.engine.completeByStandings(cleared);
+      await this.store.save(finished.match);
+      this.emit(finished.match, finished.events);
+      return;
+    }
+    if (cleared.mode === 'training' && withHearts.length === 0) {
+      return;
+    }
     const definition = this.definitionForNextRound(cleared);
     if (!definition) {
       const finished = this.engine.completeByStandings(cleared);
@@ -1987,7 +2260,12 @@ export class MatchService implements OnModuleDestroy, OnModuleInit {
 
   /**
    * Next playlist entry for this match. `roundNumber` is how many challenges
-   * have already been introduced. The catalog is finite — do not cycle.
+   * have already been introduced.
+   *
+   * Structured pack: 5 easy → 5 medium → 5 hard. After that, live/private
+   * sudden-death recycles hard-only challenges while ≥2 players still have
+   * hearts (Danger Pulse still runs between rounds). Training walks the pack
+   * once and stops.
    */
   private definitionForNextRound(
     match: MatchState,
@@ -1999,7 +2277,25 @@ export class MatchService implements OnModuleDestroy, OnModuleInit {
     if (playlist.length === 0) {
       return null;
     }
-    return playlist[match.roundNumber] ?? null;
+    if (match.roundNumber < playlist.length) {
+      return playlist[match.roundNumber] ?? null;
+    }
+    const withHearts = [...match.players.values()].filter(
+      (p) => p.status === 'active' && p.hearts > 0,
+    ).length;
+    if (match.mode !== 'training' && withHearts >= 2) {
+      const hardLoop =
+        match.hardLoopPlaylist.length > 0
+          ? match.hardLoopPlaylist
+          : playlist.filter((d) => (d.difficulty ?? 'medium') === 'hard');
+      const loopPool = hardLoop.length > 0 ? hardLoop : playlist;
+      return selectPlaylistDefinition({
+        playlist: loopPool,
+        matchId: match.matchId,
+        roundNumber: match.roundNumber - playlist.length,
+      });
+    }
+    return null;
   }
 
   private async startDevRoundLocked(
@@ -2112,7 +2408,11 @@ export class MatchService implements OnModuleDestroy, OnModuleInit {
           definitionId: challenge.definitionId,
           definitionVersion: challenge.definitionVersion,
           engineId: challenge.engineId,
-          outcome: resolution.outcome === 'skipped_spectator' ? 'timeout' : resolution.outcome,
+          outcome:
+            resolution.outcome === 'skipped_spectator' ||
+            resolution.outcome === 'left'
+              ? 'timeout'
+              : resolution.outcome,
           heartDelta: resolution.heartsDelta,
           energyDelta: resolution.energyDelta,
           measureMs: resolution.measureMs,
@@ -2194,11 +2494,7 @@ export class MatchService implements OnModuleDestroy, OnModuleInit {
             await this.store.save(result.match);
             this.emit(result.match, result.events);
             this.scheduleBotSubmissions(result.match);
-            const windowMs =
-              (result.match.currentChallenge?.definition.serverConfig[
-                'signalWindowMs'
-              ] as number) ?? 1000;
-            this.scheduleSignalExpiry(matchId, windowMs);
+            this.armSignalFollowUpTimers(result.match);
             return;
           }
           // Wall timer can fire before mono reaches signalAtMonoMs — reschedule.
@@ -2207,12 +2503,24 @@ export class MatchService implements OnModuleDestroy, OnModuleInit {
             match.status === 'challenge_active' &&
             challenge &&
             challenge.status === 'active' &&
-            challenge.roundPhase === 'waiting_signal' &&
-            challenge.signalAtMonoMs != null &&
-            this.clock.monoMs() < challenge.signalAtMonoMs
+            challenge.engineId === WAIT_FOR_SIGNAL_ENGINE_ID
           ) {
-            const remaining = challenge.signalAtMonoMs - this.clock.monoMs();
-            this.scheduleSignalActivation(matchId, Math.max(1, remaining));
+            const seatDelay = nextSeatSignalDelayMs(
+              challenge,
+              this.clock.monoMs(),
+            );
+            if (seatDelay != null && seatDelay > 0) {
+              this.scheduleSignalActivation(matchId, Math.max(1, seatDelay));
+              return;
+            }
+            if (
+              challenge.roundPhase === 'waiting_signal' &&
+              challenge.signalAtMonoMs != null &&
+              this.clock.monoMs() < challenge.signalAtMonoMs
+            ) {
+              const remaining = challenge.signalAtMonoMs - this.clock.monoMs();
+              this.scheduleSignalActivation(matchId, Math.max(1, remaining));
+            }
           }
         }).catch((error: unknown) => {
           this.logger.error({
@@ -2228,9 +2536,15 @@ export class MatchService implements OnModuleDestroy, OnModuleInit {
     this.timers.set(`${matchId}:signal`, timer);
   }
 
-  private scheduleSignalExpiry(matchId: string, windowMs: number): void {
+  private scheduleSignalExpiry(
+    matchId: string,
+    windowMs: number,
+    playerId?: string,
+  ): void {
     if (this.nodeEnv === 'test') return;
-    const key = `${matchId}:signal_end`;
+    const key = playerId
+      ? `${matchId}:signal_end:${playerId}`
+      : `${matchId}:signal_end`;
     const existing = this.timers.get(key);
     if (existing) {
       clearTimeout(existing);
@@ -2251,13 +2565,34 @@ export class MatchService implements OnModuleDestroy, OnModuleInit {
             match.status === 'challenge_active' &&
             challenge &&
             challenge.status === 'active' &&
-            challenge.roundPhase === 'signal_active' &&
-            challenge.signalEndsAtMonoMs != null &&
-            this.clock.monoMs() < challenge.signalEndsAtMonoMs
+            challenge.engineId === WAIT_FOR_SIGNAL_ENGINE_ID
           ) {
-            const remaining =
-              challenge.signalEndsAtMonoMs - this.clock.monoMs();
-            this.scheduleSignalExpiry(matchId, Math.max(1, remaining));
+            if (challenge.seatVariants && playerId) {
+              const seat = challenge.seatVariants.get(playerId);
+              if (
+                seat?.signalPhase === 'signal_active' &&
+                seat.signalEndsAtMonoMs != null &&
+                this.clock.monoMs() < seat.signalEndsAtMonoMs
+              ) {
+                const remaining =
+                  seat.signalEndsAtMonoMs - this.clock.monoMs();
+                this.scheduleSignalExpiry(
+                  matchId,
+                  Math.max(1, remaining),
+                  playerId,
+                );
+              }
+              return;
+            }
+            if (
+              challenge.roundPhase === 'signal_active' &&
+              challenge.signalEndsAtMonoMs != null &&
+              this.clock.monoMs() < challenge.signalEndsAtMonoMs
+            ) {
+              const remaining =
+                challenge.signalEndsAtMonoMs - this.clock.monoMs();
+              this.scheduleSignalExpiry(matchId, Math.max(1, remaining));
+            }
           }
         }).catch((error: unknown) => {
           this.logger.error({
@@ -2434,10 +2769,23 @@ export class MatchService implements OnModuleDestroy, OnModuleInit {
     if (events.length === 0) {
       return;
     }
+    const personalizeSeats =
+      match.currentChallenge?.seatVariants != null &&
+      match.currentChallenge.seatVariants.size > 0;
+    const snapshotsByPlayerId = personalizeSeats
+      ? Object.fromEntries(
+          [...match.players.keys()].map((playerId) => [
+            playerId,
+            this.engine.toPublicSnapshot(match, playerId),
+          ]),
+        )
+      : undefined;
     const broadcast: MatchBroadcast = {
       matchId: match.matchId,
       events,
       snapshot: this.engine.toPublicSnapshot(match),
+      personalizeSeats,
+      snapshotsByPlayerId,
     };
     for (const listener of this.listeners) {
       listener(broadcast);

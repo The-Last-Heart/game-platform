@@ -33,4 +33,16 @@
 
 - Formal LH-009 gate remains open until operator confirms in-scope device journeys
 - Risk “follow-up challenge after choice” from LH-009.md is simplified to immediate energy override on successful choice (definition + reward stay pinned for the round; no reconnect reroll)
+- **`tactical.risk_choice` paused from live/training playlist** (migration `013_lh009_pause_risk_choice` → pin `lh009.mixed.v2`); engine kept in-tree for later
 - After operator close: next milestone = **LH-010** (Studio redesigned from proven mobile controllables)
+
+## Ops note (local)
+
+Live/training playlists come from the **current challenge_catalog DB pin**, not the in-repo fixtures alone. Apply migrations through `013_lh009_pause_risk_choice` and rebuild/restart the backend so the pin is `lh009.mixed.v2` (10 engines; risk choice excluded). Matches created before that pin keep the old playlist — start a **new** match.
+
+### Playability follow-up (device bugs)
+
+- Shake progress must pass `{current}`/`{required}` into `resolve` (missing params → «المحتوى غير متاح»).
+- Submit ACK is emitted after durable save, before resolve/continue fan-out.
+- Waiting overlay is pending-only; confirmed shows a bottom chip so two-device wait does not blank the playfield.
+- Reverse swipe uses a centered-ball slider; tilt uses filtered accelerometer + ticker smoothing.

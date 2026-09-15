@@ -1,14 +1,24 @@
 'use client';
 
-import { useState } from 'react';
-import type { ChallengeDefinitionContract, LaunchEngineId } from '@thelastheart/contracts';
+import { useCallback, useEffect, useState } from 'react';
+import type {
+  AdminContentTemplateDetail,
+  ChallengeDefinitionContract,
+  LaunchEngineId,
+} from '@thelastheart/contracts';
 import { STUDIO_ENGINE_REGISTRY } from '@thelastheart/contracts';
+import {
+  ErrorState,
+  ForbiddenState,
+  LoadingState,
+} from '@/components/ui/confirm-dialog';
 import { useToast } from '@/components/ui/toast';
 import { t } from '@/i18n/get-dictionary';
 import type { Locale } from '@/i18n/locale';
 import type { MessageKey } from '@/i18n/messages/en';
 import { adminApiFetch } from '@/lib/api/client';
 import { localizeAdminError } from '@/i18n/localize-admin-error';
+import { scheduleEffectTask } from '@/lib/react/schedule-effect-task';
 import { DevicePreviewFrame } from './DevicePreviewFrame';
 import { FamilyParamsFields, defaultClientConfig, defaultServerConfig } from './FamilyParamsFields';
 import { FieldInput, FieldSelect, FieldTextarea, FieldCheckboxGroup, FieldGroup } from './Field';
@@ -195,7 +205,7 @@ function validateDraft(draft: DraftDefinition, locale: Locale): ValidationError[
   if (!draft.internalTitle.trim()) errors.push({ path: 'internalTitle', message: t(locale, 'studio.validation.required') });
   if (!draft.instructionAr.trim()) errors.push({ path: 'instructionAr', message: t(locale, 'studio.validation.missingArabic') });
   if (!draft.promptKey.trim()) errors.push({ path: 'promptKey', message: t(locale, 'studio.validation.required') });
-  if (draft.durationMs < 3000 || draft.durationMs > 8000) errors.push({ path: 'durationMs', message: t(locale, 'studio.validation.invalidRange') });
+  if (draft.durationMs < 3000 || draft.durationMs > 15_000) errors.push({ path: 'durationMs', message: t(locale, 'studio.validation.invalidRange') });
   if (draft.eligibleModes.length === 0) errors.push({ path: 'eligibleModes', message: t(locale, 'studio.validation.required') });
   if (!draft.accessibilityFallbackKey.trim()) errors.push({ path: 'accessibilityFallbackKey', message: t(locale, 'studio.validation.required') });
   if (draft.roundMin && draft.roundMax && Number(draft.roundMin) > Number(draft.roundMax)) {
@@ -225,6 +235,40 @@ type StudioChallengeEditorProps = {
   initialDefinition?: ChallengeDefinitionContract;
 };
 
+function definitionToDraft(def: ChallengeDefinitionContract): DraftDefinition {
+  return {
+    definitionId: def.definitionId,
+    definitionVersion: def.definitionVersion,
+    engineId: def.engineId as LaunchEngineId,
+    internalTitle: def.internalTitle,
+    familyId: def.familyId,
+    categoryId: def.categoryId,
+    difficulty: def.difficulty,
+    instructionAr: def.instructionAr,
+    hintAr: def.hintAr ?? '',
+    promptKey: def.promptKey,
+    durationMs: def.durationMs,
+    introDurationMs: def.introDurationMs ?? 2000,
+    resultHoldMs: def.resultHoldMs ?? 3000,
+    heartPenaltyOnFailure: def.heartPenaltyOnFailure,
+    energyRewardOnSuccess: def.energyRewardOnSuccess,
+    clientConfig: { ...(def.clientConfig ?? {}) },
+    serverConfig: { ...(def.serverConfig ?? {}) },
+    eligibleModes: [...def.eligibleModes],
+    roundMin: def.roundMin?.toString() ?? '',
+    roundMax: def.roundMax?.toString() ?? '',
+    selectionWeight: def.selectionWeight,
+    repetitionCooldownRounds: def.repetitionCooldownRounds,
+    minAppVersion: def.minAppVersion,
+    requiredCapabilities: [...(def.requiredCapabilities ?? [])],
+    accessibilityFallbackKey: def.accessibilityFallbackKey,
+    requiredAssetIds: [...(def.requiredAssetIds ?? [])],
+    choiceKeys: [...(def.choiceKeys ?? [])],
+    outcomeReasonKeys: { ...(def.outcomeReasonKeys ?? {}) },
+    validationNotes: '',
+  };
+}
+
 export function StudioChallengeEditor({
   locale,
   canDraft,
@@ -238,45 +282,68 @@ export function StudioChallengeEditor({
   const [activeSection, setActiveSection] = useState<EditorSection>('identity');
   const [saving, setSaving] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const [loadState, setLoadState] = useState<'idle' | 'loading' | 'ready' | 'error' | 'forbidden'>(
+    mode === 'edit' && !initialDefinition ? 'loading' : 'ready',
+  );
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [draft, setDraft] = useState<DraftDefinition>(() => {
     if (initialDefinition) {
-      return {
-        definitionId: initialDefinition.definitionId,
-        definitionVersion: initialDefinition.definitionVersion,
-        engineId: initialDefinition.engineId as LaunchEngineId,
-        internalTitle: initialDefinition.internalTitle,
-        familyId: initialDefinition.familyId,
-        categoryId: initialDefinition.categoryId,
-        difficulty: initialDefinition.difficulty,
-        instructionAr: initialDefinition.instructionAr,
-        hintAr: initialDefinition.hintAr ?? '',
-        promptKey: initialDefinition.promptKey,
-        durationMs: initialDefinition.durationMs,
-        introDurationMs: initialDefinition.introDurationMs ?? 2000,
-        resultHoldMs: initialDefinition.resultHoldMs ?? 3000,
-        heartPenaltyOnFailure: initialDefinition.heartPenaltyOnFailure,
-        energyRewardOnSuccess: initialDefinition.energyRewardOnSuccess,
-        clientConfig: initialDefinition.clientConfig ?? {},
-        serverConfig: initialDefinition.serverConfig ?? {},
-        eligibleModes: [...initialDefinition.eligibleModes],
-        roundMin: initialDefinition.roundMin?.toString() ?? '',
-        roundMax: initialDefinition.roundMax?.toString() ?? '',
-        selectionWeight: initialDefinition.selectionWeight,
-        repetitionCooldownRounds: initialDefinition.repetitionCooldownRounds,
-        minAppVersion: initialDefinition.minAppVersion,
-        requiredCapabilities: [...(initialDefinition.requiredCapabilities ?? [])],
-        accessibilityFallbackKey: initialDefinition.accessibilityFallbackKey,
-        requiredAssetIds: [...(initialDefinition.requiredAssetIds ?? [])],
-        choiceKeys: [...(initialDefinition.choiceKeys ?? [])],
-        outcomeReasonKeys: { ...(initialDefinition.outcomeReasonKeys ?? {}) },
-        validationNotes: '',
-      };
+      return definitionToDraft(initialDefinition);
     }
     return defaultDraft();
   });
 
+  const loadExisting = useCallback(async () => {
+    if (mode !== 'edit' || !templateId || initialDefinition) {
+      setLoadState('ready');
+      return;
+    }
+    setLoadState('loading');
+    const result = await adminApiFetch<AdminContentTemplateDetail>(
+      `/content/templates/${templateId}`,
+    );
+    if (!result.ok) {
+      setLoadState(
+        result.status === 403 || result.error.code === 'FORBIDDEN'
+          ? 'forbidden'
+          : 'error',
+      );
+      setLoadError(
+        localizeAdminError(locale, result.error.code, result.error.message),
+      );
+      return;
+    }
+    const latest = result.data.versions[0];
+    if (!latest?.definition) {
+      setLoadState('error');
+      setLoadError(t(locale, 'studio.detail.noVersions'));
+      return;
+    }
+    setDraft(definitionToDraft(latest.definition));
+    setLoadError(null);
+    setLoadState('ready');
+  }, [mode, templateId, initialDefinition, locale]);
+
+  useEffect(() => scheduleEffectTask(() => void loadExisting()), [loadExisting]);
+
   const validationErrors = validateDraft(draft, locale);
   const activeSectionIndex = EDITOR_SECTIONS.indexOf(activeSection);
+
+  if (loadState === 'loading') {
+    return <LoadingState label={t(locale, 'common.loading')} />;
+  }
+  if (loadState === 'forbidden') {
+    return <ForbiddenState label={t(locale, 'common.forbidden')} />;
+  }
+  if (loadState === 'error') {
+    return (
+      <ErrorState
+        label={loadError ?? t(locale, 'common.error')}
+        retryLabel={t(locale, 'common.retry')}
+        onRetry={() => void loadExisting()}
+      />
+    );
+  }
 
   function goToSection(section: EditorSection) {
     setActiveSection(section);
@@ -552,7 +619,7 @@ export function StudioChallengeEditor({
                 label={t(locale, 'studio.field.durationMs')}
                 hint={t(locale, 'studio.field.durationMsHint')}
                 valueMs={draft.durationMs}
-                onChangeMs={(ms) => updateField('durationMs', Math.min(8000, Math.max(3000, ms)))}
+                onChangeMs={(ms) => updateField('durationMs', Math.min(15_000, Math.max(3000, ms)))}
                 minSec={3}
                 maxSec={8}
                 stepSec={0.5}

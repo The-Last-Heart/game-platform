@@ -17,5 +17,6 @@
     "requiredContacts": 2,
     "holdMs": 1500,
     "resetOnLift": true
-  }
+  },
+  "difficulty": "medium"
 }

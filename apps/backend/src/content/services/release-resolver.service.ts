@@ -37,7 +37,7 @@ export const DEFAULT_POWER_CONFIGURATION: PowerConfigurationReleasePayload = {
       powerId: 'danger_pulse',
       enabled: true,
       grantWeight: 100,
-      eligibleModes: ['quick_survival', 'private', 'training', 'dev'],
+      eligibleModes: ['quick_survival', 'private', 'dev'],
       nameKey: 'power.danger_pulse.name',
       explanationKey: 'power.danger_pulse.explanation',
       assetIds: [],
@@ -46,7 +46,7 @@ export const DEFAULT_POWER_CONFIGURATION: PowerConfigurationReleasePayload = {
       powerId: 'shield',
       enabled: true,
       grantWeight: 100,
-      eligibleModes: ['quick_survival', 'private', 'training', 'dev'],
+      eligibleModes: ['quick_survival', 'private', 'dev'],
       nameKey: 'power.shield.name',
       explanationKey: 'power.shield.explanation',
       assetIds: [],
@@ -55,7 +55,7 @@ export const DEFAULT_POWER_CONFIGURATION: PowerConfigurationReleasePayload = {
       powerId: 'reflection',
       enabled: true,
       grantWeight: 100,
-      eligibleModes: ['quick_survival', 'private', 'training', 'dev'],
+      eligibleModes: ['quick_survival', 'private', 'dev'],
       nameKey: 'power.reflection.name',
       explanationKey: 'power.reflection.explanation',
       assetIds: [],
@@ -179,6 +179,11 @@ export class ReleaseResolverService implements ChallengeDefinitionProvider {
       const parsed = challengeDefinitionSchema.safeParse(raw);
       if (!parsed.success) continue;
 
+      // Reject catalog ↔ version identity mismatches (corrupt seed / bad compose).
+      if (parsed.data.definitionId !== entry.definitionId) {
+        continue;
+      }
+
       // Skip engines that are schema_only (no runtime evaluator)
       const engineId = parsed.data.engineId as LaunchEngineId;
       if (ENGINE_RUNTIME_READINESS[engineId] === 'schema_only') continue;
@@ -213,6 +218,7 @@ export class ReleaseResolverService implements ChallengeDefinitionProvider {
       heartPenaltyOnFailure: 1,
       energyRewardOnSuccess: 1,
       promptKey: 'challenge.wait_for_signal.intro',
+      difficulty: 'easy',
       choiceKeys: [],
       clientConfig: {
         categoryKey: 'challenge.category.reaction',
@@ -259,6 +265,7 @@ export class ReleaseResolverService implements ChallengeDefinitionProvider {
       heartPenaltyOnFailure: def.heartPenaltyOnFailure,
       energyRewardOnSuccess: def.energyRewardOnSuccess,
       promptKey: def.promptKey,
+      difficulty: def.difficulty,
       choiceKeys: def.choiceKeys,
       clientConfig: def.clientConfig,
       serverConfig: def.serverConfig,

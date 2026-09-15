@@ -200,6 +200,9 @@ export const adminContentTemplateDetailSchema = z
     familyId: z.string(),
     categoryId: z.string(),
     status: contentLifecycleStatusSchema,
+    /** Live catalog pause override for the latest definition (survives refresh). */
+    catalogPaused: z.boolean(),
+    pauseReason: z.string().nullable(),
     versions: z.array(adminContentTemplateVersionSchema),
   })
   .strict();

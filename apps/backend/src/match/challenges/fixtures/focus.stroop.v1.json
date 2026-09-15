@@ -1,0 +1,55 @@
+{
+  "definitionId": "focus.stroop.dev",
+  "definitionVersion": 1,
+  "engineId": "focus.stroop",
+  "durationMs": 6000,
+  "heartPenaltyOnFailure": 1,
+  "energyRewardOnSuccess": 1,
+  "promptKey": "challenge.stroop.intro",
+  "choiceKeys": [],
+  "clientConfig": {
+    "categoryKey": "challenge.category.focus",
+    "promptKey": "challenge.stroop.prompt",
+    "footerKey": "challenge.stroop.footer",
+    "wordKey": "color.red",
+    "inkColorId": "cyan",
+    "optionKeys": [
+      "cyan",
+      "red",
+      "yellow"
+    ]
+  },
+  "serverConfig": {
+    "wordKey": "color.red",
+    "inkColorId": "cyan",
+    "optionKeys": [
+      "cyan",
+      "red",
+      "yellow"
+    ],
+    "correctOptionKey": "cyan",
+    "variants": [
+      {
+        "wordKey": "color.red",
+        "inkColorId": "cyan",
+        "optionKeys": [
+          "cyan",
+          "red",
+          "yellow"
+        ],
+        "correctOptionKey": "cyan"
+      },
+      {
+        "wordKey": "color.blue",
+        "inkColorId": "yellow",
+        "optionKeys": [
+          "cyan",
+          "red",
+          "yellow"
+        ],
+        "correctOptionKey": "yellow"
+      }
+    ]
+  },
+  "difficulty": "hard"
+}

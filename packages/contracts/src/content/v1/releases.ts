@@ -55,7 +55,7 @@ export const challengeDefinitionSchema = z
     definitionId: z.string().min(1).max(128),
     definitionVersion: z.number().int().positive(),
     engineId: z.string().min(1).max(128),
-    durationMs: z.number().int().min(3000).max(8000),
+    durationMs: z.number().int().min(3000).max(15_000),
     heartPenaltyOnFailure: z.union([z.literal(0), z.literal(1)]),
     energyRewardOnSuccess: z.number().int().min(0).max(3),
     promptKey: z.string().min(1).max(256),

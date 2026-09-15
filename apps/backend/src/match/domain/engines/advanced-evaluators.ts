@@ -125,16 +125,51 @@ export class SocialPairSyncEvaluator implements ChallengeEvaluator {
         measureMs: Math.max(0, Math.floor(input.receivedMonoMs)),
       };
     }
+
+    const durationMs = Math.max(1, input.definition.durationMs);
+    const minHoldMs = Math.floor(durationMs * 0.75);
+    const selfHeldMs = num(input.answer['heldMs'], 0);
+    const selfReleasedEarly = input.answer['releasedEarly'] === true;
+
+    // Submitter held; partner never submitted → fair success (no heart loss).
     if (input.answer['_partnerSubmitted'] !== true) {
-      return { success: false, reasonKey: 'result.pair.partner_missing' };
+      if (selfReleasedEarly || selfHeldMs < minHoldMs) {
+        return { success: false, reasonKey: 'result.pair.out_of_sync' };
+      }
+      return {
+        success: true,
+        reasonKey: 'result.pair.partner_absent_ok',
+        measureMs: Math.max(0, Math.floor(input.receivedMonoMs)),
+      };
     }
+
+    // Both seats submitted: outcomes must be shared. One seat cannot pass while
+    // the partner fails hold/timing (that felt like "we pressed together").
+    const partnerHeldMs = num(input.answer['_partnerHeldMs'], 0);
+    const partnerReleasedEarly = input.answer['_partnerReleasedEarly'] === true;
+    if (
+      selfReleasedEarly ||
+      partnerReleasedEarly ||
+      selfHeldMs < minHoldMs ||
+      partnerHeldMs < minHoldMs
+    ) {
+      return { success: false, reasonKey: 'result.pair.out_of_sync' };
+    }
+
     const syncWindow = num(
       input.definition.serverConfig['syncWindowMs'],
       500,
     );
-    const selfMs = num(input.answer['_selfReceivedMonoMs'], input.receivedMonoMs);
-    const partnerMs = num(input.answer['_partnerReceivedMonoMs']);
-    const delta = Math.abs(selfMs - partnerMs);
+    const selfReceived = num(
+      input.answer['_selfReceivedMonoMs'],
+      input.receivedMonoMs,
+    );
+    const partnerReceived = num(input.answer['_partnerReceivedMonoMs']);
+    // Compare press-start times (submit stamp minus held duration), not finish
+    // stamps — auto-submit near the deadline must not desync a shared hold.
+    const selfStart = selfReceived - selfHeldMs;
+    const partnerStart = partnerReceived - partnerHeldMs;
+    const delta = Math.abs(selfStart - partnerStart);
     if (delta > syncWindow) {
       return { success: false, reasonKey: 'result.pair.out_of_sync' };
     }

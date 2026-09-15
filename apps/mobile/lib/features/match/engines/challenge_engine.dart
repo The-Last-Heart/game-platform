@@ -11,6 +11,8 @@ class ChallengeContext {
     required this.estimateServerNowMs,
     required this.answerStatus,
     required this.inputEnabled,
+    this.localPlayerId,
+    this.players = const <PlayerPublic>[],
   });
 
   /// The public challenge state (definition fields + roundPhase + signal).
@@ -27,6 +29,12 @@ class ChallengeContext {
 
   /// Whether taps may be forwarded to [onSubmit].
   final bool inputEnabled;
+
+  /// Local seat id when known (pair sync partner labels).
+  final String? localPlayerId;
+
+  /// Current match roster for partner display names / avatars.
+  final List<PlayerPublic> players;
 
   bool get isInteractionLocked =>
       !inputEnabled ||

@@ -19,6 +19,17 @@ export const KNOWN_ASSET_OPTIONS: CatalogOption[] = [
   { value: 'sfx.fail', labelKey: 'studio.asset.sfxFail' },
   { value: 'sfx.tick', labelKey: 'studio.asset.sfxTick' },
   { value: 'sfx.signal', labelKey: 'studio.asset.sfxSignal' },
+  { value: 'sfx.pulse', labelKey: 'studio.asset.sfxPulse' },
+  { value: 'sfx.strike', labelKey: 'studio.asset.sfxStrike' },
+  { value: 'sfx.win', labelKey: 'studio.asset.sfxWin' },
+  { value: 'sfx.lose', labelKey: 'studio.asset.sfxLose' },
+
+  { value: 'neon_cable.panel_background', labelKey: 'studio.asset.neonPanel' },
+  { value: 'neon_cable.socket_housing', labelKey: 'studio.asset.neonSocketHousing' },
+  { value: 'neon_cable.plug_body', labelKey: 'studio.asset.neonPlugBody' },
+  { value: 'neon_cable.cable_spark', labelKey: 'studio.asset.neonCableSpark' },
+  { value: 'neon_cable.composition', labelKey: 'studio.asset.neonComposition' },
+
   { value: 'haptic.light', labelKey: 'studio.asset.hapticLight' },
   { value: 'haptic.medium', labelKey: 'studio.asset.hapticMedium' },
   { value: 'haptic.heavy', labelKey: 'studio.asset.hapticHeavy' },
@@ -38,6 +49,13 @@ export const CATEGORY_KEY_OPTIONS: CatalogOption[] = [
   { value: 'challenge.category.audio', labelKey: 'studio.catalog.category.audio' },
   { value: 'challenge.category.social', labelKey: 'studio.catalog.category.social' },
   { value: 'challenge.category.tactical', labelKey: 'studio.catalog.category.tactical' },
+  { value: 'challenge.category.trivia', labelKey: 'studio.catalog.category.trivia' },
+  { value: 'challenge.category.geography', labelKey: 'studio.catalog.category.geography' },
+  { value: 'challenge.category.focus', labelKey: 'studio.catalog.category.focus' },
+  { value: 'challenge.category.order', labelKey: 'studio.catalog.category.order' },
+  { value: 'challenge.category.precision', labelKey: 'studio.catalog.category.precision' },
+  { value: 'challenge.category.logic', labelKey: 'studio.catalog.category.logic' },
+  { value: 'challenge.category.search', labelKey: 'studio.catalog.category.search' },
 ];
 
 export const PROMPT_KEY_OPTIONS: CatalogOption[] = [
@@ -48,6 +66,7 @@ export const PROMPT_KEY_OPTIONS: CatalogOption[] = [
   { value: 'challenge.wait_for_signal.action', labelKey: 'studio.catalog.prompt.waitAction' },
   { value: 'challenge.no_touch.intro', labelKey: 'studio.catalog.prompt.noTouchIntro' },
   { value: 'challenge.no_touch.prompt', labelKey: 'studio.catalog.prompt.noTouchPrompt' },
+  { value: 'challenge.no_touch.bait', labelKey: 'studio.catalog.prompt.noTouchBait' },
   { value: 'challenge.no_touch.zone_hint', labelKey: 'studio.catalog.prompt.noTouchZone' },
   { value: 'challenge.reverse_swipe.intro', labelKey: 'studio.catalog.prompt.swipeIntro' },
   { value: 'challenge.reverse_swipe.prompt', labelKey: 'studio.catalog.prompt.swipePrompt' },
@@ -118,6 +137,7 @@ export const TIMING_DURATION_PRESETS_MS = [
   { ms: 3000, labelKey: 'studio.preset.duration.short' },
   { ms: 5000, labelKey: 'studio.preset.duration.standard' },
   { ms: 8000, labelKey: 'studio.preset.duration.long' },
+  { ms: 10_000, labelKey: 'studio.preset.duration.extended' },
 ] as const;
 
 export const INTRO_DURATION_PRESETS_MS = [

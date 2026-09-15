@@ -13,6 +13,7 @@ import 'widgets/energy_display.dart';
 import 'widgets/hearts_display.dart';
 import 'widgets/lh_buttons.dart';
 import 'widgets/lh_heart_logo.dart';
+import 'widgets/challenge_sfx.dart';
 
 /// Between-round offensive window: target selection / no targets / skip.
 class PowerActionView extends StatefulWidget {
@@ -78,6 +79,8 @@ class _PowerActionViewState extends State<PowerActionView> {
   @override
   void dispose() {
     _timer?.cancel();
+    // Strike alarm must not leak into the next phase/challenge.
+    unawaited(ChallengeSfx.instance.stop());
     super.dispose();
   }
 
@@ -187,6 +190,7 @@ class _PowerActionViewState extends State<PowerActionView> {
                   ? null
                   : () {
                       setState(() => _acted = true);
+                      unawaited(ChallengeSfx.instance.stop());
                       widget.onSkip();
                     },
             ),
@@ -203,6 +207,7 @@ class _PowerActionViewState extends State<PowerActionView> {
                 enabled: !_acted,
                 onTap: () {
                   setState(() => _acted = true);
+                  unawaited(ChallengeSfx.instance.strike());
                   widget.onUseDangerPulse(targetId);
                 },
               ),
@@ -213,6 +218,7 @@ class _PowerActionViewState extends State<PowerActionView> {
                   ? null
                   : () {
                       setState(() => _acted = true);
+                      unawaited(ChallengeSfx.instance.stop());
                       widget.onSkip();
                     },
             ),
