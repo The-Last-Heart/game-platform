@@ -8,7 +8,12 @@ import { t } from '@/i18n/get-dictionary';
 import type { Locale } from '@/i18n/locale';
 import type { MessageKey } from '@/i18n/messages/en';
 import { adminApiFetch } from '@/lib/api/client';
-import { FieldCheckboxGroup, FieldGroup, FieldInput } from './Field';
+import {
+  FieldCheckboxGroup,
+  FieldGroup,
+  FieldInput,
+  FieldSelect,
+} from './Field';
 import {
   CatalogKeyField,
   CollapsibleGroup,
@@ -62,7 +67,9 @@ export function mergeFogWipeRequiredAssets(
     ...variants,
     ...(revealContent ? [revealContent] : []),
   ]);
-  const extras = current.filter((id) => !required.has(id) && !id.startsWith('fog_wipe.'));
+  const extras = current.filter(
+    (id) => !required.has(id) && !id.startsWith('fog_wipe.'),
+  );
   return [...required, ...extras];
 }
 
@@ -127,7 +134,68 @@ function defaultCircuitRotationSharedConfig(): Record<string, unknown> {
   };
 }
 
-export function defaultClientConfig(engineId: LaunchEngineId): Record<string, unknown> {
+function defaultCableUntangleSharedConfig(): Record<string, unknown> {
+  return {
+    layout: {
+      leftColumnX: 0.12,
+      rightColumnX: 0.88,
+      topPadding: 0.1,
+      bottomPadding: 0.1,
+    },
+    sockets: {
+      left: [
+        { id: 'left-1', order: 0 },
+        { id: 'left-2', order: 1 },
+        { id: 'left-3', order: 2 },
+        { id: 'left-4', order: 3 },
+      ],
+      right: [
+        { id: 'right-1', order: 0 },
+        { id: 'right-2', order: 1 },
+        { id: 'right-3', order: 2 },
+        { id: 'right-4', order: 3 },
+      ],
+    },
+    cables: [
+      {
+        id: 'cable-1',
+        leftSocketId: 'left-1',
+        initialRightSocketId: 'right-3',
+      },
+      {
+        id: 'cable-2',
+        leftSocketId: 'left-2',
+        initialRightSocketId: 'right-1',
+      },
+      {
+        id: 'cable-3',
+        leftSocketId: 'left-3',
+        initialRightSocketId: 'right-4',
+      },
+      {
+        id: 'cable-4',
+        leftSocketId: 'left-4',
+        initialRightSocketId: 'right-2',
+      },
+    ],
+    theme: {
+      backgroundColor: '#07131D',
+      gridColor: '#143143',
+      cableColor: '#69E7FF',
+      cableCoreColor: '#E8FCFF',
+      socketColor: '#91EFFF',
+    },
+    assetIds: {
+      swingSfx: 'cable_untangle.swing',
+    },
+    snapRadiusNorm: 0.08,
+    mirrorHorizontally: false,
+  };
+}
+
+export function defaultClientConfig(
+  engineId: LaunchEngineId,
+): Record<string, unknown> {
   switch (engineId) {
     case 'reaction.wait_for_signal':
       return {
@@ -270,8 +338,8 @@ export function defaultClientConfig(engineId: LaunchEngineId): Record<string, un
         cols: 5,
         rows: 5,
         cells: [
-          1, 1, 0, 0, 0, 0, 1, 1, 1, 0, 0, 0, 0, 1, 0, 0, 1, 1, 1, 0, 0, 1, 0, 1,
-          1,
+          1, 1, 0, 0, 0, 0, 1, 1, 1, 0, 0, 0, 0, 1, 0, 0, 1, 1, 1, 0, 0, 1, 0,
+          1, 1,
         ],
         startIndex: 0,
         goalIndex: 24,
@@ -332,6 +400,14 @@ export function defaultClientConfig(engineId: LaunchEngineId): Record<string, un
         footerKey: 'challenge.circuit_rotation.footer',
         ...defaultCircuitRotationSharedConfig(),
       };
+    case 'precision.cable_untangle':
+      return {
+        categoryKey: 'challenge.category.precision',
+        titleKey: 'challenge.cable_untangle.intro',
+        promptKey: 'challenge.cable_untangle.prompt',
+        footerKey: 'challenge.cable_untangle.footer',
+        ...defaultCableUntangleSharedConfig(),
+      };
     case 'logic.balance_scale':
       return {
         categoryKey: 'challenge.category.logic',
@@ -379,18 +455,28 @@ export function defaultClientConfig(engineId: LaunchEngineId): Record<string, un
   }
 }
 
-export function defaultServerConfig(engineId: LaunchEngineId): Record<string, unknown> {
+export function defaultServerConfig(
+  engineId: LaunchEngineId,
+): Record<string, unknown> {
   switch (engineId) {
     case 'reaction.wait_for_signal':
       return { signalDelayMs: 1500, signalWindowMs: 750 };
     case 'trap.no_touch':
       return {};
     case 'gesture.reverse_swipe':
-      return { requiredDirection: 'down' as SwipeDirection, minDistancePx: 100, maxDurationMs: 3000 };
+      return {
+        requiredDirection: 'down' as SwipeDirection,
+        minDistancePx: 100,
+        maxDurationMs: 3000,
+      };
     case 'tap.precision':
       return { targetIds: ['t1'], attemptCount: 1 };
     case 'memory.sequence':
-      return { sequence: ['opt.a', 'opt.b', 'opt.c'], previewMs: 2000, optionKeys: ['opt.a', 'opt.b', 'opt.c'] };
+      return {
+        sequence: ['opt.a', 'opt.b', 'opt.c'],
+        previewMs: 2000,
+        optionKeys: ['opt.a', 'opt.b', 'opt.c'],
+      };
     case 'hold.multitouch':
       return { requiredContacts: 2, holdMs: 3000, resetOnLift: true };
     case 'motion.shake':
@@ -400,9 +486,15 @@ export function defaultServerConfig(engineId: LaunchEngineId): Record<string, un
     case 'audio.cue':
       return { pulseCount: 3 };
     case 'social.pair_sync':
-      return { partnerRoleKeys: ['role.leader', 'role.follower'], syncWindowMs: 2000 };
+      return {
+        partnerRoleKeys: ['role.leader', 'role.follower'],
+        syncWindowMs: 2000,
+      };
     case 'tactical.risk_choice':
-      return { optionKeys: ['option.safe', 'option.risky'], riskWeights: [30, 70] };
+      return {
+        optionKeys: ['option.safe', 'option.risky'],
+        riskWeights: [30, 70],
+      };
     case 'trivia.multiple_choice':
       return {
         questions: [
@@ -439,6 +531,13 @@ export function defaultServerConfig(engineId: LaunchEngineId): Record<string, un
             ],
           },
         ],
+        questions: [
+          {
+            mapId: 'map.levant',
+            targetRegionId: 'jordan',
+            targetLabelKey: 'geo.country.jordan',
+          },
+        ],
       };
     case 'focus.odd_one_out':
       return {
@@ -466,8 +565,8 @@ export function defaultServerConfig(engineId: LaunchEngineId): Record<string, un
         cols: 5,
         rows: 5,
         cells: [
-          1, 1, 0, 0, 0, 0, 1, 1, 1, 0, 0, 0, 0, 1, 0, 0, 1, 1, 1, 0, 0, 1, 0, 1,
-          1,
+          1, 1, 0, 0, 0, 0, 1, 1, 1, 0, 0, 0, 0, 1, 0, 0, 1, 1, 1, 0, 0, 1, 0,
+          1, 1,
         ],
         startIndex: 0,
         goalIndex: 24,
@@ -520,6 +619,10 @@ export function defaultServerConfig(engineId: LaunchEngineId): Record<string, un
       return {
         ...defaultCircuitRotationSharedConfig(),
         requireAllConfiguredTilesPowered: true,
+      };
+    case 'precision.cable_untangle':
+      return {
+        ...defaultCableUntangleSharedConfig(),
       };
     case 'logic.balance_scale':
       return {
@@ -596,7 +699,10 @@ function CopyKeysBlock({
   keys: { field: string; labelKey: string }[];
 }) {
   return (
-    <CollapsibleGroup title={lbl(locale, 'fp.copyKeysGroup')} defaultOpen={false}>
+    <CollapsibleGroup
+      title={lbl(locale, 'fp.copyKeysGroup')}
+      defaultOpen={false}
+    >
       <FieldGroup>
         <CatalogKeyField
           id="fp-categoryKey"
@@ -626,12 +732,21 @@ function CopyKeysBlock({
 }
 
 function ReactionWaitForSignalFields(props: FamilyParamsFieldsProps) {
-  const { locale, clientConfig, serverConfig, onClientChange, onServerChange, disabled } = props;
+  const {
+    locale,
+    clientConfig,
+    serverConfig,
+    onClientChange,
+    onServerChange,
+    disabled,
+  } = props;
   const sc = serverConfig as Record<string, number>;
   const delay = sc.signalDelayMs ?? 1500;
   const windowMs = sc.signalWindowMs ?? 750;
   const activeFeel =
-    SIGNAL_FEEL_PRESETS.find((p) => p.signalDelayMs === delay && p.signalWindowMs === windowMs)?.id ?? null;
+    SIGNAL_FEEL_PRESETS.find(
+      (p) => p.signalDelayMs === delay && p.signalWindowMs === windowMs,
+    )?.id ?? null;
 
   return (
     <>
@@ -641,7 +756,10 @@ function ReactionWaitForSignalFields(props: FamilyParamsFieldsProps) {
         hint={lbl(locale, 'fp.signalFeelHint')}
         value={activeFeel ?? 'custom'}
         options={[
-          ...SIGNAL_FEEL_PRESETS.map((p) => ({ value: p.id, label: L(locale, p.labelKey) })),
+          ...SIGNAL_FEEL_PRESETS.map((p) => ({
+            value: p.id,
+            label: L(locale, p.labelKey),
+          })),
           { value: 'custom', label: L(locale, 'studio.field.customValue') },
         ]}
         onChange={(id) => {
@@ -662,7 +780,9 @@ function ReactionWaitForSignalFields(props: FamilyParamsFieldsProps) {
           label={lbl(locale, 'fp.signalDelayMs')}
           hint={lbl(locale, 'fp.signalDelayHint')}
           valueMs={delay}
-          onChangeMs={(ms) => onServerChange({ ...serverConfig, signalDelayMs: ms })}
+          onChangeMs={(ms) =>
+            onServerChange({ ...serverConfig, signalDelayMs: ms })
+          }
           minSec={0}
           maxSec={8}
           disabled={disabled}
@@ -672,7 +792,9 @@ function ReactionWaitForSignalFields(props: FamilyParamsFieldsProps) {
           label={lbl(locale, 'fp.signalWindowMs')}
           hint={lbl(locale, 'fp.signalWindowHint')}
           valueMs={windowMs}
-          onChangeMs={(ms) => onServerChange({ ...serverConfig, signalWindowMs: Math.max(1, ms) })}
+          onChangeMs={(ms) =>
+            onServerChange({ ...serverConfig, signalWindowMs: Math.max(1, ms) })
+          }
           minSec={0.1}
           maxSec={5}
           disabled={disabled}
@@ -695,14 +817,25 @@ function ReactionWaitForSignalFields(props: FamilyParamsFieldsProps) {
 }
 
 function TrapNoTouchFields(props: FamilyParamsFieldsProps) {
-  const { locale, clientConfig, serverConfig, onClientChange, onServerChange, disabled } = props;
-  const zone =
-    (clientConfig.zone as { x: number; y: number; width: number; height: number }) ?? {
-      x: 0.1,
-      y: 0.1,
-      width: 0.8,
-      height: 0.8,
-    };
+  const {
+    locale,
+    clientConfig,
+    serverConfig,
+    onClientChange,
+    onServerChange,
+    disabled,
+  } = props;
+  const zone = (clientConfig.zone as {
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+  }) ?? {
+    x: 0.1,
+    y: 0.1,
+    width: 0.8,
+    height: 0.8,
+  };
   const sc = serverConfig as Record<string, unknown>;
 
   return (
@@ -730,10 +863,13 @@ function TrapNoTouchFields(props: FamilyParamsFieldsProps) {
       />
       <FieldCheckboxGroup
         label={lbl(locale, 'fp.allowSystemGestures')}
-        options={[{ value: 'true', label: lbl(locale, 'fp.allowSystemGesturesLabel') }]}
+        options={[
+          { value: 'true', label: lbl(locale, 'fp.allowSystemGesturesLabel') },
+        ]}
         selected={sc.allowSystemGestures === true ? ['true'] : []}
         onChange={(sel) => {
-          if (sel.includes('true')) onServerChange({ allowSystemGestures: true });
+          if (sel.includes('true'))
+            onServerChange({ allowSystemGestures: true });
           else onServerChange({});
         }}
       />
@@ -752,8 +888,16 @@ function TrapNoTouchFields(props: FamilyParamsFieldsProps) {
 }
 
 function GestureReverseSwipeFields(props: FamilyParamsFieldsProps) {
-  const { locale, clientConfig, serverConfig, onClientChange, onServerChange, disabled } = props;
-  const displayedDirection = (clientConfig.displayedDirection as SwipeDirection) ?? 'up';
+  const {
+    locale,
+    clientConfig,
+    serverConfig,
+    onClientChange,
+    onServerChange,
+    disabled,
+  } = props;
+  const displayedDirection =
+    (clientConfig.displayedDirection as SwipeDirection) ?? 'up';
   const minDistancePx = (clientConfig.minDistancePx as number) ?? 100;
   const maxDurationMs = (serverConfig.maxDurationMs as number) ?? 3000;
 
@@ -773,16 +917,26 @@ function GestureReverseSwipeFields(props: FamilyParamsFieldsProps) {
         onChange={(dir) => {
           const d = dir as SwipeDirection;
           onClientChange({ ...clientConfig, displayedDirection: d });
-          onServerChange({ ...serverConfig, requiredDirection: oppositeSwipeDirection(d) });
+          onServerChange({
+            ...serverConfig,
+            requiredDirection: oppositeSwipeDirection(d),
+          });
         }}
         disabled={disabled}
       />
       <p className="studio-inline-hint">
         {lbl(locale, 'fp.requiredDirection')}:{' '}
-        <strong>{lbl(locale, `fp.direction.${oppositeSwipeDirection(displayedDirection)}`)}</strong>
+        <strong>
+          {lbl(
+            locale,
+            `fp.direction.${oppositeSwipeDirection(displayedDirection)}`,
+          )}
+        </strong>
       </p>
       <div>
-        <span className="studio-sublabel">{lbl(locale, 'fp.minDistancePx')}</span>
+        <span className="studio-sublabel">
+          {lbl(locale, 'fp.minDistancePx')}
+        </span>
         <PresetChips
           presets={SWIPE_DISTANCE_PRESETS.map((p) => ({
             value: p.px,
@@ -802,7 +956,9 @@ function GestureReverseSwipeFields(props: FamilyParamsFieldsProps) {
         label={lbl(locale, 'fp.maxDurationMs')}
         hint={lbl(locale, 'fp.maxDurationHint')}
         valueMs={maxDurationMs}
-        onChangeMs={(ms) => onServerChange({ ...serverConfig, maxDurationMs: ms })}
+        onChangeMs={(ms) =>
+          onServerChange({ ...serverConfig, maxDurationMs: ms })
+        }
         minSec={0.5}
         maxSec={8}
         disabled={disabled}
@@ -821,13 +977,29 @@ function GestureReverseSwipeFields(props: FamilyParamsFieldsProps) {
 type TapTarget = { id: string; x: number; y: number };
 
 function TapPrecisionFields(props: FamilyParamsFieldsProps) {
-  const { locale, clientConfig, serverConfig, onClientChange, onServerChange, disabled } = props;
-  const targets = (clientConfig.targets as TapTarget[]) ?? [{ id: 't1', x: 0.5, y: 0.5 }];
+  const {
+    locale,
+    clientConfig,
+    serverConfig,
+    onClientChange,
+    onServerChange,
+    disabled,
+  } = props;
+  const targets = (clientConfig.targets as TapTarget[]) ?? [
+    { id: 't1', x: 0.5, y: 0.5 },
+  ];
   const attemptCount = (clientConfig.attemptCount as number) ?? 1;
 
   function sync(newTargets: TapTarget[], attempts: number) {
-    onClientChange({ ...clientConfig, targets: newTargets, attemptCount: attempts });
-    onServerChange({ targetIds: newTargets.map((t) => t.id), attemptCount: attempts });
+    onClientChange({
+      ...clientConfig,
+      targets: newTargets,
+      attemptCount: attempts,
+    });
+    onServerChange({
+      targetIds: newTargets.map((t) => t.id),
+      attemptCount: attempts,
+    });
   }
 
   return (
@@ -862,7 +1034,14 @@ function TapPrecisionFields(props: FamilyParamsFieldsProps) {
 }
 
 function MemorySequenceFields(props: FamilyParamsFieldsProps) {
-  const { locale, clientConfig, serverConfig, onClientChange, onServerChange, disabled } = props;
+  const {
+    locale,
+    clientConfig,
+    serverConfig,
+    onClientChange,
+    onServerChange,
+    disabled,
+  } = props;
   const optionKeys = (clientConfig.optionKeys as string[]) ?? [];
   const sequence = (serverConfig.sequence as string[]) ?? [];
   const previewMs = (clientConfig.previewMs as number) ?? 2000;
@@ -921,7 +1100,14 @@ function MemorySequenceFields(props: FamilyParamsFieldsProps) {
 }
 
 function HoldMultitouchFields(props: FamilyParamsFieldsProps) {
-  const { locale, clientConfig, serverConfig, onClientChange, onServerChange, disabled } = props;
+  const {
+    locale,
+    clientConfig,
+    serverConfig,
+    onClientChange,
+    onServerChange,
+    disabled,
+  } = props;
   const holdMs = (clientConfig.holdMs as number) ?? 3000;
   const sc = serverConfig as Record<string, unknown>;
 
@@ -950,7 +1136,9 @@ function HoldMultitouchFields(props: FamilyParamsFieldsProps) {
         label={lbl(locale, 'fp.resetOnLift')}
         options={[{ value: 'true', label: lbl(locale, 'fp.resetOnLiftLabel') }]}
         selected={sc.resetOnLift === true ? ['true'] : []}
-        onChange={(sel) => onServerChange({ ...serverConfig, resetOnLift: sel.includes('true') })}
+        onChange={(sel) =>
+          onServerChange({ ...serverConfig, resetOnLift: sel.includes('true') })
+        }
       />
       <CopyKeysBlock
         locale={locale}
@@ -964,12 +1152,20 @@ function HoldMultitouchFields(props: FamilyParamsFieldsProps) {
 }
 
 function MotionShakeFields(props: FamilyParamsFieldsProps) {
-  const { locale, clientConfig, serverConfig, onClientChange, onServerChange, disabled } = props;
+  const {
+    locale,
+    clientConfig,
+    serverConfig,
+    onClientChange,
+    onServerChange,
+    disabled,
+  } = props;
   const count = (serverConfig.requiredShakeCount as number) ?? 5;
   const noise = (serverConfig.noiseThreshold as number) ?? 5;
   const active =
-    SHAKE_SENSITIVITY_PRESETS.find((p) => p.requiredShakeCount === count && p.noiseThreshold === noise)
-      ?.id ?? 'custom';
+    SHAKE_SENSITIVITY_PRESETS.find(
+      (p) => p.requiredShakeCount === count && p.noiseThreshold === noise,
+    )?.id ?? 'custom';
 
   return (
     <>
@@ -979,7 +1175,10 @@ function MotionShakeFields(props: FamilyParamsFieldsProps) {
         hint={lbl(locale, 'fp.shakeDifficultyHint')}
         value={active}
         options={[
-          ...SHAKE_SENSITIVITY_PRESETS.map((p) => ({ value: p.id, label: L(locale, p.labelKey) })),
+          ...SHAKE_SENSITIVITY_PRESETS.map((p) => ({
+            value: p.id,
+            label: L(locale, p.labelKey),
+          })),
           { value: 'custom', label: L(locale, 'studio.field.customValue') },
         ]}
         onChange={(id) => {
@@ -1009,7 +1208,14 @@ function MotionShakeFields(props: FamilyParamsFieldsProps) {
 }
 
 function MotionTiltBalanceFields(props: FamilyParamsFieldsProps) {
-  const { locale, clientConfig, serverConfig, onClientChange, onServerChange, disabled } = props;
+  const {
+    locale,
+    clientConfig,
+    serverConfig,
+    onClientChange,
+    onServerChange,
+    disabled,
+  } = props;
   const holdMs = (serverConfig.holdMs as number) ?? 2000;
   const tolerance = (serverConfig.varianceTolerance as number) ?? 0.15;
 
@@ -1031,14 +1237,17 @@ function MotionTiltBalanceFields(props: FamilyParamsFieldsProps) {
         label={lbl(locale, 'fp.varianceTolerance')}
         hint={lbl(locale, 'fp.varianceToleranceHint')}
         value={tolerance}
-        onChange={(v) => onServerChange({ ...serverConfig, varianceTolerance: v })}
+        onChange={(v) =>
+          onServerChange({ ...serverConfig, varianceTolerance: v })
+        }
         disabled={disabled}
       />
       <SegmentedChoice
         label={lbl(locale, 'fp.tiltTarget')}
         hint={lbl(locale, 'fp.tiltTargetHint')}
         value={
-          (serverConfig.targetX as number) === 0 && (serverConfig.targetY as number) === 0
+          (serverConfig.targetX as number) === 0 &&
+          (serverConfig.targetY as number) === 0
             ? 'center'
             : 'custom'
         }
@@ -1047,7 +1256,8 @@ function MotionTiltBalanceFields(props: FamilyParamsFieldsProps) {
           { value: 'custom', label: L(locale, 'studio.field.customValue') },
         ]}
         onChange={(v) => {
-          if (v === 'center') onServerChange({ ...serverConfig, targetX: 0, targetY: 0 });
+          if (v === 'center')
+            onServerChange({ ...serverConfig, targetX: 0, targetY: 0 });
         }}
         disabled={disabled}
       />
@@ -1063,7 +1273,14 @@ function MotionTiltBalanceFields(props: FamilyParamsFieldsProps) {
 }
 
 function AudioCueFields(props: FamilyParamsFieldsProps) {
-  const { locale, clientConfig, serverConfig, onClientChange, onServerChange, disabled } = props;
+  const {
+    locale,
+    clientConfig,
+    serverConfig,
+    onClientChange,
+    onServerChange,
+    disabled,
+  } = props;
   const pulseCount = (serverConfig.pulseCount as number) ?? 3;
 
   return (
@@ -1073,8 +1290,13 @@ function AudioCueFields(props: FamilyParamsFieldsProps) {
         label={lbl(locale, 'fp.pulseCount')}
         hint={lbl(locale, 'fp.pulseCountHint')}
         value={String(pulseCount)}
-        options={[1, 2, 3, 4, 5].map((n) => ({ value: String(n), label: String(n) }))}
-        onChange={(v) => onServerChange({ ...serverConfig, pulseCount: Number(v) })}
+        options={[1, 2, 3, 4, 5].map((n) => ({
+          value: String(n),
+          label: String(n),
+        }))}
+        onChange={(v) =>
+          onServerChange({ ...serverConfig, pulseCount: Number(v) })
+        }
         disabled={disabled}
       />
       <CopyKeysBlock
@@ -1093,7 +1315,14 @@ function AudioCueFields(props: FamilyParamsFieldsProps) {
 }
 
 function SocialPairSyncFields(props: FamilyParamsFieldsProps) {
-  const { locale, clientConfig, serverConfig, onClientChange, onServerChange, disabled } = props;
+  const {
+    locale,
+    clientConfig,
+    serverConfig,
+    onClientChange,
+    onServerChange,
+    disabled,
+  } = props;
   const partnerRoleKeys = (clientConfig.partnerRoleKeys as string[]) ?? [];
   const syncWindowMs = (serverConfig.syncWindowMs as number) ?? 2000;
 
@@ -1117,7 +1346,9 @@ function SocialPairSyncFields(props: FamilyParamsFieldsProps) {
         label={lbl(locale, 'fp.syncWindowMs')}
         hint={lbl(locale, 'fp.syncWindowHint')}
         valueMs={syncWindowMs}
-        onChangeMs={(ms) => onServerChange({ ...serverConfig, syncWindowMs: ms })}
+        onChangeMs={(ms) =>
+          onServerChange({ ...serverConfig, syncWindowMs: ms })
+        }
         minSec={0.5}
         maxSec={8}
         disabled={disabled}
@@ -1134,7 +1365,14 @@ function SocialPairSyncFields(props: FamilyParamsFieldsProps) {
 }
 
 function TacticalRiskChoiceFields(props: FamilyParamsFieldsProps) {
-  const { locale, clientConfig, serverConfig, onClientChange, onServerChange, disabled } = props;
+  const {
+    locale,
+    clientConfig,
+    serverConfig,
+    onClientChange,
+    onServerChange,
+    disabled,
+  } = props;
   const optionKeys = (clientConfig.optionKeys as string[]) ?? [];
   const riskWeights = (serverConfig.riskWeights as number[]) ?? [];
 
@@ -1148,8 +1386,14 @@ function TacticalRiskChoiceFields(props: FamilyParamsFieldsProps) {
         options={RISK_OPTION_PRESETS}
         onChange={(keys) => {
           onClientChange({ ...clientConfig, optionKeys: keys });
-          const newWeights = keys.map((_, i) => riskWeights[i] ?? (i === 0 ? 30 : 70));
-          onServerChange({ ...serverConfig, optionKeys: keys, riskWeights: newWeights });
+          const newWeights = keys.map(
+            (_, i) => riskWeights[i] ?? (i === 0 ? 30 : 70),
+          );
+          onServerChange({
+            ...serverConfig,
+            optionKeys: keys,
+            riskWeights: newWeights,
+          });
         }}
         localize={(k) => L(locale, k)}
         disabled={disabled}
@@ -1160,7 +1404,9 @@ function TacticalRiskChoiceFields(props: FamilyParamsFieldsProps) {
           const weight = riskWeights[idx] ?? 50;
           return (
             <div key={key} className="studio-slider-block">
-              <span className="studio-sublabel">{opt ? L(locale, opt.labelKey) : key}</span>
+              <span className="studio-sublabel">
+                {opt ? L(locale, opt.labelKey) : key}
+              </span>
               <div className="studio-slider-row">
                 <input
                   type="range"
@@ -1203,9 +1449,9 @@ function GestureFogWipeFields(props: FamilyParamsFieldsProps) {
     disabled,
   } = props;
 
-  const variants =
-    (serverConfig.revealContentVariants as string[] | undefined) ??
-    [...DEFAULT_FOG_WIPE_REVEAL_VARIANTS];
+  const variants = (serverConfig.revealContentVariants as
+    | string[]
+    | undefined) ?? [...DEFAULT_FOG_WIPE_REVEAL_VARIANTS];
   const brushDiameterNorm = (clientConfig.brushDiameterNorm as number) ?? 0.12;
   const brushFeatherNorm = (clientConfig.brushFeatherNorm as number) ?? 0.28;
   const clearanceRatioMin = (clientConfig.clearanceRatioMin as number) ?? 0.55;
@@ -1244,7 +1490,11 @@ function GestureFogWipeFields(props: FamilyParamsFieldsProps) {
     });
     if (onRequiredAssetIdsChange) {
       onRequiredAssetIdsChange(
-        mergeFogWipeRequiredAssets(requiredAssetIds ?? [], nextVariants, reveal),
+        mergeFogWipeRequiredAssets(
+          requiredAssetIds ?? [],
+          nextVariants,
+          reveal,
+        ),
       );
     }
   }
@@ -1339,7 +1589,9 @@ function GestureFogWipeFields(props: FamilyParamsFieldsProps) {
           value={brushDiameterNorm}
           min={4}
           max={30}
-          onChange={(v) => syncBrush({ brushDiameterNorm: Math.min(0.3, Math.max(0.04, v)) })}
+          onChange={(v) =>
+            syncBrush({ brushDiameterNorm: Math.min(0.3, Math.max(0.04, v)) })
+          }
           disabled={disabled}
         />
         <FractionPercentField
@@ -1349,7 +1601,9 @@ function GestureFogWipeFields(props: FamilyParamsFieldsProps) {
           value={brushFeatherNorm}
           min={10}
           max={60}
-          onChange={(v) => syncBrush({ brushFeatherNorm: Math.min(0.6, Math.max(0.1, v)) })}
+          onChange={(v) =>
+            syncBrush({ brushFeatherNorm: Math.min(0.6, Math.max(0.1, v)) })
+          }
           disabled={disabled}
         />
         <FractionPercentField
@@ -1359,7 +1613,9 @@ function GestureFogWipeFields(props: FamilyParamsFieldsProps) {
           value={clearanceRatioMin}
           min={20}
           max={95}
-          onChange={(v) => syncBrush({ clearanceRatioMin: Math.min(0.95, Math.max(0.2, v)) })}
+          onChange={(v) =>
+            syncBrush({ clearanceRatioMin: Math.min(0.95, Math.max(0.2, v)) })
+          }
           disabled={disabled}
         />
       </FieldGroup>
@@ -1375,7 +1631,9 @@ function GestureFogWipeFields(props: FamilyParamsFieldsProps) {
             onChange={(e) => setUploadAssetId(e.currentTarget.value)}
           />
           <div className="field">
-            <label htmlFor="fp-fog-upload-file">{lbl(locale, 'fp.fogUploadFile')}</label>
+            <label htmlFor="fp-fog-upload-file">
+              {lbl(locale, 'fp.fogUploadFile')}
+            </label>
             <input
               id="fp-fog-upload-file"
               type="file"
@@ -1387,14 +1645,376 @@ function GestureFogWipeFields(props: FamilyParamsFieldsProps) {
                 e.currentTarget.value = '';
               }}
             />
-            <span className="field-hint" style={{ color: 'var(--lh-text-muted)', fontSize: '0.8rem' }}>
-              {uploading ? lbl(locale, 'fp.fogUploading') : lbl(locale, 'fp.fogUploadHint')}
+            <span
+              className="field-hint"
+              style={{ color: 'var(--lh-text-muted)', fontSize: '0.8rem' }}
+            >
+              {uploading
+                ? lbl(locale, 'fp.fogUploading')
+                : lbl(locale, 'fp.fogUploadHint')}
             </span>
-            {uploadError ? <span className="field-error">{uploadError}</span> : null}
+            {uploadError ? (
+              <span className="field-error">{uploadError}</span>
+            ) : null}
           </div>
         </FieldGroup>
       </CollapsibleGroup>
 
+      <CopyKeysBlock
+        locale={locale}
+        clientConfig={clientConfig}
+        onClientChange={onClientChange}
+        disabled={disabled}
+        keys={[
+          { field: 'promptKey', labelKey: 'fp.promptKey' },
+          { field: 'footerKey', labelKey: 'fp.footerKey' },
+        ]}
+      />
+    </>
+  );
+}
+
+type GeoStudioRegion = { regionId: string; labelKey: string };
+type GeoStudioMap = { mapId: string; regions: GeoStudioRegion[] };
+type GeoStudioQuestion = {
+  mapId: string;
+  targetRegionId: string;
+  targetLabelKey?: string;
+};
+
+const GEO_MAP_LABELS: Record<string, MessageKey> = {
+  'map.africa': 'studio.geo.map.africa',
+  'map.gcc': 'studio.geo.map.gcc',
+  'map.gcc_mena': 'studio.geo.map.gcc_mena',
+  'map.levant': 'studio.geo.map.levant',
+};
+
+const GEO_COUNTRY_LABELS: Record<string, MessageKey> = {
+  mauritania: 'studio.geo.country.mauritania',
+  algeria: 'studio.geo.country.algeria',
+  morocco: 'studio.geo.country.morocco',
+  tunisia: 'studio.geo.country.tunisia',
+  libya: 'studio.geo.country.libya',
+  egypt: 'studio.geo.country.egypt',
+  sudan: 'studio.geo.country.sudan',
+  saudi_arabia: 'studio.geo.country.saudi_arabia',
+  kuwait: 'studio.geo.country.kuwait',
+  bahrain: 'studio.geo.country.bahrain',
+  qatar: 'studio.geo.country.qatar',
+  uae: 'studio.geo.country.uae',
+  oman: 'studio.geo.country.oman',
+  yemen: 'studio.geo.country.yemen',
+  jordan: 'studio.geo.country.jordan',
+  syria: 'studio.geo.country.syria',
+  lebanon: 'studio.geo.country.lebanon',
+  palestine: 'studio.geo.country.palestine',
+};
+
+function geoMapLabel(locale: Locale, mapId: string): string {
+  const key = GEO_MAP_LABELS[mapId];
+  return key ? t(locale, key) : mapId;
+}
+
+function geoCountryLabel(
+  locale: Locale,
+  regionId: string,
+  labelKey?: string,
+): string {
+  const slug =
+    regionId ||
+    (labelKey?.startsWith('geo.country.') ? labelKey.slice(12) : '');
+  const key = GEO_COUNTRY_LABELS[slug];
+  return key ? t(locale, key) : slug.replace(/_/g, ' ') || regionId;
+}
+
+function parseGeoMaps(serverConfig: Record<string, unknown>): GeoStudioMap[] {
+  const raw = serverConfig.maps;
+  if (!Array.isArray(raw)) return [];
+  const maps: GeoStudioMap[] = [];
+  for (const item of raw) {
+    if (!item || typeof item !== 'object') continue;
+    const mapId = (item as { mapId?: unknown }).mapId;
+    const regionsRaw = (item as { regions?: unknown }).regions;
+    if (
+      typeof mapId !== 'string' ||
+      mapId.length === 0 ||
+      !Array.isArray(regionsRaw)
+    ) {
+      continue;
+    }
+    const regions: GeoStudioRegion[] = [];
+    for (const region of regionsRaw) {
+      if (!region || typeof region !== 'object') continue;
+      const regionId = (region as { regionId?: unknown }).regionId;
+      const labelKey = (region as { labelKey?: unknown }).labelKey;
+      if (typeof regionId !== 'string' || typeof labelKey !== 'string')
+        continue;
+      regions.push({ regionId, labelKey });
+    }
+    if (regions.length > 0) {
+      maps.push({ mapId, regions });
+    }
+  }
+  return maps;
+}
+
+function parseStoredGeoQuestions(
+  serverConfig: Record<string, unknown>,
+): GeoStudioQuestion[] {
+  const raw = serverConfig.questions;
+  if (!Array.isArray(raw)) return [];
+  const out: GeoStudioQuestion[] = [];
+  for (const item of raw) {
+    if (!item || typeof item !== 'object') continue;
+    const mapId = (item as { mapId?: unknown }).mapId;
+    const targetRegionId = (item as { targetRegionId?: unknown })
+      .targetRegionId;
+    if (typeof mapId !== 'string' || typeof targetRegionId !== 'string')
+      continue;
+    const targetLabelKey = (item as { targetLabelKey?: unknown })
+      .targetLabelKey;
+    out.push({
+      mapId,
+      targetRegionId,
+      targetLabelKey:
+        typeof targetLabelKey === 'string' ? targetLabelKey : undefined,
+    });
+  }
+  return out;
+}
+
+function deriveGeoQuestions(maps: GeoStudioMap[]): GeoStudioQuestion[] {
+  return maps.flatMap((map) =>
+    map.regions.map((region) => ({
+      mapId: map.mapId,
+      targetRegionId: region.regionId,
+      targetLabelKey: region.labelKey,
+    })),
+  );
+}
+
+function serializeGeoQuestion(
+  question: GeoStudioQuestion,
+  maps: GeoStudioMap[],
+): GeoStudioQuestion {
+  const region = maps
+    .find((m) => m.mapId === question.mapId)
+    ?.regions.find((r) => r.regionId === question.targetRegionId);
+  return {
+    mapId: question.mapId,
+    targetRegionId: question.targetRegionId,
+    targetLabelKey: region?.labelKey ?? question.targetLabelKey,
+  };
+}
+
+function GeographySelectOnMapFields(props: FamilyParamsFieldsProps) {
+  const {
+    locale,
+    clientConfig,
+    serverConfig,
+    onClientChange,
+    onServerChange,
+    disabled,
+  } = props;
+  const maps = parseGeoMaps(serverConfig);
+  const stored = parseStoredGeoQuestions(serverConfig);
+  const questions = stored.length > 0 ? stored : deriveGeoQuestions(maps);
+  const [pendingByMap, setPendingByMap] = useState<Record<string, string>>({});
+
+  function commit(next: GeoStudioQuestion[]) {
+    const serialized = next
+      .map((q) => serializeGeoQuestion(q, maps))
+      .filter((q) =>
+        maps.some(
+          (m) =>
+            m.mapId === q.mapId &&
+            m.regions.some((r) => r.regionId === q.targetRegionId),
+        ),
+      );
+    const rest = { ...serverConfig };
+    delete rest.questions;
+    if (serialized.length === 0) {
+      onServerChange(rest);
+      return;
+    }
+    onServerChange({ ...rest, questions: serialized });
+  }
+
+  return (
+    <>
+      <p className="studio-section-lead">{lbl(locale, 'fp.geoLead')}</p>
+      {maps.length === 0 ? (
+        <p className="studio-inline-hint">{lbl(locale, 'fp.geoNoMaps')}</p>
+      ) : (
+        maps.map((map) => {
+          const mapQuestions = questions.filter((q) => q.mapId === map.mapId);
+          const used = new Set(mapQuestions.map((q) => q.targetRegionId));
+          const unused = map.regions.filter((r) => !used.has(r.regionId));
+          const pending =
+            pendingByMap[map.mapId] &&
+            unused.some((r) => r.regionId === pendingByMap[map.mapId])
+              ? pendingByMap[map.mapId]!
+              : (unused[0]?.regionId ?? '');
+
+          return (
+            <section key={map.mapId} className="studio-geo-map">
+              <div className="studio-geo-map-head">
+                <h3 className="studio-geo-map-title">
+                  {geoMapLabel(locale, map.mapId)}
+                </h3>
+                <span className="studio-geo-map-count">
+                  {mapQuestions.length} / {map.regions.length}
+                </span>
+              </div>
+              {mapQuestions.length === 0 ? (
+                <p className="studio-inline-hint">
+                  {lbl(locale, 'fp.geoEmptyMap')}
+                </p>
+              ) : (
+                mapQuestions.map((question, index) => {
+                  const currentUnusedPlusSelf = map.regions.filter(
+                    (r) =>
+                      r.regionId === question.targetRegionId ||
+                      !used.has(r.regionId),
+                  );
+                  return (
+                    <div
+                      key={`${map.mapId}-${question.targetRegionId}-${index}`}
+                      className="studio-geo-question-row"
+                    >
+                      <FieldSelect
+                        id={`fp-geo-${map.mapId}-${index}`}
+                        label={lbl(locale, 'fp.geoCorrectAnswer')}
+                        value={question.targetRegionId}
+                        disabled={disabled}
+                        options={currentUnusedPlusSelf.map((r) => ({
+                          value: r.regionId,
+                          label: geoCountryLabel(
+                            locale,
+                            r.regionId,
+                            r.labelKey,
+                          ),
+                        }))}
+                        onChange={(e) => {
+                          const nextId = e.currentTarget.value;
+                          const region = map.regions.find(
+                            (r) => r.regionId === nextId,
+                          );
+                          if (!region) return;
+                          const globalIndex = questions.indexOf(question);
+                          if (globalIndex < 0) return;
+                          const next = [...questions];
+                          next[globalIndex] = {
+                            mapId: map.mapId,
+                            targetRegionId: region.regionId,
+                            targetLabelKey: region.labelKey,
+                          };
+                          commit(next);
+                        }}
+                      />
+                      <div className="field studio-geo-remove">
+                        <label htmlFor={`fp-geo-remove-${map.mapId}-${index}`}>
+                          &nbsp;
+                        </label>
+                        <button
+                          id={`fp-geo-remove-${map.mapId}-${index}`}
+                          type="button"
+                          className="btn btn-ghost"
+                          disabled={disabled}
+                          onClick={() => {
+                            commit(questions.filter((q) => q !== question));
+                          }}
+                        >
+                          {lbl(locale, 'fp.geoRemoveQuestion')}
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })
+              )}
+              {unused.length > 0 ? (
+                <div className="studio-geo-add-row">
+                  <FieldSelect
+                    id={`fp-geo-add-${map.mapId}`}
+                    label={lbl(locale, 'fp.geoAddQuestion')}
+                    value={pending}
+                    disabled={disabled}
+                    options={unused.map((r) => ({
+                      value: r.regionId,
+                      label: geoCountryLabel(locale, r.regionId, r.labelKey),
+                    }))}
+                    onChange={(e) =>
+                      setPendingByMap((prev) => ({
+                        ...prev,
+                        [map.mapId]: e.currentTarget.value,
+                      }))
+                    }
+                  />
+                  <div className="field studio-geo-add-actions">
+                    <label htmlFor={`fp-geo-add-btn-${map.mapId}`}>
+                      &nbsp;
+                    </label>
+                    <div className="studio-geo-add-buttons">
+                      <button
+                        id={`fp-geo-add-btn-${map.mapId}`}
+                        type="button"
+                        className="btn btn-secondary"
+                        disabled={disabled || !pending}
+                        onClick={() => {
+                          const region = map.regions.find(
+                            (r) => r.regionId === pending,
+                          );
+                          if (!region) return;
+                          commit([
+                            ...questions,
+                            {
+                              mapId: map.mapId,
+                              targetRegionId: region.regionId,
+                              targetLabelKey: region.labelKey,
+                            },
+                          ]);
+                          const leftover = unused.filter(
+                            (r) => r.regionId !== region.regionId,
+                          );
+                          setPendingByMap((prev) => ({
+                            ...prev,
+                            [map.mapId]: leftover[0]?.regionId ?? '',
+                          }));
+                        }}
+                      >
+                        {lbl(locale, 'fp.geoAddQuestion')}
+                      </button>
+                      {unused.length > 1 ? (
+                        <button
+                          type="button"
+                          className="btn btn-ghost"
+                          disabled={disabled}
+                          onClick={() => {
+                            commit([
+                              ...questions,
+                              ...unused.map((region) => ({
+                                mapId: map.mapId,
+                                targetRegionId: region.regionId,
+                                targetLabelKey: region.labelKey,
+                              })),
+                            ]);
+                            setPendingByMap((prev) => ({
+                              ...prev,
+                              [map.mapId]: '',
+                            }));
+                          }}
+                        >
+                          {lbl(locale, 'fp.geoAddRemaining')}
+                        </button>
+                      ) : null}
+                    </div>
+                  </div>
+                </div>
+              ) : null}
+            </section>
+          );
+        })
+      )}
       <CopyKeysBlock
         locale={locale}
         clientConfig={clientConfig}
@@ -1439,6 +2059,8 @@ export function FamilyParamsFields(props: FamilyParamsFieldsProps) {
         return <TacticalRiskChoiceFields {...props} />;
       case 'gesture.fog_wipe':
         return <GestureFogWipeFields {...props} />;
+      case 'geography.select_on_map':
+        return <GeographySelectOnMapFields {...props} />;
       default:
         return (
           <p style={{ color: 'var(--lh-text-muted)', fontSize: '0.85rem' }}>
@@ -1467,8 +2089,12 @@ export function FamilyParamsFields(props: FamilyParamsFieldsProps) {
           {t(locale, 'studio.field.fp.advancedExport' as MessageKey)}
         </summary>
         <div style={{ marginTop: '0.5rem' }}>
-          <pre className="studio-json-export">{JSON.stringify(props.clientConfig, null, 2)}</pre>
-          <pre className="studio-json-export">{JSON.stringify(props.serverConfig, null, 2)}</pre>
+          <pre className="studio-json-export">
+            {JSON.stringify(props.clientConfig, null, 2)}
+          </pre>
+          <pre className="studio-json-export">
+            {JSON.stringify(props.serverConfig, null, 2)}
+          </pre>
         </div>
       </details>
     </div>

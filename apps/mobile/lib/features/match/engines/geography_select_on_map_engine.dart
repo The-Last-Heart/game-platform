@@ -9,6 +9,7 @@ import '../../../l10n/translation_resolver.dart';
 import '../../../theme/lh_tokens.dart';
 import '../ui/widgets/challenge_countdown.dart';
 import 'challenge_engine.dart';
+import 'geography_map_hit.dart';
 
 class GeographySelectOnMapEngine implements ChallengeEngine {
   @override
@@ -20,29 +21,13 @@ class GeographySelectOnMapEngine implements ChallengeEngine {
   }
 }
 
-class _MapRegion {
-  const _MapRegion({
-    required this.regionId,
-    required this.labelKey,
-    required this.polygon,
-  });
-
-  final String regionId;
-  final String labelKey;
-  final List<Offset> polygon;
-}
-
 class _ImageLayout {
   const _ImageLayout({
-    required this.offsetX,
-    required this.offsetY,
     required this.scale,
     required this.displayWidth,
     required this.displayHeight,
   });
 
-  final double offsetX;
-  final double offsetY;
   final double scale;
   final double displayWidth;
   final double displayHeight;
@@ -86,38 +71,10 @@ class _GeographyMapWidgetState extends State<_GeographyMapWidget> {
         '';
   }
 
-  List<_MapRegion> get _regions {
-    final Object? raw =
-        widget.challengeContext.challenge.clientConfig['regions'];
-    if (raw is! List) return const <_MapRegion>[];
-    final List<_MapRegion> out = <_MapRegion>[];
-    for (final Object? entry in raw) {
-      if (entry is! Map) continue;
-      final String? regionId = entry['regionId'] as String?;
-      final String? labelKey = entry['labelKey'] as String?;
-      final Object? polyRaw = entry['polygon'];
-      if (regionId == null || labelKey == null || polyRaw is! List) continue;
-      final List<Offset> polygon = <Offset>[];
-      for (final Object? pt in polyRaw) {
-        if (pt is Map) {
-          final num? x = pt['x'] as num?;
-          final num? y = pt['y'] as num?;
-          if (x != null && y != null) {
-            polygon.add(Offset(x.toDouble(), y.toDouble()));
-          }
-        }
-      }
-      if (polygon.length >= 3) {
-        out.add(
-          _MapRegion(
-            regionId: regionId,
-            labelKey: labelKey,
-            polygon: polygon,
-          ),
-        );
-      }
-    }
-    return out;
+  List<GeographyMapRegion> get _regions {
+    return GeographyMapHit.parseRegions(
+      widget.challengeContext.challenge.clientConfig['regions'],
+    );
   }
 
   @override
@@ -141,74 +98,26 @@ class _GeographyMapWidgetState extends State<_GeographyMapWidget> {
     final double displayWidth = _imageWidth * scale;
     final double displayHeight = _imageHeight * scale;
     return _ImageLayout(
-      offsetX: (widgetSize.width - displayWidth) / 2,
-      offsetY: (widgetSize.height - displayHeight) / 2,
       scale: scale,
       displayWidth: displayWidth,
       displayHeight: displayHeight,
     );
   }
 
-  Offset _toImageCoords(Offset local, _ImageLayout layout) {
-    return Offset(
-      (local.dx - layout.offsetX) / layout.scale,
-      (local.dy - layout.offsetY) / layout.scale,
-    );
-  }
-
-  bool _pointInPolygon(Offset p, List<Offset> polygon) {
-    bool inside = false;
-    for (int i = 0, j = polygon.length - 1; i < polygon.length; j = i++) {
-      final Offset a = polygon[i];
-      final Offset b = polygon[j];
-      final bool intersect = ((a.dy > p.dy) != (b.dy > p.dy)) &&
-          (p.dx <
-              (b.dx - a.dx) * (p.dy - a.dy) / (b.dy - a.dy + 0.00001) + a.dx);
-      if (intersect) inside = !inside;
-    }
-    return inside;
-  }
-
-  double _polygonArea(List<Offset> polygon) {
-    double area = 0;
-    for (int i = 0; i < polygon.length; i++) {
-      final Offset a = polygon[i];
-      final Offset b = polygon[(i + 1) % polygon.length];
-      area += a.dx * b.dy - b.dx * a.dy;
-    }
-    return area.abs() / 2;
-  }
-
-  String? _regionAt(Offset imagePoint) {
-    String? bestId;
-    double? bestArea;
-    for (final _MapRegion region in _regions) {
-      if (!_pointInPolygon(imagePoint, region.polygon)) continue;
-      final double area = _polygonArea(region.polygon);
-      if (bestArea == null || area < bestArea) {
-        bestArea = area;
-        bestId = region.regionId;
-      }
-    }
-    return bestId;
-  }
-
-  void _onTapUp(TapUpDetails details, Size widgetSize) {
+  void _onTapUpOnImage(Offset local, _ImageLayout layout) {
     if (widget.challengeContext.isInteractionLocked || _submitted) return;
-    final _ImageLayout layout = _layoutFor(widgetSize);
-    final Offset local = details.localPosition;
-    if (local.dx < layout.offsetX ||
-        local.dy < layout.offsetY ||
-        local.dx > layout.offsetX + layout.displayWidth ||
-        local.dy > layout.offsetY + layout.displayHeight) {
-      _finalizeTap(null);
-      return;
-    }
-    final Offset imagePoint = _toImageCoords(local, layout);
-    _finalizeTap(_regionAt(imagePoint));
+    if (layout.scale <= 0) return;
+    final Offset imagePoint = Offset(
+      local.dx / layout.scale,
+      local.dy / layout.scale,
+    );
+    final String? regionId = GeographyMapHit.regionAt(imagePoint, _regions);
+    // Empty ocean / padding is not a country choice — let the player retry.
+    if (regionId == null) return;
+    _finalizeTap(regionId);
   }
 
-  void _finalizeTap(String? regionId) {
+  void _finalizeTap(String regionId) {
     if (_submitted) return;
     setState(() {
       _submitted = true;
@@ -285,32 +194,29 @@ class _GeographyMapWidgetState extends State<_GeographyMapWidget> {
                     constraints.maxHeight,
                   );
                   final _ImageLayout layout = _layoutFor(mapSize);
-                  return GestureDetector(
-                    onTapUp: (TapUpDetails d) => _onTapUp(d, mapSize),
-                    child: Stack(
-                      fit: StackFit.expand,
-                      children: <Widget>[
-                        if (_mapFile != null)
-                          Center(
-                            child: SizedBox(
-                              width: layout.displayWidth,
-                              height: layout.displayHeight,
-                              child: Image.file(
+                  return Center(
+                    child: SizedBox(
+                      width: layout.displayWidth,
+                      height: layout.displayHeight,
+                      child: GestureDetector(
+                        behavior: HitTestBehavior.opaque,
+                        onTapUp: (TapUpDetails d) =>
+                            _onTapUpOnImage(d.localPosition, layout),
+                        child: Stack(
+                          fit: StackFit.expand,
+                          children: <Widget>[
+                            if (_mapFile != null)
+                              Image.file(
                                 _mapFile!,
                                 fit: BoxFit.fill,
-                              ),
-                            ),
-                          )
-                        else
-                          Center(
-                            child: SizedBox(
-                              width: layout.displayWidth,
-                              height: layout.displayHeight,
-                              child: ColoredBox(
+                                filterQuality: FilterQuality.medium,
+                              )
+                            else
+                              ColoredBox(
                                 color: LhColors.elevated,
                                 child: Center(
                                   child: Text(
-                                    resolver.resolve('challenge.map.prompt'),
+                                    resolver.resolve('challenge.map.footer'),
                                     style: Theme.of(context)
                                         .textTheme
                                         .bodyMedium
@@ -318,16 +224,16 @@ class _GeographyMapWidgetState extends State<_GeographyMapWidget> {
                                   ),
                                 ),
                               ),
+                            CustomPaint(
+                              painter: _RegionOverlayPainter(
+                                scale: layout.scale,
+                                regions: _regions,
+                                highlightRegionId: _highlightRegionId,
+                              ),
                             ),
-                          ),
-                        CustomPaint(
-                          painter: _RegionOverlayPainter(
-                            layout: layout,
-                            regions: _regions,
-                            highlightRegionId: _highlightRegionId,
-                          ),
+                          ],
                         ),
-                      ],
+                      ),
                     ),
                   );
                 },
@@ -352,27 +258,24 @@ class _GeographyMapWidgetState extends State<_GeographyMapWidget> {
 
 class _RegionOverlayPainter extends CustomPainter {
   _RegionOverlayPainter({
-    required this.layout,
+    required this.scale,
     required this.regions,
     required this.highlightRegionId,
   });
 
-  final _ImageLayout layout;
-  final List<_MapRegion> regions;
+  final double scale;
+  final List<GeographyMapRegion> regions;
   final String? highlightRegionId;
 
   @override
   void paint(Canvas canvas, Size size) {
     if (highlightRegionId == null) return;
-    for (final _MapRegion region in regions) {
+    for (final GeographyMapRegion region in regions) {
       if (region.regionId != highlightRegionId) continue;
       final Path path = Path();
       for (int i = 0; i < region.polygon.length; i++) {
         final Offset p = region.polygon[i];
-        final Offset w = Offset(
-          layout.offsetX + p.dx * layout.scale,
-          layout.offsetY + p.dy * layout.scale,
-        );
+        final Offset w = Offset(p.dx * scale, p.dy * scale);
         if (i == 0) {
           path.moveTo(w.dx, w.dy);
         } else {
@@ -382,12 +285,12 @@ class _RegionOverlayPainter extends CustomPainter {
       path.close();
       canvas.drawPath(
         path,
-        Paint()..color = LhColors.success.withValues(alpha: 0.42),
+        Paint()..color = LhColors.primary.withValues(alpha: 0.38),
       );
       canvas.drawPath(
         path,
         Paint()
-          ..color = LhColors.success
+          ..color = LhColors.primary
           ..style = PaintingStyle.stroke
           ..strokeWidth = 2.4,
       );
@@ -397,6 +300,7 @@ class _RegionOverlayPainter extends CustomPainter {
   @override
   bool shouldRepaint(covariant _RegionOverlayPainter oldDelegate) {
     return oldDelegate.highlightRegionId != highlightRegionId ||
-        oldDelegate.regions != regions;
+        oldDelegate.regions != regions ||
+        oldDelegate.scale != scale;
   }
 }

@@ -2761,6 +2761,15 @@ export class MatchService implements OnModuleDestroy, OnModuleInit {
             event: 'phase_advance_failed',
             matchId,
             category: error instanceof Error ? error.name : 'UnknownError',
+            message: error instanceof Error ? error.message : undefined,
+          });
+          void this.store.get(matchId).then((match) => {
+            if (
+              match?.phase === 'ready_countdown' &&
+              match.phaseDeadlineMonoMs != null
+            ) {
+              this.schedulePhaseTimer(matchId, 250);
+            }
           });
         });
     }, delayMs);

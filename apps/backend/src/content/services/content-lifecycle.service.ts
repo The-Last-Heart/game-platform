@@ -31,6 +31,17 @@ export class ContentLifecycleService {
     private readonly audit: AdminAuditService,
   ) {}
 
+  /** Production keeps SoD. Local Docker (NODE_ENV=development) allows self-approve. */
+  private allowSelfApprove(): boolean {
+    if (process.env.CONTENT_ALLOW_SELF_APPROVE === 'true') {
+      return true;
+    }
+    if (process.env.CONTENT_ALLOW_SELF_APPROVE === 'false') {
+      return false;
+    }
+    return process.env.NODE_ENV !== 'production';
+  }
+
   // ── Existing methods ─────────────────────────────────────────────────────
 
   async listTemplates() {
@@ -242,12 +253,13 @@ export class ContentLifecycleService {
          WHERE id = $1::uuid`,
         [templateVersionId, actorAdminId, notes ?? null],
       );
-      // Library / home counts filter content_templates.status — keep in sync.
+      // Library / review queue filter content_templates.status — keep in sync
+      // even when revising an already-published pack challenge.
       await client.query(
         `UPDATE content_templates
          SET status = 'submitted', updated_at = now()
          WHERE id = $1::uuid
-           AND status IN ('draft', 'submitted', 'in_review', 'approved')`,
+           AND status <> 'retired'`,
         [row.rows[0].template_id],
       );
       await this.audit.write(
@@ -292,8 +304,10 @@ export class ContentLifecycleService {
         );
       }
 
-      // Separation of Duties: approver cannot be the submitter
+      // Separation of Duties: approver cannot be the submitter (enforced in production).
+      // Local / single-operator stacks allow self-approve so Studio is usable.
       if (
+        !this.allowSelfApprove() &&
         row.rows[0].submitted_by_admin_id &&
         row.rows[0].submitted_by_admin_id === actorAdminId
       ) {
@@ -315,7 +329,7 @@ export class ContentLifecycleService {
         `UPDATE content_templates
          SET status = 'approved', updated_at = now()
          WHERE id = $1::uuid
-           AND status IN ('submitted', 'in_review', 'approved')`,
+           AND status <> 'retired'`,
         [row.rows[0].template_id],
       );
       await this.audit.write(
@@ -596,12 +610,30 @@ export class ContentLifecycleService {
   // ── LH-010 Studio methods ───────────────────────────────────────────────
 
   async getStudioHomeSummary(): Promise<AdminStudioHomeSummary> {
-    // Count templates (not versions) so cards match library filters and Pause,
-    // which flips content_templates.status + catalog overrides.
+    // Hybrid status for home cards:
+    // - paused/retired/published follow content_templates.status (Pause flips
+    //   the template row; version rows stay 'published').
+    // - draft/submitted/in_review/approved/scheduled follow the latest version
+    //   so revise→submit of a pack challenge lands in the review queue.
+    // This keeps MetricCard numbers aligned with library ?status= filters.
     const statusCounts = await this.db.query<{ status: string; cnt: string }>(
-      `SELECT status, count(*)::text AS cnt
-       FROM content_templates
-       GROUP BY status`,
+      `SELECT display_status AS status, count(*)::text AS cnt
+       FROM (
+         SELECT
+           CASE
+             WHEN t.status IN ('paused', 'retired', 'published') THEN t.status
+             ELSE COALESCE(lv.status, t.status)
+           END AS display_status
+         FROM content_templates t
+         LEFT JOIN LATERAL (
+           SELECT v.status
+           FROM content_template_versions v
+           WHERE v.template_id = t.id
+           ORDER BY v.version DESC
+           LIMIT 1
+         ) lv ON true
+       ) s
+       GROUP BY display_status`,
     );
     const counts = {
       drafts: 0,
@@ -625,8 +657,9 @@ export class ContentLifecycleService {
       }
     }
 
-    // Also count catalog overrides that paused a definition whose template row
-    // was never flipped (legacy / ops path using definitionId only).
+    // Catalog overrides that paused a definition whose template row was never
+    // flipped (legacy / ops path). Count as paused without leaving them in
+    // published (template may still read as published).
     const overridePaused = await this.db.query<{ cnt: string }>(
       `SELECT count(DISTINCT t.id)::text AS cnt
        FROM content_catalog_entry_overrides o
@@ -634,9 +667,13 @@ export class ContentLifecycleService {
          ON v.definition->>'definitionId' = o.definition_id
        JOIN content_templates t ON t.id = v.template_id
        WHERE o.paused = true
-         AND t.status <> 'paused'`,
+         AND t.status = 'published'`,
     );
-    counts.paused += parseInt(overridePaused.rows[0]?.cnt ?? '0', 10);
+    const overridePausedN = parseInt(overridePaused.rows[0]?.cnt ?? '0', 10);
+    if (overridePausedN > 0) {
+      counts.paused += overridePausedN;
+      counts.published = Math.max(0, counts.published - overridePausedN);
+    }
 
     const recent = await this.db.query<{
       id: string;
@@ -670,7 +707,23 @@ export class ContentLifecycleService {
 
     if (query.status) {
       paramIdx++;
-      conditions.push(`t.status = $${paramIdx}`);
+      // Workflow filters follow the latest version — matches submit/approve UX.
+      if (
+        query.status === 'draft' ||
+        query.status === 'submitted' ||
+        query.status === 'in_review' ||
+        query.status === 'approved'
+      ) {
+        conditions.push(
+          `COALESCE(
+             (SELECT v.status FROM content_template_versions v
+              WHERE v.template_id = t.id ORDER BY v.version DESC LIMIT 1),
+             t.status
+           ) = $${paramIdx}`,
+        );
+      } else {
+        conditions.push(`t.status = $${paramIdx}`);
+      }
       params.push(query.status);
     }
     if (query.familyId) {
@@ -713,7 +766,15 @@ export class ContentLifecycleService {
       latest_approved_version_id: string | null;
     }>(
       `SELECT t.id::text, t.slug, t.internal_title, t.family_id, t.category_id,
-              t.status, t.updated_at,
+              CASE
+                WHEN t.status IN ('paused', 'retired', 'published') THEN t.status
+                ELSE COALESCE(
+                  (SELECT v.status FROM content_template_versions v
+                   WHERE v.template_id = t.id ORDER BY v.version DESC LIMIT 1),
+                  t.status
+                )
+              END AS status,
+              t.updated_at,
               (SELECT max(v.version) FROM content_template_versions v WHERE v.template_id = t.id) AS latest_version,
               (SELECT v.definition->>'engineId' FROM content_template_versions v WHERE v.template_id = t.id ORDER BY v.version DESC LIMIT 1) AS engine_id,
               (SELECT v.definition->>'difficulty' FROM content_template_versions v WHERE v.template_id = t.id ORDER BY v.version DESC LIMIT 1) AS difficulty,
@@ -821,11 +882,17 @@ export class ContentLifecycleService {
       }
     }
 
-    // Prefer catalog override for display when template row was never flipped.
+    // Prefer catalog / template pause over stale version 'published'.
+    // Otherwise prefer latest version (revise→submit of published packs).
+    const latestVersionStatus = versions.rows[0]?.status as
+      | ContentLifecycleStatus
+      | undefined;
     const displayStatus: ContentLifecycleStatus =
-      catalogPaused && t.status === 'published'
+      catalogPaused || t.status === 'paused'
         ? 'paused'
-        : (t.status as ContentLifecycleStatus);
+        : t.status === 'retired'
+          ? 'retired'
+          : (latestVersionStatus ?? (t.status as ContentLifecycleStatus));
 
     const versionIds = versions.rows.map((v) => v.id);
     let inLiveCatalog = false;
@@ -968,6 +1035,19 @@ export class ContentLifecycleService {
          WHERE id = $1::uuid`,
         [templateVersionId, notes ?? null],
       );
+      const tmpl = await client.query<{ template_id: string }>(
+        `SELECT template_id::text FROM content_template_versions WHERE id = $1::uuid`,
+        [templateVersionId],
+      );
+      if (tmpl.rows[0]) {
+        await client.query(
+          `UPDATE content_templates
+           SET status = 'draft', updated_at = now()
+           WHERE id = $1::uuid
+             AND status <> 'retired'`,
+          [tmpl.rows[0].template_id],
+        );
+      }
       await this.audit.write(
         {
           actorAdminId,
@@ -1049,17 +1129,31 @@ export class ContentLifecycleService {
       }>;
     },
   ) {
-    // Reject entries whose engine is schema_only for live catalogs
+    // Pin definitionId from the version row — never trust slug/client identity.
+    // A mismatch is silently dropped at playlist resolve and the challenge
+    // disappears from the app even though Studio shows it as published.
+    const entries: Array<(typeof input.entries)[number]> = [];
     for (const entry of input.entries) {
-      const versionRow = await this.db.query<{ definition: { engineId: string } }>(
+      const versionRow = await this.db.query<{ definition: unknown }>(
         `SELECT definition FROM content_template_versions WHERE id = $1::uuid`,
         [entry.templateVersionId],
       );
-      const engineId = versionRow.rows[0]?.definition?.engineId;
-      if (
-        engineId &&
-        ENGINE_RUNTIME_READINESS[engineId as LaunchEngineId] === 'schema_only'
-      ) {
+      const raw = versionRow.rows[0]?.definition;
+      if (!raw) {
+        throw new NotFoundException(`Version ${entry.templateVersionId} not found`);
+      }
+      const parsed = challengeDefinitionSchema.safeParse(raw);
+      if (!parsed.success) {
+        throw new BadRequestException({
+          ok: false,
+          error: {
+            code: 'CONTENT_VALIDATION_FAILED',
+            message: 'Challenge definition failed validation',
+          },
+        });
+      }
+      const engineId = parsed.data.engineId as LaunchEngineId;
+      if (ENGINE_RUNTIME_READINESS[engineId] === 'schema_only') {
         throw new BadRequestException({
           ok: false,
           error: {
@@ -1068,6 +1162,10 @@ export class ContentLifecycleService {
           },
         });
       }
+      entries.push({
+        ...entry,
+        definitionId: parsed.data.definitionId,
+      });
     }
 
     if (!input.immediate && input.scheduleAt) {
@@ -1075,7 +1173,7 @@ export class ContentLifecycleService {
       const payload = {
         releaseId,
         versionLabel: input.versionLabel,
-        entries: input.entries,
+        entries,
         changelog: input.changelog,
       };
       await this.db.query(
@@ -1100,7 +1198,7 @@ export class ContentLifecycleService {
       const payload = {
         releaseId,
         versionLabel: input.versionLabel,
-        entries: input.entries,
+        entries,
         changelog: input.changelog,
       };
       await client.query(
@@ -1128,7 +1226,7 @@ export class ContentLifecycleService {
           entityType: 'content_release',
           entityId: releaseId,
           outcome: 'success',
-          metadata: { versionLabel: input.versionLabel, entries: input.entries.length },
+          metadata: { versionLabel: input.versionLabel, entries: entries.length },
         },
         client,
       );

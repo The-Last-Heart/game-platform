@@ -99,6 +99,7 @@ const Set<String> _outcomes = <String>{
   'failure',
   'timeout',
   'skipped_spectator',
+  'left',
 };
 const Set<String> _powerIds = <String>{
   PowerIds.dangerPulse,

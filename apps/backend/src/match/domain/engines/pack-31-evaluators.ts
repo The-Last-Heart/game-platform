@@ -2,6 +2,8 @@ import { randomInt } from 'node:crypto';
 import { readFileSync, existsSync } from 'node:fs';
 import { resolve } from 'node:path';
 import {
+  precisionCableUntangleAnswerSchema,
+  precisionCableUntangleServerConfigSchema,
   precisionCircuitRotationAnswerSchema,
   precisionCircuitRotationServerConfigSchema,
 } from '@thelastheart/contracts';
@@ -10,6 +12,7 @@ import type {
   ChallengeEvaluation,
   ChallengeEvaluator,
 } from '../types';
+import { evaluateCableUntangleAnswer } from './cable-untangle';
 import { evaluateCircuit } from './circuit-rotation';
 
 function num(value: unknown, fallback = 0): number {
@@ -56,6 +59,7 @@ export const PRECISION_NEON_CABLE_ENGINE_ID = 'precision.neon_cable';
 export const GESTURE_FOG_WIPE_ENGINE_ID = 'gesture.fog_wipe';
 export const PRECISION_CIRCUIT_ROTATION_ENGINE_ID =
   'precision.circuit_rotation';
+export const PRECISION_CABLE_UNTANGLE_ENGINE_ID = 'precision.cable_untangle';
 export const LOGIC_BALANCE_SCALE_ENGINE_ID = 'logic.balance_scale';
 export const FOCUS_STROOP_ENGINE_ID = 'focus.stroop';
 export const SEARCH_SELECT_OCCURRENCES_ENGINE_ID = 'search.select_occurrences';
@@ -292,6 +296,51 @@ export class CircuitRotationEvaluator implements ChallengeEvaluator {
   }
 }
 
+export class CableUntangleEvaluator implements ChallengeEvaluator {
+  readonly engineId = PRECISION_CABLE_UNTANGLE_ENGINE_ID;
+
+  evaluate(input: {
+    definition: ChallengeDefinition;
+    answer: Record<string, unknown>;
+    receivedMonoMs: number;
+    deadlineMonoMs: number;
+  }): ChallengeEvaluation {
+    if (input.receivedMonoMs > input.deadlineMonoMs) {
+      return { success: false, reasonKey: 'result.timeout' };
+    }
+
+    const serverConfig = precisionCableUntangleServerConfigSchema.safeParse(
+      input.definition.serverConfig,
+    );
+    const answer = precisionCableUntangleAnswerSchema.safeParse(input.answer);
+    if (!serverConfig.success || !answer.success) {
+      return {
+        success: false,
+        reasonKey: 'result.cable_untangle.invalid',
+      };
+    }
+
+    const result = evaluateCableUntangleAnswer({
+      puzzle: serverConfig.data,
+      answer: answer.data,
+    });
+    if (!result.success) {
+      return {
+        success: false,
+        reasonKey:
+          result.reason === 'incomplete'
+            ? 'result.cable_untangle.incomplete'
+            : 'result.cable_untangle.invalid',
+      };
+    }
+    return {
+      success: true,
+      reasonKey: 'result.success',
+      measureMs: Math.max(0, Math.floor(input.receivedMonoMs)),
+    };
+  }
+}
+
 export class LogicBalanceScaleEvaluator implements ChallengeEvaluator {
   readonly engineId = LOGIC_BALANCE_SCALE_ENGINE_ID;
 
@@ -395,6 +444,7 @@ export function createPack31Evaluators(): ChallengeEvaluator[] {
     new PrecisionNeonCableEvaluator(),
     new GestureFogWipeEvaluator(),
     new CircuitRotationEvaluator(),
+    new CableUntangleEvaluator(),
     new LogicBalanceScaleEvaluator(),
     new FocusStroopEvaluator(),
     new SearchSelectOccurrencesEvaluator(),
@@ -412,6 +462,53 @@ type GeoMap = {
     polygon: Array<{ x: number; y: number }>;
   }>;
 };
+
+export type GeographyQuestion = {
+  mapId: string;
+  targetRegionId: string;
+  targetLabelKey: string;
+};
+
+function readMaps(server: Record<string, unknown>): GeoMap[] {
+  return Array.isArray(server['maps']) &&
+    (server['maps'] as GeoMap[]).length > 0
+    ? (server['maps'] as GeoMap[])
+    : [];
+}
+
+/** Admin-curated (map, country) pool. Invalid / unknown entries are dropped. */
+export function readGeographyQuestionBank(
+  server: Record<string, unknown>,
+  maps?: GeoMap[],
+): GeographyQuestion[] {
+  const mapList = maps ?? readMaps(server);
+  const byMap = new Map(mapList.map((m) => [m.mapId, m]));
+  const raw = server['questions'];
+  if (!Array.isArray(raw)) {
+    return [];
+  }
+  const out: GeographyQuestion[] = [];
+  for (const item of raw) {
+    if (!item || typeof item !== 'object') continue;
+    const mapId = str((item as { mapId?: unknown }).mapId);
+    const targetRegionId = str(
+      (item as { targetRegionId?: unknown }).targetRegionId,
+    );
+    if (!mapId || !targetRegionId) continue;
+    const region = byMap
+      .get(mapId)
+      ?.regions.find((r) => r.regionId === targetRegionId);
+    if (!region) continue;
+    out.push({
+      mapId,
+      targetRegionId,
+      targetLabelKey:
+        str((item as { targetLabelKey?: unknown }).targetLabelKey) ??
+        region.labelKey,
+    });
+  }
+  return out;
+}
 
 let cachedMaps: GeoMap[] | null = null;
 
@@ -479,22 +576,52 @@ export function materializePack31Round(definition: ChallengeDefinition): void {
 
   if (definition.engineId === GEOGRAPHY_SELECT_ON_MAP_ENGINE_ID) {
     const maps =
-      Array.isArray(server['maps']) && (server['maps'] as GeoMap[]).length > 0
-        ? (server['maps'] as GeoMap[])
-        : loadGeographyMaps();
+      readMaps(server).length > 0 ? readMaps(server) : loadGeographyMaps();
     if (maps.length === 0) return;
-    const map = maps[randomInt(0, maps.length)]!;
+    const questions = readGeographyQuestionBank(server, maps);
+    const mapsWithQuestions =
+      questions.length > 0
+        ? maps.filter((m) => questions.some((q) => q.mapId === m.mapId))
+        : maps;
+    const pool = mapsWithQuestions.length > 0 ? mapsWithQuestions : maps;
+    const map = pool[randomInt(0, pool.length)]!;
     server['mapId'] = map.mapId;
     server['assetId'] = map.assetId;
     server['imageWidth'] = map.imageWidth;
     server['imageHeight'] = map.imageHeight;
     server['regions'] = map.regions;
-    // targetRegionId filled per-seat in seat-variants
     client['mapId'] = map.mapId;
     client['assetId'] = map.assetId;
     client['imageWidth'] = map.imageWidth;
     client['imageHeight'] = map.imageHeight;
     client['regions'] = map.regions;
+    // Keep prompt/score on a country that exists on this map — and in the
+    // admin question bank when one is set. Per-seat overlays replace these.
+    const mapQuestions = questions.filter((q) => q.mapId === map.mapId);
+    const fallbackQuestion = mapQuestions[0];
+    const fallbackRegion =
+      (fallbackQuestion
+        ? map.regions.find(
+            (r) => r.regionId === fallbackQuestion.targetRegionId,
+          )
+        : undefined) ?? map.regions[0];
+    if (fallbackRegion) {
+      const currentId = str(server['targetRegionId']);
+      const onMap = map.regions.some((r) => r.regionId === currentId);
+      const inBank =
+        mapQuestions.length === 0 ||
+        mapQuestions.some((q) => q.targetRegionId === currentId);
+      if (!onMap || !inBank) {
+        server['targetRegionId'] =
+          fallbackQuestion?.targetRegionId ?? fallbackRegion.regionId;
+      }
+      const chosenId = str(server['targetRegionId']) ?? fallbackRegion.regionId;
+      client['targetLabelKey'] =
+        mapQuestions.find((q) => q.targetRegionId === chosenId)
+          ?.targetLabelKey ??
+        map.regions.find((r) => r.regionId === chosenId)?.labelKey ??
+        fallbackRegion.labelKey;
+    }
     return;
   }
 
@@ -568,6 +695,29 @@ export function materializePack31Round(definition: ChallengeDefinition): void {
       'stationaryConnections',
     ] as const) {
       client[key] = variant[key];
+    }
+    return;
+  }
+
+  if (definition.engineId === PRECISION_CABLE_UNTANGLE_ENGINE_ID) {
+    const variant = pickVariant(server, {
+      layout: server['layout'],
+      sockets: server['sockets'],
+      cables: server['cables'],
+    });
+    Object.assign(server, variant);
+    for (const key of ['layout', 'sockets', 'cables'] as const) {
+      client[key] = variant[key];
+    }
+    for (const key of [
+      'theme',
+      'assetIds',
+      'snapRadiusNorm',
+      'mirrorHorizontally',
+    ] as const) {
+      if (server[key] != null && client[key] == null) {
+        client[key] = server[key];
+      }
     }
     return;
   }

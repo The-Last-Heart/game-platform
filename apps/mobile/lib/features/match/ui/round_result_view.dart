@@ -66,6 +66,13 @@ class _RoundResultViewState extends State<RoundResultView> {
   @override
   Widget build(BuildContext context) {
     final TranslationResolver resolver = AppLocalization.of(context);
+    final PowerNarrative? narrative = widget.state.tactical?.lastNarrative;
+    // After a strike resolves we briefly reuse round_result — never show the
+    // prior challenge "Survived!" copy on top of a power outcome.
+    if (narrative != null && _isTerminalPowerNarrative(narrative.kind)) {
+      return _buildPowerOutcome(context, resolver, narrative);
+    }
+
     final LastRoundResult? result = widget.state.lastRoundResult;
 
     if (result == null) {
@@ -168,6 +175,101 @@ class _RoundResultViewState extends State<RoundResultView> {
                         },
                       )
                     : resolver.resolve(TranslationKeys.resultAutoContinue),
+                style: Theme.of(
+                  context,
+                ).textTheme.bodyMedium?.copyWith(color: LhColors.textMuted),
+                textAlign: TextAlign.center,
+              ),
+            ),
+          const SizedBox(height: 20),
+        ],
+      ),
+    );
+  }
+
+  bool _isTerminalPowerNarrative(PowerNarrativeKind kind) {
+    return kind == PowerNarrativeKind.hit ||
+        kind == PowerNarrativeKind.shielded ||
+        kind == PowerNarrativeKind.expired;
+  }
+
+  Widget _buildPowerOutcome(
+    BuildContext context,
+    TranslationResolver resolver,
+    PowerNarrative narrative,
+  ) {
+    final String? localId = widget.state.playerId;
+    final bool localIsTarget =
+        localId != null && narrative.targetId == localId;
+    final bool localLostHeart = localIsTarget &&
+        (narrative.kind == PowerNarrativeKind.hit ||
+            narrative.kind == PowerNarrativeKind.expired);
+    final bool localDefended =
+        localIsTarget && narrative.kind == PowerNarrativeKind.shielded;
+
+    final String title;
+    final bool positive;
+    if (localLostHeart) {
+      title = resolver.resolve(TranslationKeys.powerResultYouLostHeart);
+      positive = false;
+    } else if (localDefended) {
+      title = resolver.resolve(TranslationKeys.powerResultYouDefended);
+      positive = true;
+    } else {
+      title = resolver.resolve(TranslationKeys.powerResultTitle);
+      positive = narrative.kind == PowerNarrativeKind.shielded;
+    }
+
+    final PlayerPublic? local = widget.state.localPlayer;
+
+    return SingleChildScrollView(
+      padding: const EdgeInsets.symmetric(horizontal: 20),
+      child: Column(
+        children: <Widget>[
+          const SizedBox(height: 8),
+          _buildHeader(context, resolver),
+          const SizedBox(height: 24),
+          _buildIconRing(positive),
+          const SizedBox(height: 20),
+          Text(
+            title,
+            style: Theme.of(context).textTheme.displayLarge?.copyWith(
+              color: positive ? LhColors.success : LhColors.primary,
+              shadows: <Shadow>[
+                Shadow(
+                  color: (positive ? LhColors.success : LhColors.primary)
+                      .withValues(alpha: 0.5),
+                  blurRadius: 20,
+                ),
+              ],
+            ),
+            textAlign: TextAlign.center,
+          ),
+          const SizedBox(height: 16),
+          PowerNarrativeBanner(state: widget.state, resolver: resolver),
+          const SizedBox(height: 8),
+          HeartsDisplay(hearts: local?.hearts ?? 0, maxHearts: 3),
+          const SizedBox(height: 12),
+          EnergyDisplay(energy: local?.energy ?? 0),
+          const SizedBox(height: 24),
+          if (widget.state.mode == MatchMode.training)
+            _buildTrainingActions(resolver)
+          else
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.symmetric(vertical: 16),
+              decoration: BoxDecoration(
+                color: LhColors.surface,
+                borderRadius: LhRadii.mdAll,
+                border: Border.all(color: LhColors.border),
+              ),
+              child: Text(
+                resolver.resolve(
+                  TranslationKeys.resultNextChallengeIn,
+                  params: <String, String>{
+                    'seconds': '$_nextChallengeSeconds',
+                  },
+                ),
                 style: Theme.of(
                   context,
                 ).textTheme.bodyMedium?.copyWith(color: LhColors.textMuted),

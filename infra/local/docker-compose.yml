@@ -80,6 +80,8 @@ services:
       ADMIN_CSRF_SECRET: ${ADMIN_CSRF_SECRET:-lh-dev-csrf-secret-change-me}
       ADMIN_ALLOWED_ORIGIN: ${ADMIN_ALLOWED_ORIGIN:-http://127.0.0.1:${ADMIN_WEB_PORT:-3001}}
       COOKIE_SECURE: ${COOKIE_SECURE:-false}
+      # Single-operator local Studio: submitter may approve their own drafts.
+      CONTENT_ALLOW_SELF_APPROVE: ${CONTENT_ALLOW_SELF_APPROVE:-true}
     healthcheck:
       test:
         [

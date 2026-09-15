@@ -25,6 +25,7 @@ export const DIFFICULTY_ENGINE_PRIORITY: Record<
     'gesture.reverse_swipe',
     'gesture.fog_wipe',
     'precision.circuit_rotation',
+    'precision.cable_untangle',
     'hold.multitouch',
     'search.select_occurrences',
     'order.sequence_sort',

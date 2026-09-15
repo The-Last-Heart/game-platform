@@ -319,22 +319,33 @@ const ar: Record<MessageKey, string> = {
   'studio.editor.submitSuccess': 'تم الإرسال للمراجعة',
   'studio.editor.prevSection': 'السابق',
   'studio.editor.nextSection': 'القسم التالي',
-  'studio.editor.identityLead': 'سمِّ التحدي واختر محرك اللعب. يتم توليد المعرّف تلقائياً.',
-  'studio.editor.arabicLead': 'اكتب ما يراه اللاعبون بالعربية. اختر نصوص العرض من الكتالوج عند الإمكان.',
-  'studio.editor.classificationLead': 'العائلة تُحدَّد بالمحرك. اختر مستوى الصعوبة.',
-  'studio.editor.timingLead': 'الأوقات بالثواني. استخدم إعداداً جاهزاً ثم عدّل عند الحاجة.',
+  'studio.editor.identityLead':
+    'سمِّ التحدي واختر محرك اللعب. يتم توليد المعرّف تلقائياً.',
+  'studio.editor.arabicLead':
+    'اكتب ما يراه اللاعبون بالعربية. اختر نصوص العرض من الكتالوج عند الإمكان.',
+  'studio.editor.classificationLead':
+    'العائلة تُحدَّد بالمحرك. اختر مستوى الصعوبة.',
+  'studio.editor.timingLead':
+    'الأوقات بالثواني. استخدم إعداداً جاهزاً ثم عدّل عند الحاجة.',
   'studio.editor.effectsLead': 'ماذا يحدث للقلوب والطاقة عند انتهاء التحدي.',
-  'studio.editor.assetsLead': 'اختر الأصوات واللمسات والأشكال. اتركها فارغة إن لم تُحتَج.',
-  'studio.editor.accessibilityLead': 'ميزات الجهاز المطلوبة، والتحدي البديل عند غيابها.',
-  'studio.editor.eligibilityLead': 'الأنماط تؤثر على المطابقة الحية فقط بعد تثبيت هذا الإصدار في الكتالوج المنشور ودون إيقاف.',
+  'studio.editor.assetsLead':
+    'اختر الأصوات واللمسات والأشكال. اتركها فارغة إن لم تُحتَج.',
+  'studio.editor.accessibilityLead':
+    'ميزات الجهاز المطلوبة، والتحدي البديل عند غيابها.',
+  'studio.editor.eligibilityLead':
+    'الأنماط تؤثر على المطابقة الحية فقط بعد تثبيت هذا الإصدار في الكتالوج المنشور ودون إيقاف.',
   'studio.editor.liveEligibilityTitle': 'حالة قائمة التشغيل الحية',
   'studio.editor.liveEligibilityInCatalog': 'مثبّت في كتالوج التحديات الحالي.',
-  'studio.editor.liveEligibilityNotInCatalog': 'غير موجود في كتالوج التحديات الحالي — الأنماط المؤهلة لا تُطبَّق حتى تنشر/تركّب الكتالوج.',
-  'studio.editor.liveEligibilityPaused': 'متوقف في عمليات الكتالوج (السبب: {reason}). استئنه قبل أن يظهر في أي نمط.',
-  'studio.editor.liveEligibilityActive': 'غير متوقف — يمكن للأنماط أدناه تصفية القوائم الحية.',
+  'studio.editor.liveEligibilityNotInCatalog':
+    'غير موجود في كتالوج التحديات الحالي — الأنماط المؤهلة لا تُطبَّق حتى تنشر/تركّب الكتالوج.',
+  'studio.editor.liveEligibilityPaused':
+    'متوقف في عمليات الكتالوج (السبب: {reason}). استئنه قبل أن يظهر في أي نمط.',
+  'studio.editor.liveEligibilityActive':
+    'غير متوقف — يمكن للأنماط أدناه تصفية القوائم الحية.',
   'studio.editor.liveEligibilityModes': 'أنماط الكتالوج الحي: {modes}',
   'studio.editor.liveEligibilityModesNone': 'لا شيء',
-  'studio.editor.eligibilityPublishHint': 'حفظ المسودة هنا لا يغيّر التدريب / البقاء السريع الحي حتى الاعتماد ثم نشر الكتالوج.',
+  'studio.editor.eligibilityPublishHint':
+    'حفظ المسودة هنا لا يغيّر التدريب / البقاء السريع الحي حتى الاعتماد ثم نشر الكتالوج.',
   'studio.editor.versioningLead': 'أقدم إصدار تطبيق يمكنه استلام هذا التحدي.',
 
   'studio.section.identity': 'الهوية والملكية',
@@ -417,9 +428,11 @@ const ar: Record<MessageKey, string> = {
   'studio.field.requiredCapabilities': 'ميزات الجهاز المطلوبة',
   'studio.field.requiredCapabilitiesHint': 'عند غيابها يُستخدم التحدي البديل',
   'studio.field.accessibilityFallbackKey': 'التحدي البديل',
-  'studio.field.accessibilityFallbackHint': 'تحدٍّ أكثر أماناً عند غياب الميزات',
+  'studio.field.accessibilityFallbackHint':
+    'تحدٍّ أكثر أماناً عند غياب الميزات',
   'studio.field.requiredAssetIds': 'أصوات ولمسات وأشكال',
-  'studio.field.requiredAssetIdsHint': 'اختر ما يحتاجه التحدي — بلا معرّفات خام',
+  'studio.field.requiredAssetIdsHint':
+    'اختر ما يحتاجه التحدي — بلا معرّفات خام',
   'studio.field.definitionVersion': 'إصدار التعريف',
   'studio.field.definitionVersionHint': 'يزيد عند التفرع من نسخة منشورة',
   'studio.field.choiceKeys': 'مفاتيح الاختيارات',
@@ -470,6 +483,7 @@ const ar: Record<MessageKey, string> = {
   'studio.asset.fogWetSmudge': 'قناع اللطخات الرطبة',
   'studio.asset.fogGlassReflections': 'انعكاسات الزجاج',
   'studio.asset.fogSwipeSfx': 'صوت مسح الضباب',
+  'studio.asset.cableUntangleSwingSfx': 'صوت تأرجح فك التشابك',
   'studio.asset.fogRevealPetsev': 'بيتسيف',
   'studio.asset.fogRevealGtaVi': 'GTA VI',
   'studio.asset.fogRevealSnowman': 'رجل الثلج',
@@ -604,6 +618,7 @@ const ar: Record<MessageKey, string> = {
   'studio.engine.neon_cable': 'السلك النيوني',
   'studio.engine.fog_wipe': 'مسح الضباب',
   'studio.engine.circuit_rotation': 'تدوير الدائرة',
+  'studio.engine.cable_untangle': 'فك التشابك',
   'studio.engine.balance_scale': 'ميزان الأوزان',
   'studio.engine.stroop': 'ستروب',
   'studio.engine.select_occurrences': 'اختيار التطابقات',
@@ -622,18 +637,25 @@ const ar: Record<MessageKey, string> = {
   'studio.field.fp.signalWindowMs': 'نافذة اللمس بعد الإشارة',
   'studio.field.fp.signalWindowHint': 'كم وقت لدى اللاعب للمس بعد ظهور الإشارة',
   'studio.field.fp.signalFeel': 'إحساس ردة الفعل',
-  'studio.field.fp.signalFeelHint': 'الإعدادات الجاهزة تضبط الانتظار ونافذة اللمس معاً',
-  'studio.field.fp.waitLead': 'ينتظر اللاعبون ثم يلمسون عند الإشارة. ابدأ بإعداد جاهز.',
-  'studio.field.fp.noTouchLead': 'يجب تجنب المنطقة الحمراء. اختر حجم المنطقة ثم عدّل.',
+  'studio.field.fp.signalFeelHint':
+    'الإعدادات الجاهزة تضبط الانتظار ونافذة اللمس معاً',
+  'studio.field.fp.waitLead':
+    'ينتظر اللاعبون ثم يلمسون عند الإشارة. ابدأ بإعداد جاهز.',
+  'studio.field.fp.noTouchLead':
+    'يجب تجنب المنطقة الحمراء. اختر حجم المنطقة ثم عدّل.',
   'studio.field.fp.swipeLead': 'يظهر سهم؛ يجب السحب بالاتجاه المعاكس.',
-  'studio.field.fp.precisionLead': 'ضع أهداف اللمس على إطار الهاتف. انقر هدفاً لتغيير موضعه.',
-  'studio.field.fp.memoryLead': 'ابنِ مجموعة الخيارات ثم الترتيب الذي يجب تذكّره.',
+  'studio.field.fp.precisionLead':
+    'ضع أهداف اللمس على إطار الهاتف. انقر هدفاً لتغيير موضعه.',
+  'studio.field.fp.memoryLead':
+    'ابنِ مجموعة الخيارات ثم الترتيب الذي يجب تذكّره.',
   'studio.field.fp.holdLead': 'يمسك اللاعبون بإصبعين للمدة المحددة.',
   'studio.field.fp.shakeLead': 'اختر صعوبة تحدي الهز.',
   'studio.field.fp.tiltLead': 'يوازن اللاعب الجهاز نحو هدف لفترة قصيرة.',
-  'studio.field.fp.audioLead': 'يعدّ اللاعبون النبضات الصوتية (مع بدائل مرئية/لمسية).',
+  'studio.field.fp.audioLead':
+    'يعدّ اللاعبون النبضات الصوتية (مع بدائل مرئية/لمسية).',
   'studio.field.fp.pairLead': 'يجب أن يتصرف لاعبان معاً داخل نافذة المزامنة.',
-  'studio.field.fp.riskLead': 'يختار اللاعبون خياراً أكثر أماناً أو مخاطرة. وزن أعلى = مخاطرة أكبر.',
+  'studio.field.fp.riskLead':
+    'يختار اللاعبون خياراً أكثر أماناً أو مخاطرة. وزن أعلى = مخاطرة أكبر.',
   'studio.field.fp.copyKeysGroup': 'مفاتيح النصوص المعروضة (متقدم)',
   'studio.field.fp.forbiddenZone': 'المنطقة المحظورة',
   'studio.field.fp.forbiddenZoneHint': 'المنطقة الحمراء التي يجب عدم لمسها',
@@ -643,9 +665,11 @@ const ar: Record<MessageKey, string> = {
   'studio.field.fp.zoneWidth': 'عرض المنطقة',
   'studio.field.fp.zoneHeight': 'ارتفاع المنطقة',
   'studio.field.fp.allowSystemGestures': 'خيارات الخادم',
-  'studio.field.fp.allowSystemGesturesLabel': 'السماح بإيماءات النظام (حواف الشاشة)',
+  'studio.field.fp.allowSystemGesturesLabel':
+    'السماح بإيماءات النظام (حواف الشاشة)',
   'studio.field.fp.displayedDirection': 'السهم الظاهر للاعب',
-  'studio.field.fp.displayedDirectionHint': 'السحب المطلوب هو الاتجاه المعاكس (تلقائي)',
+  'studio.field.fp.displayedDirectionHint':
+    'السحب المطلوب هو الاتجاه المعاكس (تلقائي)',
   'studio.field.fp.direction.up': 'أعلى',
   'studio.field.fp.direction.down': 'أسفل',
   'studio.field.fp.direction.left': 'يسار',
@@ -694,9 +718,11 @@ const ar: Record<MessageKey, string> = {
   'studio.field.fp.syncWindowHint': 'مدى قرب تصرف اللاعبين معاً',
   'studio.field.fp.riskWeights': 'أوزان المخاطرة',
   'studio.field.fp.riskOptionsHint': 'أضف خيارات آمنة/مخاطرة ثم اضبط الوزن',
-  'studio.field.fp.fogWipeLead': 'يمسح اللاعب الضباب لكشف صورة. اختر صور الكشف وحجم الفرشاة ونسبة المسح للفوز.',
+  'studio.field.fp.fogWipeLead':
+    'يمسح اللاعب الضباب لكشف صورة. اختر صور الكشف وحجم الفرشاة ونسبة المسح للفوز.',
   'studio.field.fp.revealContentVariants': 'صور الكشف البديلة',
-  'studio.field.fp.revealContentVariantsHint': 'الصورة الأولى هي النشطة (تُزامَن مع assetIds.revealContent)',
+  'studio.field.fp.revealContentVariantsHint':
+    'الصورة الأولى هي النشطة (تُزامَن مع assetIds.revealContent)',
   'studio.field.fp.revealVariantCustom': 'معرّف صورة كشف مخصص',
   'studio.field.fp.revealVariantAdd': 'إضافة صورة',
   'studio.field.fp.brushDiameterNorm': 'حجم الفرشاة',
@@ -707,15 +733,50 @@ const ar: Record<MessageKey, string> = {
   'studio.field.fp.clearanceRatioHint': 'كم يجب مسح الضباب للنجاح',
   'studio.field.fp.fogUploadGroup': 'رفع صورة كشف',
   'studio.field.fp.fogUploadAssetId': 'معرّف الأصل الجديد',
-  'studio.field.fp.fogUploadAssetIdHint': 'مثال: fog_wipe.reveal.my_image — أحرف صغيرة ونقاط وشرطات',
+  'studio.field.fp.fogUploadAssetIdHint':
+    'مثال: fog_wipe.reveal.my_image — أحرف صغيرة ونقاط وشرطات',
   'studio.field.fp.fogUploadAssetIdRequired': 'معرّف الأصل مطلوب قبل الرفع',
   'studio.field.fp.fogUploadFile': 'ملف الصورة',
-  'studio.field.fp.fogUploadHint': 'يفضّل PNG. الخادم يضبط الحجم إلى ٧٢٠×٧٢٠ ويزيل الأسود القريب.',
+  'studio.field.fp.fogUploadHint':
+    'يفضّل PNG. الخادم يضبط الحجم إلى ٧٢٠×٧٢٠ ويزيل الأسود القريب.',
   'studio.field.fp.fogUploading': 'جارٍ الرفع…',
+  'studio.field.fp.geoLead':
+    'يرى اللاعبون خريطة واحدة ويضغطون على الدولة المطلوبة. أضف الأسئلة أو عدّلها أو احذفها لكل خريطة، واختر الدولة الصحيحة لكل سؤال. الخرائط بلا أسئلة تُتخطى. إذا حُذفت كل الأسئلة تُستخدم كل الدول على كل الخرائط.',
+  'studio.field.fp.geoCorrectAnswer': 'الدولة الصحيحة',
+  'studio.field.fp.geoAddQuestion': 'إضافة سؤال',
+  'studio.field.fp.geoAddRemaining': 'إضافة بقية الدول',
+  'studio.field.fp.geoRemoveQuestion': 'حذف',
+  'studio.field.fp.geoNoMaps': 'لا توجد خرائط لهذا التحدي بعد.',
+  'studio.field.fp.geoEmptyMap':
+    'لا أسئلة على هذه الخريطة. لن تُستخدم حتى تضيف سؤالاً.',
   'studio.field.fp.footerKey': 'نص التذييل',
   'studio.field.fp.advancedExport': 'تصدير متقدم (للقراءة فقط)',
   'studio.field.fp.unknownEngine': 'محرك غير معروف — لا يتوفر نموذج معلمات.',
-  'studio.field.fp.behaviorNote': 'قواعد الإدخال تأتي من معلمات المحرك أعلاه — لا شيء إضافي هنا.',
+  'studio.field.fp.behaviorNote':
+    'قواعد الإدخال تأتي من معلمات المحرك أعلاه — لا شيء إضافي هنا.',
+
+  'studio.geo.map.africa': 'شمال أفريقيا',
+  'studio.geo.map.gcc': 'الخليج',
+  'studio.geo.map.gcc_mena': 'الشام والخليج',
+  'studio.geo.map.levant': 'الشام',
+  'studio.geo.country.mauritania': 'موريتانيا',
+  'studio.geo.country.algeria': 'الجزائر',
+  'studio.geo.country.morocco': 'المغرب',
+  'studio.geo.country.tunisia': 'تونس',
+  'studio.geo.country.libya': 'ليبيا',
+  'studio.geo.country.egypt': 'مصر',
+  'studio.geo.country.sudan': 'السودان',
+  'studio.geo.country.saudi_arabia': 'السعودية',
+  'studio.geo.country.kuwait': 'الكويت',
+  'studio.geo.country.bahrain': 'البحرين',
+  'studio.geo.country.qatar': 'قطر',
+  'studio.geo.country.uae': 'الإمارات',
+  'studio.geo.country.oman': 'عُمان',
+  'studio.geo.country.yemen': 'اليمن',
+  'studio.geo.country.jordan': 'الأردن',
+  'studio.geo.country.syria': 'سوريا',
+  'studio.geo.country.lebanon': 'لبنان',
+  'studio.geo.country.palestine': 'فلسطين',
 
   // Preview
   'studio.preview.title': 'بيئة المعاينة',
@@ -781,7 +842,8 @@ const ar: Record<MessageKey, string> = {
   // Analytics
   'studio.analytics.title': 'تحليلات التحديات',
   'studio.analytics.subtitle': 'مقاييس أداء كل تحدٍّ ورؤى تفصيلية',
-  'studio.analytics.empty': 'بيانات التحليلات غير متاحة بعد. ستظهر المقاييس عند لعب التحديات.',
+  'studio.analytics.empty':
+    'بيانات التحليلات غير متاحة بعد. ستظهر المقاييس عند لعب التحديات.',
 
   // Operations
   'studio.ops.title': 'العمليات',

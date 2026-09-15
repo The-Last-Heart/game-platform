@@ -23,4 +23,15 @@ describe('localizeAdminError', () => {
       'Custom',
     );
   });
+
+  it('surfaces specific CONFLICT backend messages instead of the generic catalog line', () => {
+    expect(
+      localizeAdminError(
+        'en',
+        'CONFLICT',
+        'Approver must be different from the submitter (Separation of Duties)',
+      ),
+    ).toBe('Approver must be different from the submitter (Separation of Duties)');
+    expect(localizeAdminError('en', 'CONFLICT')).toBe(en['errors.CONFLICT']);
+  });
 });

@@ -23,6 +23,7 @@ export const LAUNCH_ENGINE_IDS = [
   'precision.neon_cable',
   'gesture.fog_wipe',
   'precision.circuit_rotation',
+  'precision.cable_untangle',
   'logic.balance_scale',
   'focus.stroop',
   'search.select_occurrences',
@@ -760,9 +761,19 @@ export type GeographySelectOnMapClientConfig = z.infer<
   typeof geographySelectOnMapClientConfigSchema
 >;
 
+export const geographyMapQuestionSchema = z
+  .object({
+    mapId: z.string().min(1).max(64),
+    targetRegionId: z.string().min(1).max(64),
+    targetLabelKey: translationKey.optional(),
+  })
+  .strict();
+export type GeographyMapQuestion = z.infer<typeof geographyMapQuestionSchema>;
+
 export const geographySelectOnMapServerConfigSchema = z
   .object({
     maps: z.array(geographyMapSchema).min(1).max(32),
+    questions: z.array(geographyMapQuestionSchema).min(1).max(128).optional(),
     mapId: z.string().min(1).max(64).optional(),
     assetId: z.string().min(1).max(128).optional(),
     imageWidth: z.number().int().positive().max(8192).optional(),
@@ -1344,6 +1355,333 @@ export type PrecisionCircuitRotationAnswer = z.infer<
 >;
 
 // ---------------------------------------------------------------------------
+// 16d. precision.cable_untangle
+// ---------------------------------------------------------------------------
+
+export const CABLE_UNTANGLE_MIN_CABLES = 2;
+export const CABLE_UNTANGLE_MAX_CABLES = 8;
+
+export const cableUntangleSocketSchema = z
+  .object({
+    id: z.string().min(1).max(64),
+    order: z.number().int().min(0).max(CABLE_UNTANGLE_MAX_CABLES - 1),
+  })
+  .strict();
+export type CableUntangleSocket = z.infer<typeof cableUntangleSocketSchema>;
+
+export const cableUntangleCableSchema = z
+  .object({
+    id: z.string().min(1).max(64),
+    leftSocketId: z.string().min(1).max(64),
+    initialRightSocketId: z.string().min(1).max(64),
+  })
+  .strict();
+export type CableUntangleCable = z.infer<typeof cableUntangleCableSchema>;
+
+export const cableUntangleLayoutSchema = z
+  .object({
+    leftColumnX: z.number().min(0.05).max(0.35),
+    rightColumnX: z.number().min(0.65).max(0.95),
+    topPadding: z.number().min(0.05).max(0.25),
+    bottomPadding: z.number().min(0.05).max(0.25),
+  })
+  .strict()
+  .superRefine((layout, ctx) => {
+    if (layout.rightColumnX - layout.leftColumnX < 0.35) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'rightColumnX must be at least 0.35 beyond leftColumnX',
+        path: ['rightColumnX'],
+      });
+    }
+    if (layout.topPadding + layout.bottomPadding >= 0.85) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'vertical padding leaves insufficient play area',
+        path: ['topPadding'],
+      });
+    }
+  });
+export type CableUntangleLayout = z.infer<typeof cableUntangleLayoutSchema>;
+
+export const cableUntangleThemeSchema = z
+  .object({
+    backgroundColor: hexColor,
+    gridColor: hexColor,
+    cableColor: hexColor,
+    cableCoreColor: hexColor,
+    socketColor: hexColor,
+  })
+  .strict();
+export type CableUntangleTheme = z.infer<typeof cableUntangleThemeSchema>;
+
+export const cableUntangleAssetIdsSchema = z
+  .object({
+    swingSfx: z.string().min(1).max(128),
+  })
+  .strict();
+export type CableUntangleAssetIds = z.infer<typeof cableUntangleAssetIdsSchema>;
+
+export type CableUntanglePuzzleLike = {
+  layout: CableUntangleLayout;
+  sockets: {
+    left: CableUntangleSocket[];
+    right: CableUntangleSocket[];
+  };
+  cables: CableUntangleCable[];
+};
+
+export function countCableUntangleIntersections(
+  puzzle: CableUntanglePuzzleLike,
+  rightAssignment: ReadonlyMap<string, string> | Record<string, string>,
+): number {
+  const assignment =
+    rightAssignment instanceof Map
+      ? rightAssignment
+      : new Map(Object.entries(rightAssignment));
+  const leftOrder = new Map(
+    puzzle.sockets.left.map((socket) => [socket.id, socket.order] as const),
+  );
+  const rightOrder = new Map(
+    puzzle.sockets.right.map((socket) => [socket.id, socket.order] as const),
+  );
+  const endpoints: Array<{ left: number; right: number }> = [];
+  for (const cable of puzzle.cables) {
+    const rightId = assignment.get(cable.id);
+    if (!rightId) return -1;
+    const left = leftOrder.get(cable.leftSocketId);
+    const right = rightOrder.get(rightId);
+    if (left == null || right == null) return -1;
+    endpoints.push({ left, right });
+  }
+  let count = 0;
+  for (let i = 0; i < endpoints.length; i += 1) {
+    for (let j = i + 1; j < endpoints.length; j += 1) {
+      const a = endpoints[i]!;
+      const b = endpoints[j]!;
+      if ((a.left - b.left) * (a.right - b.right) < 0) {
+        count += 1;
+      }
+    }
+  }
+  return count;
+}
+
+export function initialCableUntangleAssignment(
+  puzzle: CableUntanglePuzzleLike,
+): Record<string, string> {
+  return Object.fromEntries(
+    puzzle.cables.map((cable) => [cable.id, cable.initialRightSocketId]),
+  );
+}
+
+function refineCableUntanglePuzzle(
+  puzzle: CableUntanglePuzzleLike,
+  ctx: z.RefinementCtx,
+  options?: { requireInitialCrossing?: boolean },
+): void {
+  const left = puzzle.sockets.left;
+  const right = puzzle.sockets.right;
+  if (left.length !== right.length) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: 'left and right socket counts must match',
+      path: ['sockets', 'right'],
+    });
+    return;
+  }
+  if (
+    left.length < CABLE_UNTANGLE_MIN_CABLES ||
+    left.length > CABLE_UNTANGLE_MAX_CABLES
+  ) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: `socket count must be ${CABLE_UNTANGLE_MIN_CABLES}-${CABLE_UNTANGLE_MAX_CABLES}`,
+      path: ['sockets', 'left'],
+    });
+    return;
+  }
+  if (puzzle.cables.length !== left.length) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: 'cable count must match socket count',
+      path: ['cables'],
+    });
+    return;
+  }
+
+  const checkOrders = (
+    sockets: CableUntangleSocket[],
+    pathPrefix: (string | number)[],
+  ) => {
+    const orders = new Set<number>();
+    const ids = new Set<string>();
+    for (let i = 0; i < sockets.length; i += 1) {
+      const socket = sockets[i]!;
+      if (ids.has(socket.id)) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: `duplicate socket id "${socket.id}"`,
+          path: [...pathPrefix, i, 'id'],
+        });
+      }
+      ids.add(socket.id);
+      if (orders.has(socket.order)) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: `duplicate socket order ${socket.order}`,
+          path: [...pathPrefix, i, 'order'],
+        });
+      }
+      orders.add(socket.order);
+    }
+    for (let i = 0; i < sockets.length; i += 1) {
+      if (!orders.has(i)) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: 'socket orders must be unique and contiguous from 0',
+          path: pathPrefix,
+        });
+        break;
+      }
+    }
+  };
+  checkOrders(left, ['sockets', 'left']);
+  checkOrders(right, ['sockets', 'right']);
+
+  const leftIds = new Set(left.map((s) => s.id));
+  const rightIds = new Set(right.map((s) => s.id));
+  const cableIds = new Set<string>();
+  const usedLeft = new Set<string>();
+  const usedRight = new Set<string>();
+
+  puzzle.cables.forEach((cable, index) => {
+    if (cableIds.has(cable.id)) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: `duplicate cable id "${cable.id}"`,
+        path: ['cables', index, 'id'],
+      });
+    }
+    cableIds.add(cable.id);
+    if (!leftIds.has(cable.leftSocketId) || usedLeft.has(cable.leftSocketId)) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'each left socket must be referenced exactly once',
+        path: ['cables', index, 'leftSocketId'],
+      });
+    }
+    usedLeft.add(cable.leftSocketId);
+    if (
+      !rightIds.has(cable.initialRightSocketId) ||
+      usedRight.has(cable.initialRightSocketId)
+    ) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'each right socket must be occupied exactly once',
+        path: ['cables', index, 'initialRightSocketId'],
+      });
+    }
+    usedRight.add(cable.initialRightSocketId);
+  });
+
+  if (options?.requireInitialCrossing !== false) {
+    const crossings = countCableUntangleIntersections(
+      puzzle,
+      initialCableUntangleAssignment(puzzle),
+    );
+    if (crossings <= 0) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'initial arrangement must contain at least one crossing',
+        path: ['cables'],
+      });
+    }
+  }
+}
+
+const cableUntanglePuzzleShape = {
+  layout: cableUntangleLayoutSchema,
+  sockets: z
+    .object({
+      left: z
+        .array(cableUntangleSocketSchema)
+        .min(CABLE_UNTANGLE_MIN_CABLES)
+        .max(CABLE_UNTANGLE_MAX_CABLES),
+      right: z
+        .array(cableUntangleSocketSchema)
+        .min(CABLE_UNTANGLE_MIN_CABLES)
+        .max(CABLE_UNTANGLE_MAX_CABLES),
+    })
+    .strict(),
+  cables: z
+    .array(cableUntangleCableSchema)
+    .min(CABLE_UNTANGLE_MIN_CABLES)
+    .max(CABLE_UNTANGLE_MAX_CABLES),
+  theme: cableUntangleThemeSchema,
+  assetIds: cableUntangleAssetIdsSchema,
+  snapRadiusNorm: z.number().min(0.04).max(0.18).default(0.08),
+  mirrorHorizontally: z.boolean().default(false),
+} as const;
+
+export const cableUntangleVariantSchema = z
+  .object({
+    layout: cableUntangleLayoutSchema,
+    sockets: cableUntanglePuzzleShape.sockets,
+    cables: cableUntanglePuzzleShape.cables,
+  })
+  .strict()
+  .superRefine((puzzle, ctx) => refineCableUntanglePuzzle(puzzle, ctx));
+export type CableUntangleVariant = z.infer<typeof cableUntangleVariantSchema>;
+
+export const precisionCableUntangleClientConfigSchema = z
+  .object({
+    categoryKey: translationKey,
+    promptKey: translationKey,
+    titleKey: translationKey.optional(),
+    footerKey: translationKey.optional(),
+    ...cableUntanglePuzzleShape,
+  })
+  .strict()
+  .superRefine((cfg, ctx) => refineCableUntanglePuzzle(cfg, ctx));
+export type PrecisionCableUntangleClientConfig = z.infer<
+  typeof precisionCableUntangleClientConfigSchema
+>;
+
+export const precisionCableUntangleServerConfigSchema = z
+  .object({
+    ...cableUntanglePuzzleShape,
+    variants: z.array(cableUntangleVariantSchema).min(1).max(16).optional(),
+  })
+  .strict()
+  .superRefine((cfg, ctx) => refineCableUntanglePuzzle(cfg, ctx));
+export type PrecisionCableUntangleServerConfig = z.infer<
+  typeof precisionCableUntangleServerConfigSchema
+>;
+
+export const cableUntangleSwapSchema = z
+  .object({
+    sequence: z.number().int().min(1).max(64),
+    draggedCableId: z.string().min(1).max(64),
+    displacedCableId: z.string().min(1).max(64),
+    fromRightSocketId: z.string().min(1).max(64),
+    toRightSocketId: z.string().min(1).max(64),
+    elapsedMs: z.number().int().nonnegative().max(60_000),
+  })
+  .strict();
+export type CableUntangleSwap = z.infer<typeof cableUntangleSwapSchema>;
+
+export const precisionCableUntangleAnswerSchema = z
+  .object({
+    swaps: z.array(cableUntangleSwapSchema).max(64),
+    finalAssignment: z.record(z.string().min(1).max(64), z.string().min(1).max(64)),
+  })
+  .strict();
+export type PrecisionCableUntangleAnswer = z.infer<
+  typeof precisionCableUntangleAnswerSchema
+>;
+
+// ---------------------------------------------------------------------------
 // 17. logic.balance_scale
 // ---------------------------------------------------------------------------
 
@@ -1520,6 +1858,7 @@ export const ENGINE_RUNTIME_READINESS: Record<LaunchEngineId, 'live' | 'schema_o
   'precision.neon_cable': 'live',
   'gesture.fog_wipe': 'live',
   'precision.circuit_rotation': 'live',
+  'precision.cable_untangle': 'live',
   'logic.balance_scale': 'live',
   'focus.stroop': 'live',
   'search.select_occurrences': 'live',
@@ -1626,6 +1965,11 @@ const ENGINE_SCHEMAS: Record<LaunchEngineId, EngineSchemaPair> = {
     client: precisionCircuitRotationClientConfigSchema,
     server: precisionCircuitRotationServerConfigSchema,
     answer: precisionCircuitRotationAnswerSchema,
+  },
+  'precision.cable_untangle': {
+    client: precisionCableUntangleClientConfigSchema,
+    server: precisionCableUntangleServerConfigSchema,
+    answer: precisionCableUntangleAnswerSchema,
   },
   'logic.balance_scale': {
     client: logicBalanceScaleClientConfigSchema,
@@ -1741,6 +2085,11 @@ export type ValidatedEngineConfigs =
       serverConfig: PrecisionCircuitRotationServerConfig;
     }
   | {
+      engineId: 'precision.cable_untangle';
+      clientConfig: PrecisionCableUntangleClientConfig;
+      serverConfig: PrecisionCableUntangleServerConfig;
+    }
+  | {
       engineId: 'logic.balance_scale';
       clientConfig: LogicBalanceScaleClientConfig;
       serverConfig: LogicBalanceScaleServerConfig;
@@ -1784,6 +2133,10 @@ export type ValidatedEngineAnswer =
   | {
       engineId: 'precision.circuit_rotation';
       answer: PrecisionCircuitRotationAnswer;
+    }
+  | {
+      engineId: 'precision.cable_untangle';
+      answer: PrecisionCableUntangleAnswer;
     }
   | { engineId: 'logic.balance_scale'; answer: LogicBalanceScaleAnswer }
   | { engineId: 'focus.stroop'; answer: FocusStroopAnswer }
@@ -2018,6 +2371,40 @@ export function validateEngineConfigs(
           },
         ]);
       }
+    }
+  }
+
+  if (id === 'precision.cable_untangle') {
+    const c = client as PrecisionCableUntangleClientConfig;
+    const s = server as PrecisionCableUntangleServerConfig;
+    for (const field of ['layout', 'sockets', 'cables', 'theme', 'assetIds'] as const) {
+      if (JSON.stringify(c[field]) !== JSON.stringify(s[field])) {
+        throw new z.ZodError([
+          {
+            code: z.ZodIssueCode.custom,
+            message: `client and server ${field} must match`,
+            path: ['serverConfig', field],
+          },
+        ]);
+      }
+    }
+    if (c.snapRadiusNorm !== s.snapRadiusNorm) {
+      throw new z.ZodError([
+        {
+          code: z.ZodIssueCode.custom,
+          message: 'client and server snapRadiusNorm must match',
+          path: ['serverConfig', 'snapRadiusNorm'],
+        },
+      ]);
+    }
+    if (c.mirrorHorizontally !== s.mirrorHorizontally) {
+      throw new z.ZodError([
+        {
+          code: z.ZodIssueCode.custom,
+          message: 'client and server mirrorHorizontally must match',
+          path: ['serverConfig', 'mirrorHorizontally'],
+        },
+      ]);
     }
   }
 

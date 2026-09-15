@@ -14,7 +14,7 @@ describe('ContentPackService', () => {
     const service = new ContentPackService();
     const manifest = service.getManifest();
     expect(manifest.packId).toBe('lh.local.content.v1');
-    expect(manifest.packVersion).toBe(12);
+    expect(manifest.packVersion).toBe(13);
     expect(manifest.assets.some((a) => a.assetId === 'sfx.pulse')).toBe(true);
     expect(
       manifest.assets.some((a) => a.assetId === 'fog_wipe.reveal_content'),
@@ -28,6 +28,9 @@ describe('ContentPackService', () => {
     expect(manifest.assets.some((a) => a.assetId === 'fog_wipe.swipe')).toBe(
       true,
     );
+    expect(
+      manifest.assets.some((a) => a.assetId === 'cable_untangle.swing'),
+    ).toBe(true);
     expect(
       manifest.assets.some((a) => a.assetId === 'neon_cable.panel_background'),
     ).toBe(true);

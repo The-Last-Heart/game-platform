@@ -1,3 +1,4 @@
+import { matchSnapshotPayloadSchema } from '@thelastheart/contracts';
 import { createDevChallengeDefinition } from '../domain/dev-challenge.evaluator';
 import { DomainError, FakeClock } from '../domain/types';
 import { MatchService } from './match.service';
@@ -500,6 +501,38 @@ describe('MatchService', () => {
     const started = await service.startLobbyNow(created.matchId, hostId);
     expect(started.snapshot.phase).toBe('ready_countdown');
     expect(started.snapshot.players).toHaveLength(2);
+
+    service.onModuleDestroy();
+  });
+
+  it('three-player host start advances past ready_countdown into the playlist', async () => {
+    const clock = new FakeClock(5_000_000);
+    const service = MatchService.forTests({ clock, nodeEnv: 'test' });
+    const created = await service.createQuickSurvivalMatch([
+      { displayName: 'Host', avatarColor: '#111111' },
+      { displayName: 'Guest', avatarColor: '#222222' },
+      { displayName: 'Third', avatarColor: '#333333' },
+    ]);
+    for (const a of created.assignments) {
+      await service.finalizeJoin(created.matchId, a.playerId);
+    }
+    const hostId = created.assignments[0]!.playerId;
+    const started = await service.startLobbyNow(created.matchId, hostId);
+    expect(started.snapshot.phase).toBe('ready_countdown');
+    expect(started.snapshot.players).toHaveLength(3);
+
+    clock.advance(3001);
+    await service.tickDue(created.matchId);
+    const after = await service.getStoreForTests().get(created.matchId);
+    expect(after?.phase).toBe('challenge_active');
+    expect(after?.players.size).toBe(3);
+    expect(after?.currentChallenge?.status).toBe('active');
+
+    const snap = service.getEngineForTests().toPublicSnapshot(after!);
+    const parsed = matchSnapshotPayloadSchema.safeParse(snap);
+    expect(parsed.success).toBe(true);
+    const bytes = Buffer.byteLength(JSON.stringify(snap), 'utf8');
+    expect(bytes).toBeLessThan(1_048_576);
 
     service.onModuleDestroy();
   });

@@ -10,7 +10,7 @@ function isAdminErrorCode(value: string): value is AdminErrorCode {
 
 /**
  * Map a stable backend error code to a localized browser message.
- * Falls back to a provided message only when the code is unknown.
+ * Prefer specific backend conflict/forbidden messages over generic code copy.
  */
 export function localizeAdminError(
   locale: Locale,
@@ -18,7 +18,17 @@ export function localizeAdminError(
   fallback?: string,
 ): string {
   if (code && isAdminErrorCode(code)) {
-    return t(locale, `errors.${code}` as MessageKey);
+    const localized = t(locale, `errors.${code}` as MessageKey);
+    if (
+      fallback &&
+      fallback.trim() !== '' &&
+      (code === 'CONFLICT' || code === 'FORBIDDEN') &&
+      fallback !== 'Conflict' &&
+      fallback !== localized
+    ) {
+      return fallback;
+    }
+    return localized;
   }
   if (fallback && fallback.trim() !== '') {
     return fallback;

@@ -45,6 +45,7 @@ export const KNOWN_ASSET_OPTIONS: CatalogOption[] = [
   { value: 'fog_wipe.wet_smudge_mask', labelKey: 'studio.asset.fogWetSmudge' },
   { value: 'fog_wipe.glass_reflections', labelKey: 'studio.asset.fogGlassReflections' },
   { value: 'fog_wipe.swipe', labelKey: 'studio.asset.fogSwipeSfx' },
+  { value: 'cable_untangle.swing', labelKey: 'studio.asset.cableUntangleSwingSfx' },
   { value: 'fog_wipe.reveal.petsev', labelKey: 'studio.asset.fogRevealPetsev' },
   { value: 'fog_wipe.reveal.gta_vi', labelKey: 'studio.asset.fogRevealGtaVi' },
   { value: 'fog_wipe.reveal.snowman', labelKey: 'studio.asset.fogRevealSnowman' },

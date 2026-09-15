@@ -3,6 +3,7 @@ import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:game/features/match/engines/challenge_engine.dart';
 import 'package:game/features/match/engines/challenge_engine_registry.dart';
+import 'package:game/features/match/engines/precision_cable_untangle_engine.dart';
 import 'package:game/features/match/engines/precision_circuit_rotation_engine.dart';
 import 'package:game/features/match/engines/reaction_wait_for_signal_engine.dart';
 import 'package:game/features/match/engines/unknown_engine.dart';
@@ -177,6 +178,15 @@ void main() {
       );
       expect(engine.engineId, 'precision.circuit_rotation');
       expect(engine, isA<PrecisionCircuitRotationEngine>());
+    });
+
+    test('resolves cable untangle engine', () {
+      final ChallengeEngineRegistry registry = ChallengeEngineRegistry();
+      final ChallengeEngine engine = registry.resolve(
+        'precision.cable_untangle',
+      );
+      expect(engine.engineId, 'precision.cable_untangle');
+      expect(engine, isA<PrecisionCableUntangleEngine>());
     });
 
     test('unknown engine for unrecognized id', () {

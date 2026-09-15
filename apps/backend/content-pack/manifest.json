@@ -1,6 +1,6 @@
 {
   "packId": "lh.local.content.v1",
-  "packVersion": 12,
+  "packVersion": 13,
   "assets": [
     {
       "assetId": "sfx.pulse",
@@ -267,6 +267,13 @@
       "contentType": "audio/mpeg",
       "bytes": 5015,
       "sha256": "6b1e554c0742d818ced1990a4eb5b89d8d01cc3074de62eca13e08c7dcde4001"
+    },
+    {
+      "assetId": "cable_untangle.swing",
+      "relativePath": "assets/cable_untangle.swing.mp3",
+      "contentType": "audio/mpeg",
+      "bytes": 39168,
+      "sha256": "dc690e7e1da84bd73c143eaf57466f72f6907f4b4e62f659284f78a7bde89708"
     }
   ]
 }

@@ -35,6 +35,9 @@ class ChallengeSfx {
   /// Neon-cable snap spark (cyan or red).
   static const String defaultNeonCableSparkAssetId = 'neon_cable.spark';
 
+  /// Cable-untangle head dock / swing.
+  static const String defaultCableUntangleSwingAssetId = 'cable_untangle.swing';
+
   Future<void> pulse({String assetId = defaultPulseAssetId}) async {
     try {
       await HapticFeedback.mediumImpact();

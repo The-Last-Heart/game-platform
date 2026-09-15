@@ -475,7 +475,7 @@ export class MatchEngine {
       energy?: number;
     },
   ): { match: MatchState; events: DomainEvent[] } {
-    if (match.status !== 'waiting') {
+    if (match.status !== 'waiting' || match.phase !== 'lobby') {
       throw new DomainError('MATCH_NOT_JOINABLE', 'match is not joinable');
     }
     if (match.players.size >= match.playerCapacity) {
@@ -987,6 +987,7 @@ export class MatchEngine {
       challenge.engineId === 'precision.neon_cable' ||
       challenge.engineId === 'gesture.fog_wipe' ||
       challenge.engineId === 'precision.circuit_rotation' ||
+      challenge.engineId === 'precision.cable_untangle' ||
       challenge.engineId === 'logic.balance_scale' ||
       challenge.engineId === 'focus.stroop' ||
       challenge.engineId === 'search.select_occurrences'
@@ -1177,6 +1178,7 @@ export class MatchEngine {
       pinned.engineId === 'precision.neon_cable' ||
       pinned.engineId === 'gesture.fog_wipe' ||
       pinned.engineId === 'precision.circuit_rotation' ||
+      pinned.engineId === 'precision.cable_untangle' ||
       pinned.engineId === 'logic.balance_scale' ||
       pinned.engineId === 'focus.stroop' ||
       pinned.engineId === 'search.select_occurrences'

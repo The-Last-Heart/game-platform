@@ -319,23 +319,37 @@ const en = {
   'studio.editor.submitSuccess': 'Submitted for review',
   'studio.editor.prevSection': 'Previous',
   'studio.editor.nextSection': 'Next section',
-  'studio.editor.identityLead': 'Name the challenge and pick the gameplay engine. The ID is generated for you.',
-  'studio.editor.arabicLead': 'Write what players see in Arabic. Pick prompt copy from the catalog when possible.',
-  'studio.editor.classificationLead': 'Family is set by the engine. Choose how hard this should feel.',
-  'studio.editor.timingLead': 'Times are in seconds. Use a preset, then fine-tune if needed.',
-  'studio.editor.effectsLead': 'What happens to hearts and energy when this challenge ends.',
-  'studio.editor.assetsLead': 'Tap the sounds, haptics, and shapes this challenge needs. Leave empty if none.',
-  'studio.editor.accessibilityLead': 'Which device features are required, and which fallback challenge to use.',
-  'studio.editor.eligibilityLead': 'Modes control live matchmaking only after this version is pinned in the published catalog and not paused.',
+  'studio.editor.identityLead':
+    'Name the challenge and pick the gameplay engine. The ID is generated for you.',
+  'studio.editor.arabicLead':
+    'Write what players see in Arabic. Pick prompt copy from the catalog when possible.',
+  'studio.editor.classificationLead':
+    'Family is set by the engine. Choose how hard this should feel.',
+  'studio.editor.timingLead':
+    'Times are in seconds. Use a preset, then fine-tune if needed.',
+  'studio.editor.effectsLead':
+    'What happens to hearts and energy when this challenge ends.',
+  'studio.editor.assetsLead':
+    'Tap the sounds, haptics, and shapes this challenge needs. Leave empty if none.',
+  'studio.editor.accessibilityLead':
+    'Which device features are required, and which fallback challenge to use.',
+  'studio.editor.eligibilityLead':
+    'Modes control live matchmaking only after this version is pinned in the published catalog and not paused.',
   'studio.editor.liveEligibilityTitle': 'Live playlist status',
-  'studio.editor.liveEligibilityInCatalog': 'Pinned in the current challenge catalog.',
-  'studio.editor.liveEligibilityNotInCatalog': 'Not in the current challenge catalog — eligible modes do not apply until you publish/compose the catalog.',
-  'studio.editor.liveEligibilityPaused': 'Paused in catalog ops (reason: {reason}). Resume it before any mode can serve this challenge.',
-  'studio.editor.liveEligibilityActive': 'Not paused — modes below can filter live playlists.',
+  'studio.editor.liveEligibilityInCatalog':
+    'Pinned in the current challenge catalog.',
+  'studio.editor.liveEligibilityNotInCatalog':
+    'Not in the current challenge catalog — eligible modes do not apply until you publish/compose the catalog.',
+  'studio.editor.liveEligibilityPaused':
+    'Paused in catalog ops (reason: {reason}). Resume it before any mode can serve this challenge.',
+  'studio.editor.liveEligibilityActive':
+    'Not paused — modes below can filter live playlists.',
   'studio.editor.liveEligibilityModes': 'Live catalog modes: {modes}',
   'studio.editor.liveEligibilityModesNone': 'none',
-  'studio.editor.eligibilityPublishHint': 'Saving a draft here does not change live Training / Quick Survival until approve + catalog publish.',
-  'studio.editor.versioningLead': 'Oldest app version that may receive this challenge.',
+  'studio.editor.eligibilityPublishHint':
+    'Saving a draft here does not change live Training / Quick Survival until approve + catalog publish.',
+  'studio.editor.versioningLead':
+    'Oldest app version that may receive this challenge.',
 
   // Studio editor — 12 sections
   'studio.section.identity': 'Identity & ownership',
@@ -353,29 +367,36 @@ const en = {
 
   // Studio editor — field labels
   'studio.field.definitionId': 'Definition ID',
-  'studio.field.definitionIdHint': 'Stable machine id — auto-filled from the title',
+  'studio.field.definitionIdHint':
+    'Stable machine id — auto-filled from the title',
   'studio.field.generateId': 'Generate from title',
   'studio.field.internalTitle': 'Internal title',
-  'studio.field.internalTitleHint': 'Operator-facing name (players never see this)',
+  'studio.field.internalTitleHint':
+    'Operator-facing name (players never see this)',
   'studio.field.engineId': 'Gameplay engine',
-  'studio.field.engineIdHint': 'Chooses the interaction type and available parameters',
+  'studio.field.engineIdHint':
+    'Chooses the interaction type and available parameters',
   'studio.field.familyId': 'Family',
   'studio.field.categoryId': 'Category',
   'studio.field.difficulty': 'Difficulty',
-  'studio.field.difficultyHint': 'Used for catalog mix and analytics — not a hard filter',
+  'studio.field.difficultyHint':
+    'Used for catalog mix and analytics — not a hard filter',
   'studio.field.difficulty.easy': 'Easy',
   'studio.field.difficulty.medium': 'Medium',
   'studio.field.difficulty.hard': 'Hard',
   'studio.field.instructionAr': 'Arabic instruction',
-  'studio.field.instructionArHint': 'Primary instruction shown on the phone (Arabic)',
+  'studio.field.instructionArHint':
+    'Primary instruction shown on the phone (Arabic)',
   'studio.field.hintAr': 'Arabic hint',
   'studio.field.hintArHint': 'Optional tip under the instruction',
   'studio.field.promptKey': 'Intro prompt copy',
   'studio.field.promptKeyHint': 'Pick a known string from the catalog',
   'studio.field.durationMs': 'Active challenge time',
-  'studio.field.durationMsHint': 'How long players have to succeed (3–15 seconds)',
+  'studio.field.durationMsHint':
+    'How long players have to succeed (3–15 seconds)',
   'studio.field.introDurationMs': 'Intro time',
-  'studio.field.introDurationMsHint': 'Countdown / instruction screen before play starts',
+  'studio.field.introDurationMsHint':
+    'Countdown / instruction screen before play starts',
   'studio.field.resultHoldMs': 'Result hold',
   'studio.field.resultHoldMsHint': 'How long success/fail stays on screen',
   'studio.field.heartPenaltyOnFailure': 'Heart on failure',
@@ -383,7 +404,8 @@ const en = {
   'studio.field.heartPenalty.none': 'No heart loss',
   'studio.field.heartPenalty.one': 'Lose 1 heart',
   'studio.field.energyRewardOnSuccess': 'Energy on success',
-  'studio.field.energyRewardHint': 'Energy segments granted when the player succeeds',
+  'studio.field.energyRewardHint':
+    'Energy segments granted when the player succeeds',
   'studio.field.clientConfig': 'Client config',
   'studio.field.clientConfigHint': 'Engine-specific client configuration',
   'studio.field.serverConfig': 'Server config',
@@ -391,7 +413,8 @@ const en = {
   'studio.field.eligibleModes': 'Eligible modes',
   'studio.field.draftEligibleModes': 'Draft eligible modes',
   'studio.field.liveEligibleModes': 'Live availability (applies immediately)',
-  'studio.field.eligibleModesHint': 'Draft modes apply only after approve + catalog publish. Use Live availability to change Training / Quick Survival now.',
+  'studio.field.eligibleModesHint':
+    'Draft modes apply only after approve + catalog publish. Use Live availability to change Training / Quick Survival now.',
   'studio.editor.applyLiveModes': 'Apply live modes',
   'studio.editor.liveModesApplied': 'Live mode availability updated',
   'studio.field.mode.quick_survival': 'Quick Survival',
@@ -399,7 +422,8 @@ const en = {
   'studio.field.mode.training': 'Training',
   'studio.field.mode.dev': 'Development',
   'studio.field.roundBand': 'Round availability',
-  'studio.field.roundBandHint': 'Limit which match rounds can seat this challenge',
+  'studio.field.roundBandHint':
+    'Limit which match rounds can seat this challenge',
   'studio.field.roundAny': 'Any round',
   'studio.field.roundLimited': 'Only some rounds',
   'studio.field.roundMin': 'From round',
@@ -408,25 +432,33 @@ const en = {
   'studio.field.roundMaxHint': 'Latest round',
   'studio.field.roundN': 'Round {n}',
   'studio.field.selectionWeight': 'How often it appears',
-  'studio.field.selectionWeightHint': 'Relative chance vs other eligible challenges',
+  'studio.field.selectionWeightHint':
+    'Relative chance vs other eligible challenges',
   'studio.field.repetitionCooldownRounds': 'Repeat cooldown',
-  'studio.field.repetitionCooldownHint': 'How many rounds before the same challenge can return',
+  'studio.field.repetitionCooldownHint':
+    'How many rounds before the same challenge can return',
   'studio.field.cooldownNone': 'No cooldown',
   'studio.field.cooldownN': '{n} rounds',
   'studio.field.minAppVersion': 'Minimum app version',
-  'studio.field.minAppVersionHint': 'Players on older builds will not receive this',
+  'studio.field.minAppVersionHint':
+    'Players on older builds will not receive this',
   'studio.field.requiredCapabilities': 'Required device features',
-  'studio.field.requiredCapabilitiesHint': 'Players missing these features get the fallback instead',
+  'studio.field.requiredCapabilitiesHint':
+    'Players missing these features get the fallback instead',
   'studio.field.accessibilityFallbackKey': 'Fallback challenge',
-  'studio.field.accessibilityFallbackHint': 'Safer challenge used when features are missing',
+  'studio.field.accessibilityFallbackHint':
+    'Safer challenge used when features are missing',
   'studio.field.requiredAssetIds': 'Sounds, haptics & shapes',
-  'studio.field.requiredAssetIdsHint': 'Select what this challenge uses — no raw IDs needed',
+  'studio.field.requiredAssetIdsHint':
+    'Select what this challenge uses — no raw IDs needed',
   'studio.field.definitionVersion': 'Definition version',
-  'studio.field.definitionVersionHint': 'Increments when you fork from a published version',
+  'studio.field.definitionVersionHint':
+    'Increments when you fork from a published version',
   'studio.field.choiceKeys': 'Choice keys',
   'studio.field.choiceKeysHint': 'Optional multiple-choice keys',
   'studio.field.outcomeReasonKeys': 'Outcome messages',
-  'studio.field.outcomeReasonKeysHint': 'Which catalog string to show for each outcome',
+  'studio.field.outcomeReasonKeysHint':
+    'Which catalog string to show for each outcome',
   'studio.field.validationNotes': 'Review notes',
   'studio.field.validationNotesHint': 'Notes for the reviewer',
   'studio.field.customValue': 'Custom…',
@@ -591,6 +623,7 @@ const en = {
   'studio.engine.neon_cable': 'Neon Cable',
   'studio.engine.fog_wipe': 'Fog Wipe',
   'studio.engine.circuit_rotation': 'Circuit Rotation',
+  'studio.engine.cable_untangle': 'Cable Untangle',
   'studio.engine.balance_scale': 'Balance Scale',
   'studio.engine.stroop': 'Stroop',
   'studio.engine.select_occurrences': 'Select Occurrences',
@@ -606,22 +639,34 @@ const en = {
   'studio.field.fp.shapeKey': 'Shape',
   'studio.field.fp.shapeKeyHint': 'Optional visual shape',
   'studio.field.fp.signalDelayMs': 'Wait before signal',
-  'studio.field.fp.signalDelayHint': 'How long players must wait before the signal appears',
+  'studio.field.fp.signalDelayHint':
+    'How long players must wait before the signal appears',
   'studio.field.fp.signalWindowMs': 'Tap window after signal',
-  'studio.field.fp.signalWindowHint': 'How long players have to tap once the signal shows',
+  'studio.field.fp.signalWindowHint':
+    'How long players have to tap once the signal shows',
   'studio.field.fp.signalFeel': 'Reaction feel',
-  'studio.field.fp.signalFeelHint': 'Presets set both wait and tap window together',
-  'studio.field.fp.waitLead': 'Players wait, then tap when the signal appears. Start with a feel preset.',
-  'studio.field.fp.noTouchLead': 'Players must avoid the red zone. Pick a zone size, then adjust if needed.',
-  'studio.field.fp.swipeLead': 'Show an arrow; players must swipe the opposite way.',
-  'studio.field.fp.precisionLead': 'Place tap targets on the phone frame. Click a target to cycle its position.',
-  'studio.field.fp.memoryLead': 'Build the option set, then the order players must recall.',
+  'studio.field.fp.signalFeelHint':
+    'Presets set both wait and tap window together',
+  'studio.field.fp.waitLead':
+    'Players wait, then tap when the signal appears. Start with a feel preset.',
+  'studio.field.fp.noTouchLead':
+    'Players must avoid the red zone. Pick a zone size, then adjust if needed.',
+  'studio.field.fp.swipeLead':
+    'Show an arrow; players must swipe the opposite way.',
+  'studio.field.fp.precisionLead':
+    'Place tap targets on the phone frame. Click a target to cycle its position.',
+  'studio.field.fp.memoryLead':
+    'Build the option set, then the order players must recall.',
   'studio.field.fp.holdLead': 'Players hold two fingers for the chosen time.',
   'studio.field.fp.shakeLead': 'Pick how hard the shake challenge should feel.',
-  'studio.field.fp.tiltLead': 'Players balance the device to a target for a short hold.',
-  'studio.field.fp.audioLead': 'Players count audio pulses (with visual/haptic fallbacks).',
-  'studio.field.fp.pairLead': 'Two players must act together inside the sync window.',
-  'studio.field.fp.riskLead': 'Players pick safer vs riskier options. Higher weight = riskier outcome chance.',
+  'studio.field.fp.tiltLead':
+    'Players balance the device to a target for a short hold.',
+  'studio.field.fp.audioLead':
+    'Players count audio pulses (with visual/haptic fallbacks).',
+  'studio.field.fp.pairLead':
+    'Two players must act together inside the sync window.',
+  'studio.field.fp.riskLead':
+    'Players pick safer vs riskier options. Higher weight = riskier outcome chance.',
   'studio.field.fp.copyKeysGroup': 'Player-facing copy keys (advanced)',
   'studio.field.fp.forbiddenZone': 'Forbidden zone',
   'studio.field.fp.forbiddenZoneHint': 'Red area players must not touch',
@@ -631,9 +676,11 @@ const en = {
   'studio.field.fp.zoneWidth': 'Zone width',
   'studio.field.fp.zoneHeight': 'Zone height',
   'studio.field.fp.allowSystemGestures': 'Server options',
-  'studio.field.fp.allowSystemGesturesLabel': 'Allow system gestures (edge swipes)',
+  'studio.field.fp.allowSystemGesturesLabel':
+    'Allow system gestures (edge swipes)',
   'studio.field.fp.displayedDirection': 'Arrow shown to player',
-  'studio.field.fp.displayedDirectionHint': 'Required swipe is the opposite direction (auto)',
+  'studio.field.fp.displayedDirectionHint':
+    'Required swipe is the opposite direction (auto)',
   'studio.field.fp.direction.up': 'Up',
   'studio.field.fp.direction.down': 'Down',
   'studio.field.fp.direction.left': 'Left',
@@ -645,16 +692,19 @@ const en = {
   'studio.field.fp.attemptCount': 'Attempts allowed',
   'studio.field.fp.attemptCountHint': 'How many taps before failure',
   'studio.field.fp.targets': 'Tap targets',
-  'studio.field.fp.targetsHint': 'Click a numbered target to move it to the next preset spot',
+  'studio.field.fp.targetsHint':
+    'Click a numbered target to move it to the next preset spot',
   'studio.field.fp.targetId': 'Target ID',
   'studio.field.fp.addTarget': 'Add target',
   'studio.field.fp.removeTarget': 'Remove last',
   'studio.field.fp.optionKeys': 'Available options',
   'studio.field.fp.optionKeysHint': 'Tiles players can choose from',
   'studio.field.fp.sequence': 'Correct sequence',
-  'studio.field.fp.sequenceHint': 'Order players must replay — tap options below to append',
+  'studio.field.fp.sequenceHint':
+    'Order players must replay — tap options below to append',
   'studio.field.fp.previewMs': 'Memorize time',
-  'studio.field.fp.previewMsHint': 'How long the sequence is shown before input',
+  'studio.field.fp.previewMsHint':
+    'How long the sequence is shown before input',
   'studio.field.fp.requiredContacts': 'Fingers required',
   'studio.field.fp.holdMs': 'Hold duration',
   'studio.field.fp.holdMsHint': 'How long both fingers must stay down',
@@ -664,14 +714,16 @@ const en = {
   'studio.field.fp.requiredShakeCount': 'Required shakes',
   'studio.field.fp.noiseThreshold': 'Noise threshold',
   'studio.field.fp.shakeDifficulty': 'Shake difficulty',
-  'studio.field.fp.shakeDifficultyHint': 'Sets shake count and sensitivity together',
+  'studio.field.fp.shakeDifficultyHint':
+    'Sets shake count and sensitivity together',
   'studio.field.fp.targetX': 'Target X',
   'studio.field.fp.targetY': 'Target Y',
   'studio.field.fp.tiltTarget': 'Balance target',
   'studio.field.fp.tiltTargetHint': 'Where the device should be leveled',
   'studio.field.fp.tiltHoldHint': 'How long the balance must be held',
   'studio.field.fp.varianceTolerance': 'Forgiveness',
-  'studio.field.fp.varianceToleranceHint': 'Higher = easier to stay in the target range',
+  'studio.field.fp.varianceToleranceHint':
+    'Higher = easier to stay in the target range',
   'studio.field.fp.visualFallbackKey': 'Visual fallback copy',
   'studio.field.fp.hapticFallbackKey': 'Haptic fallback copy',
   'studio.field.fp.pulseCount': 'Number of pulses',
@@ -679,31 +731,75 @@ const en = {
   'studio.field.fp.partnerRoleKeys': 'Partner roles',
   'studio.field.fp.partnerRoleKeysHint': 'Roles assigned to the two players',
   'studio.field.fp.syncWindowMs': 'Sync window',
-  'studio.field.fp.syncWindowHint': 'How closely both players must act together',
+  'studio.field.fp.syncWindowHint':
+    'How closely both players must act together',
   'studio.field.fp.riskWeights': 'Risk weights',
-  'studio.field.fp.riskOptionsHint': 'Add safer and riskier choices, then set relative risk',
-  'studio.field.fp.fogWipeLead': 'Players wipe fog to reveal an image. Pick reveal variants, brush size, and win clearance.',
+  'studio.field.fp.riskOptionsHint':
+    'Add safer and riskier choices, then set relative risk',
+  'studio.field.fp.fogWipeLead':
+    'Players wipe fog to reveal an image. Pick reveal variants, brush size, and win clearance.',
   'studio.field.fp.revealContentVariants': 'Reveal image variants',
-  'studio.field.fp.revealContentVariantsHint': 'First variant is the active reveal (synced to assetIds.revealContent)',
+  'studio.field.fp.revealContentVariantsHint':
+    'First variant is the active reveal (synced to assetIds.revealContent)',
   'studio.field.fp.revealVariantCustom': 'Custom reveal asset ID',
   'studio.field.fp.revealVariantAdd': 'Add variant',
   'studio.field.fp.brushDiameterNorm': 'Brush size',
-  'studio.field.fp.brushDiameterHint': 'Wipe brush diameter relative to the panel',
+  'studio.field.fp.brushDiameterHint':
+    'Wipe brush diameter relative to the panel',
   'studio.field.fp.brushFeatherNorm': 'Brush soft edge',
-  'studio.field.fp.brushFeatherHint': 'Feather softness as a fraction of brush radius',
+  'studio.field.fp.brushFeatherHint':
+    'Feather softness as a fraction of brush radius',
   'studio.field.fp.clearanceRatioMin': 'Win clearance',
-  'studio.field.fp.clearanceRatioHint': 'How much fog must be cleared to succeed',
+  'studio.field.fp.clearanceRatioHint':
+    'How much fog must be cleared to succeed',
   'studio.field.fp.fogUploadGroup': 'Upload reveal image',
   'studio.field.fp.fogUploadAssetId': 'New asset ID',
-  'studio.field.fp.fogUploadAssetIdHint': 'e.g. fog_wipe.reveal.my_image — lowercase, dots, dashes',
-  'studio.field.fp.fogUploadAssetIdRequired': 'Asset ID is required before uploading',
+  'studio.field.fp.fogUploadAssetIdHint':
+    'e.g. fog_wipe.reveal.my_image — lowercase, dots, dashes',
+  'studio.field.fp.fogUploadAssetIdRequired':
+    'Asset ID is required before uploading',
   'studio.field.fp.fogUploadFile': 'Image file',
-  'studio.field.fp.fogUploadHint': 'PNG preferred. Server resizes to 720×720 and clears near-black.',
+  'studio.field.fp.fogUploadHint':
+    'PNG preferred. Server resizes to 720×720 and clears near-black.',
   'studio.field.fp.fogUploading': 'Uploading…',
+  'studio.field.fp.geoLead':
+    'Players see one map and tap the country you ask for. Add, edit, or remove questions per map, and pick the correct country for each. Maps with no questions are skipped. If every question is removed, every country on every map is used.',
+  'studio.field.fp.geoCorrectAnswer': 'Correct country',
+  'studio.field.fp.geoAddQuestion': 'Add question',
+  'studio.field.fp.geoAddRemaining': 'Add remaining countries',
+  'studio.field.fp.geoRemoveQuestion': 'Remove',
+  'studio.field.fp.geoNoMaps': 'This challenge has no maps yet.',
+  'studio.field.fp.geoEmptyMap':
+    'No questions on this map. It will not be used until you add one.',
   'studio.field.fp.footerKey': 'Footer copy',
   'studio.field.fp.advancedExport': 'Advanced export (read-only)',
-  'studio.field.fp.unknownEngine': 'Unknown engine — no parameter form available.',
-  'studio.field.fp.behaviorNote': 'Input rules come from the engine parameters above — nothing extra to set here.',
+  'studio.field.fp.unknownEngine':
+    'Unknown engine — no parameter form available.',
+  'studio.field.fp.behaviorNote':
+    'Input rules come from the engine parameters above — nothing extra to set here.',
+
+  'studio.geo.map.africa': 'North Africa',
+  'studio.geo.map.gcc': 'Gulf (GCC)',
+  'studio.geo.map.gcc_mena': 'Levant + Gulf',
+  'studio.geo.map.levant': 'Levant',
+  'studio.geo.country.mauritania': 'Mauritania',
+  'studio.geo.country.algeria': 'Algeria',
+  'studio.geo.country.morocco': 'Morocco',
+  'studio.geo.country.tunisia': 'Tunisia',
+  'studio.geo.country.libya': 'Libya',
+  'studio.geo.country.egypt': 'Egypt',
+  'studio.geo.country.sudan': 'Sudan',
+  'studio.geo.country.saudi_arabia': 'Saudi Arabia',
+  'studio.geo.country.kuwait': 'Kuwait',
+  'studio.geo.country.bahrain': 'Bahrain',
+  'studio.geo.country.qatar': 'Qatar',
+  'studio.geo.country.uae': 'United Arab Emirates',
+  'studio.geo.country.oman': 'Oman',
+  'studio.geo.country.yemen': 'Yemen',
+  'studio.geo.country.jordan': 'Jordan',
+  'studio.geo.country.syria': 'Syria',
+  'studio.geo.country.lebanon': 'Lebanon',
+  'studio.geo.country.palestine': 'Palestine',
 
   'studio.asset.fogRevealContent': 'Fog wipe default reveal',
   'studio.asset.fogDensity': 'Fog density layer',
@@ -713,6 +809,7 @@ const en = {
   'studio.asset.fogWetSmudge': 'Fog wet smudge mask',
   'studio.asset.fogGlassReflections': 'Fog glass reflections',
   'studio.asset.fogSwipeSfx': 'Fog swipe sound',
+  'studio.asset.cableUntangleSwingSfx': 'Cable untangle swing sound',
   'studio.asset.fogRevealPetsev': 'Petsev',
   'studio.asset.fogRevealGtaVi': 'GTA VI',
   'studio.asset.fogRevealSnowman': 'Snowman',
@@ -731,7 +828,8 @@ const en = {
   'studio.preview.unsupported': 'Unsupported',
   'studio.preview.testData': 'Test data',
   'studio.preview.rtlDefault': 'RTL default',
-  'studio.preview.noChallenge': 'No challenge loaded. Open the editor to preview.',
+  'studio.preview.noChallenge':
+    'No challenge loaded. Open the editor to preview.',
 
   // Catalog composer
   'studio.catalog.title': 'Catalog composer',
@@ -784,7 +882,8 @@ const en = {
   // Analytics
   'studio.analytics.title': 'Challenge analytics',
   'studio.analytics.subtitle': 'Per-challenge performance metrics and insights',
-  'studio.analytics.empty': 'Analytics data is not available yet. Metrics will appear once challenges are played.',
+  'studio.analytics.empty':
+    'Analytics data is not available yet. Metrics will appear once challenges are played.',
 
   // Operations
   'studio.ops.title': 'Operations',
@@ -862,9 +961,12 @@ const en = {
   'studio.validation.missingArabic': 'Arabic content is required',
 
   // Permissions
-  'studio.permissions.cannotDraft': 'You do not have permission to create drafts',
-  'studio.permissions.cannotReview': 'You do not have permission to review content',
-  'studio.permissions.cannotPublish': 'You do not have permission to publish content',
+  'studio.permissions.cannotDraft':
+    'You do not have permission to create drafts',
+  'studio.permissions.cannotReview':
+    'You do not have permission to review content',
+  'studio.permissions.cannotPublish':
+    'You do not have permission to publish content',
   'studio.permissions.readOnly': 'You have read-only access to this section',
 
   'profile.title': 'Profile',
@@ -926,9 +1028,9 @@ const en = {
   'errors.INTERNAL_ERROR': 'An unexpected error occurred',
 
   'studio.field.payload': 'Release payload',
-  'studio.field.payloadHint': 'Structured JSON for this release kind. Version label is set above.',
+  'studio.field.payloadHint':
+    'Structured JSON for this release kind. Version label is set above.',
 } as const;
 
 export default en;
 export type MessageKey = keyof typeof en;
-

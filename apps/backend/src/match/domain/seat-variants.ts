@@ -1,5 +1,6 @@
 import { randomBytes, randomInt } from 'node:crypto';
 
+import { readGeographyQuestionBank } from './engines/pack-31-evaluators';
 import type { ChallengeDefinition, ChallengeRound } from './types';
 
 export type TiltTargetShape = 'circle' | 'square' | 'diamond' | 'heart';
@@ -219,10 +220,7 @@ export function assignSeatVariants(
   }
 
   if (challenge.engineId === 'reaction.wait_for_signal') {
-    const { min, max } = signalDelayRangeMs(
-      challenge.definition,
-      ids.length,
-    );
+    const { min, max } = signalDelayRangeMs(challenge.definition, ids.length);
     for (const playerId of ids) {
       const delayMs = min === max ? min : randomInt(min, max + 1);
       seats.set(playerId, {
@@ -325,13 +323,28 @@ export function assignSeatVariants(
           (r): r is { regionId: string; labelKey: string } =>
             !!r &&
             typeof r === 'object' &&
-            typeof (r as { regionId?: unknown }).regionId === 'string',
+            typeof (r as { regionId?: unknown }).regionId === 'string' &&
+            typeof (r as { labelKey?: unknown }).labelKey === 'string',
         )
       : [];
-    if (regions.length === 0) {
+    const mapId =
+      typeof challenge.definition.serverConfig['mapId'] === 'string'
+        ? challenge.definition.serverConfig['mapId']
+        : null;
+    const mapQuestions = readGeographyQuestionBank(
+      challenge.definition.serverConfig,
+    ).filter((q) => (mapId ? q.mapId === mapId : true));
+    const pool =
+      mapQuestions.length > 0
+        ? mapQuestions.map((q) => ({
+            regionId: q.targetRegionId,
+            labelKey: q.targetLabelKey,
+          }))
+        : regions;
+    if (pool.length === 0) {
       return seats;
     }
-    const deck = [...regions];
+    const deck = [...pool];
     for (let i = deck.length - 1; i > 0; i -= 1) {
       const j = randomInt(0, i + 1);
       const tmp = deck[i]!;
@@ -460,14 +473,15 @@ export function assignSeatVariants(
       return seats;
     }
     const base = { ...(baseAssetIds as Record<string, unknown>) };
-    const variantsRaw = challenge.definition.serverConfig['revealContentVariants'];
+    const variantsRaw =
+      challenge.definition.serverConfig['revealContentVariants'];
     const pool = Array.isArray(variantsRaw)
-      ? variantsRaw.filter((id): id is string => typeof id === 'string' && id.length > 0)
+      ? variantsRaw.filter(
+          (id): id is string => typeof id === 'string' && id.length > 0,
+        )
       : [];
     const fallback =
-      typeof base['revealContent'] === 'string'
-        ? [base['revealContent']]
-        : [];
+      typeof base['revealContent'] === 'string' ? [base['revealContent']] : [];
     const deck = [...(pool.length > 0 ? pool : fallback)];
     if (deck.length === 0) {
       return seats;
@@ -523,10 +537,7 @@ export function nextSeatSignalDelayMs(
   }
   let earliest: number | null = null;
   for (const seat of challenge.seatVariants.values()) {
-    if (
-      seat.signalPhase !== 'waiting_signal' ||
-      seat.signalAtMonoMs == null
-    ) {
+    if (seat.signalPhase !== 'waiting_signal' || seat.signalAtMonoMs == null) {
       continue;
     }
     const remaining = seat.signalAtMonoMs - nowMonoMs;

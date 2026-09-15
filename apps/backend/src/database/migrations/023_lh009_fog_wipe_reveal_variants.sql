@@ -1,9 +1,10 @@
 -- LH-009: fog wipe per-seat reveal image variants (content-pack assets).
+-- UUIDs must not collide with 022 circuit rotation (…cc27 / …dd27 / …aa23).
 DO $$
 DECLARE
   v_tid uuid;
-  v_vid uuid := 'dddddddd-dddd-4ddd-8ddd-dddddddddd27';
-  v_catalog_release_id uuid := 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaa23';
+  v_vid uuid := 'dddddddd-dddd-4ddd-8ddd-dddddddddd29';
+  v_catalog_release_id uuid := 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaa25';
   v_current_catalog jsonb;
   v_entries jsonb;
   v_def jsonb;

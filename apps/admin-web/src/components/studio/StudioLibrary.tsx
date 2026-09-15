@@ -44,6 +44,13 @@ const ENGINE_FAMILY_FILTERS: { value: string; labelKey: MessageKey }[] = [
   { value: 'audio', labelKey: 'studio.catalog.category.audio' },
   { value: 'social', labelKey: 'studio.catalog.category.social' },
   { value: 'tactical', labelKey: 'studio.catalog.category.tactical' },
+  { value: 'trivia', labelKey: 'studio.catalog.category.trivia' },
+  { value: 'geography', labelKey: 'studio.catalog.category.geography' },
+  { value: 'focus', labelKey: 'studio.catalog.category.focus' },
+  { value: 'order', labelKey: 'studio.catalog.category.order' },
+  { value: 'precision', labelKey: 'studio.catalog.category.precision' },
+  { value: 'logic', labelKey: 'studio.catalog.category.logic' },
+  { value: 'search', labelKey: 'studio.catalog.category.search' },
 ];
 
 type StudioLibraryProps = {

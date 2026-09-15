@@ -1,0 +1,346 @@
+{
+  "definitionId": "precision.cable_untangle.dev",
+  "definitionVersion": 1,
+  "engineId": "precision.cable_untangle",
+  "durationMs": 8000,
+  "heartPenaltyOnFailure": 1,
+  "energyRewardOnSuccess": 1,
+  "promptKey": "challenge.cable_untangle.intro",
+  "choiceKeys": [],
+  "clientConfig": {
+    "categoryKey": "challenge.category.precision",
+    "titleKey": "challenge.cable_untangle.intro",
+    "promptKey": "challenge.cable_untangle.prompt",
+    "footerKey": "challenge.cable_untangle.footer",
+    "layout": {
+      "leftColumnX": 0.12,
+      "rightColumnX": 0.88,
+      "topPadding": 0.1,
+      "bottomPadding": 0.1
+    },
+    "sockets": {
+      "left": [
+        {
+          "id": "left-1",
+          "order": 0
+        },
+        {
+          "id": "left-2",
+          "order": 1
+        },
+        {
+          "id": "left-3",
+          "order": 2
+        },
+        {
+          "id": "left-4",
+          "order": 3
+        }
+      ],
+      "right": [
+        {
+          "id": "right-1",
+          "order": 0
+        },
+        {
+          "id": "right-2",
+          "order": 1
+        },
+        {
+          "id": "right-3",
+          "order": 2
+        },
+        {
+          "id": "right-4",
+          "order": 3
+        }
+      ]
+    },
+    "cables": [
+      {
+        "id": "cable-1",
+        "leftSocketId": "left-1",
+        "initialRightSocketId": "right-3"
+      },
+      {
+        "id": "cable-2",
+        "leftSocketId": "left-2",
+        "initialRightSocketId": "right-1"
+      },
+      {
+        "id": "cable-3",
+        "leftSocketId": "left-3",
+        "initialRightSocketId": "right-4"
+      },
+      {
+        "id": "cable-4",
+        "leftSocketId": "left-4",
+        "initialRightSocketId": "right-2"
+      }
+    ],
+    "theme": {
+      "backgroundColor": "#07131D",
+      "gridColor": "#143143",
+      "cableColor": "#69E7FF",
+      "cableCoreColor": "#E8FCFF",
+      "socketColor": "#91EFFF"
+    },
+    "snapRadiusNorm": 0.08,
+    "mirrorHorizontally": false,
+    "assetIds": {
+      "swingSfx": "cable_untangle.swing"
+    }
+  },
+  "serverConfig": {
+    "layout": {
+      "leftColumnX": 0.12,
+      "rightColumnX": 0.88,
+      "topPadding": 0.1,
+      "bottomPadding": 0.1
+    },
+    "sockets": {
+      "left": [
+        {
+          "id": "left-1",
+          "order": 0
+        },
+        {
+          "id": "left-2",
+          "order": 1
+        },
+        {
+          "id": "left-3",
+          "order": 2
+        },
+        {
+          "id": "left-4",
+          "order": 3
+        }
+      ],
+      "right": [
+        {
+          "id": "right-1",
+          "order": 0
+        },
+        {
+          "id": "right-2",
+          "order": 1
+        },
+        {
+          "id": "right-3",
+          "order": 2
+        },
+        {
+          "id": "right-4",
+          "order": 3
+        }
+      ]
+    },
+    "cables": [
+      {
+        "id": "cable-1",
+        "leftSocketId": "left-1",
+        "initialRightSocketId": "right-3"
+      },
+      {
+        "id": "cable-2",
+        "leftSocketId": "left-2",
+        "initialRightSocketId": "right-1"
+      },
+      {
+        "id": "cable-3",
+        "leftSocketId": "left-3",
+        "initialRightSocketId": "right-4"
+      },
+      {
+        "id": "cable-4",
+        "leftSocketId": "left-4",
+        "initialRightSocketId": "right-2"
+      }
+    ],
+    "theme": {
+      "backgroundColor": "#07131D",
+      "gridColor": "#143143",
+      "cableColor": "#69E7FF",
+      "cableCoreColor": "#E8FCFF",
+      "socketColor": "#91EFFF"
+    },
+    "snapRadiusNorm": 0.08,
+    "mirrorHorizontally": false,
+    "variants": [
+      {
+        "layout": {
+          "leftColumnX": 0.12,
+          "rightColumnX": 0.88,
+          "topPadding": 0.1,
+          "bottomPadding": 0.1
+        },
+        "sockets": {
+          "left": [
+            {
+              "id": "left-1",
+              "order": 0
+            },
+            {
+              "id": "left-2",
+              "order": 1
+            },
+            {
+              "id": "left-3",
+              "order": 2
+            },
+            {
+              "id": "left-4",
+              "order": 3
+            }
+          ],
+          "right": [
+            {
+              "id": "right-1",
+              "order": 0
+            },
+            {
+              "id": "right-2",
+              "order": 1
+            },
+            {
+              "id": "right-3",
+              "order": 2
+            },
+            {
+              "id": "right-4",
+              "order": 3
+            }
+          ]
+        },
+        "cables": [
+          {
+            "id": "cable-1",
+            "leftSocketId": "left-1",
+            "initialRightSocketId": "right-3"
+          },
+          {
+            "id": "cable-2",
+            "leftSocketId": "left-2",
+            "initialRightSocketId": "right-1"
+          },
+          {
+            "id": "cable-3",
+            "leftSocketId": "left-3",
+            "initialRightSocketId": "right-4"
+          },
+          {
+            "id": "cable-4",
+            "leftSocketId": "left-4",
+            "initialRightSocketId": "right-2"
+          }
+        ]
+      },
+      {
+        "layout": {
+          "leftColumnX": 0.12,
+          "rightColumnX": 0.88,
+          "topPadding": 0.1,
+          "bottomPadding": 0.1
+        },
+        "sockets": {
+          "left": [
+            {
+              "id": "left-1",
+              "order": 0
+            },
+            {
+              "id": "left-2",
+              "order": 1
+            },
+            {
+              "id": "left-3",
+              "order": 2
+            },
+            {
+              "id": "left-4",
+              "order": 3
+            },
+            {
+              "id": "left-5",
+              "order": 4
+            }
+          ],
+          "right": [
+            {
+              "id": "right-1",
+              "order": 0
+            },
+            {
+              "id": "right-2",
+              "order": 1
+            },
+            {
+              "id": "right-3",
+              "order": 2
+            },
+            {
+              "id": "right-4",
+              "order": 3
+            },
+            {
+              "id": "right-5",
+              "order": 4
+            }
+          ]
+        },
+        "cables": [
+          {
+            "id": "cable-1",
+            "leftSocketId": "left-1",
+            "initialRightSocketId": "right-3"
+          },
+          {
+            "id": "cable-2",
+            "leftSocketId": "left-2",
+            "initialRightSocketId": "right-1"
+          },
+          {
+            "id": "cable-3",
+            "leftSocketId": "left-3",
+            "initialRightSocketId": "right-5"
+          },
+          {
+            "id": "cable-4",
+            "leftSocketId": "left-4",
+            "initialRightSocketId": "right-4"
+          },
+          {
+            "id": "cable-5",
+            "leftSocketId": "left-5",
+            "initialRightSocketId": "right-2"
+          }
+        ]
+      }
+    ],
+    "assetIds": {
+      "swingSfx": "cable_untangle.swing"
+    }
+  },
+  "internalTitle": "Cable untangle",
+  "familyId": "precision",
+  "categoryId": "precision.cable_untangle",
+  "difficulty": "medium",
+  "instructionAr": "اسحب رأس كابل إلى نقطة أخرى لتبديلهما حتى لا تتقاطع الكوابل",
+  "eligibleModes": [
+    "quick_survival",
+    "private",
+    "training",
+    "dev"
+  ],
+  "selectionWeight": 100,
+  "repetitionCooldownRounds": 1,
+  "minAppVersion": "0.0.0",
+  "requiredCapabilities": [
+    "touch"
+  ],
+  "accessibilityFallbackKey": "challenge.cable_untangle.a11y_fallback",
+  "requiredAssetIds": [
+    "cable_untangle.swing"
+  ]
+}

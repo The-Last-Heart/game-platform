@@ -1,3 +1,6 @@
+import { validateEngineConfigs } from '@thelastheart/contracts';
+import { assignSeatVariants } from '../seat-variants';
+import type { ChallengeDefinition, ChallengeRound } from '../types';
 import {
   CircuitRotationEvaluator,
   FocusOddOneOutEvaluator,
@@ -13,8 +16,6 @@ import {
   loadGeographyMaps,
   materializePack31Round,
 } from './pack-31-evaluators';
-import { assignSeatVariants } from '../seat-variants';
-import type { ChallengeDefinition, ChallengeRound } from '../types';
 
 function def(
   engineId: string,
@@ -402,6 +403,12 @@ describe('pack-31 materialize + geography seats', () => {
       labelKey: string;
     }>;
     expect(regions.length).toBeGreaterThan(1);
+    const targetId = definition.serverConfig['targetRegionId'] as string;
+    const targetLabel = definition.clientConfig['targetLabelKey'] as string;
+    expect(regions.some((r) => r.regionId === targetId)).toBe(true);
+    expect(regions.find((r) => r.regionId === targetId)?.labelKey).toBe(
+      targetLabel,
+    );
 
     const challenge = {
       challengeInstanceId: 'c1',
@@ -427,6 +434,280 @@ describe('pack-31 materialize + geography seats', () => {
     for (const seat of seats.values()) {
       expect(seat.clientOverlay['targetRegionId']).toBeUndefined();
       expect(seat.clientOverlay['targetLabelKey']).toBeTruthy();
+      const regionId = seat.serverOverlay['targetRegionId'] as string;
+      expect(regions.find((r) => r.regionId === regionId)?.labelKey).toBe(
+        seat.clientOverlay['targetLabelKey'],
+      );
     }
+  });
+
+  it('replaces a leftover target that is not on the chosen map', () => {
+    const definition = def(
+      'geography.select_on_map',
+      {
+        targetRegionId: 'mauritania',
+        maps: [
+          {
+            mapId: 'map.levant',
+            assetId: 'map.levant',
+            imageWidth: 10,
+            imageHeight: 10,
+            regions: [
+              {
+                regionId: 'jordan',
+                labelKey: 'geo.country.jordan',
+                polygon: [
+                  { x: 0, y: 0 },
+                  { x: 1, y: 0 },
+                  { x: 0, y: 1 },
+                ],
+              },
+            ],
+          },
+        ],
+      },
+      {
+        categoryKey: 'challenge.category.geography',
+        promptKey: 'challenge.map.prompt',
+        mapId: 'x',
+        assetId: 'x',
+        imageWidth: 10,
+        imageHeight: 10,
+        targetLabelKey: 'geo.country.mauritania',
+        regions: [],
+      },
+    );
+    materializePack31Round(definition);
+    expect(definition.serverConfig['targetRegionId']).toBe('jordan');
+    expect(definition.clientConfig['targetLabelKey']).toBe(
+      'geo.country.jordan',
+    );
+  });
+
+  it('picks only maps that have curated questions', () => {
+    const levant = {
+      mapId: 'map.levant',
+      assetId: 'map.levant',
+      imageWidth: 10,
+      imageHeight: 10,
+      regions: [
+        {
+          regionId: 'jordan',
+          labelKey: 'geo.country.jordan',
+          polygon: [
+            { x: 0, y: 0 },
+            { x: 1, y: 0 },
+            { x: 0, y: 1 },
+          ],
+        },
+        {
+          regionId: 'syria',
+          labelKey: 'geo.country.syria',
+          polygon: [
+            { x: 1, y: 1 },
+            { x: 2, y: 1 },
+            { x: 1, y: 2 },
+          ],
+        },
+      ],
+    };
+    const africa = {
+      mapId: 'map.africa',
+      assetId: 'map.africa',
+      imageWidth: 10,
+      imageHeight: 10,
+      regions: [
+        {
+          regionId: 'egypt',
+          labelKey: 'geo.country.egypt',
+          polygon: [
+            { x: 0, y: 0 },
+            { x: 1, y: 0 },
+            { x: 0, y: 1 },
+          ],
+        },
+      ],
+    };
+    for (let i = 0; i < 12; i += 1) {
+      const definition = def(
+        'geography.select_on_map',
+        {
+          maps: [africa, levant],
+          questions: [
+            {
+              mapId: 'map.levant',
+              targetRegionId: 'jordan',
+              targetLabelKey: 'geo.country.jordan',
+            },
+          ],
+          targetRegionId: 'egypt',
+        },
+        {
+          categoryKey: 'challenge.category.geography',
+          promptKey: 'challenge.map.prompt',
+          mapId: 'x',
+          assetId: 'x',
+          imageWidth: 10,
+          imageHeight: 10,
+          targetLabelKey: 'geo.country.egypt',
+          regions: [],
+        },
+      );
+      materializePack31Round(definition);
+      expect(definition.serverConfig['mapId']).toBe('map.levant');
+      expect(definition.serverConfig['targetRegionId']).toBe('jordan');
+      expect(definition.clientConfig['targetLabelKey']).toBe(
+        'geo.country.jordan',
+      );
+    }
+  });
+
+  it('assigns seats only from the curated question bank on the chosen map', () => {
+    const definition = def(
+      'geography.select_on_map',
+      {
+        mapId: 'map.levant',
+        maps: [
+          {
+            mapId: 'map.levant',
+            assetId: 'map.levant',
+            imageWidth: 10,
+            imageHeight: 10,
+            regions: [
+              {
+                regionId: 'jordan',
+                labelKey: 'geo.country.jordan',
+                polygon: [
+                  { x: 0, y: 0 },
+                  { x: 1, y: 0 },
+                  { x: 0, y: 1 },
+                ],
+              },
+              {
+                regionId: 'syria',
+                labelKey: 'geo.country.syria',
+                polygon: [
+                  { x: 1, y: 1 },
+                  { x: 2, y: 1 },
+                  { x: 1, y: 2 },
+                ],
+              },
+              {
+                regionId: 'lebanon',
+                labelKey: 'geo.country.lebanon',
+                polygon: [
+                  { x: 2, y: 2 },
+                  { x: 3, y: 2 },
+                  { x: 2, y: 3 },
+                ],
+              },
+            ],
+          },
+        ],
+        questions: [
+          {
+            mapId: 'map.levant',
+            targetRegionId: 'jordan',
+            targetLabelKey: 'geo.country.jordan',
+          },
+          {
+            mapId: 'map.levant',
+            targetRegionId: 'syria',
+            targetLabelKey: 'geo.country.syria',
+          },
+        ],
+        regions: [
+          {
+            regionId: 'jordan',
+            labelKey: 'geo.country.jordan',
+          },
+          {
+            regionId: 'syria',
+            labelKey: 'geo.country.syria',
+          },
+          {
+            regionId: 'lebanon',
+            labelKey: 'geo.country.lebanon',
+          },
+        ],
+      },
+      {
+        categoryKey: 'challenge.category.geography',
+        promptKey: 'challenge.map.prompt',
+        mapId: 'map.levant',
+        assetId: 'map.levant',
+        imageWidth: 10,
+        imageHeight: 10,
+        targetLabelKey: 'geo.country.jordan',
+        regions: [],
+      },
+    );
+    const challenge = {
+      challengeInstanceId: 'c1',
+      definitionId: definition.definitionId,
+      definitionVersion: 1,
+      engineId: 'geography.select_on_map',
+      definition,
+      participatingPlayerIds: ['p0', 'p1', 'p2'],
+      startsAtMs: 0,
+      deadlineAtMs: 5000,
+      startsAtMonoMs: 0,
+      deadlineMonoMs: 5000,
+      submissions: new Map(),
+      roundPhase: 'answer' as const,
+    } as ChallengeRound;
+    const seats = assignSeatVariants(challenge, 0);
+    const targets = [...seats.values()].map(
+      (s) => s.serverOverlay['targetRegionId'] as string,
+    );
+    expect(targets.every((id) => id === 'jordan' || id === 'syria')).toBe(true);
+    expect(targets).not.toContain('lebanon');
+    expect(new Set(targets).size).toBe(2);
+  });
+
+  it('accepts a curated geography question bank on the engine schema', () => {
+    const region = {
+      regionId: 'jordan',
+      labelKey: 'geo.country.jordan',
+      polygon: [
+        { x: 0, y: 0 },
+        { x: 1, y: 0 },
+        { x: 0, y: 1 },
+      ],
+    };
+    const map = {
+      mapId: 'map.levant',
+      assetId: 'map.levant',
+      imageWidth: 10,
+      imageHeight: 10,
+      regions: [region],
+    };
+    const client = {
+      categoryKey: 'challenge.category.geography',
+      promptKey: 'challenge.map.prompt',
+      mapId: 'map.levant',
+      assetId: 'map.levant',
+      imageWidth: 10,
+      imageHeight: 10,
+      targetLabelKey: 'geo.country.jordan',
+      regions: [region],
+    };
+    expect(
+      validateEngineConfigs('geography.select_on_map', client, {
+        maps: [map],
+      }).engineId,
+    ).toBe('geography.select_on_map');
+    expect(
+      validateEngineConfigs('geography.select_on_map', client, {
+        maps: [map],
+        questions: [
+          {
+            mapId: 'map.levant',
+            targetRegionId: 'jordan',
+            targetLabelKey: 'geo.country.jordan',
+          },
+        ],
+      }).engineId,
+    ).toBe('geography.select_on_map');
   });
 });

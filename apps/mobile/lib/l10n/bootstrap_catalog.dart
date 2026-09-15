@@ -157,8 +157,7 @@ TranslationCatalog createBootstrapCatalog() {
         TranslationKeys.countdownAllReady: 'الجميع جاهز',
         TranslationKeys.countdownMatchStarts: 'يبدأ التحدي الآن',
         TranslationKeys.countdownChallengesStarting: 'التحديات على وشك البدء',
-        TranslationKeys.countdownChallengesStartingSub:
-            'استعد — العداد بدأ',
+        TranslationKeys.countdownChallengesStartingSub: 'استعد — العداد بدأ',
         TranslationKeys.countdownTip1Title: 'اقرأ بسرعة',
         TranslationKeys.countdownTip1Desc: 'التعليمات قد تكون خادعة',
         TranslationKeys.countdownTip2Title: 'نفّذ بدقة',
@@ -217,7 +216,7 @@ TranslationCatalog createBootstrapCatalog() {
         TranslationKeys.winnerStandings: 'الترتيب',
         TranslationKeys.winnerEnergyScore: 'النقاط',
         TranslationKeys.resultEqual: 'نتيجة التحدي: تعادل',
-        
+
         'challenge.category.trap': 'فخ',
         'challenge.category.gesture': 'إيماءة',
         'challenge.category.tap': 'لمس',
@@ -252,7 +251,8 @@ TranslationCatalog createBootstrapCatalog() {
         'challenge.shake.simulate': 'محاكاة هزّة',
         'challenge.shake.remaining': 'بقي {count}',
         'challenge.shake.hint': 'هز الهاتف بقوة واضحة عدة مرات',
-        'challenge.shake.sensor_unavailable': 'مستشعر الحركة غير متاح على هذا الجهاز',
+        'challenge.shake.sensor_unavailable':
+            'مستشعر الحركة غير متاح على هذا الجهاز',
 
         'challenge.tilt.hint': 'حرّك الهاتف بهدوء',
         'challenge.reverse_swipe.hint': 'ركّز قبل أن تسحب',
@@ -262,7 +262,6 @@ TranslationCatalog createBootstrapCatalog() {
         'challenge.direction.right': 'اليمين',
         'challenge.direction.up': 'الأعلى',
         'challenge.direction.down': 'الأسفل',
-
 
         'challenge.tilt.intro': 'أمل الجهاز',
         'challenge.tilt.prompt': 'أمل الهاتف حتى تصل الكرة للهدف',
@@ -278,7 +277,8 @@ TranslationCatalog createBootstrapCatalog() {
         'challenge.pair_sync.action': 'اضغط',
         'challenge.pair_sync.action_hold': 'اضغط باستمرار',
         'challenge.pair_sync.waiting_pair': 'بانتظار تزامن اللاعبين…',
-        'challenge.pair_sync.waiting_pair_hint': 'لست في هذا الزوج — انتظر الجولة التالية',
+        'challenge.pair_sync.waiting_pair_hint':
+            'لست في هذا الزوج — انتظر الجولة التالية',
         'challenge.pair_sync.partner_label': 'الشريك',
         'challenge.pair_sync.you_label': 'أنت',
         'challenge.pair_sync.status_ready': 'جاهز',
@@ -346,6 +346,15 @@ TranslationCatalog createBootstrapCatalog() {
             'اضغط على قطع الأنابيب لتدويرها وإكمال الدائرة',
         'result.circuit_rotation.incomplete': 'الدائرة غير مكتملة',
         'engine.precision.circuit_rotation': 'تدوير الدائرة',
+        'challenge.cable_untangle.intro': 'فك التشابك',
+        'challenge.cable_untangle.prompt':
+            'اسحب رأس كابل إلى نقطة أخرى لتبديلهما حتى لا تتقاطع الكوابل',
+        'challenge.cable_untangle.footer': 'بدّل الرؤوس حتى تتحرر الكوابل',
+        'challenge.cable_untangle.a11y_fallback':
+            'اسحب رأس كابل إلى مقبس آخر لتبديلهما',
+        'result.cable_untangle.incomplete': 'ما زالت الكوابل متقاطعة',
+        'result.cable_untangle.invalid': 'تسلسل تبديل غير صالح',
+        'engine.precision.cable_untangle': 'فك التشابك',
         'challenge.balance.intro': 'ميزان الأوزان',
         'challenge.balance.prompt': 'وازن الميزان',
         'challenge.balance.footer': 'اسحب الوزن الصحيح',
@@ -423,7 +432,6 @@ TranslationCatalog createBootstrapCatalog() {
         'result.memory.wrong': 'تسلسل خاطئ',
         'result.hold.incomplete': 'الإمساك غير مكتمل',
 
-
         TranslationKeys.commonBack: 'رجوع',
         TranslationKeys.commonNext: 'التالي',
         TranslationKeys.onboardingHeartsTitle: 'ثلاثة قلوب',
@@ -440,7 +448,8 @@ TranslationCatalog createBootstrapCatalog() {
         TranslationKeys.identitySubtitle:
             'اختر اسم العرض ولونًا مجردًا. لا حاجة لحساب.',
         TranslationKeys.identityNameLabel: 'اسم العرض',
-        TranslationKeys.identityNameInvalid: 'الاسم يجب أن يكون بين حرفين و٢٤ حرفًا',
+        TranslationKeys.identityNameInvalid:
+            'الاسم يجب أن يكون بين حرفين و٢٤ حرفًا',
         TranslationKeys.identityColorLabel: 'اللون',
         TranslationKeys.identitySave: 'حفظ والمتابعة',
         TranslationKeys.homeHelpOnboarding: 'كيف تُلعب؟',
@@ -461,7 +470,8 @@ TranslationCatalog createBootstrapCatalog() {
         TranslationKeys.privateInvalidCode: 'الرمز غير صالح أو منتهٍ',
         TranslationKeys.trainingTitle: 'وضع التدريب',
         TranslationKeys.trainingRetry: 'أعد المحاولة',
-        TranslationKeys.trainingExplain: 'انتظر الأزرق ثم اضغط. لا مكافآت تنافسية.',
+        TranslationKeys.trainingExplain:
+            'انتظر الأزرق ثم اضغط. لا مكافآت تنافسية.',
         TranslationKeys.rematchRequest: 'إعادة التحدي',
         TranslationKeys.errorsServiceUnavailable: 'الخدمة غير متاحة الآن',
         TranslationKeys.splashTagline: 'اركض مع الوقت واحمِ آخر قلب',
@@ -510,9 +520,13 @@ TranslationCatalog createBootstrapCatalog() {
         TranslationKeys.powerNarrativeStruck: 'هجوم من {attacker} على {target}',
         TranslationKeys.powerNarrativeReversed:
             '{defender} عكس الضربة نحو {attacker}',
-        TranslationKeys.powerNarrativeShielded: '{defender} دافع عن نفسه بالدرع',
+        TranslationKeys.powerNarrativeShielded:
+            '{defender} دافع عن نفسه بالدرع',
         TranslationKeys.powerNarrativeHit: '{attacker} أصاب {target}',
         TranslationKeys.powerNarrativeExpired: '{target} لم يدافع',
+        TranslationKeys.powerResultTitle: 'نتيجة الضربة',
+        TranslationKeys.powerResultYouLostHeart: 'خسرت قلباً من الضربة!',
+        TranslationKeys.powerResultYouDefended: 'صددت الضربة!',
       },
       'en': <String, String>{
         // ── Foundation ──
@@ -597,8 +611,7 @@ TranslationCatalog createBootstrapCatalog() {
         'errors.match.spectator_cannot_submit':
             'Spectators cannot submit answers',
         'errors.match.submission_late': 'Submission timed out',
-        'errors.match.submission_already_submitted':
-            'Answer already submitted',
+        'errors.match.submission_already_submitted': 'Answer already submitted',
         'errors.match.submission_progress': 'Progress recorded',
         'errors.match.already_in_match': 'You are already in a match',
         'errors.match.not_in_match': 'You are not in a match',
@@ -606,8 +619,7 @@ TranslationCatalog createBootstrapCatalog() {
         'errors.match.not_enough_players': 'Not enough players',
         'errors.match.rematch_unavailable': 'Rematch is unavailable',
         'errors.match.not_lobby': 'Room is not in lobby',
-        'errors.match.unsafe_zero_survivors':
-            'Could not end the match safely',
+        'errors.match.unsafe_zero_survivors': 'Could not end the match safely',
         'errors.room.code_invalid': 'Room code is invalid',
         'errors.room.code_expired': 'Room code has expired',
         'errors.room.full': 'Room is full',
@@ -721,7 +733,7 @@ TranslationCatalog createBootstrapCatalog() {
         TranslationKeys.winnerStandings: 'Standings',
         TranslationKeys.winnerEnergyScore: 'Score',
         TranslationKeys.resultEqual: 'Result: Equal',
-        
+
         'challenge.category.trap': 'Trap',
         'challenge.category.gesture': 'Gesture',
         'challenge.category.tap': 'Tap',
@@ -756,7 +768,8 @@ TranslationCatalog createBootstrapCatalog() {
         'challenge.shake.simulate': 'Simulate shake',
         'challenge.shake.remaining': '{count} left',
         'challenge.shake.hint': 'Shake the phone firmly several times',
-        'challenge.shake.sensor_unavailable': 'Motion sensor unavailable on this device',
+        'challenge.shake.sensor_unavailable':
+            'Motion sensor unavailable on this device',
 
         'challenge.tilt.hint': 'Move the phone gently',
         'challenge.reverse_swipe.hint': 'Focus before you pull',
@@ -767,22 +780,25 @@ TranslationCatalog createBootstrapCatalog() {
         'challenge.direction.up': 'up',
         'challenge.direction.down': 'down',
 
-
         'challenge.tilt.intro': 'Tilt the phone',
         'challenge.tilt.prompt': 'Balance the dot inside the circle',
         'challenge.audio.intro': 'Count the pulses',
         'challenge.audio.prompt': 'How many pulses did you hear?',
-        'challenge.audio.visual_fallback': 'Watch the flashes if audio is muted',
+        'challenge.audio.visual_fallback':
+            'Watch the flashes if audio is muted',
         'challenge.audio.haptic_fallback': 'Feel the vibration',
         'challenge.pair_sync.intro': 'Sync with your partner',
         'challenge.pair_sync.prompt': 'Tap together at the same moment',
-        'challenge.pair_sync.prompt_with_partner': 'Tap with {name} at the same moment',
+        'challenge.pair_sync.prompt_with_partner':
+            'Tap with {name} at the same moment',
         'challenge.pair_sync.partner_ready': 'Partner ready — tap now',
-        'challenge.pair_sync.solo_fallback': 'No partner — tap for a fair continue',
+        'challenge.pair_sync.solo_fallback':
+            'No partner — tap for a fair continue',
         'challenge.pair_sync.action': 'Tap',
         'challenge.pair_sync.action_hold': 'Press and hold',
         'challenge.pair_sync.waiting_pair': 'Waiting for the pair to sync…',
-        'challenge.pair_sync.waiting_pair_hint': 'You are not in this pair — wait for the next round',
+        'challenge.pair_sync.waiting_pair_hint':
+            'You are not in this pair — wait for the next round',
         'challenge.pair_sync.partner_label': 'Partner',
         'challenge.pair_sync.you_label': 'You',
         'challenge.pair_sync.status_ready': 'Ready',
@@ -833,9 +849,11 @@ TranslationCatalog createBootstrapCatalog() {
         'challenge.maze.prompt': 'Trace the path to the goal',
         'challenge.maze.footer': 'Do not touch walls',
         'challenge.neon_cable.intro': 'Connect the cable',
-        'challenge.neon_cable.prompt': 'Drag the blue cable to the matching port',
+        'challenge.neon_cable.prompt':
+            'Drag the blue cable to the matching port',
         'challenge.neon_cable.footer': 'Match the color',
-        'challenge.neon_cable.a11y_fallback': 'Drag the plug to the correct socket',
+        'challenge.neon_cable.a11y_fallback':
+            'Drag the plug to the correct socket',
         'result.neon_cable.wrong': 'Wrong socket',
         'challenge.fog_wipe.intro': 'Wipe the fog',
         'challenge.fog_wipe.prompt': 'Swipe to clear the glass',
@@ -851,6 +869,15 @@ TranslationCatalog createBootstrapCatalog() {
             'Tap pipe pieces to rotate them and complete the circuit',
         'result.circuit_rotation.incomplete': 'Circuit incomplete',
         'engine.precision.circuit_rotation': 'Circuit rotation',
+        'challenge.cable_untangle.intro': 'Untangle',
+        'challenge.cable_untangle.prompt':
+            'Drag a cable head onto another to swap them until no cables cross',
+        'challenge.cable_untangle.footer': 'Swap heads until cables are free',
+        'challenge.cable_untangle.a11y_fallback':
+            'Drag a cable head onto another socket to swap them',
+        'result.cable_untangle.incomplete': 'Cables still cross',
+        'result.cable_untangle.invalid': 'Invalid swap sequence',
+        'engine.precision.cable_untangle': 'Cable untangle',
         'challenge.balance.intro': 'Balance scale',
         'challenge.balance.prompt': 'Balance the scale',
         'challenge.balance.footer': 'Drag the correct weight',
@@ -928,7 +955,6 @@ TranslationCatalog createBootstrapCatalog() {
         'result.memory.wrong': 'Wrong sequence',
         'result.hold.incomplete': 'Hold incomplete',
 
-
         TranslationKeys.commonBack: 'Back',
         TranslationKeys.commonNext: 'Next',
         TranslationKeys.onboardingHeartsTitle: 'Three hearts',
@@ -972,9 +998,11 @@ TranslationCatalog createBootstrapCatalog() {
             'Wait for blue, then tap. No competitive rewards.',
         TranslationKeys.rematchRequest: 'Retry challenge',
         TranslationKeys.errorsServiceUnavailable: 'Service unavailable',
-        TranslationKeys.splashTagline: 'Race the clock and protect the last heart',
+        TranslationKeys.splashTagline:
+            'Race the clock and protect the last heart',
         TranslationKeys.splashVersion: 'Version {version}',
-        TranslationKeys.splashDownloadingAssets: 'Downloading challenge assets…',
+        TranslationKeys.splashDownloadingAssets:
+            'Downloading challenge assets…',
         TranslationKeys.splashAssetsReady: 'Assets ready',
         TranslationKeys.homeHeroSubtitle: 'Speed, focus, and survival',
         TranslationKeys.homeModesTitle: 'Game modes',
@@ -990,8 +1018,7 @@ TranslationCatalog createBootstrapCatalog() {
         'power.shield.name': 'Shield',
         'power.shield.explanation': 'Cancel an incoming attack',
         'power.reflection.name': 'Reflection',
-        'power.reflection.explanation':
-            'Return an attack to its sender once',
+        'power.reflection.explanation': 'Return an attack to its sender once',
         'power.inventory_full': 'Inventory full',
         'power.granted': 'Power unlocked',
         'power.granted.meter_ready':
@@ -1026,6 +1053,9 @@ TranslationCatalog createBootstrapCatalog() {
             '{defender} defended with a shield',
         TranslationKeys.powerNarrativeHit: '{attacker} hit {target}',
         TranslationKeys.powerNarrativeExpired: '{target} did not defend',
+        TranslationKeys.powerResultTitle: 'Strike outcome',
+        TranslationKeys.powerResultYouLostHeart: 'That strike cost you a heart!',
+        TranslationKeys.powerResultYouDefended: 'You blocked the strike!',
       },
     },
   );

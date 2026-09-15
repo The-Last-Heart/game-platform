@@ -33,13 +33,16 @@ type SocketState = {
   disconnected?: boolean;
 };
 
-const MAX_MESSAGE_BYTES = 16_384;
+/** Incoming command cap (DoS). Outgoing snapshots can be larger (maps). */
+const MAX_INCOMING_COMMAND_BYTES = 16_384;
+/** Socket.IO applies this to inbound AND outbound packets. */
+const MAX_SOCKET_PACKET_BYTES = 1_048_576;
 
 @WebSocketGateway({
   cors: {
     origin: false,
   },
-  maxHttpBufferSize: MAX_MESSAGE_BYTES,
+  maxHttpBufferSize: MAX_SOCKET_PACKET_BYTES,
 })
 export class MatchGateway
   implements
@@ -188,7 +191,7 @@ export class MatchGateway
     let commandId: string | undefined;
     try {
       const size = Buffer.byteLength(JSON.stringify(body ?? {}), 'utf8');
-      if (size > MAX_MESSAGE_BYTES) {
+      if (size > MAX_INCOMING_COMMAND_BYTES) {
         this.emitError(
           client,
           'INVALID_PAYLOAD',
@@ -682,10 +685,12 @@ export class MatchGateway
       return;
     }
     if (!this.ownsLease(client, state.matchId, state.playerId)) {
-      this.emitError(client, 'UNAUTHORIZED', 'errors.protocol.unauthorized', {
-        commandId,
-      });
-      return;
+      if (!this.tryReclaimLease(client, state.matchId, state.playerId)) {
+        this.emitError(client, 'UNAUTHORIZED', 'errors.protocol.unauthorized', {
+          commandId,
+        });
+        return;
+      }
     }
     const result = await this.matches.requestSnapshot(matchId, state.playerId);
     this.emitToClient(client, MessageTypes.MatchSnapshot, result.snapshot, {
@@ -1365,18 +1370,19 @@ export class MatchGateway
         continue;
       }
       if (event.kind === 'challenge_started') {
+        // Always room-broadcast start so countdown clients leave "0" even if a
+        // connection lease is stale. Personalized overlays follow per lease.
+        this.server.to(room).emit('event', {
+          schemaVersion: REALTIME_SCHEMA_VERSION,
+          type: MessageTypes.ChallengeStarted,
+          messageId: randomUUID(),
+          matchId: broadcast.matchId,
+          serverSequence: event.sequence,
+          serverTimestampMs: event.serverTimestampMs,
+          payload: toPublicChallengeView(event.challenge, event.serverNowMs),
+        });
         if (broadcast.personalizeSeats) {
           this.emitPersonalizedChallengeStarted(broadcast.matchId, event);
-        } else {
-          this.server.to(room).emit('event', {
-            schemaVersion: REALTIME_SCHEMA_VERSION,
-            type: MessageTypes.ChallengeStarted,
-            messageId: randomUUID(),
-            matchId: broadcast.matchId,
-            serverSequence: event.sequence,
-            serverTimestampMs: event.serverTimestampMs,
-            payload: toPublicChallengeView(event.challenge, event.serverNowMs),
-          });
         }
       } else if (event.kind === 'challenge_signal') {
         const payload = {
@@ -1620,9 +1626,7 @@ export class MatchGateway
     for (const [key, socketId] of this.connectionLeases) {
       if (!key.startsWith(`${matchId}:`)) continue;
       const playerId = key.slice(matchId.length + 1);
-      const socket = this.server?.sockets?.sockets?.get(socketId);
-      if (!socket) continue;
-      socket.emit('event', {
+      this.emitSocketEvent(socketId, {
         schemaVersion: REALTIME_SCHEMA_VERSION,
         type: MessageTypes.ChallengeStarted,
         messageId: randomUUID(),
@@ -1643,10 +1647,8 @@ export class MatchGateway
     for (const [key, socketId] of this.connectionLeases) {
       if (!key.startsWith(`${broadcast.matchId}:`)) continue;
       const playerId = key.slice(broadcast.matchId.length + 1);
-      const socket = this.server?.sockets?.sockets?.get(socketId);
-      if (!socket) continue;
       const snapshot = byPlayer[playerId] ?? broadcast.snapshot;
-      socket.emit('event', {
+      this.emitSocketEvent(socketId, {
         schemaVersion: REALTIME_SCHEMA_VERSION,
         type: MessageTypes.MatchSnapshot,
         messageId: randomUUID(),
@@ -1665,8 +1667,20 @@ export class MatchGateway
   ): void {
     const socketId = this.connectionLeases.get(this.leaseKey(matchId, playerId));
     if (!socketId) return;
+    this.emitSocketEvent(socketId, envelope);
+  }
+
+  /** Prefer the live Socket map; fall back to the socket-id room. */
+  private emitSocketEvent(
+    socketId: string,
+    envelope: Record<string, unknown>,
+  ): void {
     const socket = this.server?.sockets?.sockets?.get(socketId);
-    socket?.emit('event', envelope);
+    if (socket) {
+      socket.emit('event', envelope);
+      return;
+    }
+    this.server?.to(socketId)?.emit('event', envelope);
   }
 
   private emitToClient(
@@ -1975,6 +1989,30 @@ export class MatchGateway
     return (
       this.connectionLeases.get(this.leaseKey(matchId, playerId)) === client.id
     );
+  }
+
+  /**
+   * Rebind a live socket whose lease was dropped (reconnect / adapter miss)
+   * so snapshot recovery can still leave ready_countdown.
+   */
+  private tryReclaimLease(
+    client: Socket,
+    matchId: string,
+    playerId: string,
+  ): boolean {
+    if (this.isSocketGone(client)) {
+      return false;
+    }
+    const key = this.leaseKey(matchId, playerId);
+    const ownerId = this.connectionLeases.get(key);
+    if (ownerId && ownerId !== client.id) {
+      const ownerAlive = this.server?.sockets?.sockets?.has(ownerId) === true;
+      if (ownerAlive) {
+        return false;
+      }
+    }
+    this.connectionLeases.set(key, client.id);
+    return this.ownsLease(client, matchId, playerId);
   }
 
   private leaseKey(matchId: string, playerId: string): string {

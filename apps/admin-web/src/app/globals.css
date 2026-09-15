@@ -750,7 +750,9 @@ table.data-table th {
   box-shadow: var(--lh-shadow);
   text-decoration: none;
   color: inherit;
-  transition: border-color var(--lh-motion), box-shadow var(--lh-motion);
+  transition:
+    border-color var(--lh-motion),
+    box-shadow var(--lh-motion);
 }
 
 .studio-metric-card:hover {
@@ -880,7 +882,9 @@ html[data-theme='dark'] .status-chip[data-status='scheduled'] {
   font-weight: 500;
   cursor: pointer;
   text-align: start;
-  transition: background var(--lh-motion), color var(--lh-motion);
+  transition:
+    background var(--lh-motion),
+    color var(--lh-motion);
 }
 
 .studio-section-nav-item:hover {
@@ -1023,7 +1027,9 @@ html[data-theme='dark'] .status-chip[data-status='scheduled'] {
   font: inherit;
   font-size: 0.78rem;
   cursor: pointer;
-  transition: background var(--lh-motion), color var(--lh-motion);
+  transition:
+    background var(--lh-motion),
+    color var(--lh-motion);
 }
 
 .device-preview-tabs button[aria-pressed='true'] {
@@ -1261,7 +1267,10 @@ html[data-theme='dark'] .status-chip[data-status='scheduled'] {
   font-size: 0.82rem;
   font-weight: 600;
   cursor: pointer;
-  transition: border-color var(--lh-motion), background var(--lh-motion), color var(--lh-motion);
+  transition:
+    border-color var(--lh-motion),
+    background var(--lh-motion),
+    color var(--lh-motion);
 }
 
 .studio-preset-chip:hover:not(:disabled) {
@@ -1346,7 +1355,11 @@ html[data-theme='dark'] .status-chip[data-status='scheduled'] {
   border-radius: 18px;
   border: 1px solid var(--lh-border);
   background:
-    linear-gradient(180deg, color-mix(in srgb, var(--lh-text-muted) 8%, transparent), transparent),
+    linear-gradient(
+      180deg,
+      color-mix(in srgb, var(--lh-text-muted) 8%, transparent),
+      transparent
+    ),
     var(--lh-surface);
   overflow: hidden;
 }
@@ -1589,8 +1602,58 @@ html[data-theme='dark'] .status-chip[data-status='scheduled'] {
   margin: 0.5rem 0 0.75rem;
 }
 
+.studio-geo-map {
+  margin-bottom: 0.9rem;
+  padding: 0.75rem;
+  border: 1px solid var(--lh-border);
+  border-radius: 12px;
+  background: var(--lh-surface);
+}
+
+.studio-geo-map-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin-bottom: 0.65rem;
+}
+
+.studio-geo-map-title {
+  margin: 0;
+  font-size: 0.95rem;
+  font-weight: 700;
+}
+
+.studio-geo-map-count {
+  color: var(--lh-text-muted);
+  font-size: 0.8rem;
+}
+
+.studio-geo-question-row,
+.studio-geo-add-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 0.5rem;
+  align-items: end;
+  margin-bottom: 0.55rem;
+}
+
+.studio-geo-add-row {
+  padding-top: 0.55rem;
+  border-top: 1px dashed var(--lh-border);
+}
+
+.studio-geo-add-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+
 .studio-json-export {
-  background: var(--lh-bg-muted, color-mix(in srgb, var(--lh-text-muted) 8%, var(--lh-surface)));
+  background: var(
+    --lh-bg-muted,
+    color-mix(in srgb, var(--lh-text-muted) 8%, var(--lh-surface))
+  );
   padding: 0.5rem;
   border-radius: 0.35rem;
   font-size: 0.75rem;

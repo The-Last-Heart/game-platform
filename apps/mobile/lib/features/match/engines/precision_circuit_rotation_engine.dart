@@ -69,7 +69,7 @@ class _CircuitRotationWidgetState extends State<_CircuitRotationWidget>
       vsync: this,
       duration: const Duration(milliseconds: 700),
     )..repeat(reverse: true);
-    _puzzle = _parseCircuitPuzzle(_cfg);
+    _puzzle = _parseCircuitRotationPuzzle(_cfg);
     final _CircuitPuzzle? puzzle = _puzzle;
     if (puzzle == null) {
       _loading = false;
@@ -164,7 +164,10 @@ class _CircuitRotationWidgetState extends State<_CircuitRotationWidget>
       debugPrint('precision.circuit_rotation load failed: $error\n$stack');
       if (!mounted) return;
       _loadAttempts += 1;
-      if (_loadAttempts >= 4) return;
+      if (_loadAttempts >= 4) {
+        if (mounted) setState(() => _loading = false);
+        return;
+      }
       await Future<void>.delayed(Duration(milliseconds: 200 * _loadAttempts));
       if (!mounted || !_loading) return;
       unawaited(_loadAssets());
@@ -645,7 +648,15 @@ class _CircuitPuzzle {
   final bool requireAllConfiguredTilesPowered;
 }
 
-_CircuitPuzzle? _parseCircuitPuzzle(Map<String, dynamic> config) {
+/// True when [config] is a playable circuit puzzle after JSON decoding.
+/// Nested maps/lists from `jsonDecode` are `Map<String, dynamic>` /
+/// `List<dynamic>` — Dart generic `is` checks are invariant.
+@visibleForTesting
+bool circuitRotationClientConfigIsPlayable(Map<String, dynamic> config) {
+  return _parseCircuitRotationPuzzle(config) != null;
+}
+
+_CircuitPuzzle? _parseCircuitRotationPuzzle(Map<String, dynamic> config) {
   final Map<String, dynamic>? gridMap = _stringKeyedMap(config['grid']);
   final int? rows = _wholeNumber(gridMap?['rows']);
   final int? columns = _wholeNumber(gridMap?['columns']);
@@ -663,7 +674,7 @@ _CircuitPuzzle? _parseCircuitPuzzle(Map<String, dynamic> config) {
   );
 
   CircuitRotationCell? parseCell(Object? raw) {
-    if (raw is! List<Object?> || raw.length < 2) return null;
+    if (raw is! List || raw.length < 2) return null;
     final int? row = _wholeNumber(raw[0]);
     final int? column = _wholeNumber(raw[1]);
     if (row == null ||
@@ -696,7 +707,7 @@ _CircuitPuzzle? _parseCircuitPuzzle(Map<String, dynamic> config) {
   }
 
   final Object? tilesRaw = config['tiles'];
-  if (tilesRaw is! List<Object?> || tilesRaw.isEmpty) return null;
+  if (tilesRaw is! List || tilesRaw.isEmpty) return null;
   final List<CircuitRotationTile> tiles = <CircuitRotationTile>[];
   final Set<String> ids = <String>{};
   final Set<String> cells = <String>{};
@@ -732,7 +743,7 @@ _CircuitPuzzle? _parseCircuitPuzzle(Map<String, dynamic> config) {
   }
 
   final Object? stationaryRaw = config['stationaryConnections'];
-  if (stationaryRaw is! List<Object?>) return null;
+  if (stationaryRaw is! List) return null;
   final List<CircuitRotationStationaryConnection> stationaryConnections =
       <CircuitRotationStationaryConnection>[];
   final Set<String> connectionKeys = <String>{};
@@ -769,9 +780,9 @@ _CircuitPuzzle? _parseCircuitPuzzle(Map<String, dynamic> config) {
 }
 
 Map<String, dynamic>? _stringKeyedMap(Object? raw) {
-  if (raw is! Map<Object?, Object?>) return null;
+  if (raw is! Map) return null;
   return raw.map<String, dynamic>(
-    (Object? key, Object? value) =>
+    (dynamic key, dynamic value) =>
         MapEntry<String, dynamic>(key.toString(), value),
   );
 }

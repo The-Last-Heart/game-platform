@@ -144,6 +144,13 @@ export const STUDIO_ENGINE_REGISTRY: readonly StudioEngineRegistryEntry[] = [
     labelKey: 'engine.precision.circuit_rotation',
   },
   {
+    engineId: 'precision.cable_untangle',
+    familyId: 'precision',
+    categoryId: 'precision.cable_untangle',
+    runtimeReadiness: ENGINE_RUNTIME_READINESS['precision.cable_untangle'],
+    labelKey: 'engine.precision.cable_untangle',
+  },
+  {
     engineId: 'logic.balance_scale',
     familyId: 'logic',
     categoryId: 'logic.balance_scale',

@@ -880,6 +880,21 @@ describe('WaitForSignal engine', () => {
     expect(match.players.get('p1')!.energy).toBe(0);
   });
 
+  it('rejects joins after the lobby seals into ready_countdown', () => {
+    const { engine } = setup();
+    let match = fillSix(engine);
+    for (const player of match.players.values()) {
+      match = engine.acceptJoin(match, player.playerId).match;
+    }
+    match = engine.beginReadyCountdown(match, 3000).match;
+    expect(() =>
+      engine.joinPlayer(match, {
+        playerId: 'late',
+        resumeTokenHash: 'late-hash',
+      }),
+    ).toThrow(DomainError);
+  });
+
   it('countdown does not consume challenge duration', () => {
     const { clock, engine } = setup();
     let match = fillSix(engine);

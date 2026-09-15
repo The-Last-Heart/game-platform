@@ -229,6 +229,9 @@ abstract final class TranslationKeys {
   static const String powerNarrativeShielded = 'power.narrative.shielded';
   static const String powerNarrativeHit = 'power.narrative.hit';
   static const String powerNarrativeExpired = 'power.narrative.expired';
+  static const String powerResultTitle = 'power.result.title';
+  static const String powerResultYouLostHeart = 'power.result.you_lost_heart';
+  static const String powerResultYouDefended = 'power.result.you_defended';
 }
 
 /// Shared normalization for catalog create/lookup/resolve.
