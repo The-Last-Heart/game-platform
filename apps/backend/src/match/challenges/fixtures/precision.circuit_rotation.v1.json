@@ -14,7 +14,9 @@
     "assetIds": {
       "boardBase": "circuit_rotation.board_base",
       "gridPlate": "circuit_rotation.grid_plate",
-      "sparkRive": "neon_cable.cable_spark"
+      "sparkRive": "neon_cable.cable_spark",
+      "cableConnectSfx": "circuit_rotation.cable_connected",
+      "heartPowerOnSfx": "circuit_rotation.heart_power_on"
     },
     "grid": {
       "rows": 3,
@@ -88,7 +90,9 @@
     "assetIds": {
       "boardBase": "circuit_rotation.board_base",
       "gridPlate": "circuit_rotation.grid_plate",
-      "sparkRive": "neon_cable.cable_spark"
+      "sparkRive": "neon_cable.cable_spark",
+      "cableConnectSfx": "circuit_rotation.cable_connected",
+      "heartPowerOnSfx": "circuit_rotation.heart_power_on"
     },
     "grid": {
       "rows": 3,
@@ -476,5 +480,12 @@
       }
     ]
   },
+  "requiredAssetIds": [
+    "circuit_rotation.board_base",
+    "circuit_rotation.grid_plate",
+    "neon_cable.cable_spark",
+    "circuit_rotation.cable_connected",
+    "circuit_rotation.heart_power_on"
+  ],
   "difficulty": "medium"
 }

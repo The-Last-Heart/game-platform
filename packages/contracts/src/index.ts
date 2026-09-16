@@ -2,6 +2,7 @@
  * Contract package entry.
  *
  * Real-time protocol schemas for LH-002 live under realtime/v1.
+ * Presence occupancy schemas live under presence/v1.
  * Admin REST schemas for LH-004A live under admin/v1.
  * Challenge engine schemas for LH-007 live under challenges/v1.
  * Flutter/Dart clients should consume generated bindings in a later milestone;
@@ -20,6 +21,7 @@ export const contractsPackageMeta: ContractsPackageMeta = {
 };
 
 export * from './realtime/v1/protocol';
+export * from './presence/v1/protocol';
 export * from './admin/v1';
 export * from './content/v1';
 export * from './challenges/v1';

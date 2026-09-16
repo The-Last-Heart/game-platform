@@ -2,7 +2,11 @@ import {
   ENGINE_RUNTIME_READINESS,
   type LaunchEngineId,
 } from '@thelastheart/contracts';
-import { ContentLifecycleService } from './content-lifecycle.service';
+import {
+  ContentLifecycleService,
+  isBulkPauseEligible,
+  studioHomeCountsFromRows,
+} from './content-lifecycle.service';
 
 /**
  * Unit tests for LH-010 Studio features on ContentLifecycleService.
@@ -16,7 +20,9 @@ describe('ContentLifecycleService LH-010', () => {
 
     beforeEach(() => {
       // Minimal construction — DB/audit are not called for proof computation
-      service = Object.create(ContentLifecycleService.prototype) as ContentLifecycleService;
+      service = Object.create(
+        ContentLifecycleService.prototype,
+      ) as ContentLifecycleService;
     });
 
     it('reports no schema_only engines when all are live', () => {
@@ -55,11 +61,48 @@ describe('ContentLifecycleService LH-010', () => {
     });
   });
 
+  describe('isBulkPauseEligible', () => {
+    it('allows pause for published, approved, and scheduled only', () => {
+      expect(isBulkPauseEligible('published', true)).toBe(true);
+      expect(isBulkPauseEligible('approved', true)).toBe(true);
+      expect(isBulkPauseEligible('scheduled', true)).toBe(true);
+      expect(isBulkPauseEligible('paused', true)).toBe(false);
+      expect(isBulkPauseEligible('draft', true)).toBe(false);
+      expect(isBulkPauseEligible('retired', true)).toBe(false);
+    });
+
+    it('allows resume for paused only', () => {
+      expect(isBulkPauseEligible('paused', false)).toBe(true);
+      expect(isBulkPauseEligible('published', false)).toBe(false);
+      expect(isBulkPauseEligible('draft', false)).toBe(false);
+    });
+  });
+
+  describe('studioHomeCountsFromRows', () => {
+    it('maps library display statuses without rewriting published via pause overrides', () => {
+      const counts = studioHomeCountsFromRows([
+        { status: 'published', cnt: 3 },
+        { status: 'paused', cnt: 19 },
+        { status: 'submitted', cnt: 1 },
+        { status: 'approved', cnt: 1 },
+      ]);
+      expect(counts.published).toBe(3);
+      expect(counts.paused).toBe(19);
+      expect(counts.submitted).toBe(1);
+      expect(counts.approved).toBe(1);
+      expect(counts.drafts).toBe(0);
+      expect(counts.inReview).toBe(0);
+      expect(counts.scheduled).toBe(0);
+    });
+  });
+
   describe('validateDefinition engine config cross-check', () => {
     let service: ContentLifecycleService;
 
     beforeEach(() => {
-      service = Object.create(ContentLifecycleService.prototype) as ContentLifecycleService;
+      service = Object.create(
+        ContentLifecycleService.prototype,
+      ) as ContentLifecycleService;
     });
 
     it('rejects definition with invalid engine configs', () => {

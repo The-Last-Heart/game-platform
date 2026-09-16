@@ -39,9 +39,8 @@ describeDb('database migrations (integration)', () => {
     expect(status.pending).toEqual([]);
     expect(status.applied).toContain('001_admin_foundation');
     expect(status.applied).toContain('002_admin_audit_hardening');
-    expect(status.applied).toContain(
-      '027_lh009_circuit_rotation_uuid_repair',
-    );
+    expect(status.applied).toContain('027_lh009_circuit_rotation_uuid_repair');
+    expect(status.applied).toContain('028_lh009_circuit_rotation_sfx');
 
     const circuitVid = 'dddddddd-dddd-4ddd-8ddd-dddddddddd27';
     const circuitDefId = 'precision.circuit_rotation.dev';

@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import { useCallback, useEffect, useState } from 'react';
 import type { AdminContentTemplateDetail } from '@thelastheart/contracts';
+import { useBreadcrumbLabel } from '@/components/shell/breadcrumb-labels';
 import {
   ErrorState,
   ForbiddenState,
@@ -55,12 +56,19 @@ export function StudioTemplateDetail({
     }
 
     setForbidden(result.status === 403 || result.error.code === 'FORBIDDEN');
-    setError(localizeAdminError(locale, result.error.code, result.error.message));
+    setError(
+      localizeAdminError(locale, result.error.code, result.error.message),
+    );
     setDetail(null);
     setLoading(false);
   }, [templateId, locale]);
 
   useEffect(() => scheduleEffectTask(() => void load()), [load]);
+
+  useBreadcrumbLabel(
+    `/content/templates/${templateId}`,
+    detail?.internalTitle ?? null,
+  );
 
   async function handlePauseToggle(paused: boolean) {
     const definitionId = detail?.versions[0]?.definition.definitionId;
@@ -73,17 +81,17 @@ export function StudioTemplateDetail({
       return;
     }
     setPauseBusy(true);
-    const result = await adminApiFetch<{ definitionId: string; paused: boolean }>(
-      '/content/pause',
-      {
-        method: 'POST',
-        body: JSON.stringify({
-          definitionId,
-          paused,
-          reason: pauseReason.trim(),
-        }),
-      },
-    );
+    const result = await adminApiFetch<{
+      definitionId: string;
+      paused: boolean;
+    }>('/content/pause', {
+      method: 'POST',
+      body: JSON.stringify({
+        definitionId,
+        paused,
+        reason: pauseReason.trim(),
+      }),
+    });
     if (!result.ok) {
       setPauseBusy(false);
       pushToast(
@@ -98,7 +106,8 @@ export function StudioTemplateDetail({
     setPauseBusy(false);
   }
 
-  if (forbidden) return <ForbiddenState label={t(locale, 'common.forbidden')} />;
+  if (forbidden)
+    return <ForbiddenState label={t(locale, 'common.forbidden')} />;
   if (loading) return <LoadingState label={t(locale, 'common.loading')} />;
   if (error || !detail) {
     return (
@@ -115,6 +124,11 @@ export function StudioTemplateDetail({
   const definitionId = latest?.definition.definitionId ?? null;
   const isPaused = detail.catalogPaused || detail.status === 'paused';
   const canPauseAction = canPublish && definitionId != null && !pauseBusy;
+  const liveVersion =
+    detail.versions.find(
+      (v) => v.status === 'approved' || v.status === 'published',
+    ) ?? null;
+  const canPublishVersion = canPublish && liveVersion != null && !pauseBusy;
 
   return (
     <div className="studio-layout">
@@ -132,7 +146,10 @@ export function StudioTemplateDetail({
           ) : null
         }
         secondaryAction={
-          <Link className="btn btn-secondary" href={`/${locale}/content/library`}>
+          <Link
+            className="btn btn-secondary"
+            href={`/${locale}/content/library`}
+          >
             {t(locale, 'common.back')}
           </Link>
         }
@@ -213,7 +230,9 @@ export function StudioTemplateDetail({
                 {' · '}
                 <StatusChip locale={locale} status={v.status} />
                 {' · '}
-                <span style={{ color: 'var(--lh-text-muted)', fontSize: '0.85rem' }}>
+                <span
+                  style={{ color: 'var(--lh-text-muted)', fontSize: '0.85rem' }}
+                >
                   {v.definition.definitionId}
                 </span>
               </li>
@@ -236,7 +255,11 @@ export function StudioTemplateDetail({
               if (!latest) return;
               void (async () => {
                 setPauseBusy(true);
-                const result = await adminApiFetch('/content/approve', {
+                const result = await adminApiFetch<{
+                  templateVersionId: string;
+                  status: string;
+                  live?: boolean;
+                }>('/content/approve', {
                   method: 'POST',
                   body: JSON.stringify({
                     templateVersionId: latest.templateVersionId,
@@ -245,12 +268,24 @@ export function StudioTemplateDetail({
                 setPauseBusy(false);
                 if (!result.ok) {
                   pushToast(
-                    localizeAdminError(locale, result.error.code, result.error.message),
+                    localizeAdminError(
+                      locale,
+                      result.error.code,
+                      result.error.message,
+                    ),
                     'error',
                   );
                   return;
                 }
-                pushToast(t(locale, 'studio.detail.approveSuccess'), 'success');
+                pushToast(
+                  t(
+                    locale,
+                    result.data.live
+                      ? 'studio.detail.approveLiveSuccess'
+                      : 'studio.detail.approveSuccess',
+                  ),
+                  'success',
+                );
                 await load();
               })();
             }}
@@ -262,7 +297,43 @@ export function StudioTemplateDetail({
       {canPublish ? (
         <div className="stack" style={{ marginTop: '0.5rem', gap: '0.75rem' }}>
           <div className="inline-actions">
-            <button type="button" className="btn btn-primary" disabled>
+            <button
+              type="button"
+              className="btn btn-primary"
+              disabled={!canPublishVersion}
+              onClick={() => {
+                if (!liveVersion) return;
+                void (async () => {
+                  setPauseBusy(true);
+                  const result = await adminApiFetch<{
+                    templateVersionId: string;
+                    live?: boolean;
+                  }>('/content/catalog/promote', {
+                    method: 'POST',
+                    body: JSON.stringify({
+                      templateVersionId: liveVersion.templateVersionId,
+                    }),
+                  });
+                  setPauseBusy(false);
+                  if (!result.ok) {
+                    pushToast(
+                      localizeAdminError(
+                        locale,
+                        result.error.code,
+                        result.error.message,
+                      ),
+                      'error',
+                    );
+                    return;
+                  }
+                  pushToast(
+                    t(locale, 'studio.detail.publishSuccess'),
+                    'success',
+                  );
+                  await load();
+                })();
+              }}
+            >
               {t(locale, 'studio.detail.publish')}
             </button>
             <button

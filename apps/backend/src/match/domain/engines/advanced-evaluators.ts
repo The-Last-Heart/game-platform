@@ -126,14 +126,16 @@ export class SocialPairSyncEvaluator implements ChallengeEvaluator {
       };
     }
 
-    const durationMs = Math.max(1, input.definition.durationMs);
-    const minHoldMs = Math.floor(durationMs * 0.75);
-    const selfHeldMs = num(input.answer['heldMs'], 0);
-    const selfReleasedEarly = input.answer['releasedEarly'] === true;
+    // A press is any in-window submit. Short taps must be able to succeed —
+    // requiring a 75% hold made simultaneous taps look like "we always lose".
+    const selfPressed =
+      input.answer['synced'] === true ||
+      input.answer['holding'] === true ||
+      num(input.answer['heldMs'], 0) > 0;
 
-    // Submitter held; partner never submitted → fair success (no heart loss).
+    // Submitter pressed; partner never submitted → fair success (no heart loss).
     if (input.answer['_partnerSubmitted'] !== true) {
-      if (selfReleasedEarly || selfHeldMs < minHoldMs) {
+      if (!selfPressed) {
         return { success: false, reasonKey: 'result.pair.out_of_sync' };
       }
       return {
@@ -143,32 +145,14 @@ export class SocialPairSyncEvaluator implements ChallengeEvaluator {
       };
     }
 
-    // Both seats submitted: outcomes must be shared. One seat cannot pass while
-    // the partner fails hold/timing (that felt like "we pressed together").
-    const partnerHeldMs = num(input.answer['_partnerHeldMs'], 0);
-    const partnerReleasedEarly = input.answer['_partnerReleasedEarly'] === true;
-    if (
-      selfReleasedEarly ||
-      partnerReleasedEarly ||
-      selfHeldMs < minHoldMs ||
-      partnerHeldMs < minHoldMs
-    ) {
-      return { success: false, reasonKey: 'result.pair.out_of_sync' };
-    }
-
-    const syncWindow = num(
-      input.definition.serverConfig['syncWindowMs'],
-      500,
-    );
-    const selfReceived = num(
+    const syncWindow = num(input.definition.serverConfig['syncWindowMs'], 500);
+    // Compare first-press arrival stamps (preserved on the submission), not
+    // finish stamps or client heldMs mixed with server time.
+    const selfStart = num(
       input.answer['_selfReceivedMonoMs'],
       input.receivedMonoMs,
     );
-    const partnerReceived = num(input.answer['_partnerReceivedMonoMs']);
-    // Compare press-start times (submit stamp minus held duration), not finish
-    // stamps — auto-submit near the deadline must not desync a shared hold.
-    const selfStart = selfReceived - selfHeldMs;
-    const partnerStart = partnerReceived - partnerHeldMs;
+    const partnerStart = num(input.answer['_partnerReceivedMonoMs']);
     const delta = Math.abs(selfStart - partnerStart);
     if (delta > syncWindow) {
       return { success: false, reasonKey: 'result.pair.out_of_sync' };

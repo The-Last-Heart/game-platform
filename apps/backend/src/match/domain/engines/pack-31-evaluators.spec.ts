@@ -66,6 +66,67 @@ describe('pack-31 evaluators', () => {
     });
   });
 
+  describe('trivia question bank', () => {
+    it('rejects a correctOptionKey that is not in optionKeys', () => {
+      expect(() =>
+        validateEngineConfigs(
+          'trivia.multiple_choice',
+          {
+            categoryKey: 'challenge.category.trivia',
+            promptKey: 'challenge.trivia.prompt',
+            questionKey: 'trivia.q.japan_capital',
+            optionKeys: ['trivia.opt.osaka', 'trivia.opt.tokyo'],
+          },
+          {
+            questions: [
+              {
+                questionKey: 'trivia.q.japan_capital',
+                optionKeys: ['trivia.opt.osaka', 'trivia.opt.tokyo'],
+                correctOptionKey: 'trivia.opt.kyoto',
+              },
+            ],
+          },
+        ),
+      ).toThrow(/correctOptionKey/);
+    });
+
+    it('pins admin copy onto the selected question', () => {
+      const definition = def(
+        'trivia.multiple_choice',
+        {
+          questions: [
+            {
+              questionKey: 'trivia.q.custom_1',
+              optionKeys: ['trivia.opt.custom_1_a', 'trivia.opt.custom_1_b'],
+              correctOptionKey: 'trivia.opt.custom_1_b',
+              questionCopy: { ar: 'ما عاصمة فرنسا؟', en: 'Capital of France?' },
+              optionCopy: {
+                'trivia.opt.custom_1_a': { ar: 'ليون', en: 'Lyon' },
+                'trivia.opt.custom_1_b': { ar: 'باريس', en: 'Paris' },
+              },
+            },
+          ],
+        },
+        {
+          categoryKey: 'challenge.category.trivia',
+          promptKey: 'challenge.trivia.prompt',
+          questionKey: 'trivia.q.custom_1',
+          optionKeys: ['trivia.opt.custom_1_a', 'trivia.opt.custom_1_b'],
+        },
+      );
+      materializePack31Round(definition);
+      expect(definition.serverConfig['correctOptionKey']).toBe(
+        'trivia.opt.custom_1_b',
+      );
+      expect(definition.clientConfig['questionText']).toBe('ما عاصمة فرنسا؟');
+      expect(definition.clientConfig['optionTexts']).toEqual({
+        'trivia.opt.custom_1_a': 'ليون',
+        'trivia.opt.custom_1_b': 'باريس',
+      });
+      expect(definition.clientConfig['correctOptionKey']).toBeUndefined();
+    });
+  });
+
   describe('GeographySelectOnMapEvaluator', () => {
     const evaluator = new GeographySelectOnMapEvaluator();
     const definition = def('geography.select_on_map', {

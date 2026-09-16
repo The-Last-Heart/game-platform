@@ -32,6 +32,11 @@ import { nextSeatSignalDelayMs } from '../domain/seat-variants';
 import { selectPlaylistDefinition } from '../domain/playlist-cycle';
 import { buildDifficultyOrderedPlaylist } from '../domain/playlist-difficulty';
 import { filterPlaylistForMode } from '../domain/training-eligibility';
+import {
+  challengeIntroDurationMs,
+  challengeResultHoldMs,
+  DEFAULT_ROUND_RESULT_MS,
+} from '../domain/challenge-timing';
 import type {
   ChallengeDefinition,
   Clock,
@@ -56,7 +61,7 @@ import type { ChallengeDefinitionProvider } from '../challenges/challenge-defini
 import { RoomCodeRegistry } from './room-code.registry';
 
 const READY_COUNTDOWN_MS = 3000;
-const ROUND_RESULT_MS = 2500;
+const ROUND_RESULT_MS = DEFAULT_ROUND_RESULT_MS;
 const RESUME_ACK_PREFIX = 'match.resume:';
 const REMATCH_WINDOW_MS = 60_000;
 
@@ -82,10 +87,7 @@ type RematchParty = {
   hostPlayerId: string | null;
   expiresAtMs: number;
   /** Source-seat → rematch-seat credentials (idempotent double-tap / race). */
-  seatsBySourcePlayerId: Map<
-    string,
-    { playerId: string; resumeToken: string }
-  >;
+  seatsBySourcePlayerId: Map<string, { playerId: string; resumeToken: string }>;
 };
 type ResumeReceipt = {
   type: 'match.resume';
@@ -643,6 +645,17 @@ export class MatchService implements OnModuleDestroy, OnModuleInit {
           result.events,
         );
         await this.maybeContinue(await this.requireMatch(input.matchId));
+      } else if (result.liveUpdate) {
+        // Same-sequence snapshot: clients replace clientConfig (partnerHolding)
+        // without advancing the recovery watermark.
+        this.emit(result.match, [
+          {
+            kind: 'sequence',
+            sequence: result.match.sequence,
+            revision: result.match.revision,
+            serverTimestampMs: this.clock.nowMs(),
+          },
+        ]);
       }
       const latest = await this.requireMatch(input.matchId);
       return {
@@ -695,7 +708,10 @@ export class MatchService implements OnModuleDestroy, OnModuleInit {
           offensiveDisabled: disabled,
         }),
       );
-      if (result.match.phase === 'power_defense' && result.match.pendingAttack) {
+      if (
+        result.match.phase === 'power_defense' &&
+        result.match.pendingAttack
+      ) {
         const windowMs =
           result.match.pendingAttack.defenseDeadlineAtMs - this.clock.nowMs();
         this.schedulePhaseTimer(input.matchId, Math.max(1, windowMs));
@@ -734,14 +750,20 @@ export class MatchService implements OnModuleDestroy, OnModuleInit {
           phase: result.match.phase,
         }),
       );
-      if (result.match.phase === 'power_defense' && result.match.pendingAttack) {
+      if (
+        result.match.phase === 'power_defense' &&
+        result.match.pendingAttack
+      ) {
         const windowMs =
           result.match.pendingAttack.defenseDeadlineAtMs - this.clock.nowMs();
         this.schedulePhaseTimer(input.matchId, Math.max(1, windowMs));
       } else if (result.match.phase === 'round_result') {
         this.schedulePhaseTimer(
           input.matchId,
-          Math.max(1, (result.match.phaseDeadlineAtMs ?? 0) - this.clock.nowMs()),
+          Math.max(
+            1,
+            (result.match.phaseDeadlineAtMs ?? 0) - this.clock.nowMs(),
+          ),
         );
       }
       const latest = await this.requireMatch(input.matchId);
@@ -811,10 +833,7 @@ export class MatchService implements OnModuleDestroy, OnModuleInit {
       options?.allowWhenPolicyEnabled &&
       !this.botFillEnabled
     ) {
-      throw new DomainError(
-        'DEV_ONLY_FORBIDDEN',
-        'bot fill policy disabled',
-      );
+      throw new DomainError('DEV_ONLY_FORBIDDEN', 'bot fill policy disabled');
     }
     return this.fillBotsInternal(matchId, {
       requireDevOnly: this.nodeEnv === 'production',
@@ -863,11 +882,9 @@ export class MatchService implements OnModuleDestroy, OnModuleInit {
   ): Promise<MatchState> {
     let releasePins = options.releasePins ?? { ...BOOTSTRAP_PINS };
     let pinnedPlaylist =
-      options.pinnedPlaylist != null
-        ? [...options.pinnedPlaylist]
-        : [...this.challengeProvider.getPlaylist()];
+      options.pinnedPlaylist != null ? [...options.pinnedPlaylist] : [];
 
-    if (this.releases) {
+    if (options.pinnedPlaylist == null && this.releases) {
       try {
         releasePins = await this.releases.resolveCurrentPins();
         pinnedPlaylist = await this.releases.getPlaylistForCatalogRelease(
@@ -879,7 +896,10 @@ export class MatchService implements OnModuleDestroy, OnModuleInit {
           event: 'release_pin_resolve_failed',
           category: error instanceof Error ? error.name : 'UnknownError',
         });
+        pinnedPlaylist = [];
       }
+    } else if (options.pinnedPlaylist == null) {
+      pinnedPlaylist = [...this.challengeProvider.getPlaylist()];
     }
 
     // Safety net for fixture / pin paths: training never gets multi-seat engines.
@@ -1163,9 +1183,9 @@ export class MatchService implements OnModuleDestroy, OnModuleInit {
     });
   }
 
-  async createPrivateRoom(identity: PlayerIdentityInput): Promise<
-    SeatCredentials & { roomCode: string }
-  > {
+  async createPrivateRoom(
+    identity: PlayerIdentityInput,
+  ): Promise<SeatCredentials & { roomCode: string }> {
     const now = this.clock.nowMs();
     const roomCode = this.roomCodes.generate(now);
     const match = await this.createPinnedMatch({
@@ -1306,10 +1326,7 @@ export class MatchService implements OnModuleDestroy, OnModuleInit {
    * Serialized on the *source* matchId so two devices cannot both miss the
    * party map and open solo rematch lobbies (sync contract: one rematch room).
    */
-  async rematch(
-    matchId: string,
-    playerId: string,
-  ): Promise<SeatCredentials> {
+  async rematch(matchId: string, playerId: string): Promise<SeatCredentials> {
     return this.enqueue(matchId, () => this.rematchLocked(matchId, playerId));
   }
 
@@ -2052,16 +2069,7 @@ export class MatchService implements OnModuleDestroy, OnModuleInit {
       this.emit(finished.match, finished.events);
       return;
     }
-    // Pin the next challenge then start it immediately — do not linger in
-    // challenge_intro (that screen reveals the upcoming challenge type).
-    const intro = this.engine.beginChallengeIntro(match, 0, definition, {
-      deferSequenceBump: true,
-    });
-    const result = this.engine.startChallenge(intro.match);
-    const started = result.match;
-    await this.store.save(started);
-    this.emit(started, result.events);
-    this.armActiveChallengeTimers(started);
+    await this.launchPlaylistChallenge(match, definition);
   }
 
   private async advanceFromIntro(matchId: string): Promise<void> {
@@ -2082,10 +2090,7 @@ export class MatchService implements OnModuleDestroy, OnModuleInit {
       return;
     }
     if (challenge.engineId === WAIT_FOR_SIGNAL_ENGINE_ID) {
-      const seatDelay = nextSeatSignalDelayMs(
-        challenge,
-        this.clock.monoMs(),
-      );
+      const seatDelay = nextSeatSignalDelayMs(challenge, this.clock.monoMs());
       if (seatDelay != null) {
         this.scheduleSignalActivation(matchId, Math.max(1, seatDelay));
       } else if (challenge.signalAtMonoMs != null) {
@@ -2129,10 +2134,7 @@ export class MatchService implements OnModuleDestroy, OnModuleInit {
           this.scheduleSignalExpiry(match.matchId, remaining, playerId);
         }
       }
-      const nextDelay = nextSeatSignalDelayMs(
-        challenge,
-        this.clock.monoMs(),
-      );
+      const nextDelay = nextSeatSignalDelayMs(challenge, this.clock.monoMs());
       if (nextDelay != null) {
         this.scheduleSignalActivation(match.matchId, Math.max(1, nextDelay));
       }
@@ -2149,40 +2151,44 @@ export class MatchService implements OnModuleDestroy, OnModuleInit {
       clearTimeout(existing);
       this.timers.delete(key);
     }
-    const timer = setTimeout(() => {
-      void this.enqueue(matchId, async () => {
-        const match = await this.requireMatch(matchId);
-        const challenge = match.currentChallenge;
-        if (
-          !challenge ||
-          challenge.status !== 'active' ||
-          challenge.roundPhase !== 'preview' ||
-          challenge.previewEndsAtMonoMs == null
-        ) {
-          return;
-        }
-        if (this.clock.monoMs() < challenge.previewEndsAtMonoMs) {
-          const remaining = challenge.previewEndsAtMonoMs - this.clock.monoMs();
-          this.schedulePreviewAdvance(matchId, Math.max(1, remaining));
-          return;
-        }
-        const result = this.engine.advancePreview(match);
-        if (result.events.length === 0) {
-          return;
-        }
-        await this.store.save(result.match);
-        this.emit(result.match, result.events);
-        if (result.match.currentChallenge?.engineId === 'memory.sequence') {
-          this.scheduleBotSubmissions(result.match);
-        }
-      }).catch((error: unknown) => {
-        this.logger.error({
-          event: 'preview_advance_failed',
-          matchId,
-          category: error instanceof Error ? error.name : 'UnknownError',
+    const timer = setTimeout(
+      () => {
+        void this.enqueue(matchId, async () => {
+          const match = await this.requireMatch(matchId);
+          const challenge = match.currentChallenge;
+          if (
+            !challenge ||
+            challenge.status !== 'active' ||
+            challenge.roundPhase !== 'preview' ||
+            challenge.previewEndsAtMonoMs == null
+          ) {
+            return;
+          }
+          if (this.clock.monoMs() < challenge.previewEndsAtMonoMs) {
+            const remaining =
+              challenge.previewEndsAtMonoMs - this.clock.monoMs();
+            this.schedulePreviewAdvance(matchId, Math.max(1, remaining));
+            return;
+          }
+          const result = this.engine.advancePreview(match);
+          if (result.events.length === 0) {
+            return;
+          }
+          await this.store.save(result.match);
+          this.emit(result.match, result.events);
+          if (result.match.currentChallenge?.engineId === 'memory.sequence') {
+            this.scheduleBotSubmissions(result.match);
+          }
+        }).catch((error: unknown) => {
+          this.logger.error({
+            event: 'preview_advance_failed',
+            matchId,
+            category: error instanceof Error ? error.name : 'UnknownError',
+          });
         });
-      });
-    }, Math.max(1, delayMs));
+      },
+      Math.max(1, delayMs),
+    );
     timer.unref?.();
     this.timers.set(key, timer);
   }
@@ -2273,7 +2279,10 @@ export class MatchService implements OnModuleDestroy, OnModuleInit {
     if (expired.match.phase === 'round_result') {
       this.schedulePhaseTimer(
         matchId,
-        Math.max(1, (expired.match.phaseDeadlineAtMs ?? 0) - this.clock.nowMs()),
+        Math.max(
+          1,
+          (expired.match.phaseDeadlineAtMs ?? 0) - this.clock.nowMs(),
+        ),
       );
     } else if (expired.match.phase === 'power_defense') {
       const windowMs =
@@ -2308,13 +2317,31 @@ export class MatchService implements OnModuleDestroy, OnModuleInit {
       this.emit(finished.match, finished.events);
       return;
     }
-    const intro = this.engine.beginChallengeIntro(cleared, 0, definition, {
-      deferSequenceBump: true,
+    await this.launchPlaylistChallenge(cleared, definition);
+  }
+
+  /**
+   * Honor Studio intro duration. Zero still skips challenge_intro so the
+   * next engine is not previewed before play starts.
+   */
+  private async launchPlaylistChallenge(
+    match: MatchState,
+    definition: ChallengeDefinition,
+  ): Promise<void> {
+    const introMs = challengeIntroDurationMs(definition);
+    const intro = this.engine.beginChallengeIntro(match, introMs, definition, {
+      deferSequenceBump: introMs <= 0,
     });
-    const result = this.engine.startChallenge(intro.match);
-    await this.store.save(result.match);
-    this.emit(result.match, result.events);
-    this.armActiveChallengeTimers(result.match);
+    if (introMs <= 0) {
+      const result = this.engine.startChallenge(intro.match);
+      await this.store.save(result.match);
+      this.emit(result.match, result.events);
+      this.armActiveChallengeTimers(result.match);
+      return;
+    }
+    await this.store.save(intro.match);
+    this.emit(intro.match, intro.events);
+    this.schedulePhaseTimer(intro.match.matchId, introMs);
   }
 
   /**
@@ -2454,10 +2481,7 @@ export class MatchService implements OnModuleDestroy, OnModuleInit {
     }
 
     // Best-effort challenge attempt analytics write
-    if (
-      match.currentChallenge?.status === 'resolved' &&
-      this.releases
-    ) {
+    if (match.currentChallenge?.status === 'resolved' && this.releases) {
       const challenge = match.currentChallenge;
       for (const resolution of challenge.resolutions ?? []) {
         const player = match.players.get(resolution.playerId);
@@ -2504,15 +2528,16 @@ export class MatchService implements OnModuleDestroy, OnModuleInit {
     }
 
     const lastChallenge = match.currentChallenge;
+    const holdMs = challengeResultHoldMs(lastChallenge.definition);
     const result = this.engine.beginRoundResult(
       match,
       lastChallenge.resolutions,
       lastChallenge.challengeInstanceId,
-      ROUND_RESULT_MS,
+      holdMs,
     );
     await this.store.save(result.match);
     this.emit(result.match, [...resolveEvents, ...result.events]);
-    this.schedulePhaseTimer(match.matchId, ROUND_RESULT_MS);
+    this.schedulePhaseTimer(match.matchId, Math.max(1, holdMs));
   }
 
   private async enterRoundResult(match: MatchState): Promise<void> {
@@ -2526,15 +2551,16 @@ export class MatchService implements OnModuleDestroy, OnModuleInit {
       return;
     }
 
+    const holdMs = challengeResultHoldMs(lastChallenge.definition);
     const result = this.engine.beginRoundResult(
       match,
       lastChallenge.resolutions,
       lastChallenge.challengeInstanceId,
-      ROUND_RESULT_MS,
+      holdMs,
     );
     await this.store.save(result.match);
     this.emit(result.match, result.events);
-    this.schedulePhaseTimer(match.matchId, ROUND_RESULT_MS);
+    this.schedulePhaseTimer(match.matchId, Math.max(1, holdMs));
   }
 
   private scheduleSignalActivation(matchId: string, delayMs: number): void {
@@ -2633,8 +2659,7 @@ export class MatchService implements OnModuleDestroy, OnModuleInit {
                 seat.signalEndsAtMonoMs != null &&
                 this.clock.monoMs() < seat.signalEndsAtMonoMs
               ) {
-                const remaining =
-                  seat.signalEndsAtMonoMs - this.clock.monoMs();
+                const remaining = seat.signalEndsAtMonoMs - this.clock.monoMs();
                 this.scheduleSignalExpiry(
                   matchId,
                   Math.max(1, remaining),

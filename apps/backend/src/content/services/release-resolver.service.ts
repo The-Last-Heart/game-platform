@@ -11,6 +11,8 @@ import {
 import { DatabaseService } from '../../database/database.service';
 import type { ChallengeDefinition } from '../../match/domain/types';
 import type { ChallengeDefinitionProvider } from '../../match/challenges/challenge-definition.provider';
+import { toRuntimeChallengeDefinition } from './runtime-definition';
+import { isLiveCatalogEntry } from './catalog-playlist';
 
 /** Bootstrap release ids seeded by 003_versioned_game_content.sql */
 export const BOOTSTRAP_PINS: MatchReleasePins = {
@@ -21,8 +23,7 @@ export const BOOTSTRAP_PINS: MatchReleasePins = {
 };
 
 /** LH-008 published power pack (005 migration); preferred when current. */
-export const LH008_POWER_RELEASE_ID =
-  '44444444-4444-4444-8444-444444444008';
+export const LH008_POWER_RELEASE_ID = '44444444-4444-4444-8444-444444444008';
 
 export const DEFAULT_POWER_CONFIGURATION: PowerConfigurationReleasePayload = {
   releaseId: LH008_POWER_RELEASE_ID,
@@ -75,7 +76,8 @@ export class ReleaseResolverService implements ChallengeDefinitionProvider {
     const map = new Map(result.rows.map((r) => [r.kind, r.release_id]));
     const pins: MatchReleasePins = {
       challengeCatalogReleaseId:
-        map.get('challenge_catalog') ?? BOOTSTRAP_PINS.challengeCatalogReleaseId,
+        map.get('challenge_catalog') ??
+        BOOTSTRAP_PINS.challengeCatalogReleaseId,
       gameModeRuleReleaseId:
         map.get('game_mode_rules') ?? BOOTSTRAP_PINS.gameModeRuleReleaseId,
       localizationReleaseId:
@@ -110,7 +112,9 @@ export class ReleaseResolverService implements ChallengeDefinitionProvider {
     );
   }
 
-  async getMatchPins(matchId: string): Promise<
+  async getMatchPins(
+    matchId: string,
+  ): Promise<
     (MatchReleasePins & { matchId: string; createdAt: string }) | null
   > {
     const result = await this.db.query<{
@@ -153,23 +157,28 @@ export class ReleaseResolverService implements ChallengeDefinitionProvider {
       [catalogReleaseId],
     );
     const payload = release.rows[0]?.payload as
-      | { entries?: Array<{ definitionId: string; templateVersionId: string; paused?: boolean }> }
+      | {
+          entries?: Array<{
+            definitionId: string;
+            templateVersionId: string;
+            paused?: boolean;
+          }>;
+        }
       | undefined;
     if (!payload?.entries?.length) {
-      return [this.getDefaultDev()];
+      return [];
     }
 
     const overrides = await this.db.query<{
       definition_id: string;
-      paused: boolean;
       eligible_modes: unknown;
     }>(
-      `SELECT definition_id, paused, eligible_modes FROM content_catalog_entry_overrides`,
+      `SELECT definition_id, eligible_modes FROM content_catalog_entry_overrides`,
     );
-    const paused = new Set(
-      overrides.rows.filter((r) => r.paused).map((r) => r.definition_id),
-    );
-    const modeOverrides = new Map<string, ChallengeDefinitionContract['eligibleModes']>();
+    const modeOverrides = new Map<
+      string,
+      ChallengeDefinitionContract['eligibleModes']
+    >();
     for (const row of overrides.rows) {
       if (!Array.isArray(row.eligible_modes)) continue;
       const modes = row.eligible_modes.filter(
@@ -182,10 +191,36 @@ export class ReleaseResolverService implements ChallengeDefinitionProvider {
       modeOverrides.set(row.definition_id, modes);
     }
 
+    const definitionIds = [
+      ...new Set(payload.entries.map((entry) => entry.definitionId)),
+    ];
+    const statusRows = await this.db.query<{
+      definition_id: string;
+      status: string;
+    }>(
+      `SELECT DISTINCT ON (v.definition->>'definitionId')
+              v.definition->>'definitionId' AS definition_id,
+              t.status
+         FROM content_template_versions v
+         JOIN content_templates t ON t.id = v.template_id
+        WHERE v.definition->>'definitionId' = ANY($1::text[])
+        ORDER BY v.definition->>'definitionId', v.version DESC`,
+      [definitionIds],
+    );
+    const templateStatus = new Map(
+      statusRows.rows.map((row) => [row.definition_id, row.status]),
+    );
+
     const defs: ChallengeDefinition[] = [];
     for (const entry of payload.entries) {
-      // Skip paused entries (entry-level or override)
-      if (entry.paused || paused.has(entry.definitionId)) continue;
+      if (
+        !isLiveCatalogEntry({
+          entryPaused: entry.paused === true,
+          templateStatus: templateStatus.get(entry.definitionId) ?? null,
+        })
+      ) {
+        continue;
+      }
       const version = await this.db.query<{ definition: unknown }>(
         `SELECT definition FROM content_template_versions WHERE id = $1::uuid`,
         [entry.templateVersionId],
@@ -218,9 +253,9 @@ export class ReleaseResolverService implements ChallengeDefinitionProvider {
         continue;
       }
 
-      defs.push(this.toRuntimeDefinition(parsed.data));
+      defs.push(toRuntimeChallengeDefinition(parsed.data));
     }
-    return defs.length > 0 ? defs : [this.getDefaultDev()];
+    return defs;
   }
 
   getById(id: string): ChallengeDefinition | undefined {
@@ -272,24 +307,6 @@ export class ReleaseResolverService implements ChallengeDefinitionProvider {
       return parsed.data;
     }
     return DEFAULT_POWER_CONFIGURATION;
-  }
-
-  private toRuntimeDefinition(
-    def: ChallengeDefinitionContract,
-  ): ChallengeDefinition {
-    return {
-      definitionId: def.definitionId,
-      definitionVersion: def.definitionVersion,
-      engineId: def.engineId,
-      durationMs: def.durationMs,
-      heartPenaltyOnFailure: def.heartPenaltyOnFailure,
-      energyRewardOnSuccess: def.energyRewardOnSuccess,
-      promptKey: def.promptKey,
-      difficulty: def.difficulty,
-      choiceKeys: def.choiceKeys,
-      clientConfig: def.clientConfig,
-      serverConfig: def.serverConfig,
-    };
   }
 
   /**

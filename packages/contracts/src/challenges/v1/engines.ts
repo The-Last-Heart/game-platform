@@ -1,32 +1,32 @@
-import { z } from 'zod';
+import { z } from "zod";
 
 /** Launch pack engine ids owned by LH-007. */
 export const LAUNCH_ENGINE_IDS = [
-  'reaction.wait_for_signal',
-  'trap.no_touch',
-  'gesture.reverse_swipe',
-  'tap.precision',
-  'memory.sequence',
-  'hold.multitouch',
+  "reaction.wait_for_signal",
+  "trap.no_touch",
+  "gesture.reverse_swipe",
+  "tap.precision",
+  "memory.sequence",
+  "hold.multitouch",
   // LH-009 schema-only engines (Studio forms only — no runtime evaluator yet)
-  'motion.shake',
-  'motion.tilt_balance',
-  'audio.cue',
-  'social.pair_sync',
-  'tactical.risk_choice',
+  "motion.shake",
+  "motion.tilt_balance",
+  "audio.cue",
+  "social.pair_sync",
+  "tactical.risk_choice",
   // Challenges 31–38
-  'trivia.multiple_choice',
-  'geography.select_on_map',
-  'focus.odd_one_out',
-  'order.sequence_sort',
-  'precision.maze_path',
-  'precision.neon_cable',
-  'gesture.fog_wipe',
-  'precision.circuit_rotation',
-  'precision.cable_untangle',
-  'logic.balance_scale',
-  'focus.stroop',
-  'search.select_occurrences',
+  "trivia.multiple_choice",
+  "geography.select_on_map",
+  "focus.odd_one_out",
+  "order.sequence_sort",
+  "precision.maze_path",
+  "precision.neon_cable",
+  "gesture.fog_wipe",
+  "precision.circuit_rotation",
+  "precision.cable_untangle",
+  "logic.balance_scale",
+  "focus.stroop",
+  "search.select_occurrences",
 ] as const;
 
 export const launchEngineIdSchema = z.enum(LAUNCH_ENGINE_IDS);
@@ -39,14 +39,14 @@ const nonNegMs = z.number().int().nonnegative().max(60_000);
 const targetId = z.string().min(1).max(64);
 const optionKey = z.string().min(1).max(128);
 
-export const swipeDirectionSchema = z.enum(['up', 'down', 'left', 'right']);
+export const swipeDirectionSchema = z.enum(["up", "down", "left", "right"]);
 export type SwipeDirection = z.infer<typeof swipeDirectionSchema>;
 
 const OPPOSITE_DIRECTION: Record<SwipeDirection, SwipeDirection> = {
-  up: 'down',
-  down: 'up',
-  left: 'right',
-  right: 'left',
+  up: "down",
+  down: "up",
+  left: "right",
+  right: "left",
 };
 
 export function oppositeSwipeDirection(
@@ -92,8 +92,8 @@ export const reactionWaitForSignalServerConfigSchema = z
     if (cfg.signalDelayRangeMs.max < cfg.signalDelayRangeMs.min) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
-        message: 'signalDelayRangeMs.max must be >= min',
-        path: ['signalDelayRangeMs', 'max'],
+        message: "signalDelayRangeMs.max must be >= min",
+        path: ["signalDelayRangeMs", "max"],
       });
     }
   });
@@ -138,15 +138,15 @@ export const trapNoTouchZoneSchema = z
     if (zone.x + zone.width > 1) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
-        message: 'zone.x + zone.width must be <= 1',
-        path: ['width'],
+        message: "zone.x + zone.width must be <= 1",
+        path: ["width"],
       });
     }
     if (zone.y + zone.height > 1) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
-        message: 'zone.y + zone.height must be <= 1',
-        path: ['height'],
+        message: "zone.y + zone.height must be <= 1",
+        path: ["height"],
       });
     }
   });
@@ -261,8 +261,8 @@ export const tapPrecisionClientConfigSchema = z
     if (new Set(ids).size !== ids.length) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
-        message: 'targets must have unique ids',
-        path: ['targets'],
+        message: "targets must have unique ids",
+        path: ["targets"],
       });
     }
   });
@@ -280,8 +280,8 @@ export const tapPrecisionServerConfigSchema = z
     if (new Set(value.targetIds).size !== value.targetIds.length) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
-        message: 'targetIds must be unique',
-        path: ['targetIds'],
+        message: "targetIds must be unique",
+        path: ["targetIds"],
       });
     }
   });
@@ -324,8 +324,8 @@ export const memoryObjectGroupSchema = z
     if (new Set(value.keys).size !== value.keys.length) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
-        message: 'object group keys must be unique',
-        path: ['keys'],
+        message: "object group keys must be unique",
+        path: ["keys"],
       });
     }
   });
@@ -347,8 +347,8 @@ export const memorySequenceClientConfigSchema = z
     if (new Set(value.optionKeys).size !== value.optionKeys.length) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
-        message: 'optionKeys must be unique',
-        path: ['optionKeys'],
+        message: "optionKeys must be unique",
+        path: ["optionKeys"],
       });
     }
   });
@@ -371,8 +371,8 @@ export const memorySequenceServerConfigSchema = z
     if (new Set(value.optionKeys).size !== value.optionKeys.length) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
-        message: 'optionKeys must be unique',
-        path: ['optionKeys'],
+        message: "optionKeys must be unique",
+        path: ["optionKeys"],
       });
     }
     const allowed = new Set(value.optionKeys);
@@ -382,7 +382,7 @@ export const memorySequenceServerConfigSchema = z
         ctx.addIssue({
           code: z.ZodIssueCode.custom,
           message: `sequence[${i}] is not in optionKeys`,
-          path: ['sequence', i],
+          path: ["sequence", i],
         });
       }
     }
@@ -395,7 +395,7 @@ export const memorySequenceServerConfigSchema = z
           ctx.addIssue({
             code: z.ZodIssueCode.custom,
             message: `objectGroups[${g}] needs at least optionCount (${optionCount}) keys`,
-            path: ['objectGroups', g, 'keys'],
+            path: ["objectGroups", g, "keys"],
           });
         }
       }
@@ -482,7 +482,9 @@ export const motionShakeClientConfigSchema = z
     progressKey: translationKey,
   })
   .strict();
-export type MotionShakeClientConfig = z.infer<typeof motionShakeClientConfigSchema>;
+export type MotionShakeClientConfig = z.infer<
+  typeof motionShakeClientConfigSchema
+>;
 
 export const motionShakeServerConfigSchema = z
   .object({
@@ -490,7 +492,9 @@ export const motionShakeServerConfigSchema = z
     noiseThreshold: z.number().min(0).max(100).default(5),
   })
   .strict();
-export type MotionShakeServerConfig = z.infer<typeof motionShakeServerConfigSchema>;
+export type MotionShakeServerConfig = z.infer<
+  typeof motionShakeServerConfigSchema
+>;
 
 export const motionShakeAnswerSchema = z
   .object({
@@ -504,10 +508,10 @@ export type MotionShakeAnswer = z.infer<typeof motionShakeAnswerSchema>;
 // ---------------------------------------------------------------------------
 
 export const motionTiltTargetShapeSchema = z.enum([
-  'circle',
-  'square',
-  'diamond',
-  'heart',
+  "circle",
+  "square",
+  "diamond",
+  "heart",
 ]);
 export type MotionTiltTargetShape = z.infer<typeof motionTiltTargetShapeSchema>;
 
@@ -517,7 +521,9 @@ export const motionTiltBalanceClientConfigSchema = z
     promptKey: translationKey,
   })
   .strict();
-export type MotionTiltBalanceClientConfig = z.infer<typeof motionTiltBalanceClientConfigSchema>;
+export type MotionTiltBalanceClientConfig = z.infer<
+  typeof motionTiltBalanceClientConfigSchema
+>;
 
 export const motionTiltBalanceServerConfigSchema = z
   .object({
@@ -532,7 +538,7 @@ export const motionTiltBalanceServerConfigSchema = z
           .object({
             targetX: z.number().min(-1).max(1),
             targetY: z.number().min(-1).max(1),
-            targetShape: motionTiltTargetShapeSchema.default('circle'),
+            targetShape: motionTiltTargetShapeSchema.default("circle"),
           })
           .strict(),
       )
@@ -541,7 +547,9 @@ export const motionTiltBalanceServerConfigSchema = z
       .optional(),
   })
   .strict();
-export type MotionTiltBalanceServerConfig = z.infer<typeof motionTiltBalanceServerConfigSchema>;
+export type MotionTiltBalanceServerConfig = z.infer<
+  typeof motionTiltBalanceServerConfigSchema
+>;
 
 export const motionTiltBalanceAnswerSchema = z
   .object({
@@ -550,7 +558,9 @@ export const motionTiltBalanceAnswerSchema = z
     heldMs: nonNegMs,
   })
   .strict();
-export type MotionTiltBalanceAnswer = z.infer<typeof motionTiltBalanceAnswerSchema>;
+export type MotionTiltBalanceAnswer = z.infer<
+  typeof motionTiltBalanceAnswerSchema
+>;
 
 // ---------------------------------------------------------------------------
 // 9. audio.cue
@@ -597,7 +607,9 @@ export const socialPairSyncClientConfigSchema = z
     partnerRoleKeys: z.array(translationKey).min(1).max(4),
   })
   .strict();
-export type SocialPairSyncClientConfig = z.infer<typeof socialPairSyncClientConfigSchema>;
+export type SocialPairSyncClientConfig = z.infer<
+  typeof socialPairSyncClientConfigSchema
+>;
 
 export const socialPairSyncServerConfigSchema = z
   .object({
@@ -605,13 +617,17 @@ export const socialPairSyncServerConfigSchema = z
     syncWindowMs: positiveMs,
   })
   .strict();
-export type SocialPairSyncServerConfig = z.infer<typeof socialPairSyncServerConfigSchema>;
+export type SocialPairSyncServerConfig = z.infer<
+  typeof socialPairSyncServerConfigSchema
+>;
 
 export const socialPairSyncAnswerSchema = z
   .object({
     synced: z.boolean(),
     /** How long the player held the sync control (ms). */
     heldMs: z.number().int().nonnegative().max(60_000).optional(),
+    /** True while the player is currently pressing the sync control. */
+    holding: z.boolean().optional(),
     /** True when the player lifted before the hold completed. */
     releasedEarly: z.boolean().optional(),
     final: z.boolean().optional(),
@@ -634,12 +650,14 @@ export const tacticalRiskChoiceClientConfigSchema = z
     if (new Set(value.optionKeys).size !== value.optionKeys.length) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
-        message: 'optionKeys must be unique',
-        path: ['optionKeys'],
+        message: "optionKeys must be unique",
+        path: ["optionKeys"],
       });
     }
   });
-export type TacticalRiskChoiceClientConfig = z.infer<typeof tacticalRiskChoiceClientConfigSchema>;
+export type TacticalRiskChoiceClientConfig = z.infer<
+  typeof tacticalRiskChoiceClientConfigSchema
+>;
 
 export const tacticalRiskChoiceServerConfigSchema = z
   .object({
@@ -651,23 +669,73 @@ export const tacticalRiskChoiceServerConfigSchema = z
     if (value.optionKeys.length !== value.riskWeights.length) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
-        message: 'riskWeights length must match optionKeys length',
-        path: ['riskWeights'],
+        message: "riskWeights length must match optionKeys length",
+        path: ["riskWeights"],
       });
     }
   });
-export type TacticalRiskChoiceServerConfig = z.infer<typeof tacticalRiskChoiceServerConfigSchema>;
+export type TacticalRiskChoiceServerConfig = z.infer<
+  typeof tacticalRiskChoiceServerConfigSchema
+>;
 
 export const tacticalRiskChoiceAnswerSchema = z
   .object({
     chosenOptionKey: optionKey,
   })
   .strict();
-export type TacticalRiskChoiceAnswer = z.infer<typeof tacticalRiskChoiceAnswerSchema>;
+export type TacticalRiskChoiceAnswer = z.infer<
+  typeof tacticalRiskChoiceAnswerSchema
+>;
 
 // ---------------------------------------------------------------------------
 // 12. trivia.multiple_choice
 // ---------------------------------------------------------------------------
+
+const triviaLocaleCopySchema = z
+  .object({
+    ar: z.string().min(1).max(500),
+    en: z.string().min(1).max(500).optional(),
+  })
+  .strict();
+
+export const triviaQuestionSchema = z
+  .object({
+    questionKey: translationKey,
+    optionKeys: z.array(optionKey).min(2).max(6),
+    correctOptionKey: optionKey,
+    /** Admin-authored player copy. Pinned into the round clientConfig at start. */
+    questionCopy: triviaLocaleCopySchema.optional(),
+    optionCopy: z.record(triviaLocaleCopySchema).optional(),
+  })
+  .strict()
+  .superRefine((value, ctx) => {
+    if (new Set(value.optionKeys).size !== value.optionKeys.length) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "optionKeys must be unique",
+        path: ["optionKeys"],
+      });
+    }
+    if (!value.optionKeys.includes(value.correctOptionKey)) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "correctOptionKey must be one of optionKeys",
+        path: ["correctOptionKey"],
+      });
+    }
+    if (value.optionCopy) {
+      for (const key of Object.keys(value.optionCopy)) {
+        if (!value.optionKeys.includes(key)) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: `optionCopy.${key} is not in optionKeys`,
+            path: ["optionCopy", key],
+          });
+        }
+      }
+    }
+  });
+export type TriviaQuestion = z.infer<typeof triviaQuestionSchema>;
 
 export const triviaMultipleChoiceClientConfigSchema = z
   .object({
@@ -676,6 +744,9 @@ export const triviaMultipleChoiceClientConfigSchema = z
     questionKey: translationKey,
     optionKeys: z.array(optionKey).min(2).max(6),
     footerKey: translationKey.optional(),
+    /** Round-pinned display text for the selected question (Arabic-first). */
+    questionText: z.string().min(1).max(500).optional(),
+    optionTexts: z.record(z.string().min(1).max(500)).optional(),
   })
   .strict();
 export type TriviaMultipleChoiceClientConfig = z.infer<
@@ -684,18 +755,7 @@ export type TriviaMultipleChoiceClientConfig = z.infer<
 
 export const triviaMultipleChoiceServerConfigSchema = z
   .object({
-    questions: z
-      .array(
-        z
-          .object({
-            questionKey: translationKey,
-            optionKeys: z.array(optionKey).min(2).max(6),
-            correctOptionKey: optionKey,
-          })
-          .strict(),
-      )
-      .min(1)
-      .max(64),
+    questions: z.array(triviaQuestionSchema).min(1).max(64),
     questionKey: translationKey.optional(),
     optionKeys: z.array(optionKey).min(2).max(6).optional(),
     correctOptionKey: optionKey.optional(),
@@ -889,7 +949,9 @@ export const orderSequenceSortAnswerSchema = z
     orderedKeys: z.array(optionKey).min(2).max(8),
   })
   .strict();
-export type OrderSequenceSortAnswer = z.infer<typeof orderSequenceSortAnswerSchema>;
+export type OrderSequenceSortAnswer = z.infer<
+  typeof orderSequenceSortAnswerSchema
+>;
 
 // ---------------------------------------------------------------------------
 // 16. precision.maze_path
@@ -903,7 +965,10 @@ export const precisionMazePathClientConfigSchema = z
     cols: z.number().int().min(3).max(12),
     rows: z.number().int().min(3).max(12),
     /** 0 = wall, 1 = path */
-    cells: z.array(z.union([z.literal(0), z.literal(1)])).min(9).max(144),
+    cells: z
+      .array(z.union([z.literal(0), z.literal(1)]))
+      .min(9)
+      .max(144),
     startIndex: z.number().int().min(0).max(143),
     goalIndex: z.number().int().min(0).max(143),
   })
@@ -916,7 +981,10 @@ export const precisionMazePathServerConfigSchema = z
   .object({
     cols: z.number().int().min(3).max(12),
     rows: z.number().int().min(3).max(12),
-    cells: z.array(z.union([z.literal(0), z.literal(1)])).min(9).max(144),
+    cells: z
+      .array(z.union([z.literal(0), z.literal(1)]))
+      .min(9)
+      .max(144),
     startIndex: z.number().int().min(0).max(143),
     goalIndex: z.number().int().min(0).max(143),
     variants: z
@@ -925,7 +993,10 @@ export const precisionMazePathServerConfigSchema = z
           .object({
             cols: z.number().int().min(3).max(12),
             rows: z.number().int().min(3).max(12),
-            cells: z.array(z.union([z.literal(0), z.literal(1)])).min(9).max(144),
+            cells: z
+              .array(z.union([z.literal(0), z.literal(1)]))
+              .min(9)
+              .max(144),
             startIndex: z.number().int().min(0).max(143),
             goalIndex: z.number().int().min(0).max(143),
           })
@@ -946,18 +1017,20 @@ export const precisionMazePathAnswerSchema = z
     hitWall: z.boolean(),
   })
   .strict();
-export type PrecisionMazePathAnswer = z.infer<typeof precisionMazePathAnswerSchema>;
+export type PrecisionMazePathAnswer = z.infer<
+  typeof precisionMazePathAnswerSchema
+>;
 
 // ---------------------------------------------------------------------------
 // 16b. precision.neon_cable
 // ---------------------------------------------------------------------------
 
-export const neonCableColorSchema = z.enum(['cyan', 'red']);
+export const neonCableColorSchema = z.enum(["cyan", "red"]);
 export type NeonCableColor = z.infer<typeof neonCableColorSchema>;
 
 export const neonCableWrongDropPolicySchema = z.enum([
-  'fail_final',
-  'reset_allow_retry',
+  "fail_final",
+  "reset_allow_retry",
 ]);
 export type NeonCableWrongDropPolicy = z.infer<
   typeof neonCableWrongDropPolicySchema
@@ -1137,10 +1210,10 @@ export type GestureFogWipeAnswer = z.infer<typeof gestureFogWipeAnswerSchema>;
 // ---------------------------------------------------------------------------
 
 export const circuitRotationSideSchema = z.enum([
-  'north',
-  'east',
-  'south',
-  'west',
+  "north",
+  "east",
+  "south",
+  "west",
 ]);
 export type CircuitRotationSide = z.infer<typeof circuitRotationSideSchema>;
 
@@ -1170,12 +1243,12 @@ export const circuitRotationTargetSchema = z
   .object({
     cell: circuitRotationCellSchema,
     side: circuitRotationSideSchema,
-    kind: z.literal('heart'),
+    kind: z.literal("heart"),
   })
   .strict();
 export type CircuitRotationTarget = z.infer<typeof circuitRotationTargetSchema>;
 
-export const circuitRotationShapeSchema = z.enum(['straight', 'corner']);
+export const circuitRotationShapeSchema = z.enum(["straight", "corner"]);
 export type CircuitRotationShape = z.infer<typeof circuitRotationShapeSchema>;
 
 export const circuitRotationTileSchema = z
@@ -1204,6 +1277,10 @@ export const circuitRotationAssetIdsSchema = z
     boardBase: z.string().min(1).max(128),
     gridPlate: z.string().min(1).max(128),
     sparkRive: z.string().min(1).max(128),
+    /** Content-pack SFX when a new pipe joins the powered path. */
+    cableConnectSfx: z.string().min(1).max(128).optional(),
+    /** Content-pack SFX when power first reaches the heart. */
+    heartPowerOnSfx: z.string().min(1).max(128).optional(),
   })
   .strict();
 export type CircuitRotationAssetIds = z.infer<
@@ -1242,34 +1319,34 @@ function refineCircuitRotationPuzzle(
     if (!inBounds(cell)) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
-        message: 'cell must be within grid bounds',
+        message: "cell must be within grid bounds",
         path,
       });
     }
   };
 
-  validateCell(puzzle.source.cell, ['source', 'cell']);
-  validateCell(puzzle.target.cell, ['target', 'cell']);
+  validateCell(puzzle.source.cell, ["source", "cell"]);
+  validateCell(puzzle.target.cell, ["target", "cell"]);
 
   const tileIds = new Set<string>();
   const tileCells = new Set<string>();
   puzzle.tiles.forEach((tile, index) => {
-    validateCell(tile.cell, ['tiles', index, 'cell']);
+    validateCell(tile.cell, ["tiles", index, "cell"]);
     if (tileIds.has(tile.id)) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
         message: `duplicate tile id "${tile.id}"`,
-        path: ['tiles', index, 'id'],
+        path: ["tiles", index, "id"],
       });
     }
     tileIds.add(tile.id);
 
-    const cellKey = tile.cell.join(',');
+    const cellKey = tile.cell.join(",");
     if (tileCells.has(cellKey)) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
-        message: 'multiple tiles cannot occupy the same cell',
-        path: ['tiles', index, 'cell'],
+        message: "multiple tiles cannot occupy the same cell",
+        path: ["tiles", index, "cell"],
       });
     }
     tileCells.add(cellKey);
@@ -1277,13 +1354,13 @@ function refineCircuitRotationPuzzle(
 
   const stationaryConnections = new Set<string>();
   puzzle.stationaryConnections.forEach((connection, index) => {
-    validateCell(connection.cell, ['stationaryConnections', index, 'cell']);
-    const connectionKey = `${connection.cell.join(',')}:${connection.side}`;
+    validateCell(connection.cell, ["stationaryConnections", index, "cell"]);
+    const connectionKey = `${connection.cell.join(",")}:${connection.side}`;
     if (stationaryConnections.has(connectionKey)) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
-        message: 'duplicate stationary connection',
-        path: ['stationaryConnections', index],
+        message: "duplicate stationary connection",
+        path: ["stationaryConnections", index],
       });
     }
     stationaryConnections.add(connectionKey);
@@ -1364,7 +1441,11 @@ export const CABLE_UNTANGLE_MAX_CABLES = 8;
 export const cableUntangleSocketSchema = z
   .object({
     id: z.string().min(1).max(64),
-    order: z.number().int().min(0).max(CABLE_UNTANGLE_MAX_CABLES - 1),
+    order: z
+      .number()
+      .int()
+      .min(0)
+      .max(CABLE_UNTANGLE_MAX_CABLES - 1),
   })
   .strict();
 export type CableUntangleSocket = z.infer<typeof cableUntangleSocketSchema>;
@@ -1390,15 +1471,15 @@ export const cableUntangleLayoutSchema = z
     if (layout.rightColumnX - layout.leftColumnX < 0.35) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
-        message: 'rightColumnX must be at least 0.35 beyond leftColumnX',
-        path: ['rightColumnX'],
+        message: "rightColumnX must be at least 0.35 beyond leftColumnX",
+        path: ["rightColumnX"],
       });
     }
     if (layout.topPadding + layout.bottomPadding >= 0.85) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
-        message: 'vertical padding leaves insufficient play area',
-        path: ['topPadding'],
+        message: "vertical padding leaves insufficient play area",
+        path: ["topPadding"],
       });
     }
   });
@@ -1485,8 +1566,8 @@ function refineCableUntanglePuzzle(
   if (left.length !== right.length) {
     ctx.addIssue({
       code: z.ZodIssueCode.custom,
-      message: 'left and right socket counts must match',
-      path: ['sockets', 'right'],
+      message: "left and right socket counts must match",
+      path: ["sockets", "right"],
     });
     return;
   }
@@ -1497,15 +1578,15 @@ function refineCableUntanglePuzzle(
     ctx.addIssue({
       code: z.ZodIssueCode.custom,
       message: `socket count must be ${CABLE_UNTANGLE_MIN_CABLES}-${CABLE_UNTANGLE_MAX_CABLES}`,
-      path: ['sockets', 'left'],
+      path: ["sockets", "left"],
     });
     return;
   }
   if (puzzle.cables.length !== left.length) {
     ctx.addIssue({
       code: z.ZodIssueCode.custom,
-      message: 'cable count must match socket count',
-      path: ['cables'],
+      message: "cable count must match socket count",
+      path: ["cables"],
     });
     return;
   }
@@ -1522,7 +1603,7 @@ function refineCableUntanglePuzzle(
         ctx.addIssue({
           code: z.ZodIssueCode.custom,
           message: `duplicate socket id "${socket.id}"`,
-          path: [...pathPrefix, i, 'id'],
+          path: [...pathPrefix, i, "id"],
         });
       }
       ids.add(socket.id);
@@ -1530,7 +1611,7 @@ function refineCableUntanglePuzzle(
         ctx.addIssue({
           code: z.ZodIssueCode.custom,
           message: `duplicate socket order ${socket.order}`,
-          path: [...pathPrefix, i, 'order'],
+          path: [...pathPrefix, i, "order"],
         });
       }
       orders.add(socket.order);
@@ -1539,15 +1620,15 @@ function refineCableUntanglePuzzle(
       if (!orders.has(i)) {
         ctx.addIssue({
           code: z.ZodIssueCode.custom,
-          message: 'socket orders must be unique and contiguous from 0',
+          message: "socket orders must be unique and contiguous from 0",
           path: pathPrefix,
         });
         break;
       }
     }
   };
-  checkOrders(left, ['sockets', 'left']);
-  checkOrders(right, ['sockets', 'right']);
+  checkOrders(left, ["sockets", "left"]);
+  checkOrders(right, ["sockets", "right"]);
 
   const leftIds = new Set(left.map((s) => s.id));
   const rightIds = new Set(right.map((s) => s.id));
@@ -1560,15 +1641,15 @@ function refineCableUntanglePuzzle(
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
         message: `duplicate cable id "${cable.id}"`,
-        path: ['cables', index, 'id'],
+        path: ["cables", index, "id"],
       });
     }
     cableIds.add(cable.id);
     if (!leftIds.has(cable.leftSocketId) || usedLeft.has(cable.leftSocketId)) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
-        message: 'each left socket must be referenced exactly once',
-        path: ['cables', index, 'leftSocketId'],
+        message: "each left socket must be referenced exactly once",
+        path: ["cables", index, "leftSocketId"],
       });
     }
     usedLeft.add(cable.leftSocketId);
@@ -1578,8 +1659,8 @@ function refineCableUntanglePuzzle(
     ) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
-        message: 'each right socket must be occupied exactly once',
-        path: ['cables', index, 'initialRightSocketId'],
+        message: "each right socket must be occupied exactly once",
+        path: ["cables", index, "initialRightSocketId"],
       });
     }
     usedRight.add(cable.initialRightSocketId);
@@ -1593,8 +1674,8 @@ function refineCableUntanglePuzzle(
     if (crossings <= 0) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
-        message: 'initial arrangement must contain at least one crossing',
-        path: ['cables'],
+        message: "initial arrangement must contain at least one crossing",
+        path: ["cables"],
       });
     }
   }
@@ -1674,7 +1755,10 @@ export type CableUntangleSwap = z.infer<typeof cableUntangleSwapSchema>;
 export const precisionCableUntangleAnswerSchema = z
   .object({
     swaps: z.array(cableUntangleSwapSchema).max(64),
-    finalAssignment: z.record(z.string().min(1).max(64), z.string().min(1).max(64)),
+    finalAssignment: z.record(
+      z.string().min(1).max(64),
+      z.string().min(1).max(64),
+    ),
   })
   .strict();
 export type PrecisionCableUntangleAnswer = z.infer<
@@ -1711,7 +1795,10 @@ export const logicBalanceScaleServerConfigSchema = z
           .object({
             leftWeights: z.array(z.number().int().min(1).max(9)).min(1).max(4),
             rightKnownWeights: z.array(z.number().int().min(1).max(9)).max(4),
-            optionWeights: z.array(z.number().int().min(1).max(9)).min(2).max(6),
+            optionWeights: z
+              .array(z.number().int().min(1).max(9))
+              .min(2)
+              .max(6),
             correctWeight: z.number().int().min(1).max(9),
           })
           .strict(),
@@ -1730,7 +1817,9 @@ export const logicBalanceScaleAnswerSchema = z
     chosenWeight: z.number().int().min(1).max(9),
   })
   .strict();
-export type LogicBalanceScaleAnswer = z.infer<typeof logicBalanceScaleAnswerSchema>;
+export type LogicBalanceScaleAnswer = z.infer<
+  typeof logicBalanceScaleAnswerSchema
+>;
 
 // ---------------------------------------------------------------------------
 // 18. focus.stroop
@@ -1746,7 +1835,9 @@ export const focusStroopClientConfigSchema = z
     optionKeys: z.array(optionKey).min(2).max(6),
   })
   .strict();
-export type FocusStroopClientConfig = z.infer<typeof focusStroopClientConfigSchema>;
+export type FocusStroopClientConfig = z.infer<
+  typeof focusStroopClientConfigSchema
+>;
 
 export const focusStroopServerConfigSchema = z
   .object({
@@ -1770,7 +1861,9 @@ export const focusStroopServerConfigSchema = z
       .optional(),
   })
   .strict();
-export type FocusStroopServerConfig = z.infer<typeof focusStroopServerConfigSchema>;
+export type FocusStroopServerConfig = z.infer<
+  typeof focusStroopServerConfigSchema
+>;
 
 export const focusStroopAnswerSchema = z
   .object({
@@ -1810,7 +1903,10 @@ export const searchSelectOccurrencesServerConfigSchema = z
             columns: z.number().int().min(2).max(6),
             cells: z.array(z.string().min(1).max(8)).min(4).max(36),
             targetValue: z.string().min(1).max(8),
-            requiredIndices: z.array(z.number().int().min(0).max(35)).min(1).max(36),
+            requiredIndices: z
+              .array(z.number().int().min(0).max(35))
+              .min(1)
+              .max(36),
           })
           .strict(),
       )
@@ -1838,30 +1934,33 @@ export type SearchSelectOccurrencesAnswer = z.infer<
 // ---------------------------------------------------------------------------
 
 /** Runtime readiness for each engine: 'live' engines have evaluators; 'schema_only' have schemas but no runtime. */
-export const ENGINE_RUNTIME_READINESS: Record<LaunchEngineId, 'live' | 'schema_only'> = {
-  'reaction.wait_for_signal': 'live',
-  'trap.no_touch': 'live',
-  'gesture.reverse_swipe': 'live',
-  'tap.precision': 'live',
-  'memory.sequence': 'live',
-  'hold.multitouch': 'live',
-  'motion.shake': 'live',
-  'motion.tilt_balance': 'live',
-  'audio.cue': 'live',
-  'social.pair_sync': 'live',
-  'tactical.risk_choice': 'live',
-  'trivia.multiple_choice': 'live',
-  'geography.select_on_map': 'live',
-  'focus.odd_one_out': 'live',
-  'order.sequence_sort': 'live',
-  'precision.maze_path': 'live',
-  'precision.neon_cable': 'live',
-  'gesture.fog_wipe': 'live',
-  'precision.circuit_rotation': 'live',
-  'precision.cable_untangle': 'live',
-  'logic.balance_scale': 'live',
-  'focus.stroop': 'live',
-  'search.select_occurrences': 'live',
+export const ENGINE_RUNTIME_READINESS: Record<
+  LaunchEngineId,
+  "live" | "schema_only"
+> = {
+  "reaction.wait_for_signal": "live",
+  "trap.no_touch": "live",
+  "gesture.reverse_swipe": "live",
+  "tap.precision": "live",
+  "memory.sequence": "live",
+  "hold.multitouch": "live",
+  "motion.shake": "live",
+  "motion.tilt_balance": "live",
+  "audio.cue": "live",
+  "social.pair_sync": "live",
+  "tactical.risk_choice": "live",
+  "trivia.multiple_choice": "live",
+  "geography.select_on_map": "live",
+  "focus.odd_one_out": "live",
+  "order.sequence_sort": "live",
+  "precision.maze_path": "live",
+  "precision.neon_cable": "live",
+  "gesture.fog_wipe": "live",
+  "precision.circuit_rotation": "live",
+  "precision.cable_untangle": "live",
+  "logic.balance_scale": "live",
+  "focus.stroop": "live",
+  "search.select_occurrences": "live",
 };
 
 type EngineSchemaPair = {
@@ -1871,117 +1970,117 @@ type EngineSchemaPair = {
 };
 
 const ENGINE_SCHEMAS: Record<LaunchEngineId, EngineSchemaPair> = {
-  'reaction.wait_for_signal': {
+  "reaction.wait_for_signal": {
     client: reactionWaitForSignalClientConfigSchema,
     server: reactionWaitForSignalServerConfigSchema,
     answer: reactionWaitForSignalAnswerSchema,
   },
-  'trap.no_touch': {
+  "trap.no_touch": {
     client: trapNoTouchClientConfigSchema,
     server: trapNoTouchServerConfigSchema,
     answer: trapNoTouchAnswerSchema,
   },
-  'gesture.reverse_swipe': {
+  "gesture.reverse_swipe": {
     client: gestureReverseSwipeClientConfigSchema,
     server: gestureReverseSwipeServerConfigSchema,
     answer: gestureReverseSwipeAnswerSchema,
   },
-  'tap.precision': {
+  "tap.precision": {
     client: tapPrecisionClientConfigSchema,
     server: tapPrecisionServerConfigSchema,
     answer: tapPrecisionAnswerSchema,
   },
-  'memory.sequence': {
+  "memory.sequence": {
     client: memorySequenceClientConfigSchema,
     server: memorySequenceServerConfigSchema,
     answer: memorySequenceAnswerSchema,
   },
-  'hold.multitouch': {
+  "hold.multitouch": {
     client: holdMultitouchClientConfigSchema,
     server: holdMultitouchServerConfigSchema,
     answer: holdMultitouchAnswerSchema,
   },
-  'motion.shake': {
+  "motion.shake": {
     client: motionShakeClientConfigSchema,
     server: motionShakeServerConfigSchema,
     answer: motionShakeAnswerSchema,
   },
-  'motion.tilt_balance': {
+  "motion.tilt_balance": {
     client: motionTiltBalanceClientConfigSchema,
     server: motionTiltBalanceServerConfigSchema,
     answer: motionTiltBalanceAnswerSchema,
   },
-  'audio.cue': {
+  "audio.cue": {
     client: audioCueClientConfigSchema,
     server: audioCueServerConfigSchema,
     answer: audioCueAnswerSchema,
   },
-  'social.pair_sync': {
+  "social.pair_sync": {
     client: socialPairSyncClientConfigSchema,
     server: socialPairSyncServerConfigSchema,
     answer: socialPairSyncAnswerSchema,
   },
-  'tactical.risk_choice': {
+  "tactical.risk_choice": {
     client: tacticalRiskChoiceClientConfigSchema,
     server: tacticalRiskChoiceServerConfigSchema,
     answer: tacticalRiskChoiceAnswerSchema,
   },
-  'trivia.multiple_choice': {
+  "trivia.multiple_choice": {
     client: triviaMultipleChoiceClientConfigSchema,
     server: triviaMultipleChoiceServerConfigSchema,
     answer: triviaMultipleChoiceAnswerSchema,
   },
-  'geography.select_on_map': {
+  "geography.select_on_map": {
     client: geographySelectOnMapClientConfigSchema,
     server: geographySelectOnMapServerConfigSchema,
     answer: geographySelectOnMapAnswerSchema,
   },
-  'focus.odd_one_out': {
+  "focus.odd_one_out": {
     client: focusOddOneOutClientConfigSchema,
     server: focusOddOneOutServerConfigSchema,
     answer: focusOddOneOutAnswerSchema,
   },
-  'order.sequence_sort': {
+  "order.sequence_sort": {
     client: orderSequenceSortClientConfigSchema,
     server: orderSequenceSortServerConfigSchema,
     answer: orderSequenceSortAnswerSchema,
   },
-  'precision.maze_path': {
+  "precision.maze_path": {
     client: precisionMazePathClientConfigSchema,
     server: precisionMazePathServerConfigSchema,
     answer: precisionMazePathAnswerSchema,
   },
-  'precision.neon_cable': {
+  "precision.neon_cable": {
     client: precisionNeonCableClientConfigSchema,
     server: precisionNeonCableServerConfigSchema,
     answer: precisionNeonCableAnswerSchema,
   },
-  'gesture.fog_wipe': {
+  "gesture.fog_wipe": {
     client: gestureFogWipeClientConfigSchema,
     server: gestureFogWipeServerConfigSchema,
     answer: gestureFogWipeAnswerSchema,
   },
-  'precision.circuit_rotation': {
+  "precision.circuit_rotation": {
     client: precisionCircuitRotationClientConfigSchema,
     server: precisionCircuitRotationServerConfigSchema,
     answer: precisionCircuitRotationAnswerSchema,
   },
-  'precision.cable_untangle': {
+  "precision.cable_untangle": {
     client: precisionCableUntangleClientConfigSchema,
     server: precisionCableUntangleServerConfigSchema,
     answer: precisionCableUntangleAnswerSchema,
   },
-  'logic.balance_scale': {
+  "logic.balance_scale": {
     client: logicBalanceScaleClientConfigSchema,
     server: logicBalanceScaleServerConfigSchema,
     answer: logicBalanceScaleAnswerSchema,
   },
-  'focus.stroop': {
+  "focus.stroop": {
     client: focusStroopClientConfigSchema,
     server: focusStroopServerConfigSchema,
     answer: focusStroopAnswerSchema,
   },
-  'search.select_occurrences': {
+  "search.select_occurrences": {
     client: searchSelectOccurrencesClientConfigSchema,
     server: searchSelectOccurrencesServerConfigSchema,
     answer: searchSelectOccurrencesAnswerSchema,
@@ -1990,157 +2089,160 @@ const ENGINE_SCHEMAS: Record<LaunchEngineId, EngineSchemaPair> = {
 
 export type ValidatedEngineConfigs =
   | {
-      engineId: 'reaction.wait_for_signal';
+      engineId: "reaction.wait_for_signal";
       clientConfig: ReactionWaitForSignalClientConfig;
       serverConfig: ReactionWaitForSignalServerConfig;
     }
   | {
-      engineId: 'trap.no_touch';
+      engineId: "trap.no_touch";
       clientConfig: TrapNoTouchClientConfig;
       serverConfig: TrapNoTouchServerConfig;
     }
   | {
-      engineId: 'gesture.reverse_swipe';
+      engineId: "gesture.reverse_swipe";
       clientConfig: GestureReverseSwipeClientConfig;
       serverConfig: GestureReverseSwipeServerConfig;
     }
   | {
-      engineId: 'tap.precision';
+      engineId: "tap.precision";
       clientConfig: TapPrecisionClientConfig;
       serverConfig: TapPrecisionServerConfig;
     }
   | {
-      engineId: 'memory.sequence';
+      engineId: "memory.sequence";
       clientConfig: MemorySequenceClientConfig;
       serverConfig: MemorySequenceServerConfig;
     }
   | {
-      engineId: 'hold.multitouch';
+      engineId: "hold.multitouch";
       clientConfig: HoldMultitouchClientConfig;
       serverConfig: HoldMultitouchServerConfig;
     }
   | {
-      engineId: 'motion.shake';
+      engineId: "motion.shake";
       clientConfig: MotionShakeClientConfig;
       serverConfig: MotionShakeServerConfig;
     }
   | {
-      engineId: 'motion.tilt_balance';
+      engineId: "motion.tilt_balance";
       clientConfig: MotionTiltBalanceClientConfig;
       serverConfig: MotionTiltBalanceServerConfig;
     }
   | {
-      engineId: 'audio.cue';
+      engineId: "audio.cue";
       clientConfig: AudioCueClientConfig;
       serverConfig: AudioCueServerConfig;
     }
   | {
-      engineId: 'social.pair_sync';
+      engineId: "social.pair_sync";
       clientConfig: SocialPairSyncClientConfig;
       serverConfig: SocialPairSyncServerConfig;
     }
   | {
-      engineId: 'tactical.risk_choice';
+      engineId: "tactical.risk_choice";
       clientConfig: TacticalRiskChoiceClientConfig;
       serverConfig: TacticalRiskChoiceServerConfig;
     }
   | {
-      engineId: 'trivia.multiple_choice';
+      engineId: "trivia.multiple_choice";
       clientConfig: TriviaMultipleChoiceClientConfig;
       serverConfig: TriviaMultipleChoiceServerConfig;
     }
   | {
-      engineId: 'geography.select_on_map';
+      engineId: "geography.select_on_map";
       clientConfig: GeographySelectOnMapClientConfig;
       serverConfig: GeographySelectOnMapServerConfig;
     }
   | {
-      engineId: 'focus.odd_one_out';
+      engineId: "focus.odd_one_out";
       clientConfig: FocusOddOneOutClientConfig;
       serverConfig: FocusOddOneOutServerConfig;
     }
   | {
-      engineId: 'order.sequence_sort';
+      engineId: "order.sequence_sort";
       clientConfig: OrderSequenceSortClientConfig;
       serverConfig: OrderSequenceSortServerConfig;
     }
   | {
-      engineId: 'precision.maze_path';
+      engineId: "precision.maze_path";
       clientConfig: PrecisionMazePathClientConfig;
       serverConfig: PrecisionMazePathServerConfig;
     }
   | {
-      engineId: 'precision.neon_cable';
+      engineId: "precision.neon_cable";
       clientConfig: PrecisionNeonCableClientConfig;
       serverConfig: PrecisionNeonCableServerConfig;
     }
   | {
-      engineId: 'gesture.fog_wipe';
+      engineId: "gesture.fog_wipe";
       clientConfig: GestureFogWipeClientConfig;
       serverConfig: GestureFogWipeServerConfig;
     }
   | {
-      engineId: 'precision.circuit_rotation';
+      engineId: "precision.circuit_rotation";
       clientConfig: PrecisionCircuitRotationClientConfig;
       serverConfig: PrecisionCircuitRotationServerConfig;
     }
   | {
-      engineId: 'precision.cable_untangle';
+      engineId: "precision.cable_untangle";
       clientConfig: PrecisionCableUntangleClientConfig;
       serverConfig: PrecisionCableUntangleServerConfig;
     }
   | {
-      engineId: 'logic.balance_scale';
+      engineId: "logic.balance_scale";
       clientConfig: LogicBalanceScaleClientConfig;
       serverConfig: LogicBalanceScaleServerConfig;
     }
   | {
-      engineId: 'focus.stroop';
+      engineId: "focus.stroop";
       clientConfig: FocusStroopClientConfig;
       serverConfig: FocusStroopServerConfig;
     }
   | {
-      engineId: 'search.select_occurrences';
+      engineId: "search.select_occurrences";
       clientConfig: SearchSelectOccurrencesClientConfig;
       serverConfig: SearchSelectOccurrencesServerConfig;
     };
 
 export type ValidatedEngineAnswer =
   | {
-      engineId: 'reaction.wait_for_signal';
+      engineId: "reaction.wait_for_signal";
       answer: ReactionWaitForSignalAnswer;
     }
-  | { engineId: 'trap.no_touch'; answer: TrapNoTouchAnswer }
+  | { engineId: "trap.no_touch"; answer: TrapNoTouchAnswer }
   | {
-      engineId: 'gesture.reverse_swipe';
+      engineId: "gesture.reverse_swipe";
       answer: GestureReverseSwipeAnswer;
     }
-  | { engineId: 'tap.precision'; answer: TapPrecisionAnswer }
-  | { engineId: 'memory.sequence'; answer: MemorySequenceAnswer }
-  | { engineId: 'hold.multitouch'; answer: HoldMultitouchAnswer }
-  | { engineId: 'motion.shake'; answer: MotionShakeAnswer }
-  | { engineId: 'motion.tilt_balance'; answer: MotionTiltBalanceAnswer }
-  | { engineId: 'audio.cue'; answer: AudioCueAnswer }
-  | { engineId: 'social.pair_sync'; answer: SocialPairSyncAnswer }
-  | { engineId: 'tactical.risk_choice'; answer: TacticalRiskChoiceAnswer }
-  | { engineId: 'trivia.multiple_choice'; answer: TriviaMultipleChoiceAnswer }
-  | { engineId: 'geography.select_on_map'; answer: GeographySelectOnMapAnswer }
-  | { engineId: 'focus.odd_one_out'; answer: FocusOddOneOutAnswer }
-  | { engineId: 'order.sequence_sort'; answer: OrderSequenceSortAnswer }
-  | { engineId: 'precision.maze_path'; answer: PrecisionMazePathAnswer }
-  | { engineId: 'precision.neon_cable'; answer: PrecisionNeonCableAnswer }
-  | { engineId: 'gesture.fog_wipe'; answer: GestureFogWipeAnswer }
+  | { engineId: "tap.precision"; answer: TapPrecisionAnswer }
+  | { engineId: "memory.sequence"; answer: MemorySequenceAnswer }
+  | { engineId: "hold.multitouch"; answer: HoldMultitouchAnswer }
+  | { engineId: "motion.shake"; answer: MotionShakeAnswer }
+  | { engineId: "motion.tilt_balance"; answer: MotionTiltBalanceAnswer }
+  | { engineId: "audio.cue"; answer: AudioCueAnswer }
+  | { engineId: "social.pair_sync"; answer: SocialPairSyncAnswer }
+  | { engineId: "tactical.risk_choice"; answer: TacticalRiskChoiceAnswer }
+  | { engineId: "trivia.multiple_choice"; answer: TriviaMultipleChoiceAnswer }
+  | { engineId: "geography.select_on_map"; answer: GeographySelectOnMapAnswer }
+  | { engineId: "focus.odd_one_out"; answer: FocusOddOneOutAnswer }
+  | { engineId: "order.sequence_sort"; answer: OrderSequenceSortAnswer }
+  | { engineId: "precision.maze_path"; answer: PrecisionMazePathAnswer }
+  | { engineId: "precision.neon_cable"; answer: PrecisionNeonCableAnswer }
+  | { engineId: "gesture.fog_wipe"; answer: GestureFogWipeAnswer }
   | {
-      engineId: 'precision.circuit_rotation';
+      engineId: "precision.circuit_rotation";
       answer: PrecisionCircuitRotationAnswer;
     }
   | {
-      engineId: 'precision.cable_untangle';
+      engineId: "precision.cable_untangle";
       answer: PrecisionCableUntangleAnswer;
     }
-  | { engineId: 'logic.balance_scale'; answer: LogicBalanceScaleAnswer }
-  | { engineId: 'focus.stroop'; answer: FocusStroopAnswer }
-  | { engineId: 'search.select_occurrences'; answer: SearchSelectOccurrencesAnswer };
+  | { engineId: "logic.balance_scale"; answer: LogicBalanceScaleAnswer }
+  | { engineId: "focus.stroop"; answer: FocusStroopAnswer }
+  | {
+      engineId: "search.select_occurrences";
+      answer: SearchSelectOccurrencesAnswer;
+    };
 
 function assertKnownEngineId(engineId: string): LaunchEngineId {
   return launchEngineIdSchema.parse(engineId);
@@ -2161,7 +2263,7 @@ export function validateEngineConfigs(
   const client = pair.client.parse(clientConfig);
   const server = pair.server.parse(serverConfig);
 
-  if (id === 'gesture.reverse_swipe') {
+  if (id === "gesture.reverse_swipe") {
     const c = client as GestureReverseSwipeClientConfig;
     const s = server as GestureReverseSwipeServerConfig;
     if (s.requiredDirection !== oppositeSwipeDirection(c.displayedDirection)) {
@@ -2169,22 +2271,22 @@ export function validateEngineConfigs(
         {
           code: z.ZodIssueCode.custom,
           message:
-            'serverConfig.requiredDirection must be opposite of clientConfig.displayedDirection',
-          path: ['serverConfig', 'requiredDirection'],
+            "serverConfig.requiredDirection must be opposite of clientConfig.displayedDirection",
+          path: ["serverConfig", "requiredDirection"],
         },
       ]);
     }
   }
 
-  if (id === 'tap.precision') {
+  if (id === "tap.precision") {
     const c = client as TapPrecisionClientConfig;
     const s = server as TapPrecisionServerConfig;
     if (c.attemptCount !== s.attemptCount) {
       throw new z.ZodError([
         {
           code: z.ZodIssueCode.custom,
-          message: 'client and server attemptCount must match',
-          path: ['serverConfig', 'attemptCount'],
+          message: "client and server attemptCount must match",
+          path: ["serverConfig", "attemptCount"],
         },
       ]);
     }
@@ -2195,22 +2297,22 @@ export function validateEngineConfigs(
           {
             code: z.ZodIssueCode.custom,
             message: `server targetId "${tid}" is not present in client targets`,
-            path: ['serverConfig', 'targetIds'],
+            path: ["serverConfig", "targetIds"],
           },
         ]);
       }
     }
   }
 
-  if (id === 'memory.sequence') {
+  if (id === "memory.sequence") {
     const c = client as MemorySequenceClientConfig;
     const s = server as MemorySequenceServerConfig;
     if (c.previewMs !== s.previewMs) {
       throw new z.ZodError([
         {
           code: z.ZodIssueCode.custom,
-          message: 'client and server previewMs must match',
-          path: ['serverConfig', 'previewMs'],
+          message: "client and server previewMs must match",
+          path: ["serverConfig", "previewMs"],
         },
       ]);
     }
@@ -2224,74 +2326,68 @@ export function validateEngineConfigs(
         {
           code: z.ZodIssueCode.custom,
           message:
-            'client and server optionKeys must be the same set (order may differ)',
-          path: ['clientConfig', 'optionKeys'],
+            "client and server optionKeys must be the same set (order may differ)",
+          path: ["clientConfig", "optionKeys"],
         },
       ]);
     }
   }
 
-  if (id === 'hold.multitouch') {
+  if (id === "hold.multitouch") {
     const c = client as HoldMultitouchClientConfig;
     const s = server as HoldMultitouchServerConfig;
     if (c.holdMs !== s.holdMs) {
       throw new z.ZodError([
         {
           code: z.ZodIssueCode.custom,
-          message: 'client and server holdMs must match',
-          path: ['serverConfig', 'holdMs'],
+          message: "client and server holdMs must match",
+          path: ["serverConfig", "holdMs"],
         },
       ]);
     }
   }
 
-  if (id === 'social.pair_sync') {
+  if (id === "social.pair_sync") {
     const c = client as SocialPairSyncClientConfig;
     const s = server as SocialPairSyncServerConfig;
     const cKeys = new Set(c.partnerRoleKeys);
     const sKeys = new Set(s.partnerRoleKeys);
-    if (
-      cKeys.size !== sKeys.size ||
-      [...cKeys].some((k) => !sKeys.has(k))
-    ) {
+    if (cKeys.size !== sKeys.size || [...cKeys].some((k) => !sKeys.has(k))) {
       throw new z.ZodError([
         {
           code: z.ZodIssueCode.custom,
-          message: 'client and server partnerRoleKeys must be the same set',
-          path: ['serverConfig', 'partnerRoleKeys'],
+          message: "client and server partnerRoleKeys must be the same set",
+          path: ["serverConfig", "partnerRoleKeys"],
         },
       ]);
     }
   }
 
-  if (id === 'tactical.risk_choice') {
+  if (id === "tactical.risk_choice") {
     const c = client as TacticalRiskChoiceClientConfig;
     const s = server as TacticalRiskChoiceServerConfig;
     const cOpts = new Set(c.optionKeys);
     const sOpts = new Set(s.optionKeys);
-    if (
-      cOpts.size !== sOpts.size ||
-      [...cOpts].some((k) => !sOpts.has(k))
-    ) {
+    if (cOpts.size !== sOpts.size || [...cOpts].some((k) => !sOpts.has(k))) {
       throw new z.ZodError([
         {
           code: z.ZodIssueCode.custom,
-          message: 'client and server optionKeys must be the same set',
-          path: ['serverConfig', 'optionKeys'],
+          message: "client and server optionKeys must be the same set",
+          path: ["serverConfig", "optionKeys"],
         },
       ]);
     }
   }
 
-  if (id === 'precision.neon_cable') {
+  if (id === "precision.neon_cable") {
     const c = client as PrecisionNeonCableClientConfig;
     const s = server as PrecisionNeonCableServerConfig;
     if (c.correctSocketId !== s.correctSocketId) {
       throw new z.ZodError([
         {
           code: z.ZodIssueCode.custom,
-          message: 'client and server correctSocketId must match',
-          path: ['serverConfig', 'correctSocketId'],
+          message: "client and server correctSocketId must match",
+          path: ["serverConfig", "correctSocketId"],
         },
       ]);
     }
@@ -2299,8 +2395,8 @@ export function validateEngineConfigs(
       throw new z.ZodError([
         {
           code: z.ZodIssueCode.custom,
-          message: 'correctSocketId must reference a socket in sockets',
-          path: ['serverConfig', 'correctSocketId'],
+          message: "correctSocketId must reference a socket in sockets",
+          path: ["serverConfig", "correctSocketId"],
         },
       ]);
     }
@@ -2308,22 +2404,22 @@ export function validateEngineConfigs(
       throw new z.ZodError([
         {
           code: z.ZodIssueCode.custom,
-          message: 'client and server wrongDropPolicy must match',
-          path: ['serverConfig', 'wrongDropPolicy'],
+          message: "client and server wrongDropPolicy must match",
+          path: ["serverConfig", "wrongDropPolicy"],
         },
       ]);
     }
   }
 
-  if (id === 'gesture.fog_wipe') {
+  if (id === "gesture.fog_wipe") {
     const c = client as GestureFogWipeClientConfig;
     const s = server as GestureFogWipeServerConfig;
     if (c.clearanceRatioMin !== s.clearanceRatioMin) {
       throw new z.ZodError([
         {
           code: z.ZodIssueCode.custom,
-          message: 'client and server clearanceRatioMin must match',
-          path: ['serverConfig', 'clearanceRatioMin'],
+          message: "client and server clearanceRatioMin must match",
+          path: ["serverConfig", "clearanceRatioMin"],
         },
       ]);
     }
@@ -2331,8 +2427,8 @@ export function validateEngineConfigs(
       throw new z.ZodError([
         {
           code: z.ZodIssueCode.custom,
-          message: 'client and server assetIds.revealContent must match',
-          path: ['serverConfig', 'assetIds', 'revealContent'],
+          message: "client and server assetIds.revealContent must match",
+          path: ["serverConfig", "assetIds", "revealContent"],
         },
       ]);
     }
@@ -2344,46 +2440,52 @@ export function validateEngineConfigs(
       throw new z.ZodError([
         {
           code: z.ZodIssueCode.custom,
-          message:
-            'assetIds.revealContent must equal revealContentVariants[0]',
-          path: ['serverConfig', 'assetIds', 'revealContent'],
+          message: "assetIds.revealContent must equal revealContentVariants[0]",
+          path: ["serverConfig", "assetIds", "revealContent"],
         },
       ]);
     }
   }
 
-  if (id === 'precision.circuit_rotation') {
+  if (id === "precision.circuit_rotation") {
     const c = client as PrecisionCircuitRotationClientConfig;
     const s = server as PrecisionCircuitRotationServerConfig;
     for (const field of [
-      'grid',
-      'source',
-      'target',
-      'tiles',
-      'stationaryConnections',
+      "grid",
+      "source",
+      "target",
+      "tiles",
+      "stationaryConnections",
+      "assetIds",
     ] as const) {
       if (JSON.stringify(c[field]) !== JSON.stringify(s[field])) {
         throw new z.ZodError([
           {
             code: z.ZodIssueCode.custom,
             message: `client and server ${field} must match`,
-            path: ['serverConfig', field],
+            path: ["serverConfig", field],
           },
         ]);
       }
     }
   }
 
-  if (id === 'precision.cable_untangle') {
+  if (id === "precision.cable_untangle") {
     const c = client as PrecisionCableUntangleClientConfig;
     const s = server as PrecisionCableUntangleServerConfig;
-    for (const field of ['layout', 'sockets', 'cables', 'theme', 'assetIds'] as const) {
+    for (const field of [
+      "layout",
+      "sockets",
+      "cables",
+      "theme",
+      "assetIds",
+    ] as const) {
       if (JSON.stringify(c[field]) !== JSON.stringify(s[field])) {
         throw new z.ZodError([
           {
             code: z.ZodIssueCode.custom,
             message: `client and server ${field} must match`,
-            path: ['serverConfig', field],
+            path: ["serverConfig", field],
           },
         ]);
       }
@@ -2392,8 +2494,8 @@ export function validateEngineConfigs(
       throw new z.ZodError([
         {
           code: z.ZodIssueCode.custom,
-          message: 'client and server snapRadiusNorm must match',
-          path: ['serverConfig', 'snapRadiusNorm'],
+          message: "client and server snapRadiusNorm must match",
+          path: ["serverConfig", "snapRadiusNorm"],
         },
       ]);
     }
@@ -2401,8 +2503,8 @@ export function validateEngineConfigs(
       throw new z.ZodError([
         {
           code: z.ZodIssueCode.custom,
-          message: 'client and server mirrorHorizontally must match',
-          path: ['serverConfig', 'mirrorHorizontally'],
+          message: "client and server mirrorHorizontally must match",
+          path: ["serverConfig", "mirrorHorizontally"],
         },
       ]);
     }

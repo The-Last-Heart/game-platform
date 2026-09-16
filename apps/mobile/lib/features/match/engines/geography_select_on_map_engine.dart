@@ -167,15 +167,29 @@ class _GeographyMapWidgetState extends State<_GeographyMapWidget> {
                 ),
               );
             },
-            child: Text(
-              resolver.resolve(
-                promptKey,
-                params: <String, String>{'country': countryName},
-              ),
-              textAlign: TextAlign.center,
-              style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                fontWeight: FontWeight.w700,
-              ),
+            child: Column(
+              children: <Widget>[
+                Text(
+                  resolver.resolve(
+                    promptKey,
+                    params: <String, String>{'country': countryName},
+                  ),
+                  textAlign: TextAlign.center,
+                  style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+                if (footerKey.isNotEmpty) ...<Widget>[
+                  const SizedBox(height: 4),
+                  Text(
+                    resolver.resolve(footerKey),
+                    textAlign: TextAlign.center,
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                      color: LhColors.textMuted,
+                    ),
+                  ),
+                ],
+              ],
             ),
           ),
           const SizedBox(height: 16),
@@ -212,18 +226,7 @@ class _GeographyMapWidgetState extends State<_GeographyMapWidget> {
                                 filterQuality: FilterQuality.medium,
                               )
                             else
-                              ColoredBox(
-                                color: LhColors.elevated,
-                                child: Center(
-                                  child: Text(
-                                    resolver.resolve('challenge.map.footer'),
-                                    style: Theme.of(context)
-                                        .textTheme
-                                        .bodyMedium
-                                        ?.copyWith(color: LhColors.textMuted),
-                                  ),
-                                ),
-                              ),
+                              const ColoredBox(color: LhColors.elevated),
                             CustomPaint(
                               painter: _RegionOverlayPainter(
                                 scale: layout.scale,
@@ -240,16 +243,6 @@ class _GeographyMapWidgetState extends State<_GeographyMapWidget> {
               ),
             ),
           ),
-          if (footerKey.isNotEmpty) ...<Widget>[
-            const SizedBox(height: 10),
-            Text(
-              resolver.resolve(footerKey),
-              textAlign: TextAlign.center,
-              style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                color: LhColors.textMuted,
-              ),
-            ),
-          ],
         ],
       ),
     );

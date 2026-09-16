@@ -18,11 +18,95 @@ import {
   type AdminChallengeAnalyticsQuery,
   type AdminChallengeAnalyticsResponse,
   type AdminContentDiffResponse,
+  type AdminContentBulkPauseResponse,
   type LaunchEngineId,
 } from '@thelastheart/contracts';
 import { createHash, randomUUID } from 'node:crypto';
+import type { PoolClient } from 'pg';
 import { DatabaseService } from '../../database/database.service';
 import { AdminAuditService } from '../../admin/services/admin-audit.service';
+import {
+  pinApprovedVersionInCatalog,
+  type CatalogPlaylistEntry,
+} from './catalog-playlist';
+
+const BULK_PAUSE_STATUSES = new Set<ContentLifecycleStatus>([
+  'published',
+  'approved',
+  'scheduled',
+]);
+const BULK_RESUME_STATUSES = new Set<ContentLifecycleStatus>(['paused']);
+
+export function isBulkPauseEligible(
+  status: ContentLifecycleStatus,
+  paused: boolean,
+): boolean {
+  return paused
+    ? BULK_PAUSE_STATUSES.has(status)
+    : BULK_RESUME_STATUSES.has(status);
+}
+
+/**
+ * Same hybrid lifecycle the library table shows. Home MetricCards must use
+ * this — not catalog pause overrides — so clicking a card matches the list.
+ */
+export const TEMPLATE_DISPLAY_STATUS_SQL = `
+  CASE
+    WHEN t.status IN ('paused', 'retired', 'published') THEN t.status
+    ELSE COALESCE(
+      (SELECT v.status FROM content_template_versions v
+       WHERE v.template_id = t.id ORDER BY v.version DESC LIMIT 1),
+      t.status
+    )
+  END
+`;
+
+export function studioHomeCountsFromRows(
+  rows: Array<{ status: string; cnt: string | number }>,
+): AdminStudioHomeSummary['counts'] {
+  const counts: AdminStudioHomeSummary['counts'] = {
+    drafts: 0,
+    submitted: 0,
+    inReview: 0,
+    approved: 0,
+    scheduled: 0,
+    published: 0,
+    paused: 0,
+  };
+  for (const row of rows) {
+    const n =
+      typeof row.cnt === 'number' ? row.cnt : parseInt(String(row.cnt), 10);
+    if (!Number.isFinite(n) || n < 0) {
+      continue;
+    }
+    switch (row.status) {
+      case 'draft':
+        counts.drafts = n;
+        break;
+      case 'submitted':
+        counts.submitted = n;
+        break;
+      case 'in_review':
+        counts.inReview = n;
+        break;
+      case 'approved':
+        counts.approved = n;
+        break;
+      case 'scheduled':
+        counts.scheduled = n;
+        break;
+      case 'published':
+        counts.published = n;
+        break;
+      case 'paused':
+        counts.paused = n;
+        break;
+      default:
+        break;
+    }
+  }
+  return counts;
+}
 
 @Injectable()
 export class ContentLifecycleService {
@@ -152,13 +236,16 @@ export class ContentLifecycleService {
     try {
       validateEngineConfigs(def.engineId, def.clientConfig, def.serverConfig);
     } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : 'Engine config validation failed';
+      const message =
+        err instanceof Error ? err.message : 'Engine config validation failed';
       throw new BadRequestException({
         ok: false,
         error: {
           code: 'CONTENT_VALIDATION_FAILED',
           message: 'Engine config validation failed',
-          details: [{ path: 'engineId', message, code: 'engine_config_invalid' }],
+          details: [
+            { path: 'engineId', message, code: 'engine_config_invalid' },
+          ],
         },
       });
     }
@@ -171,16 +258,12 @@ export class ContentLifecycleService {
     input: { templateId?: string; slug?: string; definition: unknown },
   ) {
     const definition = this.validateDefinition(input.definition);
-    const hash = createHash('sha256')
-      .update(JSON.stringify(definition))
-      .digest('hex');
 
     return this.db.tx(async (client) => {
       let templateId = input.templateId;
       if (!templateId) {
         const slug =
-          input.slug ??
-          `${definition.definitionId}.${Date.now().toString(36)}`;
+          input.slug ?? `${definition.definitionId}.${Date.now().toString(36)}`;
         const inserted = await client.query<{ id: string }>(
           `INSERT INTO content_templates (
              slug, family_id, category_id, internal_title, status
@@ -202,12 +285,19 @@ export class ContentLifecycleService {
         [templateId],
       );
       const version = versionRow.rows[0]!.next;
+      const stored: ChallengeDefinitionContract = {
+        ...definition,
+        definitionVersion: version,
+      };
+      const hash = createHash('sha256')
+        .update(JSON.stringify(stored))
+        .digest('hex');
       const versionId = randomUUID();
       await client.query(
         `INSERT INTO content_template_versions (
            id, template_id, version, status, definition, validation_hash
          ) VALUES ($1::uuid, $2::uuid, $3, 'draft', $4::jsonb, $5)`,
-        [versionId, templateId, version, JSON.stringify(definition), hash],
+        [versionId, templateId, version, JSON.stringify(stored), hash],
       );
       await this.audit.write(
         {
@@ -343,8 +433,199 @@ export class ContentLifecycleService {
         },
         client,
       );
-      return { templateVersionId, status: 'approved' as const };
+      const promoted = await this.applyApprovedVersionToLiveCatalog(
+        client,
+        actorAdminId,
+        templateVersionId,
+        { appendIfMissing: false },
+      );
+      return {
+        templateVersionId,
+        status: promoted.live ? ('published' as const) : ('approved' as const),
+        live: promoted.live,
+        catalogReleaseId: promoted.releaseId ?? null,
+      };
     });
+  }
+
+  /**
+   * Pin an approved/published version into the current catalog release.
+   * Replaces the live pin when the definition is already catalogued;
+   * appends it when the operator explicitly publishes.
+   */
+  async promoteVersionIntoCurrentCatalog(
+    actorAdminId: string,
+    templateVersionId: string,
+  ) {
+    return this.db.tx(async (client) => {
+      await client.query('SELECT pg_advisory_xact_lock($1)', [606006]);
+      const row = await client.query<{ status: string }>(
+        `SELECT status FROM content_template_versions WHERE id = $1::uuid FOR UPDATE`,
+        [templateVersionId],
+      );
+      if (!row.rows[0]) {
+        throw new NotFoundException('Template version not found');
+      }
+      if (
+        row.rows[0].status !== 'approved' &&
+        row.rows[0].status !== 'published'
+      ) {
+        throw new ConflictException(
+          'Only approved or published versions can go live',
+        );
+      }
+      const promoted = await this.applyApprovedVersionToLiveCatalog(
+        client,
+        actorAdminId,
+        templateVersionId,
+        { appendIfMissing: true },
+      );
+      if (!promoted.live) {
+        throw new ConflictException(
+          'Could not pin this version into the catalog',
+        );
+      }
+      return {
+        templateVersionId,
+        status: 'published' as const,
+        live: true as const,
+        catalogReleaseId: promoted.releaseId ?? null,
+      };
+    });
+  }
+
+  private async applyApprovedVersionToLiveCatalog(
+    client: PoolClient,
+    actorAdminId: string,
+    templateVersionId: string,
+    options: { appendIfMissing: boolean },
+  ): Promise<{ live: boolean; releaseId?: string }> {
+    await client.query('SELECT pg_advisory_xact_lock($1)', [606006]);
+    const versionRow = await client.query<{
+      id: string;
+      template_id: string;
+      definition: unknown;
+    }>(
+      `SELECT id::text, template_id::text, definition
+       FROM content_template_versions WHERE id = $1::uuid`,
+      [templateVersionId],
+    );
+    const version = versionRow.rows[0];
+    if (!version) {
+      return { live: false };
+    }
+    const parsed = challengeDefinitionSchema.safeParse(version.definition);
+    if (!parsed.success) {
+      return { live: false };
+    }
+    const engineId = parsed.data.engineId as LaunchEngineId;
+    if (ENGINE_RUNTIME_READINESS[engineId] === 'schema_only') {
+      return { live: false };
+    }
+
+    const current = await client.query<{
+      release_id: string;
+      payload: unknown;
+      version_label: string;
+    }>(
+      `SELECT r.id::text AS release_id, r.payload, r.version_label
+       FROM content_current_releases c
+       JOIN content_releases r ON r.id = c.release_id
+       WHERE c.kind = 'challenge_catalog'
+       LIMIT 1`,
+    );
+    const currentRow = current.rows[0];
+    if (!currentRow && !options.appendIfMissing) {
+      return { live: false };
+    }
+
+    const payload = (currentRow?.payload ?? {}) as {
+      entries?: CatalogPlaylistEntry[];
+      changelog?: string;
+    };
+    const nextEntry: CatalogPlaylistEntry = {
+      templateVersionId: version.id,
+      definitionId: parsed.data.definitionId,
+      weight: parsed.data.selectionWeight ?? 100,
+      repetitionCooldownRounds: parsed.data.repetitionCooldownRounds ?? 0,
+      paused: false,
+    };
+    const pinned = pinApprovedVersionInCatalog(
+      Array.isArray(payload.entries) ? payload.entries : [],
+      nextEntry,
+      { appendIfMissing: options.appendIfMissing },
+    );
+    if (!pinned.changed) {
+      if (pinned.replaced) {
+        await client.query(
+          `UPDATE content_template_versions SET status = 'published' WHERE id = $1::uuid`,
+          [templateVersionId],
+        );
+        await client.query(
+          `UPDATE content_templates
+           SET status = 'published', updated_at = now()
+           WHERE id = $1::uuid AND status <> 'retired'`,
+          [version.template_id],
+        );
+        await this.clearPauseOverride(client, parsed.data.definitionId);
+        return { live: true, releaseId: currentRow?.release_id };
+      }
+      return { live: false };
+    }
+
+    const releaseId = randomUUID();
+    const versionLabel = `studio.live.${releaseId.replace(/-/g, '').slice(0, 12)}`;
+    const nextPayload = {
+      releaseId,
+      versionLabel,
+      entries: pinned.entries,
+      changelog: `Pin ${parsed.data.definitionId} ${templateVersionId}`,
+    };
+    await client.query(
+      `INSERT INTO content_releases (id, kind, version_label, payload, changelog, published_by_admin_id)
+       VALUES ($1::uuid, 'challenge_catalog', $2, $3::jsonb, $4, $5::uuid)`,
+      [
+        releaseId,
+        versionLabel,
+        JSON.stringify(nextPayload),
+        nextPayload.changelog,
+        actorAdminId,
+      ],
+    );
+    await client.query(
+      `INSERT INTO content_current_releases (kind, release_id, updated_at)
+       VALUES ('challenge_catalog', $1::uuid, now())
+       ON CONFLICT (kind) DO UPDATE
+         SET release_id = EXCLUDED.release_id, updated_at = now()`,
+      [releaseId],
+    );
+    await client.query(
+      `UPDATE content_template_versions SET status = 'published' WHERE id = $1::uuid`,
+      [templateVersionId],
+    );
+    await client.query(
+      `UPDATE content_templates
+       SET status = 'published', updated_at = now()
+       WHERE id = $1::uuid AND status <> 'retired'`,
+      [version.template_id],
+    );
+    await this.clearPauseOverride(client, parsed.data.definitionId);
+    await this.audit.write(
+      {
+        actorAdminId,
+        action: 'content.catalog.promote',
+        entityType: 'content_release',
+        entityId: releaseId,
+        outcome: 'success',
+        metadata: {
+          templateVersionId,
+          definitionId: parsed.data.definitionId,
+          replaced: pinned.replaced,
+        },
+      },
+      client,
+    );
+    return { live: true, releaseId };
   }
 
   async publishCatalog(
@@ -397,9 +678,12 @@ export class ContentLifecycleService {
            )`,
           [versionId],
         );
+        await this.clearPauseOverride(client, def.definitionId);
       }
       if (entries.length === 0) {
-        throw new BadRequestException('Catalog must include at least one entry');
+        throw new BadRequestException(
+          'Catalog must include at least one entry',
+        );
       }
       const releaseId = randomUUID();
       const payload = {
@@ -433,7 +717,10 @@ export class ContentLifecycleService {
           entityType: 'content_release',
           entityId: releaseId,
           outcome: 'success',
-          metadata: { versionLabel: input.versionLabel, entries: entries.length },
+          metadata: {
+            versionLabel: input.versionLabel,
+            entries: entries.length,
+          },
         },
         client,
       );
@@ -461,50 +748,151 @@ export class ContentLifecycleService {
     if (!definitionId) {
       throw new BadRequestException('definitionId required');
     }
+    const resolvedId = definitionId;
     await this.db.tx(async (client) => {
-      await client.query(
-        `INSERT INTO content_catalog_entry_overrides (definition_id, paused, reason, updated_at)
-         VALUES ($1, $2, $3, now())
-         ON CONFLICT (definition_id) DO UPDATE
-           SET paused = EXCLUDED.paused, reason = EXCLUDED.reason, updated_at = now()`,
-        [definitionId, input.paused, input.reason],
-      );
-      // Keep Studio template status in sync with the catalog override so Pause
-      // is visible after refresh (library filters + lifecycle timeline).
-      if (input.paused) {
-        await client.query(
-          `UPDATE content_templates t
-           SET status = 'paused', updated_at = now()
-           FROM content_template_versions v
-           WHERE v.template_id = t.id
-             AND v.definition->>'definitionId' = $1
-             AND t.status IN ('published', 'approved', 'scheduled', 'paused')`,
-          [definitionId],
-        );
-      } else {
-        await client.query(
-          `UPDATE content_templates t
-           SET status = 'published', updated_at = now()
-           FROM content_template_versions v
-           WHERE v.template_id = t.id
-             AND v.definition->>'definitionId' = $1
-             AND t.status = 'paused'`,
-          [definitionId],
-        );
-      }
-      await this.audit.write(
-        {
-          actorAdminId,
-          action: input.paused ? 'content.pause' : 'content.resume',
-          entityType: 'content_definition',
-          entityId: definitionId,
-          outcome: 'success',
-          metadata: { reason: input.reason },
-        },
+      await this.applyPauseOverride(
         client,
+        actorAdminId,
+        resolvedId,
+        input.paused,
+        input.reason,
       );
     });
-    return { definitionId, paused: input.paused };
+    return { definitionId: resolvedId, paused: input.paused };
+  }
+
+  async pauseDefinitionsBulk(
+    actorAdminId: string,
+    input: { templateIds: string[]; paused: boolean; reason: string },
+  ): Promise<AdminContentBulkPauseResponse> {
+    const templateIds = [...new Set(input.templateIds)];
+    return this.db.tx(async (client) => {
+      const updated: AdminContentBulkPauseResponse['updated'] = [];
+      const skipped: AdminContentBulkPauseResponse['skipped'] = [];
+
+      for (const templateId of templateIds) {
+        const row = await client.query<{
+          status: ContentLifecycleStatus;
+          definition_id: string | null;
+        }>(
+          `SELECT t.status,
+                  (SELECT v.definition->>'definitionId'
+                     FROM content_template_versions v
+                    WHERE v.template_id = t.id
+                    ORDER BY v.version DESC
+                    LIMIT 1) AS definition_id
+             FROM content_templates t
+            WHERE t.id = $1::uuid`,
+          [templateId],
+        );
+        const tpl = row.rows[0];
+        if (!tpl) {
+          skipped.push({ templateId, reason: 'not_found' });
+          continue;
+        }
+        if (!tpl.definition_id) {
+          skipped.push({ templateId, reason: 'no_definition' });
+          continue;
+        }
+        if (!isBulkPauseEligible(tpl.status, input.paused)) {
+          skipped.push({ templateId, reason: 'not_eligible' });
+          continue;
+        }
+        await this.applyPauseOverride(
+          client,
+          actorAdminId,
+          tpl.definition_id,
+          input.paused,
+          input.reason,
+        );
+        updated.push({ templateId, definitionId: tpl.definition_id });
+      }
+
+      if (updated.length > 0) {
+        await this.audit.write(
+          {
+            actorAdminId,
+            action: input.paused ? 'content.pause.bulk' : 'content.resume.bulk',
+            entityType: 'content_templates',
+            entityId: templateIds[0] ?? null,
+            outcome: 'success',
+            metadata: {
+              paused: input.paused,
+              reason: input.reason,
+              templateIds,
+              updatedCount: updated.length,
+              skippedCount: skipped.length,
+              skipped,
+            },
+          },
+          client,
+        );
+      }
+
+      return { paused: input.paused, updated, skipped };
+    });
+  }
+
+  private async clearPauseOverride(
+    client: PoolClient,
+    definitionId: string,
+  ): Promise<void> {
+    await client.query(
+      `UPDATE content_catalog_entry_overrides
+          SET paused = false, updated_at = now()
+        WHERE definition_id = $1 AND paused = true`,
+      [definitionId],
+    );
+  }
+
+  private async applyPauseOverride(
+    client: PoolClient,
+    actorAdminId: string,
+    definitionId: string,
+    paused: boolean,
+    reason: string,
+  ): Promise<void> {
+    await client.query(
+      `INSERT INTO content_catalog_entry_overrides (definition_id, paused, reason, updated_at)
+       VALUES ($1, $2, $3, now())
+       ON CONFLICT (definition_id) DO UPDATE
+         SET paused = EXCLUDED.paused, reason = EXCLUDED.reason, updated_at = now()`,
+      [definitionId, paused, reason],
+    );
+    // Keep Studio template status in sync with the catalog override so Pause
+    // is visible after refresh (library filters + lifecycle timeline).
+    if (paused) {
+      await client.query(
+        `UPDATE content_templates t
+         SET status = 'paused', updated_at = now()
+         FROM content_template_versions v
+         WHERE v.template_id = t.id
+           AND v.definition->>'definitionId' = $1
+           AND t.status IN ('published', 'approved', 'scheduled', 'paused')`,
+        [definitionId],
+      );
+    } else {
+      await client.query(
+        `UPDATE content_templates t
+         SET status = 'published', updated_at = now()
+         FROM content_template_versions v
+         WHERE v.template_id = t.id
+           AND v.definition->>'definitionId' = $1
+           AND t.status = 'paused'`,
+        [definitionId],
+      );
+    }
+    await this.audit.write(
+      {
+        actorAdminId,
+        action: paused ? 'content.pause' : 'content.resume',
+        entityType: 'content_definition',
+        entityId: definitionId,
+        outcome: 'success',
+        metadata: { reason },
+      },
+      client,
+    );
   }
 
   async setLiveEligibility(
@@ -517,7 +905,9 @@ export class ContentLifecycleService {
   ) {
     const modes = [...new Set(input.eligibleModes)];
     if (modes.length === 0) {
-      throw new BadRequestException('eligibleModes must include at least one mode');
+      throw new BadRequestException(
+        'eligibleModes must include at least one mode',
+      );
     }
     await this.db.tx(async (client) => {
       await client.query(
@@ -555,7 +945,10 @@ export class ContentLifecycleService {
   ) {
     return this.db.tx(async (client) => {
       await client.query('SELECT pg_advisory_xact_lock($1)', [606006]);
-      const prior = await client.query<{ payload: unknown; changelog: string | null }>(
+      const prior = await client.query<{
+        payload: unknown;
+        changelog: string | null;
+      }>(
         `SELECT payload, changelog FROM content_releases
          WHERE id = $1::uuid AND kind = 'challenge_catalog'`,
         [input.fromCatalogReleaseId],
@@ -610,70 +1003,37 @@ export class ContentLifecycleService {
   // ── LH-010 Studio methods ───────────────────────────────────────────────
 
   async getStudioHomeSummary(): Promise<AdminStudioHomeSummary> {
-    // Hybrid status for home cards:
-    // - paused/retired/published follow content_templates.status (Pause flips
-    //   the template row; version rows stay 'published').
-    // - draft/submitted/in_review/approved/scheduled follow the latest version
-    //   so revise→submit of a pack challenge lands in the review queue.
-    // This keeps MetricCard numbers aligned with library ?status= filters.
+    // Hybrid status for home cards — identical to the library table so
+    // MetricCard numbers match ?status= filters (no pause-override rewrite).
     const statusCounts = await this.db.query<{ status: string; cnt: string }>(
       `SELECT display_status AS status, count(*)::text AS cnt
        FROM (
-         SELECT
-           CASE
-             WHEN t.status IN ('paused', 'retired', 'published') THEN t.status
-             ELSE COALESCE(lv.status, t.status)
-           END AS display_status
+         SELECT ${TEMPLATE_DISPLAY_STATUS_SQL} AS display_status
          FROM content_templates t
-         LEFT JOIN LATERAL (
-           SELECT v.status
-           FROM content_template_versions v
-           WHERE v.template_id = t.id
-           ORDER BY v.version DESC
-           LIMIT 1
-         ) lv ON true
        ) s
        GROUP BY display_status`,
     );
-    const counts = {
-      drafts: 0,
-      submitted: 0,
-      inReview: 0,
-      approved: 0,
-      scheduled: 0,
-      published: 0,
-      paused: 0,
-    };
-    for (const row of statusCounts.rows) {
-      const n = parseInt(row.cnt, 10);
-      switch (row.status) {
-        case 'draft': counts.drafts = n; break;
-        case 'submitted': counts.submitted = n; break;
-        case 'in_review': counts.inReview = n; break;
-        case 'approved': counts.approved = n; break;
-        case 'scheduled': counts.scheduled = n; break;
-        case 'published': counts.published = n; break;
-        case 'paused': counts.paused = n; break;
-      }
-    }
+    const counts = studioHomeCountsFromRows(statusCounts.rows);
 
-    // Catalog overrides that paused a definition whose template row was never
-    // flipped (legacy / ops path). Count as paused without leaving them in
-    // published (template may still read as published).
-    const overridePaused = await this.db.query<{ cnt: string }>(
-      `SELECT count(DISTINCT t.id)::text AS cnt
-       FROM content_catalog_entry_overrides o
-       JOIN content_template_versions v
-         ON v.definition->>'definitionId' = o.definition_id
-       JOIN content_templates t ON t.id = v.template_id
-       WHERE o.paused = true
-         AND t.status = 'published'`,
+    const coverage = await this.db.query<{ covered: string; total: string }>(
+      `SELECT
+         count(*) FILTER (
+           WHERE NULLIF(btrim(lv.definition->>'accessibilityFallbackKey'), '') IS NOT NULL
+         )::text AS covered,
+         count(*)::text AS total
+       FROM content_templates t
+       JOIN LATERAL (
+         SELECT v.definition
+         FROM content_template_versions v
+         WHERE v.template_id = t.id
+         ORDER BY v.version DESC
+         LIMIT 1
+       ) lv ON true`,
     );
-    const overridePausedN = parseInt(overridePaused.rows[0]?.cnt ?? '0', 10);
-    if (overridePausedN > 0) {
-      counts.paused += overridePausedN;
-      counts.published = Math.max(0, counts.published - overridePausedN);
-    }
+    const coveredN = parseInt(coverage.rows[0]?.covered ?? '0', 10);
+    const totalN = parseInt(coverage.rows[0]?.total ?? '0', 10);
+    const coveragePercent =
+      totalN > 0 ? Math.round((coveredN / totalN) * 100) : 0;
 
     const recent = await this.db.query<{
       id: string;
@@ -689,6 +1049,7 @@ export class ContentLifecycleService {
 
     return {
       counts,
+      coveragePercent,
       recentPublishes: recent.rows.map((r) => ({
         releaseId: r.id,
         kind: r.kind as AdminStudioHomeSummary['recentPublishes'][number]['kind'],
@@ -737,7 +1098,8 @@ export class ContentLifecycleService {
       params.push(`%${query.search}%`);
     }
 
-    const where = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
+    const where =
+      conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
     const countResult = await this.db.query<{ cnt: string }>(
       `SELECT count(*)::text AS cnt FROM content_templates t ${where}`,
       params,
@@ -766,14 +1128,7 @@ export class ContentLifecycleService {
       latest_approved_version_id: string | null;
     }>(
       `SELECT t.id::text, t.slug, t.internal_title, t.family_id, t.category_id,
-              CASE
-                WHEN t.status IN ('paused', 'retired', 'published') THEN t.status
-                ELSE COALESCE(
-                  (SELECT v.status FROM content_template_versions v
-                   WHERE v.template_id = t.id ORDER BY v.version DESC LIMIT 1),
-                  t.status
-                )
-              END AS status,
+              ${TEMPLATE_DISPLAY_STATUS_SQL} AS status,
               t.updated_at,
               (SELECT max(v.version) FROM content_template_versions v WHERE v.template_id = t.id) AS latest_version,
               (SELECT v.definition->>'engineId' FROM content_template_versions v WHERE v.template_id = t.id ORDER BY v.version DESC LIMIT 1) AS engine_id,
@@ -809,7 +1164,9 @@ export class ContentLifecycleService {
     };
   }
 
-  async getTemplateDetail(templateId: string): Promise<AdminContentTemplateDetail> {
+  async getTemplateDetail(
+    templateId: string,
+  ): Promise<AdminContentTemplateDetail> {
     const tmpl = await this.db.query<{
       id: string;
       slug: string;
@@ -970,9 +1327,7 @@ export class ContentLifecycleService {
     definition: unknown,
   ) {
     const def = this.validateDefinition(definition);
-    const hash = createHash('sha256')
-      .update(JSON.stringify(def))
-      .digest('hex');
+    const hash = createHash('sha256').update(JSON.stringify(def)).digest('hex');
 
     return this.db.tx(async (client) => {
       const row = await client.query<{ status: string }>(
@@ -983,7 +1338,9 @@ export class ContentLifecycleService {
         throw new NotFoundException('Template version not found');
       }
       if (row.rows[0].status !== 'draft') {
-        throw new ConflictException('Only draft versions can be updated in-place');
+        throw new ConflictException(
+          'Only draft versions can be updated in-place',
+        );
       }
       await client.query(
         `UPDATE content_template_versions
@@ -1100,7 +1457,9 @@ export class ContentLifecycleService {
         {
           actorAdminId,
           action: 'content.retire',
-          entityType: input.templateId ? 'content_template' : 'content_template_version',
+          entityType: input.templateId
+            ? 'content_template'
+            : 'content_template_version',
           entityId: input.templateId ?? input.templateVersionId ?? null,
           outcome: 'success',
           metadata: {},
@@ -1140,7 +1499,9 @@ export class ContentLifecycleService {
       );
       const raw = versionRow.rows[0]?.definition;
       if (!raw) {
-        throw new NotFoundException(`Version ${entry.templateVersionId} not found`);
+        throw new NotFoundException(
+          `Version ${entry.templateVersionId} not found`,
+        );
       }
       const parsed = challengeDefinitionSchema.safeParse(raw);
       if (!parsed.success) {
@@ -1226,7 +1587,10 @@ export class ContentLifecycleService {
           entityType: 'content_release',
           entityId: releaseId,
           outcome: 'success',
-          metadata: { versionLabel: input.versionLabel, entries: entries.length },
+          metadata: {
+            versionLabel: input.versionLabel,
+            entries: entries.length,
+          },
         },
         client,
       );
@@ -1236,7 +1600,11 @@ export class ContentLifecycleService {
 
   async publishKindRelease(
     actorAdminId: string,
-    kind: 'localization' | 'power_configuration' | 'game_mode_rules' | 'daily_goals',
+    kind:
+      | 'localization'
+      | 'power_configuration'
+      | 'game_mode_rules'
+      | 'daily_goals',
     input: {
       versionLabel: string;
       payload: unknown;
@@ -1250,7 +1618,13 @@ export class ContentLifecycleService {
       await this.db.query(
         `INSERT INTO content_scheduled_publishes (id, kind, payload, publish_at, created_by)
          VALUES ($1::uuid, $2, $3::jsonb, $4::timestamptz, $5::uuid)`,
-        [releaseId, kind, JSON.stringify(input.payload), input.scheduleAt, actorAdminId],
+        [
+          releaseId,
+          kind,
+          JSON.stringify(input.payload),
+          input.scheduleAt,
+          actorAdminId,
+        ],
       );
       return { releaseId, scheduled: true, versionLabel: input.versionLabel };
     }
@@ -1259,12 +1633,23 @@ export class ContentLifecycleService {
       const releaseId = randomUUID();
       const payload =
         typeof input.payload === 'object' && input.payload !== null
-          ? { ...input.payload as Record<string, unknown>, releaseId, versionLabel: input.versionLabel }
+          ? {
+              ...(input.payload as Record<string, unknown>),
+              releaseId,
+              versionLabel: input.versionLabel,
+            }
           : { releaseId, versionLabel: input.versionLabel };
       await client.query(
         `INSERT INTO content_releases (id, kind, version_label, payload, changelog, published_by_admin_id)
          VALUES ($1::uuid, $2, $3, $4::jsonb, $5, $6::uuid)`,
-        [releaseId, kind, input.versionLabel, JSON.stringify(payload), input.changelog ?? null, actorAdminId],
+        [
+          releaseId,
+          kind,
+          input.versionLabel,
+          JSON.stringify(payload),
+          input.changelog ?? null,
+          actorAdminId,
+        ],
       );
       await client.query(
         `INSERT INTO content_current_releases (kind, release_id, updated_at)
@@ -1298,7 +1683,8 @@ export class ContentLifecycleService {
     for (const entry of entries) {
       if (
         entry.engineId &&
-        ENGINE_RUNTIME_READINESS[entry.engineId as LaunchEngineId] === 'schema_only'
+        ENGINE_RUNTIME_READINESS[entry.engineId as LaunchEngineId] ===
+          'schema_only'
       ) {
         schemaOnlyEngines.push(entry.engineId);
       }
@@ -1306,7 +1692,8 @@ export class ContentLifecycleService {
     const eligible = entries.filter(
       (e) =>
         !e.engineId ||
-        ENGINE_RUNTIME_READINESS[e.engineId as LaunchEngineId] !== 'schema_only',
+        ENGINE_RUNTIME_READINESS[e.engineId as LaunchEngineId] !==
+          'schema_only',
     );
     const emptyPlaylist = eligible.length === 0;
     return {
@@ -1336,7 +1723,8 @@ export class ContentLifecycleService {
     }
     const defA = a.rows[0].definition;
     const defB = b.rows[0].definition;
-    const changes: Array<{ path: string; before?: unknown; after?: unknown }> = [];
+    const changes: Array<{ path: string; before?: unknown; after?: unknown }> =
+      [];
     const allKeys = new Set([...Object.keys(defA), ...Object.keys(defB)]);
     for (const key of allKeys) {
       const av = JSON.stringify(defA[key]);
@@ -1380,7 +1768,8 @@ export class ContentLifecycleService {
       params.push(query.toDate);
     }
 
-    const where = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
+    const where =
+      conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
 
     const countResult = await this.db.query<{ cnt: string }>(
       `SELECT count(DISTINCT (definition_id, engine_id))::text AS cnt

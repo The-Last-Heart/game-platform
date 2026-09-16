@@ -16,10 +16,17 @@ export default async function LibraryPage({ params }: PageProps) {
   }
   const session = await requireAdminSession(rawLocale);
   const canDraft = session.user.permissions.includes('content:draft' as never);
+  const canPublish = session.user.permissions.includes(
+    'content:publish' as never,
+  );
 
   return (
     <Suspense fallback={<p>{t(rawLocale, 'common.loading')}</p>}>
-      <StudioLibrary locale={rawLocale} canDraft={canDraft} />
+      <StudioLibrary
+        locale={rawLocale}
+        canDraft={canDraft}
+        canPublish={canPublish}
+      />
     </Suspense>
   );
 }

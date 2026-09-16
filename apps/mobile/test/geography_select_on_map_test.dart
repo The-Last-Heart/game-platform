@@ -138,6 +138,46 @@ void main() {
   });
 
   group('GeographySelectOnMapEngine', () {
+    testWidgets('shows country prompt and tap-location hint', (
+      WidgetTester tester,
+    ) async {
+      await tester.pumpWidget(
+        wrapWithL10n(
+          Builder(
+            builder: (BuildContext context) {
+              return SizedBox(
+                width: 400,
+                height: 700,
+                child: GeographySelectOnMapEngine().build(
+                  context,
+                  ChallengeContext(
+                    challenge: _mapChallenge(
+                      regions: <Map<String, Object>>[
+                        <String, Object>{
+                          'regionId': 'egypt',
+                          'labelKey': 'geo.country.egypt',
+                          'polygon': _squareEgypt,
+                        },
+                      ],
+                    ),
+                    onSubmit: (_) {},
+                    estimateServerNowMs: () => 1700000000500,
+                    answerStatus: AnswerSubmissionStatus.idle,
+                    inputEnabled: true,
+                  ),
+                ),
+              );
+            },
+          ),
+        ),
+      );
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 450));
+
+      expect(find.text('حدد دولة مصر على الخريطة'), findsOneWidget);
+      expect(find.text('اضغط على موقع الدولة على الخريطة'), findsOneWidget);
+    });
+
     testWidgets('tap inside country fill submits regionId after highlight', (
       WidgetTester tester,
     ) async {

@@ -218,4 +218,53 @@ void main() {
     expect(result.targetReached, isTrue);
     expect(result.success, isTrue);
   });
+
+  test('power delta fires only for newly connected tiles and heart', () {
+    final CircuitRotationEvaluation disconnected = evaluateCircuitRotation(
+      _twoTileCircuit(
+        tileQuarterTurns: const <String, int>{
+          'source-tile': 0,
+          'target-tile': 1,
+        },
+      ),
+    );
+    expect(disconnected.poweredTileIds, isEmpty);
+    expect(disconnected.targetReached, isFalse);
+
+    final CircuitRotationEvaluation rotatedWithoutConnect =
+        evaluateCircuitRotation(
+          _twoTileCircuit(
+            tileQuarterTurns: const <String, int>{
+              'source-tile': 2,
+              'target-tile': 1,
+            },
+          ),
+        );
+    final CircuitRotationPowerDelta rotateOnly = circuitRotationPowerDelta(
+      previousPoweredTileIds: disconnected.poweredTileIds.toSet(),
+      previousTargetReached: disconnected.targetReached,
+      next: rotatedWithoutConnect,
+    );
+    expect(rotateOnly.newlyPoweredCount, 0);
+    expect(rotateOnly.heartNewlyReached, isFalse);
+
+    final CircuitRotationEvaluation solved = evaluateCircuitRotation(
+      _twoTileCircuit(),
+    );
+    final CircuitRotationPowerDelta connected = circuitRotationPowerDelta(
+      previousPoweredTileIds: disconnected.poweredTileIds.toSet(),
+      previousTargetReached: disconnected.targetReached,
+      next: solved,
+    );
+    expect(connected.newlyPoweredCount, greaterThan(0));
+    expect(connected.heartNewlyReached, isTrue);
+
+    final CircuitRotationPowerDelta alreadyOn = circuitRotationPowerDelta(
+      previousPoweredTileIds: solved.poweredTileIds.toSet(),
+      previousTargetReached: solved.targetReached,
+      next: solved,
+    );
+    expect(alreadyOn.newlyPoweredCount, 0);
+    expect(alreadyOn.heartNewlyReached, isFalse);
+  });
 }

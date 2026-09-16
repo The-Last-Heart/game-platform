@@ -13,6 +13,8 @@ type ConfirmDialogProps = {
   cancelLabel?: string;
   danger?: boolean;
   busy?: boolean;
+  confirmDisabled?: boolean;
+  children?: ReactNode;
   onConfirm: () => void;
   onCancel: () => void;
 };
@@ -29,6 +31,8 @@ export function ConfirmDialog({
   cancelLabel,
   danger,
   busy,
+  confirmDisabled,
+  children,
   onConfirm,
   onCancel,
 }: ConfirmDialogProps) {
@@ -111,7 +115,7 @@ export function ConfirmDialog({
   }
 
   function handleConfirm() {
-    if (busyRef.current) {
+    if (busyRef.current || confirmDisabled) {
       return;
     }
     onConfirm();
@@ -136,6 +140,7 @@ export function ConfirmDialog({
       >
         <h2 id={titleId}>{title ?? t(locale, 'confirm.title')}</h2>
         <p id={descriptionId}>{message}</p>
+        {children}
         <div className="dialog-actions">
           <button
             type="button"
@@ -150,7 +155,7 @@ export function ConfirmDialog({
             type="button"
             className={`btn ${danger ? 'btn-danger' : 'btn-primary'}`}
             onClick={handleConfirm}
-            disabled={busy}
+            disabled={busy || confirmDisabled}
           >
             {busy
               ? t(locale, 'common.working')

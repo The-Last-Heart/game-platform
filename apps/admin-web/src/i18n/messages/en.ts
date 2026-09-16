@@ -295,6 +295,24 @@ const en = {
   'studio.library.open': 'Open',
   'studio.library.edit': 'Edit',
   'studio.library.newChallenge': 'New challenge',
+  'studio.library.selectAll': 'Select all challenges on this page',
+  'studio.library.selectRow': 'Select {title}',
+  'studio.library.selectedCount': '{count} selected',
+  'studio.library.bulkPause': 'Pause selected',
+  'studio.library.bulkResume': 'Resume selected',
+  'studio.library.bulkPauseTitle': 'Pause selected challenges',
+  'studio.library.bulkResumeTitle': 'Resume selected challenges',
+  'studio.library.bulkPauseMessage':
+    'This will pause {count} challenge(s) in live catalog ops. Active matches stay pinned.',
+  'studio.library.bulkResumeMessage':
+    'This will resume {count} challenge(s) so they can be served again.',
+  'studio.library.bulkSkipped':
+    '{count} selected item(s) will be skipped (draft, retired, or not in a pauseable state).',
+  'studio.library.bulkNoneEligible':
+    'None of the selected challenges can be paused or resumed in their current state.',
+  'studio.library.bulkSuccess':
+    'Updated {updated} challenge(s). Skipped {skipped}.',
+  'studio.library.bulkNamesMore': 'and {count} more',
 
   // Studio statuses
   'studio.status.draft': 'Draft',
@@ -326,7 +344,7 @@ const en = {
   'studio.editor.classificationLead':
     'Family is set by the engine. Choose how hard this should feel.',
   'studio.editor.timingLead':
-    'Times are in seconds. Use a preset, then fine-tune if needed.',
+    'Times are in seconds. After approve, an already-live challenge uses these values on the next match.',
   'studio.editor.effectsLead':
     'What happens to hearts and energy when this challenge ends.',
   'studio.editor.assetsLead':
@@ -347,7 +365,7 @@ const en = {
   'studio.editor.liveEligibilityModes': 'Live catalog modes: {modes}',
   'studio.editor.liveEligibilityModesNone': 'none',
   'studio.editor.eligibilityPublishHint':
-    'Saving a draft here does not change live Training / Quick Survival until approve + catalog publish.',
+    'Saving a draft does not change live Training / Quick Survival. Approve an already-live challenge to pin the new timing on the next match.',
   'studio.editor.versioningLead':
     'Oldest app version that may receive this challenge.',
 
@@ -494,6 +512,8 @@ const en = {
   'studio.asset.neonComposition': 'Neon composition manifest',
   'studio.asset.circuitBoardBase': 'Circuit rotation board',
   'studio.asset.circuitGridPlate': 'Circuit rotation grid plate',
+  'studio.asset.circuitCableConnectSfx': 'Circuit cable connect sound',
+  'studio.asset.circuitHeartPowerOnSfx': 'Circuit heart power-on sound',
 
   'studio.asset.hapticLight': 'Light haptic',
   'studio.asset.hapticMedium': 'Medium haptic',
@@ -506,6 +526,7 @@ const en = {
   'studio.preset.duration.standard': 'Standard (5s)',
   'studio.preset.duration.long': 'Long (8s)',
   'studio.preset.duration.extended': 'Extended (10s)',
+  'studio.preset.intro.none': 'None (skip)',
   'studio.preset.intro.brief': 'Brief (1s)',
   'studio.preset.intro.standard': 'Standard (2s)',
   'studio.preset.intro.clear': 'Clear (3s)',
@@ -771,6 +792,19 @@ const en = {
   'studio.field.fp.geoNoMaps': 'This challenge has no maps yet.',
   'studio.field.fp.geoEmptyMap':
     'No questions on this map. It will not be used until you add one.',
+  'studio.field.fp.triviaLead':
+    'Players see one random question from this list. Add questions, type the answers, and mark the correct choice. Arabic is what players see first.',
+  'studio.field.fp.triviaQuestionN': 'Question {n}',
+  'studio.field.fp.triviaQuestionAr': 'Question (Arabic)',
+  'studio.field.fp.triviaQuestionEn': 'Question (English)',
+  'studio.field.fp.triviaAnswers': 'Answers',
+  'studio.field.fp.triviaAnswerAr': 'Answer (Arabic)',
+  'studio.field.fp.triviaAnswerEn': 'Answer (English)',
+  'studio.field.fp.triviaCorrectAnswer': 'Correct',
+  'studio.field.fp.triviaAddQuestion': 'Add question',
+  'studio.field.fp.triviaRemoveQuestion': 'Remove question',
+  'studio.field.fp.triviaAddAnswer': 'Add answer',
+  'studio.field.fp.triviaRemoveAnswer': 'Remove',
   'studio.field.fp.footerKey': 'Footer copy',
   'studio.field.fp.advancedExport': 'Advanced export (read-only)',
   'studio.field.fp.unknownEngine':
@@ -912,8 +946,10 @@ const en = {
   'studio.detail.noVersions': 'No versions found',
   'studio.detail.approve': 'Approve',
   'studio.detail.approveSuccess': 'Template approved',
+  'studio.detail.approveLiveSuccess': 'Approved and live for the next match',
   'studio.detail.reject': 'Reject',
   'studio.detail.publish': 'Publish',
+  'studio.detail.publishSuccess': 'Published to the live catalog',
   'studio.detail.pause': 'Pause',
   'studio.detail.resume': 'Resume',
   'studio.detail.retire': 'Retire',

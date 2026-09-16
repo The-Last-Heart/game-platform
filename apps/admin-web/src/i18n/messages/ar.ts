@@ -295,6 +295,23 @@ const ar: Record<MessageKey, string> = {
   'studio.library.open': 'فتح',
   'studio.library.edit': 'تعديل',
   'studio.library.newChallenge': 'تحدٍّ جديد',
+  'studio.library.selectAll': 'تحديد كل التحديات في هذه الصفحة',
+  'studio.library.selectRow': 'تحديد {title}',
+  'studio.library.selectedCount': '{count} محدّد',
+  'studio.library.bulkPause': 'إيقاف المحدّد',
+  'studio.library.bulkResume': 'استئناف المحدّد',
+  'studio.library.bulkPauseTitle': 'إيقاف التحديات المحدّدة',
+  'studio.library.bulkResumeTitle': 'استئناف التحديات المحدّدة',
+  'studio.library.bulkPauseMessage':
+    'سيؤدي هذا إلى إيقاف {count} تحدٍّ في عمليات الكتالوج المباشرة. المباريات النشطة تبقى مثبّتة.',
+  'studio.library.bulkResumeMessage':
+    'سيؤدي هذا إلى استئناف {count} تحدٍّ ليصبح قابلاً للخدمة من جديد.',
+  'studio.library.bulkSkipped':
+    'سيتم تخطي {count} عنصر محدّد (مسودة أو متقاعد أو غير قابل للإيقاف في حالته الحالية).',
+  'studio.library.bulkNoneEligible':
+    'لا يمكن إيقاف أو استئناف أي من التحديات المحدّدة في حالتها الحالية.',
+  'studio.library.bulkSuccess': 'تم تحديث {updated} تحدٍّ. تم تخطي {skipped}.',
+  'studio.library.bulkNamesMore': 'و{count} أخرى',
 
   // Studio statuses
   'studio.status.draft': 'مسودة',
@@ -326,7 +343,7 @@ const ar: Record<MessageKey, string> = {
   'studio.editor.classificationLead':
     'العائلة تُحدَّد بالمحرك. اختر مستوى الصعوبة.',
   'studio.editor.timingLead':
-    'الأوقات بالثواني. استخدم إعداداً جاهزاً ثم عدّل عند الحاجة.',
+    'الأوقات بالثواني. بعد الاعتماد، التحدي المنشور مسبقاً يستخدم هذه القيم في المباراة التالية.',
   'studio.editor.effectsLead': 'ماذا يحدث للقلوب والطاقة عند انتهاء التحدي.',
   'studio.editor.assetsLead':
     'اختر الأصوات واللمسات والأشكال. اتركها فارغة إن لم تُحتَج.',
@@ -345,7 +362,7 @@ const ar: Record<MessageKey, string> = {
   'studio.editor.liveEligibilityModes': 'أنماط الكتالوج الحي: {modes}',
   'studio.editor.liveEligibilityModesNone': 'لا شيء',
   'studio.editor.eligibilityPublishHint':
-    'حفظ المسودة هنا لا يغيّر التدريب / البقاء السريع الحي حتى الاعتماد ثم نشر الكتالوج.',
+    'حفظ المسودة لا يغيّر التدريب / البقاء السريع الحي. اعتماد تحدٍّ منشور مسبقاً يثبّت التوقيت الجديد في المباراة التالية.',
   'studio.editor.versioningLead': 'أقدم إصدار تطبيق يمكنه استلام هذا التحدي.',
 
   'studio.section.identity': 'الهوية والملكية',
@@ -474,6 +491,8 @@ const ar: Record<MessageKey, string> = {
   'studio.asset.neonComposition': 'بيان تركيب السلك النيوني',
   'studio.asset.circuitBoardBase': 'لوح تدوير الدائرة',
   'studio.asset.circuitGridPlate': 'صفيحة شبكة الدائرة',
+  'studio.asset.circuitCableConnectSfx': 'صوت توصيل كابل الدائرة',
+  'studio.asset.circuitHeartPowerOnSfx': 'صوت إضاءة القلب',
 
   'studio.asset.fogRevealContent': 'كشف الضباب الافتراضي',
   'studio.asset.fogDensity': 'طبقة كثافة الضباب',
@@ -502,6 +521,7 @@ const ar: Record<MessageKey, string> = {
   'studio.preset.duration.standard': 'قياسي (٥ث)',
   'studio.preset.duration.long': 'طويل (٨ث)',
   'studio.preset.duration.extended': 'ممتد (١٠ث)',
+  'studio.preset.intro.none': 'بدون (تخطي)',
   'studio.preset.intro.brief': 'مختصر (١ث)',
   'studio.preset.intro.standard': 'قياسي (٢ث)',
   'studio.preset.intro.clear': 'واضح (٣ث)',
@@ -749,6 +769,19 @@ const ar: Record<MessageKey, string> = {
   'studio.field.fp.geoNoMaps': 'لا توجد خرائط لهذا التحدي بعد.',
   'studio.field.fp.geoEmptyMap':
     'لا أسئلة على هذه الخريطة. لن تُستخدم حتى تضيف سؤالاً.',
+  'studio.field.fp.triviaLead':
+    'يرى اللاعبون سؤالاً عشوائياً من هذه القائمة. أضف الأسئلة واكتب الإجابات وحدد الإجابة الصحيحة. العربية هي ما يظهر أولاً.',
+  'studio.field.fp.triviaQuestionN': 'السؤال {n}',
+  'studio.field.fp.triviaQuestionAr': 'السؤال (العربية)',
+  'studio.field.fp.triviaQuestionEn': 'السؤال (الإنجليزية)',
+  'studio.field.fp.triviaAnswers': 'الإجابات',
+  'studio.field.fp.triviaAnswerAr': 'الإجابة (العربية)',
+  'studio.field.fp.triviaAnswerEn': 'الإجابة (الإنجليزية)',
+  'studio.field.fp.triviaCorrectAnswer': 'صحيحة',
+  'studio.field.fp.triviaAddQuestion': 'إضافة سؤال',
+  'studio.field.fp.triviaRemoveQuestion': 'حذف السؤال',
+  'studio.field.fp.triviaAddAnswer': 'إضافة إجابة',
+  'studio.field.fp.triviaRemoveAnswer': 'حذف',
   'studio.field.fp.footerKey': 'نص التذييل',
   'studio.field.fp.advancedExport': 'تصدير متقدم (للقراءة فقط)',
   'studio.field.fp.unknownEngine': 'محرك غير معروف — لا يتوفر نموذج معلمات.',
@@ -872,8 +905,10 @@ const ar: Record<MessageKey, string> = {
   'studio.detail.noVersions': 'لا توجد إصدارات',
   'studio.detail.approve': 'اعتماد',
   'studio.detail.approveSuccess': 'تم اعتماد القالب',
+  'studio.detail.approveLiveSuccess': 'تم الاعتماد وهو حي للمباراة التالية',
   'studio.detail.reject': 'رفض',
   'studio.detail.publish': 'نشر',
+  'studio.detail.publishSuccess': 'نُشر إلى الكتالوج الحي',
   'studio.detail.pause': 'إيقاف',
   'studio.detail.resume': 'استئناف',
   'studio.detail.retire': 'إحالة للتقاعد',

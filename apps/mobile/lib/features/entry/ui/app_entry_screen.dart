@@ -1,9 +1,11 @@
 import 'dart:async';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../../../l10n/app_localization.dart';
+import '../../../l10n/localized_digits.dart';
 import '../../../l10n/translation_catalog.dart';
 import '../../../l10n/translation_resolver.dart';
 import '../../../theme/lh_tokens.dart';
@@ -18,6 +20,7 @@ import '../../match/ui/widgets/lh_background.dart';
 import '../../match/ui/widgets/lh_buttons.dart';
 import '../../match/ui/widgets/lh_heart_logo.dart';
 import '../../match/ui/widgets/lh_ui_sound.dart';
+import '../../presence/presence_session.dart';
 import 'onboarding_identity_screens.dart';
 
 enum _EntryPhase {
@@ -39,6 +42,7 @@ class AppEntryScreen extends StatefulWidget {
     this.entryPreferences,
     this.appVersionLabel,
     this.backendBaseUrl,
+    this.presence,
     super.key,
   });
 
@@ -52,6 +56,9 @@ class AppEntryScreen extends StatefulWidget {
   /// Backend HTTP origin used to sync the content pack (challenge assets).
   final String? backendBaseUrl;
 
+  /// Live occupancy for the home hero. Tests inject [FakePresenceSession].
+  final PresenceSession? presence;
+
   @override
   State<AppEntryScreen> createState() => _AppEntryScreenState();
 }
@@ -60,6 +67,8 @@ class _AppEntryScreenState extends State<AppEntryScreen>
     with SingleTickerProviderStateMixin, WidgetsBindingObserver {
   late final IdentityStore _identityStore;
   late final EntryPreferencesStore _entryPreferences;
+  late final PresenceSession? _presence;
+  bool _ownsPresence = false;
   _EntryPhase _phase = _EntryPhase.loading;
   PlayerIdentity? _identity;
   String? _queueError;
@@ -82,15 +91,41 @@ class _AppEntryScreenState extends State<AppEntryScreen>
     WidgetsBinding.instance.addObserver(this);
     _identityStore = widget.identityStore ?? IdentityStore();
     _entryPreferences = widget.entryPreferences ?? EntryPreferencesStore();
+    if (widget.presence != null) {
+      _presence = widget.presence;
+    } else {
+      final String? backendUrl = widget.backendBaseUrl;
+      if (backendUrl != null && backendUrl.isNotEmpty) {
+        _presence = SocketPresenceSession(url: backendUrl);
+        _ownsPresence = true;
+      } else {
+        _presence = null;
+      }
+    }
     _splashPulse = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 1100),
     )..repeat(reverse: true);
-    _splashScale = Tween<double>(begin: 0.94, end: 1.06).animate(
-      CurvedAnimation(parent: _splashPulse, curve: Curves.easeInOut),
-    );
+    _splashScale = Tween<double>(
+      begin: 0.94,
+      end: 1.06,
+    ).animate(CurvedAnimation(parent: _splashPulse, curve: Curves.easeInOut));
     widget.controller.state.addListener(_onMatchState);
     _bootstrapEntry();
+    unawaited(_presence?.setForeground(true));
+  }
+
+  @override
+  void setState(VoidCallback fn) {
+    super.setState(fn);
+    if (!mounted) return;
+    if (_phase == _EntryPhase.loading) {
+      if (!_splashPulse.isAnimating) {
+        _splashPulse.repeat(reverse: true);
+      }
+    } else if (_splashPulse.isAnimating) {
+      _splashPulse.stop();
+    }
   }
 
   @override
@@ -98,6 +133,10 @@ class _AppEntryScreenState extends State<AppEntryScreen>
     _searchTimeoutTimer?.cancel();
     WidgetsBinding.instance.removeObserver(this);
     widget.controller.state.removeListener(_onMatchState);
+    unawaited(_presence?.setForeground(false));
+    if (_ownsPresence) {
+      _presence?.dispose();
+    }
     _roomCodeController.dispose();
     _splashPulse.dispose();
     super.dispose();
@@ -108,10 +147,21 @@ class _AppEntryScreenState extends State<AppEntryScreen>
     // Process death / swipe-away: drop match seat so next cold start is home.
     if (state == AppLifecycleState.detached) {
       unawaited(widget.controller.clearSessionAndDisconnect());
+      unawaited(_presence?.setForeground(false));
+      return;
+    }
+    if (state == AppLifecycleState.paused ||
+        state == AppLifecycleState.hidden) {
+      unawaited(_presence?.setForeground(false));
+      return;
+    }
+    if (state == AppLifecycleState.resumed) {
+      unawaited(_presence?.setForeground(true));
     }
   }
 
   Future<void> _exitAppCleanly() async {
+    await _presence?.setForeground(false);
     await widget.controller.clearSessionAndDisconnect();
     await SystemNavigator.pop();
   }
@@ -201,7 +251,8 @@ class _AppEntryScreenState extends State<AppEntryScreen>
     debugPrint('AppEntryScreen connectionError=$err mapped=$mapped');
 
     _searchTimeoutTimer?.cancel();
-    final bool showToast = mapped == TranslationKeys.errorsQueueTimeout ||
+    final bool showToast =
+        mapped == TranslationKeys.errorsQueueTimeout ||
         mapped == 'errors.queue_timeout' ||
         _phase == _EntryPhase.matchmaking;
     setState(() {
@@ -235,8 +286,7 @@ class _AppEntryScreenState extends State<AppEntryScreen>
       return switch (error.failure) {
         RealtimeConnectFailure.timeout =>
           TranslationKeys.errorsConnectionTimeout,
-        RealtimeConnectFailure.failed =>
-          TranslationKeys.errorsConnectionFailed,
+        RealtimeConnectFailure.failed => TranslationKeys.errorsConnectionFailed,
       };
     }
     return TranslationKeys.errorsServiceUnavailable;
@@ -362,7 +412,8 @@ class _AppEntryScreenState extends State<AppEntryScreen>
   Future<void> _onLiveSearchTimeout() async {
     if (!mounted) return;
     final MatchViewState matchState = widget.controller.state.value;
-    final bool soloQuickSearch = !widget.controller.isRematchLobby &&
+    final bool soloQuickSearch =
+        !widget.controller.isRematchLobby &&
         matchState.inMatch &&
         matchState.mode == MatchMode.quickSurvival &&
         matchState.phase == MatchPhase.lobby &&
@@ -450,9 +501,7 @@ class _AppEntryScreenState extends State<AppEntryScreen>
       }
       if (!mounted) return;
       if (!widget.controller.state.value.inMatch) {
-        setState(
-          () => _queueError = TranslationKeys.errorsServiceUnavailable,
-        );
+        setState(() => _queueError = TranslationKeys.errorsServiceUnavailable);
       }
     } catch (error) {
       if (!mounted) return;
@@ -471,7 +520,8 @@ class _AppEntryScreenState extends State<AppEntryScreen>
       child: ValueListenableBuilder<MatchViewState>(
         valueListenable: widget.controller.state,
         builder: (BuildContext context, MatchViewState matchState, _) {
-          final bool soloQuickSearch = !widget.controller.isRematchLobby &&
+          final bool soloQuickSearch =
+              !widget.controller.isRematchLobby &&
               matchState.inMatch &&
               matchState.mode == MatchMode.quickSurvival &&
               matchState.phase == MatchPhase.lobby &&
@@ -497,8 +547,8 @@ class _AppEntryScreenState extends State<AppEntryScreen>
             final int seats = soloQuickSearch
                 ? matchState.players.length.clamp(1, 6)
                 : (matchState.matchmakingAcceptedSeats > 0
-                    ? matchState.matchmakingAcceptedSeats
-                    : _queueSeats);
+                      ? matchState.matchmakingAcceptedSeats
+                      : _queueSeats);
             return _MatchmakingView(
               seats: seats,
               identity: _identity,
@@ -528,12 +578,12 @@ class _AppEntryScreenState extends State<AppEntryScreen>
               progress: _assetProgress,
               statusKey: _assetStatusKey,
             ),
-            _EntryPhase.onboarding || _EntryPhase.onboardingReplay =>
-              OnboardingScreen(
-                replayMode: _phase == _EntryPhase.onboardingReplay,
-                onCompleted: _completeOnboarding,
-                onReplayExit: () => setState(() => _phase = _EntryPhase.home),
-              ),
+            _EntryPhase.onboarding ||
+            _EntryPhase.onboardingReplay => OnboardingScreen(
+              replayMode: _phase == _EntryPhase.onboardingReplay,
+              onCompleted: _completeOnboarding,
+              onReplayExit: () => setState(() => _phase = _EntryPhase.home),
+            ),
             _EntryPhase.identity || _EntryPhase.identityEdit => IdentityScreen(
               initial: _identity,
               onSaved: _saveIdentity,
@@ -558,6 +608,7 @@ class _AppEntryScreenState extends State<AppEntryScreen>
             _EntryPhase.home => _HomeView(
               identity: _identity,
               errorKey: _queueError,
+              onlineCount: _presence?.onlineCount,
               onPlayNow: _enqueueQuickSurvival,
               onPrivate: () => setState(() {
                 _phase = _EntryPhase.privateAccess;
@@ -633,9 +684,9 @@ class _SplashView extends StatelessWidget {
                 const SizedBox(height: 12),
                 Text(
                   resolver.resolve(statusKey!),
-                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                    color: LhColors.textMuted,
-                  ),
+                  style: Theme.of(
+                    context,
+                  ).textTheme.bodySmall?.copyWith(color: LhColors.textMuted),
                   textAlign: TextAlign.center,
                 ),
               ],
@@ -664,10 +715,12 @@ class _HomeView extends StatelessWidget {
     required this.onHelp,
     required this.onEditIdentity,
     this.errorKey,
+    this.onlineCount,
   });
 
   final PlayerIdentity? identity;
   final String? errorKey;
+  final ValueListenable<int?>? onlineCount;
   final VoidCallback onPlayNow;
   final VoidCallback onPrivate;
   final VoidCallback onTraining;
@@ -740,7 +793,9 @@ class _HomeView extends StatelessWidget {
                   decoration: BoxDecoration(
                     color: LhColors.surface,
                     borderRadius: LhRadii.mdAll,
-                    border: Border.all(color: LhColors.primary.withValues(alpha: 0.5)),
+                    border: Border.all(
+                      color: LhColors.primary.withValues(alpha: 0.5),
+                    ),
                   ),
                   child: Text(
                     _AppEntryScreenState.displayEntryError(resolver, errorKey!),
@@ -756,7 +811,7 @@ class _HomeView extends StatelessWidget {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: <Widget>[
-                      _HeroCard(resolver: resolver),
+                      _buildHero(resolver),
                       const SizedBox(height: 16),
                       LhPrimaryButton(
                         label: resolver.resolve(TranslationKeys.homePlayNow),
@@ -822,12 +877,26 @@ class _HomeView extends StatelessWidget {
       ),
     );
   }
+
+  Widget _buildHero(TranslationResolver resolver) {
+    final ValueListenable<int?>? counts = onlineCount;
+    if (counts == null) {
+      return _HeroCard(resolver: resolver);
+    }
+    return ValueListenableBuilder<int?>(
+      valueListenable: counts,
+      builder: (BuildContext context, int? count, _) {
+        return _HeroCard(resolver: resolver, onlineCount: count);
+      },
+    );
+  }
 }
 
 class _HeroCard extends StatelessWidget {
-  const _HeroCard({required this.resolver});
+  const _HeroCard({required this.resolver, this.onlineCount});
 
   final TranslationResolver resolver;
+  final int? onlineCount;
 
   @override
   Widget build(BuildContext context) {
@@ -836,7 +905,10 @@ class _HeroCard extends StatelessWidget {
       decoration: BoxDecoration(
         color: LhColors.surface.withValues(alpha: 0.92),
         borderRadius: LhRadii.lgAll,
-        border: Border.all(color: LhColors.primary.withValues(alpha: 0.65), width: 1.4),
+        border: Border.all(
+          color: LhColors.primary.withValues(alpha: 0.65),
+          width: 1.4,
+        ),
         boxShadow: <BoxShadow>[
           BoxShadow(
             color: LhColors.primary.withValues(alpha: 0.28),
@@ -864,6 +936,53 @@ class _HeroCard extends StatelessWidget {
             resolver.resolve(TranslationKeys.homeHeroSubtitle),
             style: Theme.of(context).textTheme.titleMedium,
             textAlign: TextAlign.center,
+          ),
+          if (onlineCount != null) ...<Widget>[
+            const SizedBox(height: 14),
+            _OnlineCountPill(resolver: resolver, count: onlineCount!),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+class _OnlineCountPill extends StatelessWidget {
+  const _OnlineCountPill({required this.resolver, required this.count});
+
+  final TranslationResolver resolver;
+  final int count;
+
+  @override
+  Widget build(BuildContext context) {
+    final String localeCode = resolver.selectedLocaleCode;
+    return Container(
+      key: const Key('home-online-count'),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+      decoration: const BoxDecoration(
+        color: LhColors.elevated,
+        borderRadius: LhRadii.pillAll,
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: <Widget>[
+          Container(
+            width: 8,
+            height: 8,
+            decoration: const BoxDecoration(
+              color: Color(0xFF4CAF50),
+              shape: BoxShape.circle,
+            ),
+          ),
+          const SizedBox(width: 6),
+          Text(
+            resolver.resolve(
+              TranslationKeys.homeOnlineCount,
+              params: <String, String>{
+                'count': formatLocalizedCount(count, localeCode),
+              },
+            ),
+            style: Theme.of(context).textTheme.bodySmall,
           ),
         ],
       ),
@@ -979,9 +1098,10 @@ class _MatchmakingViewState extends State<_MatchmakingView>
       duration: const Duration(milliseconds: 1100),
     )..repeat(reverse: true);
     _ringTurn = Tween<double>(begin: 0, end: 1).animate(_ring);
-    _heartScale = Tween<double>(begin: 0.94, end: 1.06).animate(
-      CurvedAnimation(parent: _pulse, curve: Curves.easeInOut),
-    );
+    _heartScale = Tween<double>(
+      begin: 0.94,
+      end: 1.06,
+    ).animate(CurvedAnimation(parent: _pulse, curve: Curves.easeInOut));
   }
 
   @override

@@ -189,6 +189,10 @@ export type ChallengeDefinition = {
   definitionVersion: number;
   engineId: string;
   durationMs: number;
+  /** Instruction hold before play; 0 skips challenge_intro. */
+  introDurationMs?: number;
+  /** Success/fail hold before the next round. */
+  resultHoldMs?: number;
   heartPenaltyOnFailure: 0 | 1;
   energyRewardOnSuccess: number;
   promptKey: string;

@@ -70,6 +70,13 @@ export const adminContentApproveRequestSchema = z
   })
   .strict();
 
+/** Pin an approved/published version into the current challenge catalog. */
+export const adminContentPromoteVersionRequestSchema = z
+  .object({
+    templateVersionId: releaseIdSchema,
+  })
+  .strict();
+
 export const adminContentPublishCatalogRequestSchema = z
   .object({
     versionLabel: z.string().min(1).max(64),
@@ -91,6 +98,48 @@ export const adminContentPauseRequestSchema = z
     (v) => v.templateVersionId != null || v.definitionId != null,
     { message: 'templateVersionId or definitionId required' },
   );
+
+export const adminContentBulkPauseSkipReasonSchema = z.enum([
+  'not_found',
+  'no_definition',
+  'not_eligible',
+]);
+
+export const adminContentBulkPauseRequestSchema = z
+  .object({
+    templateIds: z.array(releaseIdSchema).min(1).max(100),
+    paused: z.boolean(),
+    reason: z.string().min(3).max(500),
+  })
+  .strict();
+export type AdminContentBulkPauseRequest = z.infer<
+  typeof adminContentBulkPauseRequestSchema
+>;
+
+export const adminContentBulkPauseResponseSchema = z
+  .object({
+    paused: z.boolean(),
+    updated: z.array(
+      z
+        .object({
+          templateId: releaseIdSchema,
+          definitionId: z.string().min(1).max(128),
+        })
+        .strict(),
+    ),
+    skipped: z.array(
+      z
+        .object({
+          templateId: releaseIdSchema,
+          reason: adminContentBulkPauseSkipReasonSchema,
+        })
+        .strict(),
+    ),
+  })
+  .strict();
+export type AdminContentBulkPauseResponse = z.infer<
+  typeof adminContentBulkPauseResponseSchema
+>;
 
 export const adminContentRollbackRequestSchema = z
   .object({
@@ -141,6 +190,8 @@ export const adminStudioHomeSummarySchema = z
       published: z.number().int().nonnegative(),
       paused: z.number().int().nonnegative(),
     }),
+    /** Share of templates whose latest version has an accessibility fallback. */
+    coveragePercent: z.number().int().min(0).max(100),
     recentPublishes: z.array(
       z.object({
         releaseId: releaseIdSchema,

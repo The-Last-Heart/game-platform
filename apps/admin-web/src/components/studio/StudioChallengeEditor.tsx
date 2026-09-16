@@ -8,6 +8,7 @@ import type {
   LaunchEngineId,
 } from '@thelastheart/contracts';
 import { STUDIO_ENGINE_REGISTRY } from '@thelastheart/contracts';
+import { useBreadcrumbLabel } from '@/components/shell/breadcrumb-labels';
 import {
   ErrorState,
   ForbiddenState,
@@ -21,8 +22,23 @@ import { adminApiFetch } from '@/lib/api/client';
 import { localizeAdminError } from '@/i18n/localize-admin-error';
 import { scheduleEffectTask } from '@/lib/react/schedule-effect-task';
 import { DevicePreviewFrame } from './DevicePreviewFrame';
-import { FamilyParamsFields, defaultClientConfig, defaultServerConfig, mergeFogWipeRequiredAssets } from './FamilyParamsFields';
-import { FieldInput, FieldSelect, FieldTextarea, FieldCheckboxGroup, FieldGroup } from './Field';
+import {
+  FamilyParamsFields,
+  defaultClientConfig,
+  defaultServerConfig,
+  mergeFogWipeRequiredAssets,
+} from './FamilyParamsFields';
+import {
+  parseTriviaQuestions,
+  triviaQuestionBankIssues,
+} from './trivia-question-bank';
+import {
+  FieldInput,
+  FieldSelect,
+  FieldTextarea,
+  FieldCheckboxGroup,
+  FieldGroup,
+} from './Field';
 import {
   CatalogKeyField,
   ChipMultiSelect,
@@ -31,7 +47,11 @@ import {
   SegmentedChoice,
 } from './OperatorControls';
 import { StudioPageHeader } from './StudioPageHeader';
-import { StudioSectionNav, EDITOR_SECTIONS, type EditorSection } from './StudioSectionNav';
+import {
+  StudioSectionNav,
+  EDITOR_SECTIONS,
+  type EditorSection,
+} from './StudioSectionNav';
 import {
   APP_VERSION_PRESETS,
   DEVICE_CAPABILITY_OPTIONS,
@@ -51,15 +71,21 @@ import { ValidationSummary, type ValidationError } from './ValidationSummary';
 // Real contract engine IDs
 // ---------------------------------------------------------------------------
 
-const ENGINE_OPTIONS: { value: string; label: string }[] = STUDIO_ENGINE_REGISTRY.map((entry) => ({
-  value: entry.engineId,
-  label: entry.labelKey,
-}));
+const ENGINE_OPTIONS: { value: string; label: string }[] =
+  STUDIO_ENGINE_REGISTRY.map((entry) => ({
+    value: entry.engineId,
+    label: entry.labelKey,
+  }));
 
-function localizedEngineOptions(locale: Locale): { value: string; label: string }[] {
+function localizedEngineOptions(
+  locale: Locale,
+): { value: string; label: string }[] {
   return ENGINE_OPTIONS.map((opt) => ({
     value: opt.value,
-    label: t(locale, `studio.engine.${opt.value.split('.').pop()}` as MessageKey),
+    label: t(
+      locale,
+      `studio.engine.${opt.value.split('.').pop()}` as MessageKey,
+    ),
   }));
 }
 
@@ -130,8 +156,8 @@ function defaultDraft(): DraftDefinition {
     hintAr: '',
     promptKey: 'challenge.wait_for_signal.intro',
     durationMs: 5000,
-    introDurationMs: 2000,
-    resultHoldMs: 3000,
+    introDurationMs: 0,
+    resultHoldMs: 2500,
     heartPenaltyOnFailure: 1,
     energyRewardOnSuccess: 1,
     clientConfig: defaultClientConfig(engineId),
@@ -159,9 +185,13 @@ function defaultDraft(): DraftDefinition {
 // Draft → contract definition
 // ---------------------------------------------------------------------------
 
-function draftToDefinition(draft: DraftDefinition): ChallengeDefinitionContract {
+function draftToDefinition(
+  draft: DraftDefinition,
+): ChallengeDefinitionContract {
   const outcomeReasonKeys = Object.fromEntries(
-    Object.entries(draft.outcomeReasonKeys).filter(([, v]) => v.trim().length > 0),
+    Object.entries(draft.outcomeReasonKeys).filter(
+      ([, v]) => v.trim().length > 0,
+    ),
   );
 
   return {
@@ -176,13 +206,14 @@ function draftToDefinition(draft: DraftDefinition): ChallengeDefinitionContract 
     hintAr: draft.hintAr || undefined,
     promptKey: draft.promptKey,
     durationMs: draft.durationMs,
-    introDurationMs: draft.introDurationMs || undefined,
-    resultHoldMs: draft.resultHoldMs || undefined,
+    introDurationMs: draft.introDurationMs,
+    resultHoldMs: draft.resultHoldMs,
     heartPenaltyOnFailure: draft.heartPenaltyOnFailure,
     energyRewardOnSuccess: draft.energyRewardOnSuccess,
     clientConfig: draft.clientConfig,
     serverConfig: draft.serverConfig,
-    eligibleModes: draft.eligibleModes as ChallengeDefinitionContract['eligibleModes'],
+    eligibleModes:
+      draft.eligibleModes as ChallengeDefinitionContract['eligibleModes'],
     roundMin: draft.roundMin ? Number(draft.roundMin) : undefined,
     roundMax: draft.roundMax ? Number(draft.roundMax) : undefined,
     selectionWeight: draft.selectionWeight,
@@ -192,7 +223,8 @@ function draftToDefinition(draft: DraftDefinition): ChallengeDefinitionContract 
     accessibilityFallbackKey: draft.accessibilityFallbackKey,
     requiredAssetIds: draft.requiredAssetIds,
     choiceKeys: draft.choiceKeys.length > 0 ? draft.choiceKeys : undefined,
-    outcomeReasonKeys: Object.keys(outcomeReasonKeys).length > 0 ? outcomeReasonKeys : undefined,
+    outcomeReasonKeys:
+      Object.keys(outcomeReasonKeys).length > 0 ? outcomeReasonKeys : undefined,
   };
 }
 
@@ -200,17 +232,66 @@ function draftToDefinition(draft: DraftDefinition): ChallengeDefinitionContract 
 // Validation
 // ---------------------------------------------------------------------------
 
-function validateDraft(draft: DraftDefinition, locale: Locale): ValidationError[] {
+function validateDraft(
+  draft: DraftDefinition,
+  locale: Locale,
+): ValidationError[] {
   const errors: ValidationError[] = [];
-  if (!draft.definitionId.trim()) errors.push({ path: 'definitionId', message: t(locale, 'studio.validation.required') });
-  if (!draft.internalTitle.trim()) errors.push({ path: 'internalTitle', message: t(locale, 'studio.validation.required') });
-  if (!draft.instructionAr.trim()) errors.push({ path: 'instructionAr', message: t(locale, 'studio.validation.missingArabic') });
-  if (!draft.promptKey.trim()) errors.push({ path: 'promptKey', message: t(locale, 'studio.validation.required') });
-  if (draft.durationMs < 3000 || draft.durationMs > 15_000) errors.push({ path: 'durationMs', message: t(locale, 'studio.validation.invalidRange') });
-  if (draft.eligibleModes.length === 0) errors.push({ path: 'eligibleModes', message: t(locale, 'studio.validation.required') });
-  if (!draft.accessibilityFallbackKey.trim()) errors.push({ path: 'accessibilityFallbackKey', message: t(locale, 'studio.validation.required') });
-  if (draft.roundMin && draft.roundMax && Number(draft.roundMin) > Number(draft.roundMax)) {
-    errors.push({ path: 'roundMax', message: t(locale, 'studio.validation.invalidRange') });
+  if (!draft.definitionId.trim())
+    errors.push({
+      path: 'definitionId',
+      message: t(locale, 'studio.validation.required'),
+    });
+  if (!draft.internalTitle.trim())
+    errors.push({
+      path: 'internalTitle',
+      message: t(locale, 'studio.validation.required'),
+    });
+  if (!draft.instructionAr.trim())
+    errors.push({
+      path: 'instructionAr',
+      message: t(locale, 'studio.validation.missingArabic'),
+    });
+  if (draft.engineId === 'trivia.multiple_choice') {
+    const triviaIssues = triviaQuestionBankIssues(
+      parseTriviaQuestions(draft.serverConfig),
+    );
+    if (triviaIssues.length > 0) {
+      errors.push({
+        path: 'serverConfig.questions',
+        message: t(locale, 'studio.validation.missingArabic'),
+      });
+    }
+  }
+  if (!draft.promptKey.trim())
+    errors.push({
+      path: 'promptKey',
+      message: t(locale, 'studio.validation.required'),
+    });
+  if (draft.durationMs < 3000 || draft.durationMs > 15_000)
+    errors.push({
+      path: 'durationMs',
+      message: t(locale, 'studio.validation.invalidRange'),
+    });
+  if (draft.eligibleModes.length === 0)
+    errors.push({
+      path: 'eligibleModes',
+      message: t(locale, 'studio.validation.required'),
+    });
+  if (!draft.accessibilityFallbackKey.trim())
+    errors.push({
+      path: 'accessibilityFallbackKey',
+      message: t(locale, 'studio.validation.required'),
+    });
+  if (
+    draft.roundMin &&
+    draft.roundMax &&
+    Number(draft.roundMin) > Number(draft.roundMax)
+  ) {
+    errors.push({
+      path: 'roundMax',
+      message: t(locale, 'studio.validation.invalidRange'),
+    });
   }
   return errors;
 }
@@ -265,8 +346,8 @@ function definitionToDraft(def: ChallengeDefinitionContract): DraftDefinition {
     hintAr: def.hintAr ?? '',
     promptKey: def.promptKey,
     durationMs: def.durationMs,
-    introDurationMs: def.introDurationMs ?? 2000,
-    resultHoldMs: def.resultHoldMs ?? 3000,
+    introDurationMs: def.introDurationMs ?? 0,
+    resultHoldMs: def.resultHoldMs ?? 2500,
     heartPenaltyOnFailure: def.heartPenaltyOnFailure,
     energyRewardOnSuccess: def.energyRewardOnSuccess,
     clientConfig,
@@ -304,9 +385,9 @@ export function StudioChallengeEditor({
   const [applyingLiveModes, setApplyingLiveModes] = useState(false);
   const [liveModes, setLiveModes] = useState<string[]>([]);
   const [liveReason, setLiveReason] = useState('Studio live mode update');
-  const [loadState, setLoadState] = useState<'idle' | 'loading' | 'ready' | 'error' | 'forbidden'>(
-    mode === 'edit' && !initialDefinition ? 'loading' : 'ready',
-  );
+  const [loadState, setLoadState] = useState<
+    'idle' | 'loading' | 'ready' | 'error' | 'forbidden'
+  >(mode === 'edit' && !initialDefinition ? 'loading' : 'ready');
   const [loadError, setLoadError] = useState<string | null>(null);
   const [liveEligibility, setLiveEligibility] = useState<{
     catalogPaused: boolean;
@@ -323,7 +404,10 @@ export function StudioChallengeEditor({
     return defaultDraft();
   });
 
-  const parsedClientConfig = useMemo(() => draft.clientConfig, [draft.clientConfig]);
+  const parsedClientConfig = useMemo(
+    () => draft.clientConfig,
+    [draft.clientConfig],
+  );
 
   const loadExisting = useCallback(async () => {
     if (mode !== 'edit' || !templateId || initialDefinition) {
@@ -369,7 +453,15 @@ export function StudioChallengeEditor({
     setLoadState('ready');
   }, [mode, templateId, initialDefinition, locale]);
 
-  useEffect(() => scheduleEffectTask(() => void loadExisting()), [loadExisting]);
+  useEffect(
+    () => scheduleEffectTask(() => void loadExisting()),
+    [loadExisting],
+  );
+
+  useBreadcrumbLabel(
+    mode === 'edit' && templateId ? `/content/templates/${templateId}` : null,
+    draft.internalTitle,
+  );
 
   const validationErrors = validateDraft(draft, locale);
   const activeSectionIndex = EDITOR_SECTIONS.indexOf(activeSection);
@@ -407,7 +499,10 @@ export function StudioChallengeEditor({
     });
   }
 
-  function updateField<K extends keyof DraftDefinition>(key: K, value: DraftDefinition[K]) {
+  function updateField<K extends keyof DraftDefinition>(
+    key: K,
+    value: DraftDefinition[K],
+  ) {
     setDraft((prev) => ({ ...prev, [key]: value }));
   }
 
@@ -422,7 +517,8 @@ export function StudioChallengeEditor({
         : [];
     const revealContent =
       entry.engineId === 'gesture.fog_wipe'
-        ? ((clientConfig.assetIds as { revealContent?: string } | undefined)?.revealContent)
+        ? (clientConfig.assetIds as { revealContent?: string } | undefined)
+            ?.revealContent
         : undefined;
     setDraft((prev) => ({
       ...prev,
@@ -440,7 +536,11 @@ export function StudioChallengeEditor({
             : prev.promptKey,
       requiredAssetIds:
         entry.engineId === 'gesture.fog_wipe'
-          ? mergeFogWipeRequiredAssets(prev.requiredAssetIds, fogVariants, revealContent)
+          ? mergeFogWipeRequiredAssets(
+              prev.requiredAssetIds,
+              fogVariants,
+              revealContent,
+            )
           : prev.requiredAssetIds,
     }));
   }
@@ -469,7 +569,10 @@ export function StudioChallengeEditor({
     );
     setSaving(false);
     if (!result.ok) {
-      pushToast(localizeAdminError(locale, result.error.code, result.error.message), 'error');
+      pushToast(
+        localizeAdminError(locale, result.error.code, result.error.message),
+        'error',
+      );
       return;
     }
     pushToast(t(locale, 'studio.editor.saveSuccess'), 'success');
@@ -491,7 +594,10 @@ export function StudioChallengeEditor({
       body: JSON.stringify(body),
     });
     if (!result.ok) {
-      pushToast(localizeAdminError(locale, result.error.code, result.error.message), 'error');
+      pushToast(
+        localizeAdminError(locale, result.error.code, result.error.message),
+        'error',
+      );
       setSubmitting(false);
       return;
     }
@@ -508,13 +614,18 @@ export function StudioChallengeEditor({
     );
     setSubmitting(false);
     if (!submitResult.ok) {
-      pushToast(localizeAdminError(locale, submitResult.error.code, submitResult.error.message), 'error');
+      pushToast(
+        localizeAdminError(
+          locale,
+          submitResult.error.code,
+          submitResult.error.message,
+        ),
+        'error',
+      );
       return;
     }
     pushToast(t(locale, 'studio.editor.submitSuccess'), 'success');
-    router.push(
-      `/${locale}/content/templates/${result.data.templateId}`,
-    );
+    router.push(`/${locale}/content/templates/${result.data.templateId}`);
   }
 
   async function applyLiveModes() {
@@ -541,7 +652,10 @@ export function StudioChallengeEditor({
     });
     setApplyingLiveModes(false);
     if (!result.ok) {
-      pushToast(localizeAdminError(locale, result.error.code, result.error.message), 'error');
+      pushToast(
+        localizeAdminError(locale, result.error.code, result.error.message),
+        'error',
+      );
       return;
     }
     setLiveEligibility((prev) =>
@@ -563,8 +677,16 @@ export function StudioChallengeEditor({
   return (
     <div className="studio-layout">
       <StudioPageHeader
-        title={t(locale, isCreate ? 'studio.editor.createTitle' : 'studio.editor.editTitle')}
-        subtitle={t(locale, isCreate ? 'studio.editor.createSubtitle' : 'studio.editor.editSubtitle')}
+        title={t(
+          locale,
+          isCreate ? 'studio.editor.createTitle' : 'studio.editor.editTitle',
+        )}
+        subtitle={t(
+          locale,
+          isCreate
+            ? 'studio.editor.createSubtitle'
+            : 'studio.editor.editSubtitle',
+        )}
         sticky
       />
 
@@ -579,9 +701,16 @@ export function StudioChallengeEditor({
         {/* Center: form */}
         <div className="studio-editor-form">
           {/* Section 1: Identity & ownership */}
-          <div className="section-group" id="section-identity" data-active={activeSection === 'identity' ? 'true' : undefined} hidden={activeSection !== 'identity'}>
+          <div
+            className="section-group"
+            id="section-identity"
+            data-active={activeSection === 'identity' ? 'true' : undefined}
+            hidden={activeSection !== 'identity'}
+          >
             <h3>{t(locale, 'studio.section.identity')}</h3>
-            <p className="studio-section-lead">{t(locale, 'studio.editor.identityLead')}</p>
+            <p className="studio-section-lead">
+              {t(locale, 'studio.editor.identityLead')}
+            </p>
             <FieldGroup>
               <FieldInput
                 id="def-title"
@@ -594,7 +723,10 @@ export function StudioChallengeEditor({
                     ...prev,
                     internalTitle: title,
                     definitionId:
-                      mode === 'create' && (!prev.definitionId || prev.definitionId === slugifyDefinitionId(prev.internalTitle))
+                      mode === 'create' &&
+                      (!prev.definitionId ||
+                        prev.definitionId ===
+                          slugifyDefinitionId(prev.internalTitle))
                         ? slugifyDefinitionId(title)
                         : prev.definitionId,
                   }));
@@ -603,25 +735,36 @@ export function StudioChallengeEditor({
                 maxLength={120}
               />
               <div className="field">
-                <label htmlFor="def-id">{t(locale, 'studio.field.definitionId')}</label>
+                <label htmlFor="def-id">
+                  {t(locale, 'studio.field.definitionId')}
+                </label>
                 <div className="studio-id-row">
                   <input
                     id="def-id"
                     value={draft.definitionId}
-                    onChange={(e) => updateField('definitionId', e.currentTarget.value)}
+                    onChange={(e) =>
+                      updateField('definitionId', e.currentTarget.value)
+                    }
                     disabled={!canDraft || mode === 'edit'}
                   />
                   {mode === 'create' && canDraft ? (
                     <button
                       type="button"
                       className="btn btn-ghost"
-                      onClick={() => updateField('definitionId', slugifyDefinitionId(draft.internalTitle))}
+                      onClick={() =>
+                        updateField(
+                          'definitionId',
+                          slugifyDefinitionId(draft.internalTitle),
+                        )
+                      }
                     >
                       {t(locale, 'studio.field.generateId')}
                     </button>
                   ) : null}
                 </div>
-                <span className="field-hint">{t(locale, 'studio.field.definitionIdHint')}</span>
+                <span className="field-hint">
+                  {t(locale, 'studio.field.definitionIdHint')}
+                </span>
               </div>
               <FieldSelect
                 id="def-engine"
@@ -633,22 +776,32 @@ export function StudioChallengeEditor({
                 disabled={!canDraft}
               />
               <p className="studio-inline-hint">
-                {t(locale, 'studio.field.definitionVersion')}: v{draft.definitionVersion}
+                {t(locale, 'studio.field.definitionVersion')}: v
+                {draft.definitionVersion}
               </p>
             </FieldGroup>
           </div>
 
           {/* Section 2: Arabic content */}
-          <div className="section-group" id="section-arabic" data-active={activeSection === 'arabic' ? 'true' : undefined} hidden={activeSection !== 'arabic'}>
+          <div
+            className="section-group"
+            id="section-arabic"
+            data-active={activeSection === 'arabic' ? 'true' : undefined}
+            hidden={activeSection !== 'arabic'}
+          >
             <h3>{t(locale, 'studio.section.arabic')}</h3>
-            <p className="studio-section-lead">{t(locale, 'studio.editor.arabicLead')}</p>
+            <p className="studio-section-lead">
+              {t(locale, 'studio.editor.arabicLead')}
+            </p>
             <FieldGroup>
               <FieldTextarea
                 id="def-instruction-ar"
                 label={t(locale, 'studio.field.instructionAr')}
                 hint={t(locale, 'studio.field.instructionArHint')}
                 value={draft.instructionAr}
-                onChange={(e) => updateField('instructionAr', e.currentTarget.value)}
+                onChange={(e) =>
+                  updateField('instructionAr', e.currentTarget.value)
+                }
                 disabled={!canDraft}
                 dir="rtl"
                 maxLength={500}
@@ -677,7 +830,9 @@ export function StudioChallengeEditor({
                 <span style={{ fontWeight: 600, fontSize: '0.9rem' }}>
                   {t(locale, 'studio.field.outcomeReasonKeys')}
                 </span>
-                <span className="field-hint">{t(locale, 'studio.field.outcomeReasonKeysHint')}</span>
+                <span className="field-hint">
+                  {t(locale, 'studio.field.outcomeReasonKeysHint')}
+                </span>
                 <div className="studio-outcome-grid">
                   {OUTCOME_REASON_CODES.map((code) => (
                     <CatalogKeyField
@@ -702,39 +857,64 @@ export function StudioChallengeEditor({
           </div>
 
           {/* Section 3: Family & classification */}
-          <div className="section-group" id="section-classification" data-active={activeSection === 'classification' ? 'true' : undefined} hidden={activeSection !== 'classification'}>
+          <div
+            className="section-group"
+            id="section-classification"
+            data-active={
+              activeSection === 'classification' ? 'true' : undefined
+            }
+            hidden={activeSection !== 'classification'}
+          >
             <h3>{t(locale, 'studio.section.classification')}</h3>
-            <p className="studio-section-lead">{t(locale, 'studio.editor.classificationLead')}</p>
+            <p className="studio-section-lead">
+              {t(locale, 'studio.editor.classificationLead')}
+            </p>
             <FieldGroup>
               <SegmentedChoice
                 label={t(locale, 'studio.field.difficulty')}
                 hint={t(locale, 'studio.field.difficultyHint')}
                 value={draft.difficulty}
                 options={localizedDifficultyOptions}
-                onChange={(v) => updateField('difficulty', v as 'easy' | 'medium' | 'hard')}
+                onChange={(v) =>
+                  updateField('difficulty', v as 'easy' | 'medium' | 'hard')
+                }
                 disabled={!canDraft}
               />
               <p className="studio-inline-hint">
-                {t(locale, 'studio.field.familyId')}: <strong>{draft.familyId}</strong>
+                {t(locale, 'studio.field.familyId')}:{' '}
+                <strong>{draft.familyId}</strong>
                 {' · '}
-                {t(locale, 'studio.field.categoryId')}: <strong>{draft.categoryId}</strong>
+                {t(locale, 'studio.field.categoryId')}:{' '}
+                <strong>{draft.categoryId}</strong>
               </p>
             </FieldGroup>
           </div>
 
           {/* Section 4: Timing */}
-          <div className="section-group" id="section-timing" data-active={activeSection === 'timing' ? 'true' : undefined} hidden={activeSection !== 'timing'}>
+          <div
+            className="section-group"
+            id="section-timing"
+            data-active={activeSection === 'timing' ? 'true' : undefined}
+            hidden={activeSection !== 'timing'}
+          >
             <h3>{t(locale, 'studio.section.timing')}</h3>
-            <p className="studio-section-lead">{t(locale, 'studio.editor.timingLead')}</p>
+            <p className="studio-section-lead">
+              {t(locale, 'studio.editor.timingLead')}
+            </p>
             <FieldGroup>
               <DurationSecondsField
                 id="def-duration"
                 label={t(locale, 'studio.field.durationMs')}
                 hint={t(locale, 'studio.field.durationMsHint')}
                 valueMs={draft.durationMs}
-                onChangeMs={(ms) => updateField('durationMs', Math.min(15_000, Math.max(3000, ms)))}
+                onChangeMs={(ms) =>
+                  updateField(
+                    'durationMs',
+                    Math.min(15_000, Math.max(3000, ms)),
+                  )
+                }
                 minSec={3}
-                maxSec={8}
+                maxSec={15}
                 stepSec={0.5}
                 presets={TIMING_DURATION_PRESETS_MS.map((p) => ({
                   ms: p.ms,
@@ -774,7 +954,12 @@ export function StudioChallengeEditor({
           </div>
 
           {/* Section 5: Engine parameters — typed family fields */}
-          <div className="section-group" id="section-familyParams" data-active={activeSection === 'familyParams' ? 'true' : undefined} hidden={activeSection !== 'familyParams'}>
+          <div
+            className="section-group"
+            id="section-familyParams"
+            data-active={activeSection === 'familyParams' ? 'true' : undefined}
+            hidden={activeSection !== 'familyParams'}
+          >
             <h3>{t(locale, 'studio.section.familyParams')}</h3>
             <FamilyParamsFields
               locale={locale}
@@ -784,31 +969,55 @@ export function StudioChallengeEditor({
               onClientChange={(config) => updateField('clientConfig', config)}
               onServerChange={(config) => updateField('serverConfig', config)}
               requiredAssetIds={draft.requiredAssetIds}
-              onRequiredAssetIdsChange={(ids) => updateField('requiredAssetIds', ids)}
+              onRequiredAssetIdsChange={(ids) =>
+                updateField('requiredAssetIds', ids)
+              }
               disabled={!canDraft}
             />
           </div>
 
           {/* Section 6: Input & behavior */}
-          <div className="section-group" id="section-behavior" data-active={activeSection === 'behavior' ? 'true' : undefined} hidden={activeSection !== 'behavior'}>
+          <div
+            className="section-group"
+            id="section-behavior"
+            data-active={activeSection === 'behavior' ? 'true' : undefined}
+            hidden={activeSection !== 'behavior'}
+          >
             <h3>{t(locale, 'studio.section.behavior')}</h3>
-            <p className="studio-section-lead">{t(locale, 'studio.field.fp.behaviorNote' as MessageKey)}</p>
+            <p className="studio-section-lead">
+              {t(locale, 'studio.field.fp.behaviorNote' as MessageKey)}
+            </p>
           </div>
 
           {/* Section 7: Heart & energy effects */}
-          <div className="section-group" id="section-effects" data-active={activeSection === 'effects' ? 'true' : undefined} hidden={activeSection !== 'effects'}>
+          <div
+            className="section-group"
+            id="section-effects"
+            data-active={activeSection === 'effects' ? 'true' : undefined}
+            hidden={activeSection !== 'effects'}
+          >
             <h3>{t(locale, 'studio.section.effects')}</h3>
-            <p className="studio-section-lead">{t(locale, 'studio.editor.effectsLead')}</p>
+            <p className="studio-section-lead">
+              {t(locale, 'studio.editor.effectsLead')}
+            </p>
             <FieldGroup>
               <SegmentedChoice
                 label={t(locale, 'studio.field.heartPenaltyOnFailure')}
                 hint={t(locale, 'studio.field.heartPenaltyHint')}
                 value={String(draft.heartPenaltyOnFailure)}
                 options={[
-                  { value: '0', label: t(locale, 'studio.field.heartPenalty.none') },
-                  { value: '1', label: t(locale, 'studio.field.heartPenalty.one') },
+                  {
+                    value: '0',
+                    label: t(locale, 'studio.field.heartPenalty.none'),
+                  },
+                  {
+                    value: '1',
+                    label: t(locale, 'studio.field.heartPenalty.one'),
+                  },
                 ]}
-                onChange={(v) => updateField('heartPenaltyOnFailure', Number(v) as 0 | 1)}
+                onChange={(v) =>
+                  updateField('heartPenaltyOnFailure', Number(v) as 0 | 1)
+                }
                 disabled={!canDraft}
               />
               <SegmentedChoice
@@ -819,16 +1028,25 @@ export function StudioChallengeEditor({
                   value: String(n),
                   label: String(n),
                 }))}
-                onChange={(v) => updateField('energyRewardOnSuccess', Number(v))}
+                onChange={(v) =>
+                  updateField('energyRewardOnSuccess', Number(v))
+                }
                 disabled={!canDraft}
               />
             </FieldGroup>
           </div>
 
           {/* Section 8: Assets, sounds, haptics */}
-          <div className="section-group" id="section-assets" data-active={activeSection === 'assets' ? 'true' : undefined} hidden={activeSection !== 'assets'}>
+          <div
+            className="section-group"
+            id="section-assets"
+            data-active={activeSection === 'assets' ? 'true' : undefined}
+            hidden={activeSection !== 'assets'}
+          >
             <h3>{t(locale, 'studio.section.assets')}</h3>
-            <p className="studio-section-lead">{t(locale, 'studio.editor.assetsLead')}</p>
+            <p className="studio-section-lead">
+              {t(locale, 'studio.editor.assetsLead')}
+            </p>
             <ChipMultiSelect
               label={t(locale, 'studio.field.requiredAssetIds')}
               hint={t(locale, 'studio.field.requiredAssetIdsHint')}
@@ -841,15 +1059,24 @@ export function StudioChallengeEditor({
           </div>
 
           {/* Section 9: Capability & accessibility */}
-          <div className="section-group" id="section-accessibility" data-active={activeSection === 'accessibility' ? 'true' : undefined} hidden={activeSection !== 'accessibility'}>
+          <div
+            className="section-group"
+            id="section-accessibility"
+            data-active={activeSection === 'accessibility' ? 'true' : undefined}
+            hidden={activeSection !== 'accessibility'}
+          >
             <h3>{t(locale, 'studio.section.accessibility')}</h3>
-            <p className="studio-section-lead">{t(locale, 'studio.editor.accessibilityLead')}</p>
+            <p className="studio-section-lead">
+              {t(locale, 'studio.editor.accessibilityLead')}
+            </p>
             <ChipMultiSelect
               label={t(locale, 'studio.field.requiredCapabilities')}
               hint={t(locale, 'studio.field.requiredCapabilitiesHint')}
               options={DEVICE_CAPABILITY_OPTIONS}
               selected={draft.requiredCapabilities}
-              onChange={(selected) => updateField('requiredCapabilities', selected)}
+              onChange={(selected) =>
+                updateField('requiredCapabilities', selected)
+              }
               localize={(k) => t(locale, k as MessageKey)}
               disabled={!canDraft}
             />
@@ -866,23 +1093,38 @@ export function StudioChallengeEditor({
           </div>
 
           {/* Section 10: Mode & eligibility */}
-          <div className="section-group" id="section-eligibility" data-active={activeSection === 'eligibility' ? 'true' : undefined} hidden={activeSection !== 'eligibility'}>
+          <div
+            className="section-group"
+            id="section-eligibility"
+            data-active={activeSection === 'eligibility' ? 'true' : undefined}
+            hidden={activeSection !== 'eligibility'}
+          >
             <h3>{t(locale, 'studio.section.eligibility')}</h3>
-            <p className="studio-section-lead">{t(locale, 'studio.editor.eligibilityLead')}</p>
+            <p className="studio-section-lead">
+              {t(locale, 'studio.editor.eligibilityLead')}
+            </p>
             {liveEligibility ? (
               <div
                 className="panel"
                 style={{
                   marginBottom: '1rem',
-                  borderColor: liveEligibility.catalogPaused || !liveEligibility.inLiveCatalog
-                    ? 'var(--lh-danger, #c45)'
-                    : 'var(--lh-border)',
+                  borderColor:
+                    liveEligibility.catalogPaused ||
+                    !liveEligibility.inLiveCatalog
+                      ? 'var(--lh-danger, #c45)'
+                      : 'var(--lh-border)',
                 }}
               >
                 <p style={{ margin: 0, fontSize: '0.88rem', fontWeight: 600 }}>
                   {t(locale, 'studio.editor.liveEligibilityTitle')}
                 </p>
-                <ul style={{ margin: '0.5rem 0 0', paddingInlineStart: '1.2rem', fontSize: '0.85rem' }}>
+                <ul
+                  style={{
+                    margin: '0.5rem 0 0',
+                    paddingInlineStart: '1.2rem',
+                    fontSize: '0.85rem',
+                  }}
+                >
                   <li>
                     {liveEligibility.inLiveCatalog
                       ? t(locale, 'studio.editor.liveEligibilityInCatalog')
@@ -890,7 +1132,10 @@ export function StudioChallengeEditor({
                   </li>
                   <li>
                     {liveEligibility.catalogPaused
-                      ? t(locale, 'studio.editor.liveEligibilityPaused').replace(
+                      ? t(
+                          locale,
+                          'studio.editor.liveEligibilityPaused',
+                        ).replace(
                           '{reason}',
                           liveEligibility.pauseReason?.trim() || '—',
                         )
@@ -913,7 +1158,13 @@ export function StudioChallengeEditor({
                     )}
                   </li>
                 </ul>
-                <p style={{ margin: '0.65rem 0 0', fontSize: '0.8rem', color: 'var(--lh-text-muted)' }}>
+                <p
+                  style={{
+                    margin: '0.65rem 0 0',
+                    fontSize: '0.8rem',
+                    color: 'var(--lh-text-muted)',
+                  }}
+                >
                   {t(locale, 'studio.editor.eligibilityPublishHint')}
                 </p>
               </div>
@@ -925,7 +1176,14 @@ export function StudioChallengeEditor({
                 selected={draft.eligibleModes}
                 onChange={(selected) => updateField('eligibleModes', selected)}
               />
-              <p className="field-hint" style={{ marginTop: '-0.35rem', fontSize: '0.8rem', color: 'var(--lh-text-muted)' }}>
+              <p
+                className="field-hint"
+                style={{
+                  marginTop: '-0.35rem',
+                  fontSize: '0.8rem',
+                  color: 'var(--lh-text-muted)',
+                }}
+              >
                 {t(locale, 'studio.field.eligibleModesHint')}
               </p>
               {liveEligibility?.inLiveCatalog ? (
@@ -947,7 +1205,11 @@ export function StudioChallengeEditor({
                     <button
                       type="button"
                       className="btn btn-primary"
-                      disabled={!canPublish || applyingLiveModes || liveModes.length === 0}
+                      disabled={
+                        !canPublish ||
+                        applyingLiveModes ||
+                        liveModes.length === 0
+                      }
                       onClick={() => void applyLiveModes()}
                     >
                       {applyingLiveModes
@@ -962,14 +1224,17 @@ export function StudioChallengeEditor({
                         onClick={() => {
                           void (async () => {
                             if (!liveEligibility.definitionId) return;
-                            const resume = await adminApiFetch('/content/pause', {
-                              method: 'POST',
-                              body: JSON.stringify({
-                                definitionId: liveEligibility.definitionId,
-                                paused: false,
-                                reason: 'Studio resume for live modes',
-                              }),
-                            });
+                            const resume = await adminApiFetch(
+                              '/content/pause',
+                              {
+                                method: 'POST',
+                                body: JSON.stringify({
+                                  definitionId: liveEligibility.definitionId,
+                                  paused: false,
+                                  reason: 'Studio resume for live modes',
+                                }),
+                              },
+                            );
                             if (!resume.ok) {
                               pushToast(
                                 localizeAdminError(
@@ -984,7 +1249,10 @@ export function StudioChallengeEditor({
                             setLiveEligibility((prev) =>
                               prev ? { ...prev, catalogPaused: false } : prev,
                             );
-                            pushToast(t(locale, 'studio.ops.pauseSuccess'), 'success');
+                            pushToast(
+                              t(locale, 'studio.ops.pauseSuccess'),
+                              'success',
+                            );
                           })();
                         }}
                       >
@@ -1000,7 +1268,10 @@ export function StudioChallengeEditor({
                 value={!draft.roundMin && !draft.roundMax ? 'any' : 'limited'}
                 options={[
                   { value: 'any', label: t(locale, 'studio.field.roundAny') },
-                  { value: 'limited', label: t(locale, 'studio.field.roundLimited') },
+                  {
+                    value: 'limited',
+                    label: t(locale, 'studio.field.roundLimited'),
+                  },
                 ]}
                 onChange={(v) => {
                   if (v === 'any') {
@@ -1021,9 +1292,14 @@ export function StudioChallengeEditor({
                     value={draft.roundMin || '1'}
                     options={Array.from({ length: 20 }, (_, i) => ({
                       value: String(i + 1),
-                      label: t(locale, 'studio.field.roundN').replace('{n}', String(i + 1)),
+                      label: t(locale, 'studio.field.roundN').replace(
+                        '{n}',
+                        String(i + 1),
+                      ),
                     }))}
-                    onChange={(e) => updateField('roundMin', e.currentTarget.value)}
+                    onChange={(e) =>
+                      updateField('roundMin', e.currentTarget.value)
+                    }
                     disabled={!canDraft}
                   />
                   <FieldSelect
@@ -1032,9 +1308,14 @@ export function StudioChallengeEditor({
                     value={draft.roundMax || '10'}
                     options={Array.from({ length: 20 }, (_, i) => ({
                       value: String(i + 1),
-                      label: t(locale, 'studio.field.roundN').replace('{n}', String(i + 1)),
+                      label: t(locale, 'studio.field.roundN').replace(
+                        '{n}',
+                        String(i + 1),
+                      ),
                     }))}
-                    onChange={(e) => updateField('roundMax', e.currentTarget.value)}
+                    onChange={(e) =>
+                      updateField('roundMax', e.currentTarget.value)
+                    }
                     disabled={!canDraft}
                   />
                 </FieldGroup>
@@ -1043,7 +1324,9 @@ export function StudioChallengeEditor({
                 <span style={{ fontWeight: 600, fontSize: '0.9rem' }}>
                   {t(locale, 'studio.field.selectionWeight')}
                 </span>
-                <span className="field-hint">{t(locale, 'studio.field.selectionWeightHint')}</span>
+                <span className="field-hint">
+                  {t(locale, 'studio.field.selectionWeightHint')}
+                </span>
                 <PresetChips
                   presets={WEIGHT_PRESETS.map((p) => ({
                     value: p.value,
@@ -1063,18 +1346,30 @@ export function StudioChallengeEditor({
                   label:
                     n === 0
                       ? t(locale, 'studio.field.cooldownNone')
-                      : t(locale, 'studio.field.cooldownN').replace('{n}', String(n)),
+                      : t(locale, 'studio.field.cooldownN').replace(
+                          '{n}',
+                          String(n),
+                        ),
                 }))}
-                onChange={(v) => updateField('repetitionCooldownRounds', Number(v))}
+                onChange={(v) =>
+                  updateField('repetitionCooldownRounds', Number(v))
+                }
                 disabled={!canDraft}
               />
             </FieldGroup>
           </div>
 
           {/* Section 11: Version & app support */}
-          <div className="section-group" id="section-versioning" data-active={activeSection === 'versioning' ? 'true' : undefined} hidden={activeSection !== 'versioning'}>
+          <div
+            className="section-group"
+            id="section-versioning"
+            data-active={activeSection === 'versioning' ? 'true' : undefined}
+            hidden={activeSection !== 'versioning'}
+          >
             <h3>{t(locale, 'studio.section.versioning')}</h3>
-            <p className="studio-section-lead">{t(locale, 'studio.editor.versioningLead')}</p>
+            <p className="studio-section-lead">
+              {t(locale, 'studio.editor.versioningLead')}
+            </p>
             <CatalogKeyField
               id="def-min-app"
               label={t(locale, 'studio.field.minAppVersion')}
@@ -1091,7 +1386,12 @@ export function StudioChallengeEditor({
           </div>
 
           {/* Section 12: Review notes */}
-          <div className="section-group" id="section-review" data-active={activeSection === 'review' ? 'true' : undefined} hidden={activeSection !== 'review'}>
+          <div
+            className="section-group"
+            id="section-review"
+            data-active={activeSection === 'review' ? 'true' : undefined}
+            hidden={activeSection !== 'review'}
+          >
             <h3>{t(locale, 'studio.section.review')}</h3>
             <FieldGroup>
               <FieldTextarea
@@ -1099,7 +1399,9 @@ export function StudioChallengeEditor({
                 label={t(locale, 'studio.field.validationNotes')}
                 hint={t(locale, 'studio.field.validationNotesHint')}
                 value={draft.validationNotes}
-                onChange={(e) => updateField('validationNotes', e.currentTarget.value)}
+                onChange={(e) =>
+                  updateField('validationNotes', e.currentTarget.value)
+                }
                 disabled={!canDraft}
                 maxLength={2000}
               />
@@ -1127,7 +1429,9 @@ export function StudioChallengeEditor({
             type="button"
             className="btn btn-ghost"
             disabled={activeSectionIndex <= 0}
-            onClick={() => goToSection(EDITOR_SECTIONS[activeSectionIndex - 1]!)}
+            onClick={() =>
+              goToSection(EDITOR_SECTIONS[activeSectionIndex - 1]!)
+            }
           >
             {t(locale, 'studio.editor.prevSection')}
           </button>
@@ -1135,7 +1439,9 @@ export function StudioChallengeEditor({
             type="button"
             className="btn btn-ghost"
             disabled={activeSectionIndex >= EDITOR_SECTIONS.length - 1}
-            onClick={() => goToSection(EDITOR_SECTIONS[activeSectionIndex + 1]!)}
+            onClick={() =>
+              goToSection(EDITOR_SECTIONS[activeSectionIndex + 1]!)
+            }
           >
             {t(locale, 'studio.editor.nextSection')}
           </button>
@@ -1149,7 +1455,9 @@ export function StudioChallengeEditor({
               disabled={saving || submitting}
               onClick={() => void saveDraft()}
             >
-              {saving ? t(locale, 'studio.editor.saving') : t(locale, 'studio.editor.saveDraft')}
+              {saving
+                ? t(locale, 'studio.editor.saving')
+                : t(locale, 'studio.editor.saveDraft')}
             </button>
             <button
               type="button"
@@ -1157,7 +1465,9 @@ export function StudioChallengeEditor({
               disabled={saving || submitting || validationErrors.length > 0}
               onClick={() => void submitForReview()}
             >
-              {submitting ? t(locale, 'studio.editor.submitting') : t(locale, 'studio.editor.submit')}
+              {submitting
+                ? t(locale, 'studio.editor.submitting')
+                : t(locale, 'studio.editor.submit')}
             </button>
           </div>
         ) : null}

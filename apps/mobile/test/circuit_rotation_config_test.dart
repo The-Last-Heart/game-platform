@@ -4,8 +4,10 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:game/features/match/engines/precision_circuit_rotation_engine.dart';
 
 void main() {
-  test('accepts jsonDecode nested maps and cell tuples from live clientConfig', () {
-    const String raw = '''
+  test(
+    'accepts jsonDecode nested maps and cell tuples from live clientConfig',
+    () {
+      const String raw = '''
 {
   "categoryKey": "challenge.category.precision",
   "promptKey": "challenge.circuit_rotation.prompt",
@@ -13,7 +15,9 @@ void main() {
   "assetIds": {
     "boardBase": "circuit_rotation.board_base",
     "gridPlate": "circuit_rotation.grid_plate",
-    "sparkRive": "neon_cable.cable_spark"
+    "sparkRive": "neon_cable.cable_spark",
+    "cableConnectSfx": "circuit_rotation.cable_connected",
+    "heartPowerOnSfx": "circuit_rotation.heart_power_on"
   },
   "grid": {"rows": 3, "columns": 3},
   "source": {"cell": [2, 0], "side": "south"},
@@ -46,16 +50,15 @@ void main() {
   }
 }
 ''';
-    final Map<String, dynamic> config =
-        jsonDecode(raw) as Map<String, dynamic>;
-    expect(circuitRotationClientConfigIsPlayable(config), isTrue);
-  });
+      final Map<String, dynamic> config =
+          jsonDecode(raw) as Map<String, dynamic>;
+      expect(circuitRotationClientConfigIsPlayable(config), isTrue);
+    },
+  );
 
   test('rejects a fog-wipe payload that is not a circuit puzzle', () {
     final Map<String, dynamic> config =
-        jsonDecode(
-              '{"promptKey":"challenge.fog_wipe.prompt","assetIds":{}}',
-            )
+        jsonDecode('{"promptKey":"challenge.fog_wipe.prompt","assetIds":{}}')
             as Map<String, dynamic>;
     expect(circuitRotationClientConfigIsPlayable(config), isFalse);
   });

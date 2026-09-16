@@ -254,3 +254,28 @@ CircuitRotationEvaluation evaluateCircuitRotation(
     targetReached: targetReached,
   );
 }
+
+class CircuitRotationPowerDelta {
+  const CircuitRotationPowerDelta({
+    required this.newlyPoweredCount,
+    required this.heartNewlyReached,
+  });
+
+  final int newlyPoweredCount;
+  final bool heartNewlyReached;
+}
+
+/// Sound triggers: new tiles joining the live path, not a rotate by itself.
+CircuitRotationPowerDelta circuitRotationPowerDelta({
+  required Set<String> previousPoweredTileIds,
+  required bool previousTargetReached,
+  required CircuitRotationEvaluation next,
+}) {
+  final int newlyPoweredCount = next.poweredTileIds
+      .where((String id) => !previousPoweredTileIds.contains(id))
+      .length;
+  return CircuitRotationPowerDelta(
+    newlyPoweredCount: newlyPoweredCount,
+    heartNewlyReached: next.targetReached && !previousTargetReached,
+  );
+}

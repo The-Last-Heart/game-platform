@@ -1,6 +1,6 @@
 {
   "packId": "lh.local.content.v1",
-  "packVersion": 13,
+  "packVersion": 14,
   "assets": [
     {
       "assetId": "sfx.pulse",
@@ -274,6 +274,20 @@
       "contentType": "audio/mpeg",
       "bytes": 39168,
       "sha256": "dc690e7e1da84bd73c143eaf57466f72f6907f4b4e62f659284f78a7bde89708"
+    },
+    {
+      "assetId": "circuit_rotation.cable_connected",
+      "relativePath": "assets/circuit_rotation.cable_connected.wav",
+      "contentType": "audio/wav",
+      "bytes": 176444,
+      "sha256": "a13c8c7e02b2709627467f704bad65ec7621ad207c1b587aa156d3f94ef4301b"
+    },
+    {
+      "assetId": "circuit_rotation.heart_power_on",
+      "relativePath": "assets/circuit_rotation.heart_power_on.mp3",
+      "contentType": "audio/mpeg",
+      "bytes": 162048,
+      "sha256": "e698ea5774303025e43953109e8e69c2325c3b0bd5f4bb440aa0e1a54934aedb"
     }
   ]
 }

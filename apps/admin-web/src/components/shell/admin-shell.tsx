@@ -27,11 +27,16 @@ import type { Locale } from '@/i18n/locale';
 import { adminApiFetch } from '@/lib/api/client';
 import type { AdminSessionSnapshot } from '@/lib/auth/session';
 import type { SidebarPreference, ThemePreference } from '@/lib/bff/constants';
+import { buildAdminBreadcrumbs } from '@/lib/nav/breadcrumbs';
 import {
   filterNavItems,
   navItemIsActive,
   type NavItemId,
 } from '@/lib/nav/items';
+import {
+  BreadcrumbLabelProvider,
+  useBreadcrumbLabels,
+} from './breadcrumb-labels';
 
 const ICONS: Record<NavItemId, ReactNode> = {
   dashboard: <LayoutDashboard size={18} aria-hidden />,
@@ -45,49 +50,17 @@ const ICONS: Record<NavItemId, ReactNode> = {
 
 function Breadcrumbs({ locale }: { locale: Locale }) {
   const pathname = usePathname() ?? `/${locale}`;
-  const bare = pathname.replace(/^\/(en|ar)/, '') || '/';
-  const parts = bare.split('/').filter(Boolean);
-  const crumbs = [
-    { href: `/${locale}/dashboard`, label: t(locale, 'nav.dashboard') },
-  ];
-
-  let acc = '';
-  for (const part of parts) {
-    acc += `/${part}`;
-    if (acc === '/dashboard') continue;
-    const keyMap: Record<string, string> = {
-      '/administrators': t(locale, 'nav.administrators'),
-      '/administrators/new': t(locale, 'admins.create'),
-      '/audit-log': t(locale, 'nav.auditLog'),
-      '/content': t(locale, 'nav.content'),
-      '/content/library': t(locale, 'studio.nav.library'),
-      '/content/templates/new': t(locale, 'studio.nav.newChallenge'),
-      '/content/catalog': t(locale, 'studio.nav.catalog'),
-      '/content/localization': t(locale, 'studio.nav.localization'),
-      '/content/powers': t(locale, 'studio.nav.powers'),
-      '/content/modes': t(locale, 'studio.nav.modes'),
-      '/content/rewards': t(locale, 'studio.nav.rewards'),
-      '/content/analytics': t(locale, 'studio.nav.analytics'),
-      '/content/ops': t(locale, 'studio.nav.ops'),
-      '/content/preview': t(locale, 'studio.nav.preview'),
-      '/system': t(locale, 'nav.system'),
-      '/profile': t(locale, 'nav.profile'),
-      '/profile/security': t(locale, 'nav.security'),
-    };
-    const label =
-      keyMap[acc] ??
-      (acc.startsWith('/administrators/')
-        ? t(locale, 'admins.detailTitle')
-        : part);
-    crumbs.push({ href: `/${locale}${acc}`, label });
-  }
+  const entityLabels = useBreadcrumbLabels();
+  const crumbs = buildAdminBreadcrumbs(locale, pathname, entityLabels);
 
   return (
     <nav className="breadcrumbs" aria-label={t(locale, 'shell.breadcrumbs')}>
       <ol>
         {crumbs.map((crumb) => (
           <li key={crumb.href}>
-            <Link href={crumb.href}>{crumb.label}</Link>
+            <Link href={crumb.href} title={crumb.label}>
+              {crumb.label}
+            </Link>
           </li>
         ))}
       </ol>
@@ -300,10 +273,12 @@ export function AdminShell(props: {
 }) {
   return (
     <ToastProvider locale={props.locale}>
-      <a className="skip-link" href="#main-content">
-        {t(props.locale, 'nav.skipToContent')}
-      </a>
-      <ShellInner {...props} />
+      <BreadcrumbLabelProvider>
+        <a className="skip-link" href="#main-content">
+          {t(props.locale, 'nav.skipToContent')}
+        </a>
+        <ShellInner {...props} />
+      </BreadcrumbLabelProvider>
     </ToastProvider>
   );
 }

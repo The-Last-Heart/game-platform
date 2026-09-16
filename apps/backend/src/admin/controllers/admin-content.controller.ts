@@ -22,7 +22,9 @@ import {
   adminContentApproveRequestSchema,
   adminContentDraftUpsertRequestSchema,
   adminContentLiveEligibilityRequestSchema,
+  adminContentBulkPauseRequestSchema,
   adminContentPauseRequestSchema,
+  adminContentPromoteVersionRequestSchema,
   adminContentPublishCatalogRequestSchema,
   adminContentRejectRequestSchema,
   adminContentRetireRequestSchema,
@@ -118,7 +120,9 @@ export class AdminContentController {
   @Post('proof')
   @RequirePermissions('content:read')
   async computeProof(@Body() body: unknown) {
-    const entries = Array.isArray(body) ? body : (body as Record<string, unknown>)?.entries;
+    const entries = Array.isArray(body)
+      ? body
+      : (body as Record<string, unknown>)?.entries;
     if (!Array.isArray(entries)) {
       throw new BadRequestException({
         ok: false,
@@ -144,10 +148,7 @@ export class AdminContentController {
   @Get('pack/assets/:assetId')
   @RequirePermissions('content:read')
   @Header('Cache-Control', 'private, max-age=300')
-  getPackAsset(
-    @Param('assetId') assetId: string,
-    @Res() res: Response,
-  ): void {
+  getPackAsset(@Param('assetId') assetId: string, @Res() res: Response): void {
     const { meta, body } = this.contentPack.getAsset(assetId);
     res.setHeader('Content-Type', meta.contentType);
     res.setHeader('Content-Length', String(body.byteLength));
@@ -232,7 +233,10 @@ export class AdminContentController {
     if (!parsed.success) {
       throw new BadRequestException({
         ok: false,
-        error: { code: 'VALIDATION_ERROR', message: 'Invalid update draft payload' },
+        error: {
+          code: 'VALIDATION_ERROR',
+          message: 'Invalid update draft payload',
+        },
       });
     }
     return ok(
@@ -246,10 +250,7 @@ export class AdminContentController {
 
   @Post('submit')
   @RequirePermissions('content:draft')
-  async submit(
-    @CurrentAdmin() admin: AdminAuthContext,
-    @Body() body: unknown,
-  ) {
+  async submit(@CurrentAdmin() admin: AdminAuthContext, @Body() body: unknown) {
     const parsed = adminContentSubmitRequestSchema.safeParse(body);
     if (!parsed.success) {
       throw new BadRequestException({
@@ -268,10 +269,7 @@ export class AdminContentController {
 
   @Post('reject')
   @RequirePermissions('content:draft')
-  async reject(
-    @CurrentAdmin() admin: AdminAuthContext,
-    @Body() body: unknown,
-  ) {
+  async reject(@CurrentAdmin() admin: AdminAuthContext, @Body() body: unknown) {
     const parsed = adminContentRejectRequestSchema.safeParse(body);
     if (!parsed.success) {
       throw new BadRequestException({
@@ -300,10 +298,18 @@ export class AdminContentController {
     if (!parsed.success) {
       throw new BadRequestException({
         ok: false,
-        error: { code: 'VALIDATION_ERROR', message: 'Invalid in-review payload' },
+        error: {
+          code: 'VALIDATION_ERROR',
+          message: 'Invalid in-review payload',
+        },
       });
     }
-    return ok(await this.content.markInReview(admin.user.id, parsed.data.templateVersionId));
+    return ok(
+      await this.content.markInReview(
+        admin.user.id,
+        parsed.data.templateVersionId,
+      ),
+    );
   }
 
   @Post('approve')
@@ -346,6 +352,27 @@ export class AdminContentController {
     return ok(await this.content.publishCatalog(admin.user.id, parsed.data));
   }
 
+  @Post('catalog/promote')
+  @RequirePermissions('content:publish')
+  async promoteCatalogVersion(
+    @CurrentAdmin() admin: AdminAuthContext,
+    @Body() body: unknown,
+  ) {
+    const parsed = adminContentPromoteVersionRequestSchema.safeParse(body);
+    if (!parsed.success) {
+      throw new BadRequestException({
+        ok: false,
+        error: { code: 'VALIDATION_ERROR', message: 'Invalid promote payload' },
+      });
+    }
+    return ok(
+      await this.content.promoteVersionIntoCurrentCatalog(
+        admin.user.id,
+        parsed.data.templateVersionId,
+      ),
+    );
+  }
+
   @Post('catalog/compose')
   @RequirePermissions('content:publish')
   async composeCatalog(
@@ -359,15 +386,14 @@ export class AdminContentController {
         error: { code: 'VALIDATION_ERROR', message: 'Invalid compose payload' },
       });
     }
-    return ok(await this.content.publishCatalogCompose(admin.user.id, parsed.data));
+    return ok(
+      await this.content.publishCatalogCompose(admin.user.id, parsed.data),
+    );
   }
 
   @Post('pause')
   @RequirePermissions('content:publish')
-  async pause(
-    @CurrentAdmin() admin: AdminAuthContext,
-    @Body() body: unknown,
-  ) {
+  async pause(@CurrentAdmin() admin: AdminAuthContext, @Body() body: unknown) {
     const parsed = adminContentPauseRequestSchema.safeParse(body);
     if (!parsed.success) {
       throw new BadRequestException({
@@ -376,6 +402,27 @@ export class AdminContentController {
       });
     }
     return ok(await this.content.pauseDefinition(admin.user.id, parsed.data));
+  }
+
+  @Post('pause/bulk')
+  @RequirePermissions('content:publish')
+  async pauseBulk(
+    @CurrentAdmin() admin: AdminAuthContext,
+    @Body() body: unknown,
+  ) {
+    const parsed = adminContentBulkPauseRequestSchema.safeParse(body);
+    if (!parsed.success) {
+      throw new BadRequestException({
+        ok: false,
+        error: {
+          code: 'VALIDATION_ERROR',
+          message: 'Invalid bulk pause payload',
+        },
+      });
+    }
+    return ok(
+      await this.content.pauseDefinitionsBulk(admin.user.id, parsed.data),
+    );
   }
 
   @Post('live-eligibility')
@@ -394,7 +441,9 @@ export class AdminContentController {
         },
       });
     }
-    return ok(await this.content.setLiveEligibility(admin.user.id, parsed.data));
+    return ok(
+      await this.content.setLiveEligibility(admin.user.id, parsed.data),
+    );
   }
 
   @Post('catalog/rollback')
@@ -407,7 +456,10 @@ export class AdminContentController {
     if (!parsed.success) {
       throw new BadRequestException({
         ok: false,
-        error: { code: 'VALIDATION_ERROR', message: 'Invalid rollback payload' },
+        error: {
+          code: 'VALIDATION_ERROR',
+          message: 'Invalid rollback payload',
+        },
       });
     }
     return ok(await this.content.rollbackCatalog(admin.user.id, parsed.data));
@@ -415,10 +467,7 @@ export class AdminContentController {
 
   @Post('retire')
   @RequirePermissions('content:publish')
-  async retire(
-    @CurrentAdmin() admin: AdminAuthContext,
-    @Body() body: unknown,
-  ) {
+  async retire(@CurrentAdmin() admin: AdminAuthContext, @Body() body: unknown) {
     const parsed = adminContentRetireRequestSchema.safeParse(body);
     if (!parsed.success) {
       throw new BadRequestException({
@@ -439,7 +488,10 @@ export class AdminContentController {
     if (!parsed.success) {
       throw new BadRequestException({
         ok: false,
-        error: { code: 'VALIDATION_ERROR', message: 'Invalid localization payload' },
+        error: {
+          code: 'VALIDATION_ERROR',
+          message: 'Invalid localization payload',
+        },
       });
     }
     const { versionLabel, immediate, ...rest } = parsed.data;
@@ -463,17 +515,24 @@ export class AdminContentController {
     if (!parsed.success) {
       throw new BadRequestException({
         ok: false,
-        error: { code: 'VALIDATION_ERROR', message: 'Invalid power config payload' },
+        error: {
+          code: 'VALIDATION_ERROR',
+          message: 'Invalid power config payload',
+        },
       });
     }
     const { versionLabel, immediate, ...rest } = parsed.data;
     return ok(
-      await this.content.publishKindRelease(admin.user.id, 'power_configuration', {
-        versionLabel,
-        payload: rest,
-        changelog: rest.changelog,
-        immediate,
-      }),
+      await this.content.publishKindRelease(
+        admin.user.id,
+        'power_configuration',
+        {
+          versionLabel,
+          payload: rest,
+          changelog: rest.changelog,
+          immediate,
+        },
+      ),
     );
   }
 
@@ -487,7 +546,10 @@ export class AdminContentController {
     if (!parsed.success) {
       throw new BadRequestException({
         ok: false,
-        error: { code: 'VALIDATION_ERROR', message: 'Invalid game mode rules payload' },
+        error: {
+          code: 'VALIDATION_ERROR',
+          message: 'Invalid game mode rules payload',
+        },
       });
     }
     const { versionLabel, immediate, ...rest } = parsed.data;
@@ -511,7 +573,10 @@ export class AdminContentController {
     if (!parsed.success) {
       throw new BadRequestException({
         ok: false,
-        error: { code: 'VALIDATION_ERROR', message: 'Invalid daily goals payload' },
+        error: {
+          code: 'VALIDATION_ERROR',
+          message: 'Invalid daily goals payload',
+        },
       });
     }
     const { versionLabel, immediate, ...rest } = parsed.data;

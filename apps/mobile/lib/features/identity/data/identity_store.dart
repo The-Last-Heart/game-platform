@@ -6,10 +6,7 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 /// Lightweight local player identity for RC1 (no consumer auth).
 @immutable
 class PlayerIdentity {
-  const PlayerIdentity({
-    required this.displayName,
-    required this.avatarColor,
-  });
+  const PlayerIdentity({required this.displayName, required this.avatarColor});
 
   final String displayName;
   final String avatarColor;
@@ -50,8 +47,7 @@ class IdentityStore {
       return null;
     }
     try {
-      final Map<String, dynamic> json =
-          jsonDecode(raw) as Map<String, dynamic>;
+      final Map<String, dynamic> json = jsonDecode(raw) as Map<String, dynamic>;
       final String? name = json['displayName'] as String?;
       final String? color = json['avatarColor'] as String?;
       if (name == null || name.trim().length < 2 || color == null) {
@@ -88,5 +84,35 @@ class EntryPreferencesStore {
 
   Future<void> setOnboardingCompleted(bool value) async {
     await _storage.write(key: _onboardingKey, value: value ? '1' : '0');
+  }
+}
+
+/// In-memory identity for widget/unit tests.
+class MemoryIdentityStore extends IdentityStore {
+  MemoryIdentityStore({this.identity});
+
+  PlayerIdentity? identity;
+
+  @override
+  Future<PlayerIdentity?> load() async => identity;
+
+  @override
+  Future<void> save(PlayerIdentity identity) async {
+    this.identity = identity;
+  }
+}
+
+/// In-memory onboarding flag for widget/unit tests.
+class MemoryEntryPreferencesStore extends EntryPreferencesStore {
+  MemoryEntryPreferencesStore({this.completed = false});
+
+  bool completed;
+
+  @override
+  Future<bool> isOnboardingCompleted() async => completed;
+
+  @override
+  Future<void> setOnboardingCompleted(bool value) async {
+    completed = value;
   }
 }

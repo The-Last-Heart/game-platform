@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 
@@ -30,9 +31,8 @@ class _PairSyncWidget extends StatefulWidget {
 
 class _PairSyncWidgetState extends State<_PairSyncWidget>
     with TickerProviderStateMixin {
-  /// Keep aligned with server SocialPairSyncEvaluator (75% of duration).
-  static const double _minHoldRatio = 0.75;
   static const int _deadlineSuccessBufferMs = 120;
+  static const double _avatarSize = 64;
 
   bool _submitted = false;
   bool _holding = false;
@@ -41,6 +41,7 @@ class _PairSyncWidgetState extends State<_PairSyncWidget>
   DateTime _lastProgressEmit = DateTime.fromMillisecondsSinceEpoch(0);
 
   late final AnimationController _glowPulse;
+  late final AnimationController _wave;
 
   Map<String, dynamic> get _cfg =>
       widget.challengeContext.challenge.clientConfig;
@@ -72,17 +73,20 @@ class _PairSyncWidgetState extends State<_PairSyncWidget>
     return null;
   }
 
+  bool get _partnerHolding {
+    final Object? flag = _cfg['partnerHolding'];
+    if (flag is bool) return flag;
+    return false;
+  }
+
   double get _syncWindowSec {
     final num? ms = _cfg['syncWindowMs'] as num?;
     return ((ms?.toDouble() ?? 500) / 1000.0);
   }
 
-  int get _durationMs {
-    final int raw = widget.challengeContext.challenge.durationMs;
-    return raw.clamp(1, 60000);
-  }
-
   int get _heldMs => _holdWatch?.elapsedMilliseconds ?? 0;
+
+  bool get _waveActive => _holding || _partnerHolding;
 
   PlayerPublic? get _localPlayer {
     final String? id = widget.challengeContext.localPlayerId;
@@ -109,13 +113,38 @@ class _PairSyncWidgetState extends State<_PairSyncWidget>
       vsync: this,
       duration: const Duration(milliseconds: 680),
     );
+    _wave = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 720),
+    );
+    _syncWaveAnimation();
+  }
+
+  @override
+  void didUpdateWidget(covariant _PairSyncWidget oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    _syncWaveAnimation();
   }
 
   @override
   void dispose() {
     _holdTimer?.cancel();
     _glowPulse.dispose();
+    _wave.dispose();
     super.dispose();
+  }
+
+  void _syncWaveAnimation() {
+    if (_waveActive) {
+      if (!_wave.isAnimating) {
+        unawaited(_wave.repeat());
+      }
+      return;
+    }
+    if (_wave.isAnimating || _wave.value != 0) {
+      _wave.stop();
+      _wave.reset();
+    }
   }
 
   void _onPointerDown(PointerDownEvent event) {
@@ -125,17 +154,20 @@ class _PairSyncWidgetState extends State<_PairSyncWidget>
     setState(() => _holding = true);
     _holdWatch = Stopwatch()..start();
     unawaited(_glowPulse.repeat(reverse: true));
+    _syncWaveAnimation();
     _holdTimer?.cancel();
     _holdTimer = Timer.periodic(const Duration(milliseconds: 50), (_) {
       _onHoldTick();
     });
+    // Stamp press-start immediately so the server can compare arrivals.
+    _emitProgress(heldMs: 0, holding: true, force: true);
   }
 
   void _onPointerUp() {
     if (!_holding || _submitted) return;
     final int heldMs = _heldMs;
     _endHoldAnimation();
-    _submitEarlyRelease(heldMs: heldMs);
+    _submitPress(heldMs: heldMs);
   }
 
   void _endHoldAnimation() {
@@ -145,78 +177,75 @@ class _PairSyncWidgetState extends State<_PairSyncWidget>
     _glowPulse.stop();
     _glowPulse.reset();
     _holding = false;
+    _syncWaveAnimation();
   }
 
   void _onHoldTick() {
     if (!_holding || _submitted) return;
 
     final int heldMs = _heldMs;
-    final int minHoldMs = (_durationMs * _minHoldRatio).round();
-    final int preferSubmitMs = (_durationMs * 0.9).round();
 
-    // Interaction lock (ACK in flight / confirmed) must not count as an early
-    // release while the player is still holding toward a valid sync.
+    // Interaction lock (ACK in flight / confirmed) must not count as a release
+    // while the player is still holding toward a valid sync.
     if (widget.challengeContext.isInteractionLocked) {
-      if (heldMs >= minHoldMs) {
-        _submitSuccess(heldMs: heldMs);
+      final int nowMs = widget.challengeContext.estimateServerNowMs();
+      if (nowMs > 0) {
+        final int remainingMs =
+            widget.challengeContext.challenge.deadlineAtMs - nowMs;
+        if (remainingMs < _deadlineSuccessBufferMs) {
+          _submitPress(heldMs: heldMs);
+        }
       }
       return;
     }
 
     final int nowMs = widget.challengeContext.estimateServerNowMs();
     if (nowMs <= 0) {
-      _emitProgress(heldMs: heldMs);
+      _emitProgress(heldMs: heldMs, holding: true);
       return;
     }
 
     final int remainingMs =
         widget.challengeContext.challenge.deadlineAtMs - nowMs;
-
-    // Only finalize once the server min-hold is met — never "succeed" early
-    // near the deadline with a short press (that caused one-sided wins).
-    if (heldMs >= minHoldMs &&
-        (remainingMs < _deadlineSuccessBufferMs || heldMs >= preferSubmitMs)) {
-      _submitSuccess(heldMs: heldMs);
+    if (remainingMs < _deadlineSuccessBufferMs) {
+      _submitPress(heldMs: heldMs);
       return;
     }
 
-    _emitProgress(heldMs: heldMs);
+    _emitProgress(heldMs: heldMs, holding: true);
     if (mounted) setState(() {});
   }
 
-  void _emitProgress({required int heldMs}) {
+  void _emitProgress({
+    required int heldMs,
+    required bool holding,
+    bool force = false,
+  }) {
     final DateTime now = DateTime.now();
-    if (now.difference(_lastProgressEmit) < const Duration(milliseconds: 120)) {
+    if (!force &&
+        now.difference(_lastProgressEmit) < const Duration(milliseconds: 120)) {
       return;
     }
     _lastProgressEmit = now;
     widget.challengeContext.onSubmit(<String, dynamic>{
       'synced': true,
       'heldMs': heldMs,
+      'holding': holding,
       'final': false,
     });
   }
 
-  void _submitSuccess({required int heldMs}) {
+  void _submitPress({required int heldMs}) {
     if (_submitted) return;
     _submitted = true;
-    _endHoldAnimation();
+    if (_holding) {
+      _endHoldAnimation();
+    }
     if (mounted) setState(() {});
     widget.challengeContext.onSubmit(<String, dynamic>{
       'synced': true,
       'heldMs': heldMs,
-      'final': true,
-    });
-  }
-
-  void _submitEarlyRelease({required int heldMs}) {
-    if (_submitted) return;
-    _submitted = true;
-    if (mounted) setState(() {});
-    widget.challengeContext.onSubmit(<String, dynamic>{
-      'synced': false,
-      'releasedEarly': true,
-      'heldMs': heldMs,
+      'holding': false,
       'final': true,
     });
   }
@@ -238,9 +267,12 @@ class _PairSyncWidgetState extends State<_PairSyncWidget>
 
     final PlayerPublic? local = _localPlayer;
     final PlayerPublic? partner = _partnerPlayer;
-    final bool partnerReady = partner?.submittedForCurrentChallenge == true;
+    final bool partnerReady =
+        _partnerHolding || partner?.submittedForCurrentChallenge == true;
+    final bool youReady = _holding || _submitted;
     final bool interactionLocked =
         widget.challengeContext.isInteractionLocked || _submitted;
+    final bool bothHolding = _holding && _partnerHolding;
 
     return Center(
       child: Padding(
@@ -271,17 +303,18 @@ class _PairSyncWidgetState extends State<_PairSyncWidget>
               child: Text(
                 prompt,
                 textAlign: TextAlign.center,
-                style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                  fontWeight: FontWeight.w700,
-                ),
+                style: Theme.of(
+                  context,
+                ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w700),
               ),
             ),
             const SizedBox(height: 28),
             Row(
-              mainAxisAlignment: MainAxisAlignment.center,
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: <Widget>[
                 _AvatarChip(
-                  label: partnerName ??
+                  label:
+                      partnerName ??
                       resolver.resolve('challenge.pair_sync.partner_label'),
                   initial: _initial(partnerName),
                   color: _avatarColor(partner),
@@ -289,24 +322,38 @@ class _PairSyncWidgetState extends State<_PairSyncWidget>
                       ? resolver.resolve('challenge.pair_sync.status_ready')
                       : resolver.resolve('challenge.pair_sync.status_waiting'),
                   statusReady: partnerReady,
+                  size: _avatarSize,
                 ),
                 Expanded(
-                  child: Container(
-                    height: 2,
-                    margin: const EdgeInsets.symmetric(horizontal: 12),
-                    color: LhColors.success.withValues(alpha: 0.55),
+                  child: SizedBox(
+                    height: _avatarSize,
+                    child: AnimatedBuilder(
+                      animation: _wave,
+                      builder: (BuildContext context, Widget? child) {
+                        return CustomPaint(
+                          painter: PairSyncWavePainter(
+                            progress: _wave.value,
+                            localHolding: _holding,
+                            partnerHolding: _partnerHolding,
+                            bothHolding: bothHolding,
+                          ),
+                          child: child,
+                        );
+                      },
+                    ),
                   ),
                 ),
                 _AvatarChip(
                   label: resolver.resolve('challenge.pair_sync.you_label'),
                   initial: _initial(local?.displayName),
                   color: _avatarColor(local),
-                  status: _submitted
+                  status: youReady
                       ? resolver.resolve('challenge.pair_sync.status_ready')
                       : resolver.resolve(
                           'challenge.pair_sync.status_waiting_you',
                         ),
-                  statusReady: _submitted,
+                  statusReady: youReady,
+                  size: _avatarSize,
                 ),
               ],
             ),
@@ -316,8 +363,7 @@ class _PairSyncWidgetState extends State<_PairSyncWidget>
               builder: (BuildContext context, Widget? child) {
                 final double pulse = _holding ? _glowPulse.value : 0.0;
                 final double scale = _holding ? 0.96 + pulse * 0.06 : 1.0;
-                final double glowAlpha =
-                    _holding ? 0.38 + pulse * 0.42 : 0.45;
+                final double glowAlpha = _holding ? 0.38 + pulse * 0.42 : 0.45;
                 final double blurRadius = _holding ? 16 + pulse * 16 : 18;
                 final double spreadRadius = _holding ? 1 + pulse * 2 : 1;
 
@@ -331,7 +377,9 @@ class _PairSyncWidgetState extends State<_PairSyncWidget>
                         borderRadius: BorderRadius.circular(18),
                         boxShadow: <BoxShadow>[
                           BoxShadow(
-                            color: LhColors.success.withValues(alpha: glowAlpha),
+                            color: LhColors.success.withValues(
+                              alpha: glowAlpha,
+                            ),
                             blurRadius: blurRadius,
                             spreadRadius: spreadRadius,
                           ),
@@ -357,11 +405,12 @@ class _PairSyncWidgetState extends State<_PairSyncWidget>
                 behavior: HitTestBehavior.opaque,
                 onPointerDown: interactionLocked ? null : _onPointerDown,
                 onPointerUp: interactionLocked ? null : (_) => _onPointerUp(),
-                onPointerCancel:
-                    interactionLocked ? null : (_) => _onPointerUp(),
+                onPointerCancel: interactionLocked
+                    ? null
+                    : (_) => _onPointerUp(),
                 child: Center(
                   child: Text(
-                    resolver.resolve('challenge.pair_sync.action_hold'),
+                    resolver.resolve('challenge.pair_sync.action'),
                     style: const TextStyle(
                       color: Color(0xFF031018),
                       fontWeight: FontWeight.w800,
@@ -381,9 +430,9 @@ class _PairSyncWidgetState extends State<_PairSyncWidget>
                       : _syncWindowSec.toStringAsFixed(1),
                 },
               ),
-              style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                color: LhColors.textMuted,
-              ),
+              style: Theme.of(
+                context,
+              ).textTheme.bodySmall?.copyWith(color: LhColors.textMuted),
             ),
           ],
         ),
@@ -440,9 +489,9 @@ class _WaitingForPairScreen extends StatelessWidget {
             Text(
               resolver.resolve('challenge.pair_sync.waiting_pair_hint'),
               textAlign: TextAlign.center,
-              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                color: LhColors.textMuted,
-              ),
+              style: Theme.of(
+                context,
+              ).textTheme.bodyMedium?.copyWith(color: LhColors.textMuted),
             ),
           ],
         ),
@@ -458,6 +507,7 @@ class _AvatarChip extends StatelessWidget {
     required this.color,
     required this.status,
     required this.statusReady,
+    required this.size,
   });
 
   final String label;
@@ -465,14 +515,15 @@ class _AvatarChip extends StatelessWidget {
   final Color color;
   final String status;
   final bool statusReady;
+  final double size;
 
   @override
   Widget build(BuildContext context) {
     return Column(
       children: <Widget>[
         Container(
-          width: 64,
-          height: 64,
+          width: size,
+          height: size,
           alignment: Alignment.center,
           decoration: BoxDecoration(
             shape: BoxShape.circle,
@@ -491,9 +542,9 @@ class _AvatarChip extends StatelessWidget {
         const SizedBox(height: 8),
         Text(
           label,
-          style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-            fontWeight: FontWeight.w600,
-          ),
+          style: Theme.of(
+            context,
+          ).textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w600),
         ),
         const SizedBox(height: 4),
         Text(
@@ -505,5 +556,110 @@ class _AvatarChip extends StatelessWidget {
         ),
       ],
     );
+  }
+}
+
+/// Electrical current along the pair connector; aligned to avatar centers.
+class PairSyncWavePainter extends CustomPainter {
+  PairSyncWavePainter({
+    required this.progress,
+    required this.localHolding,
+    required this.partnerHolding,
+    required this.bothHolding,
+  });
+
+  final double progress;
+  final bool localHolding;
+  final bool partnerHolding;
+  final bool bothHolding;
+
+  bool get _active => localHolding || partnerHolding;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    if (size.width <= 0 || size.height <= 0) return;
+    final double midY = size.height / 2;
+    final Offset left = Offset(0, midY);
+    final Offset right = Offset(size.width, midY);
+
+    final Paint base = Paint()
+      ..color = LhColors.success.withValues(alpha: _active ? 0.42 : 0.28)
+      ..strokeWidth = 2
+      ..strokeCap = StrokeCap.round
+      ..style = PaintingStyle.stroke;
+    canvas.drawLine(left, right, base);
+
+    if (!_active) return;
+
+    final double amp = bothHolding ? 7.5 : 4.2;
+    final double phase = progress * math.pi * 2;
+    final Path wave = Path();
+    const int samples = 56;
+    for (int i = 0; i <= samples; i++) {
+      final double t = i / samples;
+      final double x = t * size.width;
+      final double envelope = math.sin(t * math.pi);
+      final double y =
+          midY + math.sin(t * math.pi * 5 + phase) * amp * envelope;
+      if (i == 0) {
+        wave.moveTo(x, y);
+      } else {
+        wave.lineTo(x, y);
+      }
+    }
+
+    final Paint glow = Paint()
+      ..color = const Color(
+        0xFF7CFFF8,
+      ).withValues(alpha: bothHolding ? 0.95 : 0.7)
+      ..strokeWidth = bothHolding ? 3.2 : 2.2
+      ..strokeCap = StrokeCap.round
+      ..strokeJoin = StrokeJoin.round
+      ..style = PaintingStyle.stroke
+      ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 3);
+    canvas.drawPath(wave, glow);
+
+    final Paint core = Paint()
+      ..color = Colors.white.withValues(alpha: bothHolding ? 0.95 : 0.75)
+      ..strokeWidth = bothHolding ? 1.6 : 1.1
+      ..strokeCap = StrokeCap.round
+      ..strokeJoin = StrokeJoin.round
+      ..style = PaintingStyle.stroke;
+    canvas.drawPath(wave, core);
+
+    void paintSpark(double t, Color color) {
+      final double x = (t % 1.0) * size.width;
+      final double envelope = math.sin((t % 1.0) * math.pi);
+      final double y =
+          midY + math.sin((t % 1.0) * math.pi * 5 + phase) * amp * envelope;
+      final Offset p = Offset(x, y);
+      canvas.drawCircle(
+        p,
+        bothHolding ? 5.5 : 4,
+        Paint()
+          ..color = color.withValues(alpha: 0.35)
+          ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 6),
+      );
+      canvas.drawCircle(
+        p,
+        bothHolding ? 2.6 : 2,
+        Paint()..color = Colors.white,
+      );
+    }
+
+    if (localHolding) {
+      paintSpark(progress, const Color(0xFF3DF0FA));
+    }
+    if (partnerHolding) {
+      paintSpark(1 - progress, const Color(0xFF7CFFF8));
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant PairSyncWavePainter oldDelegate) {
+    return oldDelegate.progress != progress ||
+        oldDelegate.localHolding != localHolding ||
+        oldDelegate.partnerHolding != partnerHolding ||
+        oldDelegate.bothHolding != bothHolding;
   }
 }

@@ -273,12 +273,34 @@ function assignPairSyncSeatOverlays(
         isParticipant,
         partnerPlayerId: partnerId ?? null,
         partnerDisplayName,
+        partnerHolding: false,
         syncWindowMs,
       },
       serverOverlay: {},
     });
   }
   return seats;
+}
+
+/** Mirror this seat's live press onto the partner overlay. Returns true on change. */
+function setPairSyncPartnerHolding(
+  challenge: ChallengeRound,
+  playerId: string,
+  holding: boolean,
+): boolean {
+  const partnerId = challenge.pairAssignments?.get(playerId);
+  if (partnerId == null || challenge.seatVariants == null) {
+    return false;
+  }
+  const seat = challenge.seatVariants.get(partnerId);
+  if (!seat) {
+    return false;
+  }
+  if (seat.clientOverlay['partnerHolding'] === holding) {
+    return false;
+  }
+  seat.clientOverlay['partnerHolding'] = holding;
+  return true;
 }
 
 export function toPublicChallengeView(
@@ -1582,6 +1604,8 @@ export class MatchEngine {
     events: DomainEvent[];
     duplicate: boolean;
     ack: { accepted: boolean; reason?: string };
+    /** Pair-sync press edge: fan out partnerHolding without resolving. */
+    liveUpdate?: boolean;
   } {
     const existingAck = match.commandAcks.get(input.commandId);
     if (existingAck) {
@@ -1664,17 +1688,26 @@ export class MatchEngine {
 
     const next = this.cloneMatch(match);
     const nextChallenge = next.currentChallenge!;
+    const isPairSync = nextChallenge.engineId === 'social.pair_sync';
+    // Pair sync: first progress/tap stamps the press start. Later heldMs
+    // updates must not slide that stamp or mixed client/server clocks desync.
+    const receivedToStore =
+      existing != null && isPairSync ? existing.receivedMonoMs : receivedMonoMs;
 
     // Store only the client-provided answer — never persist evaluator secrets.
     nextChallenge.submissions.set(input.playerId, {
       commandId: input.commandId,
       answer: { ...input.answer },
-      receivedMonoMs,
+      receivedMonoMs: receivedToStore,
       final: isFinal,
     });
     if (isFinal) {
       next.players.get(input.playerId)!.submittedForCurrentChallenge = true;
     }
+    const holding = !isFinal && isPairSync && input.answer['holding'] === true;
+    const liveUpdate = isPairSync
+      ? setPairSyncPartnerHolding(nextChallenge, input.playerId, holding)
+      : false;
     const ack = {
       accepted: true,
       reason: isFinal ? undefined : 'progress',
@@ -1704,7 +1737,7 @@ export class MatchEngine {
       };
     }
 
-    return { match: next, events: [], duplicate: false, ack };
+    return { match: next, events: [], duplicate: false, ack, liveUpdate };
   }
 
   resolveDueTimeouts(match: MatchState): {

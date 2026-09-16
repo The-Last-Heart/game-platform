@@ -14,7 +14,7 @@ describe('ContentPackService', () => {
     const service = new ContentPackService();
     const manifest = service.getManifest();
     expect(manifest.packId).toBe('lh.local.content.v1');
-    expect(manifest.packVersion).toBe(13);
+    expect(manifest.packVersion).toBe(14);
     expect(manifest.assets.some((a) => a.assetId === 'sfx.pulse')).toBe(true);
     expect(
       manifest.assets.some((a) => a.assetId === 'fog_wipe.reveal_content'),
@@ -49,6 +49,16 @@ describe('ContentPackService', () => {
     expect(
       manifest.assets.some((a) => a.assetId === 'circuit_rotation.grid_plate'),
     ).toBe(true);
+    expect(
+      manifest.assets.some(
+        (a) => a.assetId === 'circuit_rotation.cable_connected',
+      ),
+    ).toBe(true);
+    expect(
+      manifest.assets.some(
+        (a) => a.assetId === 'circuit_rotation.heart_power_on',
+      ),
+    ).toBe(true);
     expect(manifest.assets.some((a) => a.assetId === 'sfx.strike')).toBe(true);
     expect(manifest.assets.some((a) => a.assetId === 'sfx.win')).toBe(true);
     expect(manifest.assets.some((a) => a.assetId === 'sfx.lose')).toBe(true);
@@ -64,5 +74,11 @@ describe('ContentPackService', () => {
     const lose = service.getAsset('sfx.lose');
     expect(lose.meta.contentType).toBe('audio/wav');
     expect(lose.body.byteLength).toBe(lose.meta.bytes);
+    const cable = service.getAsset('circuit_rotation.cable_connected');
+    expect(cable.meta.contentType).toBe('audio/wav');
+    expect(cable.body.byteLength).toBe(cable.meta.bytes);
+    const heartOn = service.getAsset('circuit_rotation.heart_power_on');
+    expect(heartOn.meta.contentType).toBe('audio/mpeg');
+    expect(heartOn.body.byteLength).toBe(heartOn.meta.bytes);
   });
 });

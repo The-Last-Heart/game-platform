@@ -546,6 +546,16 @@ export function loadGeographyMaps(): GeoMap[] {
  * Materialize per-round / per-seat fields onto a pinned definition.
  * Shared maps are chosen once for geography; seat targets assigned later.
  */
+function triviaCopyText(copy: unknown): string | null {
+  const rec =
+    copy && typeof copy === 'object' && !Array.isArray(copy)
+      ? (copy as Record<string, unknown>)
+      : null;
+  const ar = rec && typeof rec['ar'] === 'string' ? rec['ar'].trim() : '';
+  const en = rec && typeof rec['en'] === 'string' ? rec['en'].trim() : '';
+  return ar || en || null;
+}
+
 export function materializePack31Round(definition: ChallengeDefinition): void {
   const server = definition.serverConfig;
   const client = definition.clientConfig;
@@ -561,6 +571,8 @@ export function materializePack31Round(definition: ChallengeDefinition): void {
             questionKey: server['questionKey'],
             optionKeys: server['optionKeys'],
             correctOptionKey: server['correctOptionKey'],
+            questionCopy: server['questionCopy'],
+            optionCopy: server['optionCopy'],
           };
     const optionKeys = Array.isArray(q['optionKeys'])
       ? (q['optionKeys'] as string[])
@@ -571,6 +583,28 @@ export function materializePack31Round(definition: ChallengeDefinition): void {
     server['correctOptionKey'] = q['correctOptionKey'];
     client['questionKey'] = q['questionKey'];
     client['optionKeys'] = shuffled;
+    const questionText = triviaCopyText(q['questionCopy']);
+    if (questionText) {
+      client['questionText'] = questionText;
+    } else {
+      delete client['questionText'];
+    }
+    const optionCopy =
+      q['optionCopy'] &&
+      typeof q['optionCopy'] === 'object' &&
+      !Array.isArray(q['optionCopy'])
+        ? (q['optionCopy'] as Record<string, unknown>)
+        : {};
+    const optionTexts: Record<string, string> = {};
+    for (const key of shuffled) {
+      const text = triviaCopyText(optionCopy[key]);
+      if (text) optionTexts[key] = text;
+    }
+    if (Object.keys(optionTexts).length > 0) {
+      client['optionTexts'] = optionTexts;
+    } else {
+      delete client['optionTexts'];
+    }
     return;
   }
 

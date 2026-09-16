@@ -22,19 +22,6 @@ type StudioHomeProps = {
   canDraft: boolean;
 };
 
-function coveragePercent(counts: AdminStudioHomeSummary['counts']): number {
-  const total =
-    counts.drafts +
-    counts.submitted +
-    counts.inReview +
-    counts.approved +
-    counts.scheduled +
-    counts.published +
-    counts.paused;
-  if (total <= 0) return 0;
-  return Math.round((counts.published / total) * 100);
-}
-
 export function StudioHome({ locale, canDraft }: StudioHomeProps) {
   const [loading, setLoading] = useState(true);
   const [forbidden, setForbidden] = useState(false);
@@ -43,11 +30,21 @@ export function StudioHome({ locale, canDraft }: StudioHomeProps) {
 
   const load = useCallback(async () => {
     setLoading(true);
-    const homeResult = await adminApiFetch<AdminStudioHomeSummary>('/content/studio/home');
+    const homeResult = await adminApiFetch<AdminStudioHomeSummary>(
+      '/content/studio/home',
+    );
 
     if (!homeResult.ok) {
-      setForbidden(homeResult.status === 403 || homeResult.error.code === 'FORBIDDEN');
-      setError(localizeAdminError(locale, homeResult.error.code, homeResult.error.message));
+      setForbidden(
+        homeResult.status === 403 || homeResult.error.code === 'FORBIDDEN',
+      );
+      setError(
+        localizeAdminError(
+          locale,
+          homeResult.error.code,
+          homeResult.error.message,
+        ),
+      );
       setSummary(null);
       setLoading(false);
       return;
@@ -61,11 +58,12 @@ export function StudioHome({ locale, canDraft }: StudioHomeProps) {
 
   useEffect(() => scheduleEffectTask(() => void load()), [load]);
 
-  if (forbidden) return <ForbiddenState label={t(locale, 'common.forbidden')} />;
+  if (forbidden)
+    return <ForbiddenState label={t(locale, 'common.forbidden')} />;
 
   const counts = summary?.counts;
   const reviewQueue = (counts?.submitted ?? 0) + (counts?.inReview ?? 0);
-  const coverage = counts ? coveragePercent(counts) : 0;
+  const coverage = summary?.coveragePercent ?? 0;
 
   return (
     <div className="studio-layout">
@@ -74,13 +72,20 @@ export function StudioHome({ locale, canDraft }: StudioHomeProps) {
         subtitle={t(locale, 'studio.home.subtitle')}
         primaryAction={
           canDraft ? (
-            <Link className="btn btn-primary" href={`/${locale}/content/templates/new`}>
+            <Link
+              className="btn btn-primary"
+              href={`/${locale}/content/templates/new`}
+            >
               {t(locale, 'studio.library.newChallenge')}
             </Link>
           ) : null
         }
         secondaryAction={
-          <button type="button" className="btn btn-secondary" onClick={() => void load()}>
+          <button
+            type="button"
+            className="btn btn-secondary"
+            onClick={() => void load()}
+          >
             {t(locale, 'common.refresh')}
           </button>
         }
@@ -171,9 +176,13 @@ export function StudioHome({ locale, canDraft }: StudioHomeProps) {
                   <tbody>
                     {summary.recentPublishes.slice(0, 5).map((release) => (
                       <tr key={release.releaseId}>
-                        <td style={{ fontWeight: 600 }}>{release.versionLabel}</td>
+                        <td style={{ fontWeight: 600 }}>
+                          {release.versionLabel}
+                        </td>
                         <td>{release.kind}</td>
-                        <td>{new Date(release.publishedAt).toLocaleString(locale)}</td>
+                        <td>
+                          {new Date(release.publishedAt).toLocaleString(locale)}
+                        </td>
                       </tr>
                     ))}
                   </tbody>

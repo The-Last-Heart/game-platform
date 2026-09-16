@@ -38,6 +38,16 @@ import {
   SWIPE_DISTANCE_PRESETS,
   ZONE_PRESETS,
 } from './studio-catalog-options';
+import {
+  addTriviaOption,
+  createTriviaQuestion,
+  defaultTriviaQuestions,
+  parseTriviaQuestions,
+  removeTriviaOption,
+  serializeTriviaQuestions,
+  triviaClientPreview,
+  type TriviaStudioQuestion,
+} from './trivia-question-bank';
 
 const DEFAULT_FOG_WIPE_REVEAL_VARIANTS = FOG_WIPE_REVEAL_VARIANT_OPTIONS.map(
   (o) => o.value,
@@ -497,18 +507,7 @@ export function defaultServerConfig(
       };
     case 'trivia.multiple_choice':
       return {
-        questions: [
-          {
-            questionKey: 'trivia.q.japan_capital',
-            optionKeys: [
-              'trivia.opt.osaka',
-              'trivia.opt.tokyo',
-              'trivia.opt.seoul',
-              'trivia.opt.kyoto',
-            ],
-            correctOptionKey: 'trivia.opt.tokyo',
-          },
-        ],
+        questions: serializeTriviaQuestions(defaultTriviaQuestions()),
       };
     case 'geography.select_on_map':
       return {
@@ -1807,6 +1806,198 @@ function serializeGeoQuestion(
   };
 }
 
+function TriviaMultipleChoiceFields(props: FamilyParamsFieldsProps) {
+  const {
+    locale,
+    clientConfig,
+    serverConfig,
+    onClientChange,
+    onServerChange,
+    disabled,
+  } = props;
+  const questions = parseTriviaQuestions(serverConfig);
+
+  function commit(next: TriviaStudioQuestion[]) {
+    const serialized = serializeTriviaQuestions(next);
+    const rest = { ...serverConfig };
+    delete rest.questionKey;
+    delete rest.optionKeys;
+    delete rest.correctOptionKey;
+    onServerChange({ ...rest, questions: serialized });
+    onClientChange(triviaClientPreview(next[0], clientConfig));
+  }
+
+  return (
+    <>
+      <p className="studio-section-lead">{lbl(locale, 'fp.triviaLead')}</p>
+      {questions.map((question, index) => (
+        <section key={question.questionKey} className="studio-trivia-question">
+          <div className="studio-geo-map-head">
+            <h3 className="studio-geo-map-title">
+              {lbl(locale, 'fp.triviaQuestionN').replace(
+                '{n}',
+                String(index + 1),
+              )}
+            </h3>
+            <button
+              type="button"
+              className="btn btn-ghost"
+              disabled={disabled || questions.length <= 1}
+              onClick={() => commit(questions.filter((q) => q !== question))}
+            >
+              {lbl(locale, 'fp.triviaRemoveQuestion')}
+            </button>
+          </div>
+          <FieldGroup>
+            <FieldInput
+              id={`fp-trivia-q-ar-${index}`}
+              label={lbl(locale, 'fp.triviaQuestionAr')}
+              value={question.questionAr}
+              disabled={disabled}
+              dir="rtl"
+              onChange={(e) => {
+                const next = [...questions];
+                next[index] = {
+                  ...question,
+                  questionAr: e.currentTarget.value,
+                };
+                commit(next);
+              }}
+            />
+            <FieldInput
+              id={`fp-trivia-q-en-${index}`}
+              label={lbl(locale, 'fp.triviaQuestionEn')}
+              value={question.questionEn}
+              disabled={disabled}
+              onChange={(e) => {
+                const next = [...questions];
+                next[index] = {
+                  ...question,
+                  questionEn: e.currentTarget.value,
+                };
+                commit(next);
+              }}
+            />
+          </FieldGroup>
+          <fieldset className="studio-trivia-answers">
+            <legend>{lbl(locale, 'fp.triviaAnswers')}</legend>
+            {question.options.map((option, optionIndex) => (
+              <div key={option.key} className="studio-trivia-option-row">
+                <label className="studio-trivia-correct">
+                  <input
+                    type="radio"
+                    name={`fp-trivia-correct-${index}`}
+                    checked={question.correctOptionKey === option.key}
+                    disabled={disabled}
+                    onChange={() => {
+                      const next = [...questions];
+                      next[index] = {
+                        ...question,
+                        correctOptionKey: option.key,
+                      };
+                      commit(next);
+                    }}
+                  />
+                  <span>{lbl(locale, 'fp.triviaCorrectAnswer')}</span>
+                </label>
+                <FieldInput
+                  id={`fp-trivia-opt-ar-${index}-${optionIndex}`}
+                  label={lbl(locale, 'fp.triviaAnswerAr')}
+                  value={option.ar}
+                  disabled={disabled}
+                  dir="rtl"
+                  onChange={(e) => {
+                    const nextOptions = question.options.map((o) =>
+                      o.key === option.key
+                        ? { ...o, ar: e.currentTarget.value }
+                        : o,
+                    );
+                    const next = [...questions];
+                    next[index] = { ...question, options: nextOptions };
+                    commit(next);
+                  }}
+                />
+                <FieldInput
+                  id={`fp-trivia-opt-en-${index}-${optionIndex}`}
+                  label={lbl(locale, 'fp.triviaAnswerEn')}
+                  value={option.en}
+                  disabled={disabled}
+                  onChange={(e) => {
+                    const nextOptions = question.options.map((o) =>
+                      o.key === option.key
+                        ? { ...o, en: e.currentTarget.value }
+                        : o,
+                    );
+                    const next = [...questions];
+                    next[index] = { ...question, options: nextOptions };
+                    commit(next);
+                  }}
+                />
+                <div className="field studio-geo-remove">
+                  <label
+                    htmlFor={`fp-trivia-opt-remove-${index}-${optionIndex}`}
+                  >
+                    &nbsp;
+                  </label>
+                  <button
+                    id={`fp-trivia-opt-remove-${index}-${optionIndex}`}
+                    type="button"
+                    className="btn btn-ghost"
+                    disabled={disabled || question.options.length <= 2}
+                    onClick={() => {
+                      const next = [...questions];
+                      next[index] = removeTriviaOption(question, option.key);
+                      commit(next);
+                    }}
+                  >
+                    {lbl(locale, 'fp.triviaRemoveAnswer')}
+                  </button>
+                </div>
+              </div>
+            ))}
+            {question.options.length < 6 ? (
+              <button
+                type="button"
+                className="btn btn-secondary"
+                disabled={disabled}
+                onClick={() => {
+                  const next = [...questions];
+                  next[index] = addTriviaOption(question);
+                  commit(next);
+                }}
+              >
+                {lbl(locale, 'fp.triviaAddAnswer')}
+              </button>
+            ) : null}
+          </fieldset>
+        </section>
+      ))}
+      {questions.length < 64 ? (
+        <button
+          type="button"
+          className="btn btn-secondary"
+          disabled={disabled}
+          onClick={() =>
+            commit([...questions, createTriviaQuestion(questions)])
+          }
+        >
+          {lbl(locale, 'fp.triviaAddQuestion')}
+        </button>
+      ) : null}
+      <CopyKeysBlock
+        locale={locale}
+        clientConfig={clientConfig}
+        onClientChange={onClientChange}
+        disabled={disabled}
+        keys={[
+          { field: 'promptKey', labelKey: 'fp.promptKey' },
+          { field: 'footerKey', labelKey: 'fp.footerKey' },
+        ]}
+      />
+    </>
+  );
+}
+
 function GeographySelectOnMapFields(props: FamilyParamsFieldsProps) {
   const {
     locale,
@@ -2059,6 +2250,8 @@ export function FamilyParamsFields(props: FamilyParamsFieldsProps) {
         return <TacticalRiskChoiceFields {...props} />;
       case 'gesture.fog_wipe':
         return <GestureFogWipeFields {...props} />;
+      case 'trivia.multiple_choice':
+        return <TriviaMultipleChoiceFields {...props} />;
       case 'geography.select_on_map':
         return <GeographySelectOnMapFields {...props} />;
       default:

@@ -295,10 +295,10 @@ describe('per-seat challenge variants', () => {
     expect(match.players.get(b!)!.hearts).toBe(3);
   });
 
-  it('pair_sync fails both when one seat held too briefly', () => {
+  it('pair_sync succeeds when both tap quickly within the window', () => {
     const clock = new FakeClock(1_000_000);
     const eng = engine(clock);
-    let match = eng.createMatch('m-pair-asym', {
+    let match = eng.createMatch('m-pair-tap', {
       mode: 'quick_survival',
       playerCapacity: 2,
     });
@@ -333,19 +333,160 @@ describe('per-seat challenge variants', () => {
       playerId: a!,
       challengeInstanceId: challenge.challengeInstanceId,
       commandId: 'cmd-a',
-      answer: { synced: true, heldMs: 4000, final: true },
-      receivedMonoMs: clock.monoMs() + 4500,
+      answer: { synced: true, heldMs: 80, holding: false, final: true },
+      receivedMonoMs: clock.monoMs() + 300,
     }).match;
     match = eng.submitAnswer(match, {
       playerId: b!,
       challengeInstanceId: challenge.challengeInstanceId,
       commandId: 'cmd-b',
-      answer: { synced: true, heldMs: 900, final: true },
-      receivedMonoMs: clock.monoMs() + 4600,
+      answer: { synced: true, heldMs: 90, holding: false, final: true },
+      receivedMonoMs: clock.monoMs() + 420,
+    }).match;
+
+    expect(match.players.get(a!)!.hearts).toBe(3);
+    expect(match.players.get(b!)!.hearts).toBe(3);
+  });
+
+  it('pair_sync fails both when press starts are outside the window', () => {
+    const clock = new FakeClock(1_000_000);
+    const eng = engine(clock);
+    let match = eng.createMatch('m-pair-desync', {
+      mode: 'quick_survival',
+      playerCapacity: 2,
+    });
+    for (const id of ['p0', 'p1']) {
+      match = eng.joinPlayer(match, {
+        playerId: id,
+        resumeTokenHash: `h-${id}`,
+        displayName: id,
+      }).match;
+      match = eng.acceptJoin(match, id).match;
+    }
+    const def = {
+      definitionId: 'social.pair_sync.dev',
+      definitionVersion: 1,
+      engineId: 'social.pair_sync',
+      durationMs: 5000,
+      heartPenaltyOnFailure: 1,
+      energyRewardOnSuccess: 1,
+      promptKey: 'challenge.pair_sync.intro',
+      choiceKeys: [] as string[],
+      clientConfig: {
+        categoryKey: 'challenge.category.social',
+        promptKey: 'challenge.pair_sync.prompt',
+      },
+      serverConfig: { syncWindowMs: 500 },
+    };
+    match = eng.startChallenge(match, def).match;
+    const challenge = match.currentChallenge!;
+    const [a, b] = challenge.participatingPlayerIds;
+
+    match = eng.submitAnswer(match, {
+      playerId: a!,
+      challengeInstanceId: challenge.challengeInstanceId,
+      commandId: 'cmd-a',
+      answer: { synced: true, heldMs: 80, final: true },
+      receivedMonoMs: clock.monoMs() + 200,
+    }).match;
+    match = eng.submitAnswer(match, {
+      playerId: b!,
+      challengeInstanceId: challenge.challengeInstanceId,
+      commandId: 'cmd-b',
+      answer: { synced: true, heldMs: 80, final: true },
+      receivedMonoMs: clock.monoMs() + 900,
     }).match;
 
     expect(match.players.get(a!)!.hearts).toBe(2);
     expect(match.players.get(b!)!.hearts).toBe(2);
+  });
+
+  it('pair_sync keeps the first press stamp across progress updates', () => {
+    const clock = new FakeClock(1_000_000);
+    const eng = engine(clock);
+    let match = eng.createMatch('m-pair-stamp', {
+      mode: 'quick_survival',
+      playerCapacity: 2,
+    });
+    for (const id of ['p0', 'p1']) {
+      match = eng.joinPlayer(match, {
+        playerId: id,
+        resumeTokenHash: `h-${id}`,
+        displayName: id,
+      }).match;
+      match = eng.acceptJoin(match, id).match;
+    }
+    const def = {
+      definitionId: 'social.pair_sync.dev',
+      definitionVersion: 1,
+      engineId: 'social.pair_sync',
+      durationMs: 5000,
+      heartPenaltyOnFailure: 1,
+      energyRewardOnSuccess: 1,
+      promptKey: 'challenge.pair_sync.intro',
+      choiceKeys: [] as string[],
+      clientConfig: {
+        categoryKey: 'challenge.category.social',
+        promptKey: 'challenge.pair_sync.prompt',
+      },
+      serverConfig: { syncWindowMs: 500 },
+    };
+    match = eng.startChallenge(match, def).match;
+    const challenge = match.currentChallenge!;
+    const [a, b] = challenge.participatingPlayerIds;
+    const viewA = toPublicChallengeView(challenge, clock.nowMs(), b!);
+    expect(viewA.clientConfig['partnerHolding']).toBe(false);
+
+    match = eng.submitAnswer(match, {
+      playerId: a!,
+      challengeInstanceId: challenge.challengeInstanceId,
+      commandId: 'cmd-a-down',
+      answer: { synced: true, heldMs: 0, holding: true, final: false },
+      receivedMonoMs: clock.monoMs() + 200,
+    }).match;
+    const overlayForB = toPublicChallengeView(
+      match.currentChallenge!,
+      clock.nowMs(),
+      b!,
+    );
+    expect(overlayForB.clientConfig['partnerHolding']).toBe(true);
+
+    match = eng.submitAnswer(match, {
+      playerId: a!,
+      challengeInstanceId: challenge.challengeInstanceId,
+      commandId: 'cmd-a-hold',
+      answer: { synced: true, heldMs: 1800, holding: true, final: false },
+      receivedMonoMs: clock.monoMs() + 2000,
+    }).match;
+    expect(match.currentChallenge!.submissions.get(a!)!.receivedMonoMs).toBe(
+      clock.monoMs() + 200,
+    );
+
+    match = eng.submitAnswer(match, {
+      playerId: a!,
+      challengeInstanceId: challenge.challengeInstanceId,
+      commandId: 'cmd-a-up',
+      answer: { synced: true, heldMs: 1900, holding: false, final: true },
+      receivedMonoMs: clock.monoMs() + 2100,
+    }).match;
+    expect(match.currentChallenge!.submissions.get(a!)!.receivedMonoMs).toBe(
+      clock.monoMs() + 200,
+    );
+    expect(
+      toPublicChallengeView(match.currentChallenge!, clock.nowMs(), b!)
+        .clientConfig['partnerHolding'],
+    ).toBe(false);
+
+    match = eng.submitAnswer(match, {
+      playerId: b!,
+      challengeInstanceId: challenge.challengeInstanceId,
+      commandId: 'cmd-b',
+      answer: { synced: true, heldMs: 80, holding: false, final: true },
+      receivedMonoMs: clock.monoMs() + 350,
+    }).match;
+
+    expect(match.players.get(a!)!.hearts).toBe(3);
+    expect(match.players.get(b!)!.hearts).toBe(3);
   });
 
   it('assigns opposite horizontal reverse-swipe directions per seat', () => {

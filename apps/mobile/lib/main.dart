@@ -7,6 +7,7 @@ import 'features/match/session/match_session_controller.dart';
 import 'features/match/session/session_store.dart';
 import 'features/match/transport/realtime_transport.dart';
 import 'features/match/transport/socket_io_transport.dart';
+import 'features/presence/presence_session.dart';
 import 'l10n/app_localization.dart';
 import 'l10n/locale_metadata.dart';
 import 'l10n/translation_catalog.dart';
@@ -34,6 +35,8 @@ class TheLastHeartApp extends StatefulWidget {
     this.translationResolver,
     this.transport,
     this.sessionStore,
+    this.presence,
+    this.backendBaseUrl,
   });
 
   /// Optional override for tests.
@@ -44,6 +47,12 @@ class TheLastHeartApp extends StatefulWidget {
 
   /// Optional session store override for tests.
   final SessionStore? sessionStore;
+
+  /// Optional occupancy override for tests.
+  final PresenceSession? presence;
+
+  /// Optional backend origin override for tests.
+  final String? backendBaseUrl;
 
   @override
   State<TheLastHeartApp> createState() => _TheLastHeartAppState();
@@ -108,7 +117,8 @@ class _TheLastHeartAppState extends State<TheLastHeartApp> {
         },
         home: AppEntryScreen(
           controller: _controller,
-          backendBaseUrl: _backendUrl,
+          backendBaseUrl: widget.backendBaseUrl ?? _backendUrl,
+          presence: widget.presence,
         ),
       ),
     );

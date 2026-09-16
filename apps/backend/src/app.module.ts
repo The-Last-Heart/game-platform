@@ -6,6 +6,7 @@ import { validateEnv } from './config/env.validation';
 import { DatabaseModule } from './database/database.module';
 import { HealthModule } from './health/health.module';
 import { MatchModule } from './match/match.module';
+import { PresenceModule } from './presence/presence.module';
 
 @Module({
   imports: [
@@ -18,6 +19,7 @@ import { MatchModule } from './match/match.module';
     HealthModule,
     ContentModule,
     MatchModule,
+    PresenceModule,
     AdminModule,
   ],
 })

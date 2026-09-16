@@ -1,12 +1,16 @@
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:game/l10n/bootstrap_catalog.dart';
 import 'package:game/l10n/locale_metadata.dart';
 import 'package:game/l10n/translation_catalog.dart';
 import 'package:game/l10n/translation_resolver.dart';
+import 'package:game/features/entry/ui/app_entry_screen.dart';
 import 'package:game/features/match/session/session_store.dart';
 import 'package:game/features/match/transport/fake_transport.dart';
-import 'package:game/features/match/ui/home_dev_screen.dart';
+import 'package:game/features/presence/presence_session.dart';
 import 'package:game/main.dart';
 
 TranslationCatalog catalog({
@@ -597,7 +601,17 @@ void main() {
     });
   });
 
-  group('HomeDevScreen', () {
+  group('Home screen', () {
+    setUp(() {
+      FlutterSecureStorage.setMockInitialValues(<String, String>{
+        'lh_onboarding_completed_v1': '1',
+        'lh_player_identity_v1': jsonEncode(<String, String>{
+          'displayName': 'وجدي',
+          'avatarColor': '#FF3045',
+        }),
+      });
+    });
+
     testWidgets('startup labels resolve through translation keys', (
       WidgetTester tester,
     ) async {
@@ -611,17 +625,19 @@ void main() {
           translationResolver: resolver,
           transport: transport,
           sessionStore: store,
+          presence: FakePresenceSession(),
+          backendBaseUrl: '',
         ),
       );
       await tester.pumpAndSettle();
 
       expect(
         find.text(resolver.resolve(TranslationKeys.appTitle)),
-        findsOneWidget,
+        findsWidgets,
       );
       expect(find.text('app.title'), findsNothing);
 
-      final BuildContext context = tester.element(find.byType(HomeDevScreen));
+      final BuildContext context = tester.element(find.byType(AppEntryScreen));
       expect(Directionality.of(context), TextDirection.rtl);
     });
 
@@ -638,6 +654,8 @@ void main() {
           translationResolver: resolver,
           transport: transport,
           sessionStore: store,
+          presence: FakePresenceSession(),
+          backendBaseUrl: '',
         ),
       );
       await tester.pumpAndSettle();

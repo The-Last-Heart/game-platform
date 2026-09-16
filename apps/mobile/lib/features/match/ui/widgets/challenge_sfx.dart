@@ -38,6 +38,14 @@ class ChallengeSfx {
   /// Cable-untangle head dock / swing.
   static const String defaultCableUntangleSwingAssetId = 'cable_untangle.swing';
 
+  /// Circuit rotation: a pipe joined the powered path.
+  static const String defaultCircuitCableConnectAssetId =
+      'circuit_rotation.cable_connected';
+
+  /// Circuit rotation: power reached the heart.
+  static const String defaultCircuitHeartPowerOnAssetId =
+      'circuit_rotation.heart_power_on';
+
   Future<void> pulse({String assetId = defaultPulseAssetId}) async {
     try {
       await HapticFeedback.mediumImpact();
@@ -68,6 +76,28 @@ class ChallengeSfx {
 
   /// Play a content-pack SFX by asset id (no extra haptic).
   Future<void> play(String assetId) => _playCached(assetId);
+
+  /// Play without stopping the current gameplay SFX (e.g. heart on + cable).
+  Future<void> playOverlapping(String assetId) async {
+    try {
+      final file = await ContentAssetCache.instance.localFile(assetId);
+      if (file == null) {
+        if (_missingLogged.add(assetId)) {
+          debugPrint('ChallengeSfx: missing cached asset $assetId');
+        }
+        return;
+      }
+      final AudioPlayer player = AudioPlayer();
+      try {
+        await player.play(DeviceFileSource(file.path));
+        await player.onPlayerComplete.first.timeout(const Duration(seconds: 4));
+      } finally {
+        await player.dispose();
+      }
+    } catch (error) {
+      debugPrint('ChallengeSfx overlap play failed ($assetId): $error');
+    }
+  }
 
   /// Halt any in-progress gameplay SFX (e.g. Danger Pulse alarm after resolve).
   Future<void> stop() async {

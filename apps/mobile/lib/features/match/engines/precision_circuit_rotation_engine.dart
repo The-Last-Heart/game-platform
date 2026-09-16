@@ -13,6 +13,7 @@ import '../../../l10n/translation_resolver.dart';
 import '../../../theme/lh_tokens.dart';
 import '../../content/content_asset_cache.dart';
 import '../ui/widgets/challenge_countdown.dart';
+import '../ui/widgets/challenge_sfx.dart';
 import 'challenge_engine.dart';
 import 'circuit_rotation_solver.dart';
 import 'neon_cable_rive_spark.dart' deferred as rive_spark;
@@ -37,7 +38,7 @@ class _CircuitRotationWidget extends StatefulWidget {
 }
 
 class _CircuitRotationWidgetState extends State<_CircuitRotationWidget>
-    with SingleTickerProviderStateMixin {
+    with TickerProviderStateMixin {
   static const int _decodeTargetPx = 720;
 
   final Map<String, ui.Image> _images = <String, ui.Image>{};
@@ -46,11 +47,14 @@ class _CircuitRotationWidgetState extends State<_CircuitRotationWidget>
   Set<String> _poweredTileIds = <String>{};
 
   late final AnimationController _sourcePulse;
+  late final AnimationController _heartIgnite;
   _CircuitPuzzle? _puzzle;
   String? _focusedTileId;
   bool _submitted = false;
   bool _loading = true;
+  bool _targetReached = false;
   int _loadAttempts = 0;
+  int _connectSfxToken = 0;
 
   Object? _sparkRiveFile;
   Object? _sparkController;
@@ -69,6 +73,10 @@ class _CircuitRotationWidgetState extends State<_CircuitRotationWidget>
       vsync: this,
       duration: const Duration(milliseconds: 700),
     )..repeat(reverse: true);
+    _heartIgnite = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 560),
+    );
     _puzzle = _parseCircuitRotationPuzzle(_cfg);
     final _CircuitPuzzle? puzzle = _puzzle;
     if (puzzle == null) {
@@ -82,6 +90,7 @@ class _CircuitRotationWidgetState extends State<_CircuitRotationWidget>
       _animationQuarterTurns[tile.id] = turns.toDouble();
     }
     _refreshEvaluation();
+    if (_targetReached) _heartIgnite.value = 1;
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
       _submitIfSolved();
@@ -92,6 +101,7 @@ class _CircuitRotationWidgetState extends State<_CircuitRotationWidget>
   @override
   void dispose() {
     _sourcePulse.dispose();
+    _heartIgnite.dispose();
     for (final ui.Image image in _images.values) {
       image.dispose();
     }
@@ -146,6 +156,8 @@ class _CircuitRotationWidgetState extends State<_CircuitRotationWidget>
         rethrow;
       }
 
+      await ContentAssetCache.instance.ensureAsset(_cableConnectSfxId);
+      await ContentAssetCache.instance.ensureAsset(_heartPowerOnSfxId);
       await _loadSpark();
       if (!mounted) {
         for (final ui.Image image in decoded.values) {
@@ -227,6 +239,18 @@ class _CircuitRotationWidgetState extends State<_CircuitRotationWidget>
     }
   }
 
+  String get _cableConnectSfxId {
+    final String? configured = _assetIds['cableConnectSfx']?.toString();
+    if (configured != null && configured.isNotEmpty) return configured;
+    return ChallengeSfx.defaultCircuitCableConnectAssetId;
+  }
+
+  String get _heartPowerOnSfxId {
+    final String? configured = _assetIds['heartPowerOnSfx']?.toString();
+    if (configured != null && configured.isNotEmpty) return configured;
+    return ChallengeSfx.defaultCircuitHeartPowerOnAssetId;
+  }
+
   CircuitRotationEvaluation _evaluate() {
     final _CircuitPuzzle puzzle = _puzzle!;
     return evaluateCircuitRotation(
@@ -244,7 +268,9 @@ class _CircuitRotationWidgetState extends State<_CircuitRotationWidget>
   }
 
   void _refreshEvaluation() {
-    _poweredTileIds = _evaluate().poweredTileIds.toSet();
+    final CircuitRotationEvaluation result = _evaluate();
+    _poweredTileIds = result.poweredTileIds.toSet();
+    _targetReached = result.targetReached;
   }
 
   void _rotateTile(CircuitRotationTile tile) {
@@ -260,18 +286,70 @@ class _CircuitRotationWidgetState extends State<_CircuitRotationWidget>
 
     final int current =
         _logicalQuarterTurns[tile.id] ?? tile.initialQuarterTurns;
+    final Set<String> previouslyPowered = Set<String>.of(_poweredTileIds);
+    final bool heartWasPowered = _targetReached;
     _logicalQuarterTurns[tile.id] = normalizedCircuitQuarterTurns(current + 1);
     _animationQuarterTurns[tile.id] =
         (_animationQuarterTurns[tile.id] ?? current.toDouble()) + 1;
     final CircuitRotationEvaluation result = _evaluate();
+    final CircuitRotationPowerDelta delta = circuitRotationPowerDelta(
+      previousPoweredTileIds: previouslyPowered,
+      previousTargetReached: heartWasPowered,
+      next: result,
+    );
     setState(() {
       _focusedTileId = tile.id;
       _poweredTileIds = result.poweredTileIds.toSet();
+      _targetReached = result.targetReached;
       if (result.success) _submitted = true;
     });
+    if (result.targetReached && !heartWasPowered) {
+      unawaited(_heartIgnite.forward(from: 0));
+    } else if (!result.targetReached && heartWasPowered) {
+      _heartIgnite.value = 0;
+    }
+    _playPowerFeedback(
+      newlyPoweredCount: delta.newlyPoweredCount,
+      heartNewlyPowered: delta.heartNewlyReached,
+    );
     if (result.success) {
       _submitAnswer();
     }
+  }
+
+  void _playPowerFeedback({
+    required int newlyPoweredCount,
+    required bool heartNewlyPowered,
+  }) {
+    if (newlyPoweredCount <= 0 && !heartNewlyPowered) return;
+    if (newlyPoweredCount > 0) {
+      unawaited(_playCableConnectChain(newlyPoweredCount));
+    }
+    if (heartNewlyPowered) {
+      unawaited(_playHeartPowerOn(delayMs: newlyPoweredCount > 0 ? 80 : 0));
+    }
+  }
+
+  Future<void> _playCableConnectChain(int count) async {
+    final int token = ++_connectSfxToken;
+    for (int i = 0; i < count; i++) {
+      if (!mounted || token != _connectSfxToken) return;
+      await ChallengeSfx.instance.play(_cableConnectSfxId);
+      if (i < count - 1) {
+        await Future<void>.delayed(const Duration(milliseconds: 70));
+      }
+    }
+  }
+
+  Future<void> _playHeartPowerOn({required int delayMs}) async {
+    if (delayMs > 0) {
+      await Future<void>.delayed(Duration(milliseconds: delayMs));
+    }
+    if (!mounted) return;
+    try {
+      await HapticFeedback.mediumImpact();
+    } catch (_) {}
+    await ChallengeSfx.instance.playOverlapping(_heartPowerOnSfxId);
   }
 
   void _submitIfSolved() {
@@ -281,6 +359,7 @@ class _CircuitRotationWidgetState extends State<_CircuitRotationWidget>
     setState(() {
       _submitted = true;
       _poweredTileIds = result.poweredTileIds.toSet();
+      _targetReached = result.targetReached;
     });
     _submitAnswer();
   }
@@ -305,8 +384,7 @@ class _CircuitRotationWidgetState extends State<_CircuitRotationWidget>
     // Title comes from definition promptKey (أكمل الدائرة); instruction/footer
     // come from clientConfig — matching the neon reference chrome.
     final String titleKey = widget.challengeContext.challenge.promptKey;
-    final String instructionKey =
-        (_cfg['promptKey'] as String?) ?? titleKey;
+    final String instructionKey = (_cfg['promptKey'] as String?) ?? titleKey;
     final String footerKey = (_cfg['footerKey'] as String?) ?? '';
     final _CircuitThemeColors colors = _parseThemeColors(_cfg['theme']);
 
@@ -401,17 +479,21 @@ class _CircuitRotationWidgetState extends State<_CircuitRotationWidget>
                               height: boardHeight,
                               child: RepaintBoundary(
                                 child: AnimatedBuilder(
-                                  animation: _sourcePulse,
+                                  animation: Listenable.merge(<Listenable>[
+                                    _sourcePulse,
+                                    _heartIgnite,
+                                  ]),
                                   builder:
                                       (BuildContext context, Widget? child) {
-                                    return _buildBoard(
-                                      context,
-                                      puzzle,
-                                      resolver,
-                                      colors,
-                                      _sourcePulse.value,
-                                    );
-                                  },
+                                        return _buildBoard(
+                                          context,
+                                          puzzle,
+                                          resolver,
+                                          colors,
+                                          _sourcePulse.value,
+                                          _heartIgnite.value,
+                                        );
+                                      },
                                 ),
                               ),
                             ),
@@ -432,6 +514,7 @@ class _CircuitRotationWidgetState extends State<_CircuitRotationWidget>
     TranslationResolver resolver,
     _CircuitThemeColors colors,
     double neonPulse,
+    double heartIgnite,
   ) {
     final bool locked =
         _submitted || widget.challengeContext.isInteractionLocked;
@@ -482,6 +565,7 @@ class _CircuitRotationWidgetState extends State<_CircuitRotationWidget>
                             cell: CircuitRotationCell(row, column),
                             colors: colors,
                             neonPulse: neonPulse,
+                            heartIgnite: heartIgnite,
                             locked: locked,
                             accessibilityLabel: accessibilityLabel,
                             spark: spark,
@@ -503,6 +587,7 @@ class _CircuitRotationWidgetState extends State<_CircuitRotationWidget>
     required CircuitRotationCell cell,
     required _CircuitThemeColors colors,
     required double neonPulse,
+    required double heartIgnite,
     required bool locked,
     required String accessibilityLabel,
     required Widget? spark,
@@ -519,13 +604,15 @@ class _CircuitRotationWidgetState extends State<_CircuitRotationWidget>
       if (isTarget) puzzle.target.side,
     };
     // Couplers stay stationary; they light only when this cell is energized.
-    final bool cellEnergized = (tile != null &&
-            _poweredTileIds.contains(tile.id)) ||
+    final bool cellEnergized =
+        (tile != null && _poweredTileIds.contains(tile.id)) ||
         (isSource && (tile == null || _poweredTileIds.contains(tile.id))) ||
         targetPowered;
     final Set<CircuitRotationSide> energizedSocketSides = cellEnergized
         ? socketSides
-        : (isSource ? <CircuitRotationSide>{puzzle.source.side} : <CircuitRotationSide>{});
+        : (isSource
+              ? <CircuitRotationSide>{puzzle.source.side}
+              : <CircuitRotationSide>{});
 
     return Stack(
       fit: StackFit.expand,
@@ -595,34 +682,35 @@ class _CircuitRotationWidgetState extends State<_CircuitRotationWidget>
               ),
             ),
           ),
-        if (isSource)
-          IgnorePointer(
-            child: _CircuitEndpointBadge(
-              icon: Icons.bolt_rounded,
-              powered: true,
-              colors: colors,
-              neonPulse: neonPulse,
-            ),
-          ),
-        if (isTarget)
-          IgnorePointer(
-            child: _CircuitEndpointBadge(
-              icon: Icons.favorite_rounded,
-              powered: targetPowered,
-              colors: colors,
-              neonPulse: neonPulse,
-              bloom: targetPowered,
-            ),
-          ),
         if (isSource && spark != null)
           IgnorePointer(
             child: Align(
               alignment: _alignmentForSide(puzzle.source.side, inward: true),
               child: FractionallySizedBox(
-                widthFactor: 0.52,
-                heightFactor: 0.52,
+                widthFactor: 0.36,
+                heightFactor: 0.36,
                 child: _CircuitScreenBlend(child: spark),
               ),
+            ),
+          ),
+        if (isSource)
+          IgnorePointer(
+            child: _CircuitEndpointModule(
+              kind: _CircuitEndpointKind.power,
+              powered: true,
+              colors: colors,
+              neonPulse: neonPulse,
+              ignite: 1,
+            ),
+          ),
+        if (isTarget)
+          IgnorePointer(
+            child: _CircuitEndpointModule(
+              kind: _CircuitEndpointKind.heart,
+              powered: targetPowered,
+              colors: colors,
+              neonPulse: neonPulse,
+              ignite: heartIgnite,
             ),
           ),
       ],
@@ -852,67 +940,30 @@ class _CircuitSocketPainter extends CustomPainter {
       final bool energized = energizedSides.contains(side);
       final Offset edge = _pointForSide(size, side, unit * 0.01);
       final Offset inner = _pointForSide(size, side, unit * 0.22);
-      final Offset mid = Offset.lerp(edge, inner, 0.55)!;
-      final Offset tangent = switch (side) {
-        CircuitRotationSide.north || CircuitRotationSide.south =>
-          Offset(unit * 0.11, 0),
-        CircuitRotationSide.east || CircuitRotationSide.west =>
-          Offset(0, unit * 0.11),
-      };
-
-      // Metallic coupler body (stationary clamps from the reference).
-      final Path clamp = Path()
-        ..moveTo(mid.dx - tangent.dx, mid.dy - tangent.dy)
-        ..lineTo(mid.dx + tangent.dx, mid.dy + tangent.dy);
-      canvas.drawPath(
-        clamp,
-        Paint()
-          ..color = const Color(0xFF1A242C)
-          ..style = PaintingStyle.stroke
-          ..strokeWidth = unit * 0.16
-          ..strokeCap = StrokeCap.round,
+      final Offset tangent = _tangentForSide(side);
+      _paintNeonTube(
+        canvas: canvas,
+        path: Path()
+          ..moveTo(edge.dx, edge.dy)
+          ..lineTo(inner.dx, inner.dy),
+        unit: unit,
+        powered: energized,
+        energyColor: energyColor,
+        energyCoreColor: const Color(0xFFEFFFFF),
+        inactiveColor: const Color(0xFF3A6B7A),
+        neonPulse: neonPulse,
+        widthScale: 0.82,
       );
-      canvas.drawPath(
-        clamp,
-        Paint()
-          ..color = socketColor
-          ..style = PaintingStyle.stroke
-          ..strokeWidth = unit * 0.095
-          ..strokeCap = StrokeCap.round,
+      _paintMetalPlug(
+        canvas: canvas,
+        center: Offset.lerp(edge, inner, 0.42)!,
+        tangent: tangent,
+        unit: unit,
+        energized: energized,
+        energyColor: energyColor,
+        socketColor: socketColor,
+        neonPulse: neonPulse,
       );
-      canvas.drawPath(
-        clamp,
-        Paint()
-          ..color = const Color(0xFFE8EEF2)
-          ..style = PaintingStyle.stroke
-          ..strokeWidth = unit * 0.028
-          ..strokeCap = StrokeCap.round,
-      );
-
-      // Short conduit stub toward the cell center.
-      canvas.drawLine(
-        edge,
-        inner,
-        Paint()
-          ..color = energized
-              ? energyColor.withValues(alpha: 0.55 + neonPulse * 0.25)
-              : const Color(0xFF33444F)
-          ..strokeWidth = unit * (energized ? 0.085 : 0.07)
-          ..strokeCap = StrokeCap.round
-          ..maskFilter = energized
-              ? MaskFilter.blur(BlurStyle.normal, unit * 0.04)
-              : null,
-      );
-      if (energized) {
-        canvas.drawLine(
-          edge,
-          inner,
-          Paint()
-            ..color = energyColor
-            ..strokeWidth = unit * 0.045
-            ..strokeCap = StrokeCap.round,
-        );
-      }
     }
   }
 
@@ -942,22 +993,23 @@ class _CircuitPipePainter extends CustomPainter {
   Path _pipePath(Size size) {
     final double unit = size.shortestSide;
     final Offset center = size.center(Offset.zero);
+    final double inset = unit * 0.02;
     return switch (shape) {
       CircuitRotationShape.straight =>
         (Path()
-          ..moveTo(center.dx, -unit * 0.04)
-          ..lineTo(center.dx, size.height + unit * 0.04)),
+          ..moveTo(center.dx, inset)
+          ..lineTo(center.dx, size.height - inset)),
       CircuitRotationShape.corner =>
         (Path()
-          ..moveTo(center.dx, -unit * 0.04)
-          ..lineTo(center.dx, center.dy - unit * 0.08)
+          ..moveTo(center.dx, inset)
+          ..lineTo(center.dx, center.dy - unit * 0.12)
           ..quadraticBezierTo(
             center.dx,
             center.dy,
-            center.dx + unit * 0.08,
+            center.dx + unit * 0.12,
             center.dy,
           )
-          ..lineTo(size.width + unit * 0.04, center.dy)),
+          ..lineTo(size.width - inset, center.dy)),
     };
   }
 
@@ -965,91 +1017,49 @@ class _CircuitPipePainter extends CustomPainter {
   void paint(Canvas canvas, Size size) {
     final double unit = size.shortestSide;
     final Path path = _pipePath(size);
-
-    // Soft contact shadow under the tube.
-    canvas.drawPath(
-      path,
-      Paint()
-        ..color = const Color(0x99000000)
-        ..style = PaintingStyle.stroke
-        ..strokeWidth = unit * 0.2
-        ..strokeCap = StrokeCap.round
-        ..strokeJoin = StrokeJoin.round
-        ..maskFilter = MaskFilter.blur(BlurStyle.normal, unit * 0.03),
+    _paintNeonTube(
+      canvas: canvas,
+      path: path,
+      unit: unit,
+      powered: powered,
+      energyColor: colors.energyColor,
+      energyCoreColor: colors.energyCoreColor,
+      inactiveColor: colors.inactivePipeColor,
+      neonPulse: neonPulse,
     );
 
-    if (!powered) {
-      // Dim "cold tube" — readable cyan glass, not muddy charcoal.
-      canvas.drawPath(
-        path,
-        Paint()
-          ..color = colors.inactivePipeColor.withValues(alpha: 0.95)
-          ..style = PaintingStyle.stroke
-          ..strokeWidth = unit * 0.145
-          ..strokeCap = StrokeCap.round
-          ..strokeJoin = StrokeJoin.round,
+    for (final ui.PathMetric metric in path.computeMetrics()) {
+      if (metric.length <= unit * 0.2) continue;
+      final double plugInset = math.min(unit * 0.11, metric.length * 0.18);
+      final ui.Tangent? start = metric.getTangentForOffset(plugInset);
+      final ui.Tangent? end = metric.getTangentForOffset(
+        metric.length - plugInset,
       );
-      canvas.drawPath(
-        path,
-        Paint()
-          ..color = const Color(0xFF7EB8C8).withValues(alpha: 0.35)
-          ..style = PaintingStyle.stroke
-          ..strokeWidth = unit * 0.055
-          ..strokeCap = StrokeCap.round
-          ..strokeJoin = StrokeJoin.round,
-      );
-      canvas.drawPath(
-        path,
-        Paint()
-          ..color = const Color(0xFFD7F6FF).withValues(alpha: 0.18)
-          ..style = PaintingStyle.stroke
-          ..strokeWidth = unit * 0.02
-          ..strokeCap = StrokeCap.round
-          ..strokeJoin = StrokeJoin.round,
-      );
-      return;
+      if (start != null) {
+        _paintMetalPlug(
+          canvas: canvas,
+          center: start.position,
+          tangent: start.vector,
+          unit: unit,
+          energized: powered,
+          energyColor: colors.energyColor,
+          socketColor: colors.socketColor,
+          neonPulse: neonPulse,
+        );
+      }
+      if (end != null) {
+        _paintMetalPlug(
+          canvas: canvas,
+          center: end.position,
+          tangent: end.vector,
+          unit: unit,
+          energized: powered,
+          energyColor: colors.energyColor,
+          socketColor: colors.socketColor,
+          neonPulse: neonPulse,
+        );
+      }
     }
-
-    final double pulse = 0.72 + neonPulse * 0.28;
-    // Layered neon: halo → body → hot core (prompt + reference).
-    canvas.drawPath(
-      path,
-      Paint()
-        ..color = colors.energyColor.withValues(alpha: 0.22 * pulse)
-        ..style = PaintingStyle.stroke
-        ..strokeWidth = unit * 0.34
-        ..strokeCap = StrokeCap.round
-        ..strokeJoin = StrokeJoin.round
-        ..maskFilter = MaskFilter.blur(BlurStyle.normal, unit * 0.12),
-    );
-    canvas.drawPath(
-      path,
-      Paint()
-        ..color = colors.energyColor.withValues(alpha: 0.55 * pulse)
-        ..style = PaintingStyle.stroke
-        ..strokeWidth = unit * 0.22
-        ..strokeCap = StrokeCap.round
-        ..strokeJoin = StrokeJoin.round
-        ..maskFilter = MaskFilter.blur(BlurStyle.normal, unit * 0.055),
-    );
-    canvas.drawPath(
-      path,
-      Paint()
-        ..color = colors.energyColor
-        ..style = PaintingStyle.stroke
-        ..strokeWidth = unit * 0.125
-        ..strokeCap = StrokeCap.round
-        ..strokeJoin = StrokeJoin.round,
-    );
-    canvas.drawPath(
-      path,
-      Paint()
-        ..color = colors.energyCoreColor.withValues(alpha: 0.75 + neonPulse * 0.25)
-        ..style = PaintingStyle.stroke
-        ..strokeWidth = unit * 0.042
-        ..strokeCap = StrokeCap.round
-        ..strokeJoin = StrokeJoin.round,
-    );
   }
 
   @override
@@ -1087,11 +1097,14 @@ class _CircuitFocusPainter extends CustomPainter {
     final double alpha = locked
         ? 0.12
         : focused
-            ? 0.95
-            : 0.55 + neonPulse * 0.2;
+        ? 0.95
+        : 0.55 + neonPulse * 0.2;
     final Paint dashPaint = Paint()
-      ..color = Color.lerp(Colors.white, color, focused ? 0.35 : 0.55)!
-          .withValues(alpha: alpha)
+      ..color = Color.lerp(
+        Colors.white,
+        color,
+        focused ? 0.35 : 0.55,
+      )!.withValues(alpha: alpha)
       ..style = PaintingStyle.stroke
       ..strokeWidth = focused ? unit * 0.028 : unit * 0.02
       ..strokeCap = StrokeCap.round;
@@ -1157,74 +1170,295 @@ class _CircuitFocusPainter extends CustomPainter {
   }
 }
 
-class _CircuitEndpointBadge extends StatelessWidget {
-  const _CircuitEndpointBadge({
-    required this.icon,
+enum _CircuitEndpointKind { power, heart }
+
+class _CircuitEndpointModule extends StatelessWidget {
+  const _CircuitEndpointModule({
+    required this.kind,
     required this.powered,
     required this.colors,
     required this.neonPulse,
-    this.bloom = false,
+    required this.ignite,
   });
 
-  final IconData icon;
+  final _CircuitEndpointKind kind;
   final bool powered;
   final _CircuitThemeColors colors;
   final double neonPulse;
-  final bool bloom;
+  final double ignite;
 
   @override
   Widget build(BuildContext context) {
-    final double pulse = powered ? 0.85 + neonPulse * 0.15 : 0.55;
-    final Color frame = powered ? colors.energyColor : colors.socketColor;
+    final double t = ignite.clamp(0.0, 1.0);
+    final double surge = powered ? math.sin(t * math.pi) : 0;
+    final double pulse = powered ? 0.88 + neonPulse * 0.12 : 0.42;
+    final double scale = powered ? 1 + surge * 0.12 + neonPulse * 0.03 : 1;
+    final Color frame = powered
+        ? colors.energyColor
+        : Color.lerp(const Color(0xFF4A5A64), colors.energyColor, 0.22)!;
     final Color fill = powered
-        ? colors.energyColor.withValues(alpha: 0.18 + neonPulse * 0.12)
-        : const Color(0x66101820);
-    final double scale = bloom ? 1 + neonPulse * 0.08 : 1;
+        ? Color.lerp(
+            const Color(0xFF071018),
+            colors.energyColor,
+            0.16 + neonPulse * 0.08 + surge * 0.18,
+          )!
+        : const Color(0xFF0A1016);
+    final IconData icon = kind == _CircuitEndpointKind.heart
+        ? Icons.favorite_rounded
+        : Icons.bolt_rounded;
+    final Color iconColor = powered
+        ? Color.lerp(
+            colors.energyColor,
+            colors.energyCoreColor,
+            0.45 + neonPulse * 0.25,
+          )!
+        : Color.lerp(colors.socketColor, colors.energyColor, 0.35)!;
 
     return Align(
       alignment: Alignment.center,
       child: FractionallySizedBox(
-        widthFactor: 0.42,
-        heightFactor: 0.42,
+        widthFactor: 0.72,
+        heightFactor: 0.72,
         child: Transform.scale(
           scale: scale,
           child: DecoratedBox(
             decoration: BoxDecoration(
               color: fill,
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: frame, width: 2.2 * pulse),
-              boxShadow: powered
-                  ? <BoxShadow>[
-                      BoxShadow(
-                        color: colors.energyColor.withValues(alpha: 0.55 * pulse),
-                        blurRadius: 14 + neonPulse * 10,
-                        spreadRadius: 1,
-                      ),
-                      BoxShadow(
-                        color: colors.energyColor.withValues(alpha: 0.25),
-                        blurRadius: 28,
-                      ),
-                    ]
-                  : null,
-            ),
-            child: Center(
-              child: Icon(
-                icon,
-                color: powered ? colors.energyCoreColor : colors.socketColor,
-                size: 28,
-                shadows: powered
-                    ? <Shadow>[
-                        Shadow(color: colors.energyColor, blurRadius: 10),
-                        Shadow(color: colors.energyColor, blurRadius: 18),
-                      ]
-                    : null,
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(
+                color: frame.withValues(alpha: powered ? 1 : 0.55),
+                width: powered ? 3.4 * pulse : 2.4,
               ),
+              boxShadow: <BoxShadow>[
+                BoxShadow(
+                  color: frame.withValues(
+                    alpha: powered ? 0.55 * pulse + surge * 0.35 : 0.16,
+                  ),
+                  blurRadius: powered ? 16 + neonPulse * 12 + surge * 18 : 6,
+                  spreadRadius: powered ? 1 + surge * 2 : 0,
+                ),
+                if (powered)
+                  BoxShadow(
+                    color: colors.energyColor.withValues(
+                      alpha: 0.28 + surge * 0.4,
+                    ),
+                    blurRadius: 32 + surge * 24,
+                  ),
+              ],
+            ),
+            child: Stack(
+              fit: StackFit.expand,
+              children: <Widget>[
+                if (powered)
+                  DecoratedBox(
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(14),
+                      gradient: RadialGradient(
+                        colors: <Color>[
+                          colors.energyCoreColor.withValues(
+                            alpha: 0.22 + surge * 0.45,
+                          ),
+                          colors.energyColor.withValues(alpha: 0.08),
+                          Colors.transparent,
+                        ],
+                        stops: const <double>[0, 0.45, 1],
+                      ),
+                    ),
+                  ),
+                Center(
+                  child: Icon(
+                    icon,
+                    color: iconColor,
+                    size: 34,
+                    shadows: powered
+                        ? <Shadow>[
+                            Shadow(
+                              color: colors.energyColor,
+                              blurRadius: 12 + surge * 10,
+                            ),
+                            Shadow(
+                              color: colors.energyColor.withValues(alpha: 0.8),
+                              blurRadius: 22,
+                            ),
+                          ]
+                        : null,
+                  ),
+                ),
+              ],
             ),
           ),
         ),
       ),
     );
   }
+}
+
+Offset _tangentForSide(CircuitRotationSide side) {
+  return switch (side) {
+    CircuitRotationSide.north ||
+    CircuitRotationSide.south => const Offset(1, 0),
+    CircuitRotationSide.east || CircuitRotationSide.west => const Offset(0, 1),
+  };
+}
+
+void _paintNeonTube({
+  required Canvas canvas,
+  required Path path,
+  required double unit,
+  required bool powered,
+  required Color energyColor,
+  required Color energyCoreColor,
+  required Color inactiveColor,
+  required double neonPulse,
+  double widthScale = 1,
+}) {
+  final double w = widthScale;
+  canvas.drawPath(
+    path,
+    Paint()
+      ..color = const Color(0x99000000)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = unit * 0.22 * w
+      ..strokeCap = StrokeCap.round
+      ..strokeJoin = StrokeJoin.round
+      ..maskFilter = MaskFilter.blur(BlurStyle.normal, unit * 0.03),
+  );
+
+  if (!powered) {
+    canvas.drawPath(
+      path,
+      Paint()
+        ..color = inactiveColor.withValues(alpha: 0.95)
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = unit * 0.175 * w
+        ..strokeCap = StrokeCap.round
+        ..strokeJoin = StrokeJoin.round,
+    );
+    canvas.drawPath(
+      path,
+      Paint()
+        ..color = const Color(0xFF7EB8C8).withValues(alpha: 0.5)
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = unit * 0.08 * w
+        ..strokeCap = StrokeCap.round
+        ..strokeJoin = StrokeJoin.round,
+    );
+    canvas.drawPath(
+      path,
+      Paint()
+        ..color = const Color(0xFFD7F6FF).withValues(alpha: 0.28)
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = unit * 0.028 * w
+        ..strokeCap = StrokeCap.round
+        ..strokeJoin = StrokeJoin.round,
+    );
+    return;
+  }
+
+  final double pulse = 0.78 + neonPulse * 0.22;
+  canvas.drawPath(
+    path,
+    Paint()
+      ..color = energyColor.withValues(alpha: 0.28 * pulse)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = unit * 0.4 * w
+      ..strokeCap = StrokeCap.round
+      ..strokeJoin = StrokeJoin.round
+      ..maskFilter = MaskFilter.blur(BlurStyle.normal, unit * 0.13),
+  );
+  canvas.drawPath(
+    path,
+    Paint()
+      ..color = energyColor.withValues(alpha: 0.62 * pulse)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = unit * 0.24 * w
+      ..strokeCap = StrokeCap.round
+      ..strokeJoin = StrokeJoin.round
+      ..maskFilter = MaskFilter.blur(BlurStyle.normal, unit * 0.05),
+  );
+  canvas.drawPath(
+    path,
+    Paint()
+      ..color = energyColor
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = unit * 0.145 * w
+      ..strokeCap = StrokeCap.round
+      ..strokeJoin = StrokeJoin.round,
+  );
+  canvas.drawPath(
+    path,
+    Paint()
+      ..color = energyCoreColor.withValues(alpha: 0.8 + neonPulse * 0.2)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = unit * 0.052 * w
+      ..strokeCap = StrokeCap.round
+      ..strokeJoin = StrokeJoin.round,
+  );
+}
+
+void _paintMetalPlug({
+  required Canvas canvas,
+  required Offset center,
+  required Offset tangent,
+  required double unit,
+  required bool energized,
+  required Color energyColor,
+  required Color socketColor,
+  required double neonPulse,
+}) {
+  final double length = math.sqrt(
+    tangent.dx * tangent.dx + tangent.dy * tangent.dy,
+  );
+  if (length <= 0) return;
+  canvas.save();
+  canvas.translate(center.dx, center.dy);
+  canvas.rotate(math.atan2(tangent.dy, tangent.dx));
+  final RRect body = RRect.fromRectAndRadius(
+    Rect.fromCenter(
+      center: Offset.zero,
+      width: unit * 0.16,
+      height: unit * 0.26,
+    ),
+    Radius.circular(unit * 0.045),
+  );
+  if (energized) {
+    canvas.drawRRect(
+      body.inflate(unit * 0.02),
+      Paint()
+        ..color = energyColor.withValues(alpha: 0.35 + neonPulse * 0.2)
+        ..maskFilter = MaskFilter.blur(BlurStyle.normal, unit * 0.04),
+    );
+  }
+  canvas.drawRRect(body, Paint()..color = const Color(0xFF1B242C));
+  canvas.drawRRect(
+    body,
+    Paint()
+      ..color = energized
+          ? Color.lerp(socketColor, energyColor, 0.28)!
+          : socketColor
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = unit * 0.028,
+  );
+  canvas.drawRRect(
+    RRect.fromRectAndRadius(
+      Rect.fromCenter(
+        center: Offset(0, -unit * 0.03),
+        width: unit * 0.1,
+        height: unit * 0.08,
+      ),
+      Radius.circular(unit * 0.02),
+    ),
+    Paint()..color = const Color(0x66E8EEF2),
+  );
+  canvas.drawLine(
+    Offset(-unit * 0.02, -unit * 0.08),
+    Offset(-unit * 0.02, unit * 0.08),
+    Paint()
+      ..color = const Color(0xFF0B1014)
+      ..strokeWidth = unit * 0.03
+      ..strokeCap = StrokeCap.round,
+  );
+  canvas.restore();
 }
 
 Offset _pointForSide(Size size, CircuitRotationSide side, double inset) {

@@ -526,6 +526,15 @@ table.data-table th {
   font-size: 0.9rem;
 }
 
+.breadcrumbs a {
+  max-width: min(16rem, 50vw);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  display: inline-block;
+  vertical-align: bottom;
+}
+
 .breadcrumbs li:not(:last-child)::after {
   content: '/';
   margin-inline-start: 0.35rem;
@@ -1083,6 +1092,24 @@ html[data-theme='dark'] .status-chip[data-status='scheduled'] {
 .studio-data-table .cell-actions {
   display: flex;
   gap: 0.35rem;
+}
+
+.studio-bulk-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.dialog-name-list {
+  margin: 0 0 0.75rem;
+  padding-inline-start: 1.2rem;
+  color: var(--lh-text);
+}
+
+.dialog .field {
+  margin-bottom: 1rem;
 }
 
 /* Sticky page header */
@@ -1647,6 +1674,55 @@ html[data-theme='dark'] .status-chip[data-status='scheduled'] {
   display: flex;
   flex-wrap: wrap;
   gap: 0.4rem;
+}
+
+.studio-trivia-question {
+  margin-bottom: 0.9rem;
+  padding: 0.75rem;
+  border: 1px solid var(--lh-border);
+  border-radius: 12px;
+  background: var(--lh-surface);
+}
+
+.studio-trivia-answers {
+  margin: 0.75rem 0 0;
+  padding: 0.65rem 0.75rem 0.85rem;
+  border: 1px dashed var(--lh-border);
+  border-radius: 10px;
+}
+
+.studio-trivia-answers legend {
+  padding: 0 0.35rem;
+  font-size: 0.8rem;
+  font-weight: 600;
+}
+
+.studio-trivia-option-row {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) minmax(0, 1fr) auto;
+  gap: 0.5rem;
+  align-items: end;
+  margin-bottom: 0.55rem;
+}
+
+.studio-trivia-correct {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  font-size: 0.78rem;
+  color: var(--lh-text-muted);
+  padding-bottom: 0.35rem;
+}
+
+.studio-trivia-correct input {
+  width: 1.05rem;
+  height: 1.05rem;
+}
+
+@media (max-width: 900px) {
+  .studio-trivia-option-row {
+    grid-template-columns: minmax(0, 1fr);
+  }
 }
 
 .studio-json-export {

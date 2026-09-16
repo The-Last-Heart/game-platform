@@ -141,6 +141,23 @@ describe('advanced evaluators (LH-009)', () => {
       expect(result.reasonKey).toBe('result.pair.partner_absent_ok');
     });
 
+    it('succeeds on a short tap when partner is missing', () => {
+      const result = evaluator.evaluate({
+        definition,
+        answer: {
+          synced: true,
+          heldMs: 80,
+          holding: false,
+          _hasPartner: true,
+          _partnerSubmitted: false,
+        },
+        receivedMonoMs: 400,
+        deadlineMonoMs: 5000,
+      });
+      expect(result.success).toBe(true);
+      expect(result.reasonKey).toBe('result.pair.partner_absent_ok');
+    });
+
     it('succeeds when both held and press starts within sync window', () => {
       const result = evaluator.evaluate({
         definition,
@@ -151,7 +168,7 @@ describe('advanced evaluators (LH-009)', () => {
           _partnerSubmitted: true,
           _partnerHeldMs: 4100,
           _partnerReleasedEarly: false,
-          // Finish times differ a lot, but press starts align (received - held).
+          // Finish times differ a lot, but first-press stamps align.
           _selfReceivedMonoMs: 4500,
           _partnerReceivedMonoMs: 4900,
         },
@@ -161,12 +178,32 @@ describe('advanced evaluators (LH-009)', () => {
       expect(result.success).toBe(true);
     });
 
-    it('fails both sides when partner released early (shared outcome)', () => {
+    it('succeeds when both tap quickly within the sync window', () => {
+      const result = evaluator.evaluate({
+        definition,
+        answer: {
+          synced: true,
+          heldMs: 90,
+          holding: false,
+          _hasPartner: true,
+          _partnerSubmitted: true,
+          _partnerHeldMs: 70,
+          _selfReceivedMonoMs: 320,
+          _partnerReceivedMonoMs: 480,
+        },
+        receivedMonoMs: 320,
+        deadlineMonoMs: 5000,
+      });
+      expect(result.success).toBe(true);
+    });
+
+    it('succeeds both sides even if one seat released immediately', () => {
       const result = evaluator.evaluate({
         definition,
         answer: {
           synced: true,
           heldMs: 4000,
+          releasedEarly: true,
           _hasPartner: true,
           _partnerSubmitted: true,
           _partnerHeldMs: 200,
@@ -177,11 +214,10 @@ describe('advanced evaluators (LH-009)', () => {
         receivedMonoMs: 4500,
         deadlineMonoMs: 5000,
       });
-      expect(result.success).toBe(false);
-      expect(result.reasonKey).toBe('result.pair.out_of_sync');
+      expect(result.success).toBe(true);
     });
 
-    it('fails both sides when either held too briefly', () => {
+    it('succeeds when hold durations differ but press starts align', () => {
       const result = evaluator.evaluate({
         definition,
         answer: {
@@ -197,20 +233,18 @@ describe('advanced evaluators (LH-009)', () => {
         receivedMonoMs: 4500,
         deadlineMonoMs: 5000,
       });
-      expect(result.success).toBe(false);
+      expect(result.success).toBe(true);
     });
 
-    it('fails when released early', () => {
+    it('fails when released with no press evidence and no partner submit', () => {
       const result = evaluator.evaluate({
         definition,
         answer: {
           synced: false,
           releasedEarly: true,
-          heldMs: 200,
+          heldMs: 0,
           _hasPartner: true,
-          _partnerSubmitted: true,
-          _partnerHeldMs: 4000,
-          _partnerReleasedEarly: false,
+          _partnerSubmitted: false,
         },
         receivedMonoMs: 1000,
         deadlineMonoMs: 5000,

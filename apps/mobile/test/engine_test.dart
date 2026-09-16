@@ -6,6 +6,7 @@ import 'package:game/features/match/engines/challenge_engine_registry.dart';
 import 'package:game/features/match/engines/precision_cable_untangle_engine.dart';
 import 'package:game/features/match/engines/precision_circuit_rotation_engine.dart';
 import 'package:game/features/match/engines/reaction_wait_for_signal_engine.dart';
+import 'package:game/features/match/engines/social_pair_sync_engine.dart';
 import 'package:game/features/match/engines/unknown_engine.dart';
 import 'package:game/features/match/protocol/realtime_messages.dart';
 import 'package:game/features/match/state/match_snapshot.dart';
@@ -598,6 +599,137 @@ void main() {
         find.text(resolver.resolve(TranslationKeys.errorsContentUnavailable)),
         findsOneWidget,
       );
+    });
+  });
+
+  group('SocialPairSyncEngine', () {
+    PublicChallenge pairChallenge({bool partnerHolding = false}) {
+      return PublicChallenge(
+        challengeInstanceId: 'ch-pair',
+        definitionId: 'social.pair_sync.dev',
+        definitionVersion: 1,
+        engineId: 'social.pair_sync',
+        promptKey: 'challenge.pair_sync.intro',
+        clientConfig: <String, dynamic>{
+          'categoryKey': 'challenge.category.social',
+          'promptKey': 'challenge.pair_sync.prompt',
+          'isParticipant': true,
+          'partnerPlayerId': 'p-partner',
+          'partnerDisplayName': 'Nour',
+          'partnerHolding': partnerHolding,
+          'syncWindowMs': 500,
+        },
+        serverNowMs: 1700000000000,
+        startsAtMs: 1700000000000,
+        deadlineAtMs: 1700000005000,
+        durationMs: 5000,
+        roundPhase: RoundPhase.answer,
+      );
+    }
+
+    ChallengeContext pairContext({
+      required PublicChallenge challenge,
+      required void Function(Map<String, dynamic> answer) onSubmit,
+    }) {
+      return ChallengeContext(
+        challenge: challenge,
+        onSubmit: onSubmit,
+        estimateServerNowMs: () => 1700000001000,
+        answerStatus: AnswerSubmissionStatus.idle,
+        inputEnabled: true,
+        localPlayerId: 'p-local',
+        players: const <PlayerPublic>[
+          PlayerPublic(
+            playerId: 'p-local',
+            hearts: 3,
+            energy: 0,
+            status: PlayerStatus.active,
+            presence: Presence.connected,
+            submittedForCurrentChallenge: false,
+            displayName: 'You',
+          ),
+          PlayerPublic(
+            playerId: 'p-partner',
+            hearts: 3,
+            energy: 0,
+            status: PlayerStatus.active,
+            presence: Presence.connected,
+            submittedForCurrentChallenge: false,
+            displayName: 'Nour',
+          ),
+        ],
+      );
+    }
+
+    testWidgets('centers the electrical connector on the avatars', (
+      WidgetTester tester,
+    ) async {
+      final SocialPairSyncEngine engine = SocialPairSyncEngine();
+      await tester.pumpWidget(
+        wrapWithL10n(
+          Builder(
+            builder: (BuildContext context) {
+              return engine.build(
+                context,
+                pairContext(challenge: pairChallenge(), onSubmit: (_) {}),
+              );
+            },
+          ),
+        ),
+      );
+      await tester.pump();
+
+      final Finder wave = find.byWidgetPredicate(
+        (Widget w) => w is CustomPaint && w.painter is PairSyncWavePainter,
+      );
+      expect(wave, findsOneWidget);
+      final Size waveSize = tester.getSize(wave);
+      expect(waveSize.height, 64);
+    });
+
+    testWidgets('press down stamps holding progress, release submits tap', (
+      WidgetTester tester,
+    ) async {
+      final List<Map<String, dynamic>> answers = <Map<String, dynamic>>[];
+      final SocialPairSyncEngine engine = SocialPairSyncEngine();
+      final TranslationResolver resolver = TranslationResolver(
+        isProduction: false,
+      );
+
+      await tester.pumpWidget(
+        wrapWithL10n(
+          Builder(
+            builder: (BuildContext context) {
+              return engine.build(
+                context,
+                pairContext(challenge: pairChallenge(), onSubmit: answers.add),
+              );
+            },
+          ),
+        ),
+      );
+      await tester.pump();
+
+      final Finder button = find.text(
+        resolver.resolve('challenge.pair_sync.action'),
+      );
+      expect(button, findsOneWidget);
+
+      final TestGesture gesture = await tester.startGesture(
+        tester.getCenter(button),
+      );
+      await tester.pump();
+      expect(answers, isNotEmpty);
+      expect(answers.first['holding'], isTrue);
+      expect(answers.first['final'], isFalse);
+      expect(answers.first['synced'], isTrue);
+
+      await gesture.up();
+      await tester.pump();
+      expect(answers.last['holding'], isFalse);
+      expect(answers.last['final'], isTrue);
+      expect(answers.last['synced'], isTrue);
+      expect(answers.last.containsKey('releasedEarly'), isFalse);
     });
   });
 }

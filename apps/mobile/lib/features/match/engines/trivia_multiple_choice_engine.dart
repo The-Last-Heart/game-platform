@@ -40,6 +40,28 @@ class _TriviaMultipleChoiceWidgetState
     return const <String>[];
   }
 
+  Object? _optionText(Map<String, dynamic> cfg, String key) {
+    final Object? raw = cfg['optionTexts'];
+    if (raw is Map) {
+      return raw[key];
+    }
+    return null;
+  }
+
+  String _resolvedText(
+    TranslationResolver resolver,
+    String key,
+    Object? pinned,
+  ) {
+    if (pinned is String && pinned.trim().isNotEmpty) {
+      return pinned;
+    }
+    if (key.isEmpty) {
+      return '';
+    }
+    return resolver.resolve(key);
+  }
+
   @override
   Widget build(BuildContext context) {
     final TranslationResolver resolver = AppLocalization.of(context);
@@ -49,6 +71,11 @@ class _TriviaMultipleChoiceWidgetState
         (cfg['questionKey'] as String?) ?? cfg['promptKey'] as String? ?? '';
     final String footerKey = (cfg['footerKey'] as String?) ?? '';
     final List<String> options = _optionKeys;
+    final String questionText = _resolvedText(
+      resolver,
+      questionKey,
+      cfg['questionText'],
+    );
 
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 24, 16, 16),
@@ -74,11 +101,11 @@ class _TriviaMultipleChoiceWidgetState
               );
             },
             child: Text(
-              resolver.resolve(questionKey),
+              questionText,
               textAlign: TextAlign.center,
-              style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                fontWeight: FontWeight.w700,
-              ),
+              style: Theme.of(
+                context,
+              ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w700),
             ),
           ),
           const SizedBox(height: 24),
@@ -101,13 +128,19 @@ class _TriviaMultipleChoiceWidgetState
                     return Transform.scale(scale: t, child: child);
                   },
                   child: _OptionButton(
-                    label: resolver.resolve(options[index]),
+                    label: _resolvedText(
+                      resolver,
+                      options[index],
+                      _optionText(cfg, options[index]),
+                    ),
                     pressed: _pressedIndex == index,
-                    onTapDown: widget.challengeContext.isInteractionLocked ||
+                    onTapDown:
+                        widget.challengeContext.isInteractionLocked ||
                             _submitted
                         ? null
                         : () => setState(() => _pressedIndex = index),
-                    onTapUp: widget.challengeContext.isInteractionLocked ||
+                    onTapUp:
+                        widget.challengeContext.isInteractionLocked ||
                             _submitted
                         ? null
                         : () {
@@ -115,11 +148,9 @@ class _TriviaMultipleChoiceWidgetState
                               _pressedIndex = null;
                               _submitted = true;
                             });
-                            widget.challengeContext.onSubmit(
-                              <String, dynamic>{
-                                'chosenOptionKey': options[index],
-                              },
-                            );
+                            widget.challengeContext.onSubmit(<String, dynamic>{
+                              'chosenOptionKey': options[index],
+                            });
                           },
                     onTapCancel: () => setState(() => _pressedIndex = null),
                   ),
@@ -132,9 +163,9 @@ class _TriviaMultipleChoiceWidgetState
             Text(
               resolver.resolve(footerKey),
               textAlign: TextAlign.center,
-              style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                color: LhColors.textMuted,
-              ),
+              style: Theme.of(
+                context,
+              ).textTheme.bodySmall?.copyWith(color: LhColors.textMuted),
             ),
           ],
         ],
@@ -190,9 +221,9 @@ class _OptionButton extends StatelessWidget {
           child: Text(
             label,
             textAlign: TextAlign.center,
-            style: Theme.of(context).textTheme.titleMedium?.copyWith(
-              fontWeight: FontWeight.w600,
-            ),
+            style: Theme.of(
+              context,
+            ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w600),
           ),
         ),
       ),
