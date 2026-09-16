@@ -25,6 +25,7 @@ export const LAUNCH_ENGINE_IDS = [
   "precision.circuit_rotation",
   "precision.cable_untangle",
   "logic.balance_scale",
+  "logic.complete_sum",
   "focus.stroop",
   "search.select_occurrences",
 ] as const;
@@ -614,6 +615,8 @@ export type SocialPairSyncClientConfig = z.infer<
 export const socialPairSyncServerConfigSchema = z
   .object({
     partnerRoleKeys: z.array(translationKey).min(1).max(4),
+    /** How long both players must tap together (player-facing X seconds). */
+    togetherMs: positiveMs,
     syncWindowMs: positiveMs,
   })
   .strict();
@@ -1930,6 +1933,135 @@ export type SearchSelectOccurrencesAnswer = z.infer<
 >;
 
 // ---------------------------------------------------------------------------
+// 20. logic.complete_sum — collaborative real-time sum challenge
+// ---------------------------------------------------------------------------
+
+export const completeSumPlayerCountSchema = z.union([
+  z.literal(2),
+  z.literal(3),
+  z.literal(4),
+  z.literal(5),
+  z.literal(6),
+]);
+export type CompleteSumPlayerCount = z.infer<typeof completeSumPlayerCountSchema>;
+
+export const completeSumGenerationRuleSchema = z
+  .object({
+    minValue: z.number().int().min(0).max(20),
+    maxValue: z.number().int().min(0).max(20),
+    choicesPerPlayer: z.number().int().min(2).max(8),
+  })
+  .strict()
+  .superRefine((rule, ctx) => {
+    if (rule.maxValue < rule.minValue) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "maxValue must be >= minValue",
+        path: ["maxValue"],
+      });
+    }
+    const distinct = rule.maxValue - rule.minValue + 1;
+    if (distinct < rule.choicesPerPlayer) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message:
+          "value range must contain at least choicesPerPlayer distinct values",
+        path: ["choicesPerPlayer"],
+      });
+    }
+  });
+export type CompleteSumGenerationRule = z.infer<
+  typeof completeSumGenerationRuleSchema
+>;
+
+/** Default generation rules by active participant count (server-configurable). */
+export const COMPLETE_SUM_DEFAULT_GENERATION_RULES: Record<
+  CompleteSumPlayerCount,
+  CompleteSumGenerationRule
+> = {
+  2: { minValue: 0, maxValue: 8, choicesPerPlayer: 4 },
+  3: { minValue: 0, maxValue: 6, choicesPerPlayer: 4 },
+  4: { minValue: 0, maxValue: 5, choicesPerPlayer: 4 },
+  5: { minValue: 0, maxValue: 4, choicesPerPlayer: 4 },
+  6: { minValue: 0, maxValue: 3, choicesPerPlayer: 4 },
+};
+
+export const logicCompleteSumClientConfigSchema = z
+  .object({
+    categoryKey: translationKey,
+    titleKey: translationKey,
+    promptKey: translationKey,
+    currentTotalKey: translationKey,
+    chooseNumberKey: translationKey,
+    readyKey: translationKey,
+    thinkingKey: translationKey,
+    youKey: translationKey,
+    footerKey: translationKey.optional(),
+    /** Populated at round start — frozen participant order. */
+    participantIds: z.array(z.string().min(1).max(128)).min(2).max(6).optional(),
+    target: z.number().int().min(0).max(200).optional(),
+    /** Authoritative selections; null means unselected (zero is valid). */
+    selections: z
+      .record(z.union([z.number().int().min(0).max(20), z.null()]))
+      .optional(),
+    currentTotal: z.number().int().min(0).max(200).optional(),
+    allSelected: z.boolean().optional(),
+    /** Challenge-local revision for stale-update rejection on clients. */
+    stateSequence: z.number().int().nonnegative().optional(),
+    /** True when every seat selected but the sum does not match the target. */
+    incorrectTotal: z.boolean().optional(),
+    /** Viewer-private option list (also delivered via seat overlay). */
+    myChoices: z.array(z.number().int().min(0).max(20)).min(2).max(8).optional(),
+    isParticipant: z.boolean().optional(),
+  })
+  .strict();
+export type LogicCompleteSumClientConfig = z.infer<
+  typeof logicCompleteSumClientConfigSchema
+>;
+
+export const logicCompleteSumServerConfigSchema = z
+  .object({
+    generationRules: z
+      .object({
+        "2": completeSumGenerationRuleSchema.optional(),
+        "3": completeSumGenerationRuleSchema.optional(),
+        "4": completeSumGenerationRuleSchema.optional(),
+        "5": completeSumGenerationRuleSchema.optional(),
+        "6": completeSumGenerationRuleSchema.optional(),
+      })
+      .strict()
+      .optional(),
+    maxGenerationAttempts: z.number().int().min(1).max(256).optional(),
+    /** Optional deterministic seed for tests / reproducible debugging. */
+    seed: z.number().int().optional(),
+    /** Materialized at round start — never include hidden solution here for logs. */
+    target: z.number().int().min(0).max(200).optional(),
+    optionsByPlayerId: z
+      .record(z.array(z.number().int().min(0).max(20)).min(2).max(8))
+      .optional(),
+    frozenParticipantIds: z
+      .array(z.string().min(1).max(128))
+      .min(2)
+      .max(6)
+      .optional(),
+  })
+  .strict();
+export type LogicCompleteSumServerConfig = z.infer<
+  typeof logicCompleteSumServerConfigSchema
+>;
+
+export const logicCompleteSumAnswerSchema = z
+  .object({
+    selectedValue: z.number().int().min(0).max(20),
+    /** Selections stay progress until the server resolves the collective round. */
+    final: z.boolean().optional(),
+  })
+  .strict();
+export type LogicCompleteSumAnswer = z.infer<
+  typeof logicCompleteSumAnswerSchema
+>;
+
+// ---------------------------------------------------------------------------
 // Cross-engine validators
 // ---------------------------------------------------------------------------
 
@@ -1959,6 +2091,7 @@ export const ENGINE_RUNTIME_READINESS: Record<
   "precision.circuit_rotation": "live",
   "precision.cable_untangle": "live",
   "logic.balance_scale": "live",
+  "logic.complete_sum": "live",
   "focus.stroop": "live",
   "search.select_occurrences": "live",
 };
@@ -2074,6 +2207,11 @@ const ENGINE_SCHEMAS: Record<LaunchEngineId, EngineSchemaPair> = {
     client: logicBalanceScaleClientConfigSchema,
     server: logicBalanceScaleServerConfigSchema,
     answer: logicBalanceScaleAnswerSchema,
+  },
+  "logic.complete_sum": {
+    client: logicCompleteSumClientConfigSchema,
+    server: logicCompleteSumServerConfigSchema,
+    answer: logicCompleteSumAnswerSchema,
   },
   "focus.stroop": {
     client: focusStroopClientConfigSchema,
@@ -2194,6 +2332,11 @@ export type ValidatedEngineConfigs =
       serverConfig: LogicBalanceScaleServerConfig;
     }
   | {
+      engineId: "logic.complete_sum";
+      clientConfig: LogicCompleteSumClientConfig;
+      serverConfig: LogicCompleteSumServerConfig;
+    }
+  | {
       engineId: "focus.stroop";
       clientConfig: FocusStroopClientConfig;
       serverConfig: FocusStroopServerConfig;
@@ -2238,6 +2381,7 @@ export type ValidatedEngineAnswer =
       answer: PrecisionCableUntangleAnswer;
     }
   | { engineId: "logic.balance_scale"; answer: LogicBalanceScaleAnswer }
+  | { engineId: "logic.complete_sum"; answer: LogicCompleteSumAnswer }
   | { engineId: "focus.stroop"; answer: FocusStroopAnswer }
   | {
       engineId: "search.select_occurrences";

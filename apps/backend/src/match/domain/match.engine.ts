@@ -31,6 +31,14 @@ import {
 import { materializeMemoryRound } from './memory-round';
 import { materializePack31Round } from './engines/pack-31-evaluators';
 import {
+  applyCompleteSumSelection,
+  LOGIC_COMPLETE_SUM_ENGINE_ID,
+  materializeCompleteSumRound,
+  mergeCompleteSumIntoClientConfig,
+  validateCompleteSumSelectionAnswer,
+  type CompleteSumRoundState,
+} from './engines/complete-sum-runtime';
+import {
   cloneInventory,
   convertEnergyForPlayer,
   defaultPowerConfig,
@@ -41,10 +49,7 @@ import {
   resetMeterAfterPowerConsume,
   applyHeartLoss,
 } from './match.powers';
-import {
-  EMPTY_INVENTORY,
-  ENERGY_THRESHOLD,
-} from './types';
+import { EMPTY_INVENTORY, ENERGY_THRESHOLD } from './types';
 
 /**
  * Inclusive deadline boundary (LH-003B / LH-003C):
@@ -79,6 +84,29 @@ function deepCloneJsonRecord(
   value: Record<string, unknown>,
 ): Record<string, unknown> {
   return JSON.parse(JSON.stringify(value)) as Record<string, unknown>;
+}
+
+function cloneCompleteSumState(
+  state: CompleteSumRoundState,
+): CompleteSumRoundState {
+  return {
+    target: state.target,
+    participantIds: [...state.participantIds],
+    optionsByPlayerId: Object.fromEntries(
+      Object.entries(state.optionsByPlayerId).map(([id, opts]) => [
+        id,
+        [...opts],
+      ]),
+    ),
+    selections: { ...state.selections },
+    currentTotal: state.currentTotal,
+    allSelected: state.allSelected,
+    stateSequence: state.stateSequence,
+    incorrectTotal: state.incorrectTotal,
+    hidden: {
+      solutionByPlayerId: { ...state.hidden.solutionByPlayerId },
+    },
+  };
 }
 
 function assertJsonCompatible(
@@ -250,6 +278,45 @@ export function selectPairSyncRound(playerIds: string[]): {
   };
 }
 
+function pairSyncTogetherMs(
+  serverConfig: Record<string, unknown>,
+): number | undefined {
+  const raw = serverConfig['togetherMs'];
+  if (typeof raw === 'number' && Number.isFinite(raw) && raw > 0) {
+    return raw;
+  }
+  return undefined;
+}
+
+function pairSeatHolding(challenge: ChallengeRound, playerId: string): boolean {
+  return challenge.submissions.get(playerId)?.answer['holding'] === true;
+}
+
+/** Accumulate overlapping press time. Accidental release pauses; it does not reset. */
+function updatePairSyncOverlap(
+  challenge: ChallengeRound,
+  nowMonoMs: number,
+): number {
+  const ids = challenge.participatingPlayerIds;
+  const bothHolding =
+    ids.length >= 2 && ids.every((id) => pairSeatHolding(challenge, id));
+  const started = challenge.pairSyncOverlapStartedMonoMs;
+  let overlap = challenge.pairSyncOverlapMs ?? 0;
+  if (bothHolding) {
+    if (started != null && nowMonoMs > started) {
+      overlap += nowMonoMs - started;
+    }
+    challenge.pairSyncOverlapStartedMonoMs = nowMonoMs;
+  } else if (started != null) {
+    if (nowMonoMs > started) {
+      overlap += nowMonoMs - started;
+    }
+    challenge.pairSyncOverlapStartedMonoMs = null;
+  }
+  challenge.pairSyncOverlapMs = overlap;
+  return overlap;
+}
+
 function assignPairSyncSeatOverlays(
   challenge: ChallengeRound,
   allActiveIds: string[],
@@ -260,14 +327,13 @@ function assignPairSyncSeatOverlays(
     typeof syncWindowRaw === 'number' && Number.isFinite(syncWindowRaw)
       ? syncWindowRaw
       : 500;
+  const togetherMs = pairSyncTogetherMs(challenge.definition.serverConfig);
   const seats = new Map<string, SeatChallengeVariant>();
   for (const id of allActiveIds) {
     const isParticipant = challenge.participatingPlayerIds.includes(id);
     const partnerId = challenge.pairAssignments?.get(id);
     const partnerDisplayName =
-      partnerId != null
-        ? (players.get(partnerId)?.displayName ?? null)
-        : null;
+      partnerId != null ? (players.get(partnerId)?.displayName ?? null) : null;
     seats.set(id, {
       clientOverlay: {
         isParticipant,
@@ -275,6 +341,7 @@ function assignPairSyncSeatOverlays(
         partnerDisplayName,
         partnerHolding: false,
         syncWindowMs,
+        ...(togetherMs != null ? { togetherMs } : {}),
       },
       serverOverlay: {},
     });
@@ -375,12 +442,28 @@ export function toPublicChallengeView(
     if (typeof syncWindowRaw === 'number') {
       clientConfig['syncWindowMs'] = syncWindowRaw;
     }
+    const togetherMs = pairSyncTogetherMs(challenge.definition.serverConfig);
+    if (togetherMs != null) {
+      clientConfig['togetherMs'] = togetherMs;
+    }
     if (viewerPlayerId != null) {
       clientConfig['isParticipant'] =
         challenge.participatingPlayerIds.includes(viewerPlayerId);
       const partnerId = challenge.pairAssignments?.get(viewerPlayerId);
       clientConfig['partnerPlayerId'] = partnerId ?? null;
     }
+  }
+
+  // Complete the Sum: shared live totals/selections + private myChoices.
+  if (
+    challenge.engineId === LOGIC_COMPLETE_SUM_ENGINE_ID &&
+    challenge.completeSumState
+  ) {
+    mergeCompleteSumIntoClientConfig(
+      clientConfig,
+      challenge.completeSumState,
+      viewerPlayerId,
+    );
   }
 
   // Seat-private overlays (tilt targets/shapes, pair partner, etc.) — viewer only.
@@ -438,10 +521,7 @@ export class MatchEngine {
     private readonly evaluators: ChallengeEvaluatorRegistry,
   ) {}
 
-  createMatch(
-    matchId?: string,
-    options?: CreateMatchOptions,
-  ): MatchState {
+  createMatch(matchId?: string, options?: CreateMatchOptions): MatchState {
     const now = this.clock.nowMs();
     const mode: MatchMode = options?.mode ?? 'dev';
     const playerCapacity =
@@ -507,15 +587,9 @@ export class MatchEngine {
       throw new DomainError('MATCH_NOT_JOINABLE', 'player already joined');
     }
 
-    const hearts =
-      input.hearts !== undefined ? input.hearts : INITIAL_HEARTS;
-    const energy =
-      input.energy !== undefined ? input.energy : INITIAL_ENERGY;
-    if (
-      !Number.isInteger(hearts) ||
-      hearts < 0 ||
-      hearts > INITIAL_HEARTS
-    ) {
+    const hearts = input.hearts !== undefined ? input.hearts : INITIAL_HEARTS;
+    const energy = input.energy !== undefined ? input.energy : INITIAL_ENERGY;
+    if (!Number.isInteger(hearts) || hearts < 0 || hearts > INITIAL_HEARTS) {
       throw new DomainError('INVALID_DEFINITION', 'hearts out of range');
     }
     if (!Number.isInteger(energy) || energy < 0 || energy > ENERGY_THRESHOLD) {
@@ -1040,6 +1114,15 @@ export class MatchEngine {
         pool,
         next.players,
       );
+    } else if (challenge.engineId === LOGIC_COMPLETE_SUM_ENGINE_ID) {
+      challenge.roundPhase = 'answer';
+      challenge.previewEndsAtMonoMs = null;
+      challenge.signalToken = null;
+      challenge.signalAtMonoMs = null;
+      challenge.signaledAtMs = null;
+      challenge.signalEndsAtMs = null;
+      challenge.signalEndsAtMonoMs = null;
+      materializeCompleteSumRound(challenge);
     } else {
       challenge.roundPhase = 'answer';
       challenge.previewEndsAtMonoMs = null;
@@ -1221,6 +1304,10 @@ export class MatchEngine {
         pool,
         next.players,
       );
+    } else if (pinned.engineId === LOGIC_COMPLETE_SUM_ENGINE_ID) {
+      round.roundPhase = 'answer';
+      round.previewEndsAtMonoMs = null;
+      materializeCompleteSumRound(round);
     } else {
       round.roundPhase = 'answer';
       round.previewEndsAtMonoMs = null;
@@ -1672,14 +1759,25 @@ export class MatchEngine {
     }
 
     const existing = challenge.submissions.get(input.playerId);
-    const isFinal = input.answer['final'] !== false;
-    if (existing && existing.final !== false) {
+    const isCompleteSum = challenge.engineId === LOGIC_COMPLETE_SUM_ENGINE_ID;
+    const isPairSync = challenge.engineId === 'social.pair_sync';
+    const pairHasPartner = isPairSync
+      ? challenge.pairAssignments?.get(input.playerId) != null
+      : false;
+    // Pair sync with a partner only completes when overlapping taps reach
+    // togetherMs — a release is progress, not a final answer.
+    let isFinal = isCompleteSum
+      ? false
+      : isPairSync && pairHasPartner
+        ? false
+        : input.answer['final'] !== false;
+    if (!isCompleteSum && existing && existing.final !== false) {
       const ack = { accepted: true, reason: 'already_submitted' };
       const next = this.cloneMatch(match);
       next.commandAcks.set(input.commandId, ack);
       return { match: next, events: [], duplicate: false, ack };
     }
-    if (player.submittedForCurrentChallenge) {
+    if (!isCompleteSum && player.submittedForCurrentChallenge) {
       const ack = { accepted: true, reason: 'already_submitted' };
       const next = this.cloneMatch(match);
       next.commandAcks.set(input.commandId, ack);
@@ -1688,7 +1786,64 @@ export class MatchEngine {
 
     const next = this.cloneMatch(match);
     const nextChallenge = next.currentChallenge!;
-    const isPairSync = nextChallenge.engineId === 'social.pair_sync';
+
+    if (isCompleteSum) {
+      const parsed = validateCompleteSumSelectionAnswer(input.answer);
+      if (!parsed.ok) {
+        const ack = { accepted: false, reason: parsed.reason };
+        next.commandAcks.set(input.commandId, ack);
+        next.updatedAtMs = this.clock.nowMs();
+        return { match: next, events: [], duplicate: false, ack };
+      }
+      const priorState = nextChallenge.completeSumState;
+      if (!priorState) {
+        const ack = { accepted: false, reason: 'malformed' };
+        next.commandAcks.set(input.commandId, ack);
+        next.updatedAtMs = this.clock.nowMs();
+        return { match: next, events: [], duplicate: false, ack };
+      }
+      const applied = applyCompleteSumSelection({
+        state: priorState,
+        playerId: input.playerId,
+        selectedValue: parsed.selectedValue,
+      });
+      if (!applied.ok) {
+        const ack = { accepted: false, reason: applied.reason };
+        next.commandAcks.set(input.commandId, ack);
+        next.updatedAtMs = this.clock.nowMs();
+        return { match: next, events: [], duplicate: false, ack };
+      }
+      nextChallenge.completeSumState = applied.state;
+      nextChallenge.submissions.set(input.playerId, {
+        commandId: input.commandId,
+        answer: {
+          selectedValue: parsed.selectedValue,
+          final: false,
+        },
+        receivedMonoMs,
+        final: false,
+      });
+      const ack = { accepted: true, reason: 'progress' };
+      next.commandAcks.set(input.commandId, ack);
+      next.updatedAtMs = this.clock.nowMs();
+      if (applied.succeeded) {
+        const resolved = this.resolveChallenge(next);
+        return {
+          match: resolved.match,
+          events: resolved.events,
+          duplicate: false,
+          ack,
+        };
+      }
+      return {
+        match: next,
+        events: [],
+        duplicate: false,
+        ack,
+        liveUpdate: true,
+      };
+    }
+
     // Pair sync: first progress/tap stamps the press start. Later heldMs
     // updates must not slide that stamp or mixed client/server clocks desync.
     const receivedToStore =
@@ -1704,7 +1859,7 @@ export class MatchEngine {
     if (isFinal) {
       next.players.get(input.playerId)!.submittedForCurrentChallenge = true;
     }
-    const holding = !isFinal && isPairSync && input.answer['holding'] === true;
+    const holding = isPairSync && input.answer['holding'] === true;
     const liveUpdate = isPairSync
       ? setPairSyncPartnerHolding(nextChallenge, input.playerId, holding)
       : false;
@@ -1714,6 +1869,33 @@ export class MatchEngine {
     };
     next.commandAcks.set(input.commandId, ack);
     next.updatedAtMs = this.clock.nowMs();
+
+    if (isPairSync && pairHasPartner) {
+      const overlap = updatePairSyncOverlap(nextChallenge, receivedMonoMs);
+      const togetherMs =
+        pairSyncTogetherMs(nextChallenge.definition.serverConfig) ?? 0;
+      if (togetherMs > 0 && overlap >= togetherMs) {
+        for (const id of nextChallenge.participatingPlayerIds) {
+          const sub = nextChallenge.submissions.get(id);
+          if (!sub) continue;
+          nextChallenge.submissions.set(id, {
+            ...sub,
+            final: true,
+            answer: { ...sub.answer, final: true, holding: false },
+          });
+          const seat = next.players.get(id);
+          if (seat) seat.submittedForCurrentChallenge = true;
+          setPairSyncPartnerHolding(nextChallenge, id, false);
+        }
+        const resolved = this.resolveChallenge(next);
+        return {
+          match: resolved.match,
+          events: resolved.events,
+          duplicate: false,
+          ack: { accepted: true },
+        };
+      }
+    }
 
     // Early resolve when every participating active player has a final submission.
     // Memory is simultaneous recall: keep the shared deadline so one fast seat
@@ -1846,12 +2028,14 @@ export class MatchEngine {
           }
         }
         if (challenge.engineId === 'social.pair_sync') {
+          updatePairSyncOverlap(challenge, this.clock.monoMs());
           const partnerId = challenge.pairAssignments?.get(playerId);
           const partnerSub = partnerId
             ? challenge.submissions.get(partnerId)
             : undefined;
           answerForEval['_hasPartner'] = partnerId != null;
           answerForEval['_partnerSubmitted'] = partnerSub != null;
+          answerForEval['_overlapMs'] = challenge.pairSyncOverlapMs ?? 0;
           if (partnerSub) {
             answerForEval['_partnerReceivedMonoMs'] = partnerSub.receivedMonoMs;
             answerForEval['_selfReceivedMonoMs'] = submission.receivedMonoMs;
@@ -1863,6 +2047,16 @@ export class MatchEngine {
             answerForEval['_partnerReleasedEarly'] =
               partnerSub.answer['releasedEarly'] === true;
           }
+        }
+        if (challenge.engineId === LOGIC_COMPLETE_SUM_ENGINE_ID) {
+          const sumState = challenge.completeSumState;
+          const succeeded =
+            sumState != null &&
+            sumState.allSelected &&
+            sumState.currentTotal === sumState.target;
+          answerForEval['_completeSumSucceeded'] = succeeded;
+          answerForEval['_completeSumAllSelected'] =
+            sumState?.allSelected === true;
         }
         const definitionForEval =
           seatVariant && Object.keys(seatVariant.serverOverlay).length > 0
@@ -1920,8 +2114,9 @@ export class MatchEngine {
           );
           if (grant) {
             // Defer event emission until after sequence bump below.
-            (player as PlayerState & { __pendingGrant?: typeof grant }).__pendingGrant =
-              grant;
+            (
+              player as PlayerState & { __pendingGrant?: typeof grant }
+            ).__pendingGrant = grant;
           }
         }
       } else {
@@ -2013,9 +2208,7 @@ export class MatchEngine {
             grantBump.serverTimestampMs,
           ),
         );
-        delete (
-          p as PlayerState & { __pendingGrant?: unknown }
-        ).__pendingGrant;
+        delete (p as PlayerState & { __pendingGrant?: unknown }).__pendingGrant;
       }
     }
 
@@ -2139,9 +2332,7 @@ export class MatchEngine {
           }
         : null);
     const localPlayerForTargets =
-      match.phase === 'power_action'
-        ? match.powerActionActorIds[0]
-        : null;
+      match.phase === 'power_action' ? match.powerActionActorIds[0] : null;
     return {
       matchId: match.matchId,
       status: match.status,
@@ -2168,23 +2359,15 @@ export class MatchEngine {
         inventory: cloneInventory(p.inventory ?? EMPTY_INVENTORY),
         protectedThroughRound: p.protectedThroughRound,
         lastDangerPulseTargetId: p.lastDangerPulseTargetId,
-        ...(p.displayName !== undefined
-          ? { displayName: p.displayName }
-          : {}),
-        ...(p.avatarColor !== undefined
-          ? { avatarColor: p.avatarColor }
-          : {}),
+        ...(p.displayName !== undefined ? { displayName: p.displayName } : {}),
+        ...(p.avatarColor !== undefined ? { avatarColor: p.avatarColor } : {}),
         ready: p.ready,
         ...(p.isBot === true ? { isBot: true } : {}),
         isHost: match.hostPlayerId != null && p.playerId === match.hostPlayerId,
       })),
       currentChallenge:
         match.currentChallenge && match.currentChallenge.status === 'active'
-          ? toPublicChallengeView(
-              match.currentChallenge,
-              now,
-              viewerPlayerId,
-            )
+          ? toPublicChallengeView(match.currentChallenge, now, viewerPlayerId)
           : null,
       releasePins: match.releasePins,
       tactical: {
@@ -2400,9 +2583,10 @@ export class MatchEngine {
     return this.resolvePendingAttack(match, input.choice);
   }
 
-  expirePowerDefense(
-    match: MatchState,
-  ): { match: MatchState; events: DomainEvent[] } {
+  expirePowerDefense(match: MatchState): {
+    match: MatchState;
+    events: DomainEvent[];
+  } {
     if (match.phase !== 'power_defense' || !match.pendingAttack) {
       return { match, events: [] };
     }
@@ -2490,7 +2674,10 @@ export class MatchEngine {
       applyHeartLoss(target, heartsDelta);
       target.protectedThroughRound = next.roundNumber + 1;
       outcome = attack.reflected ? 'reflected_hit' : 'hit';
-      if (choice === 'none' && this.clock.monoMs() > attack.defenseDeadlineMonoMs) {
+      if (
+        choice === 'none' &&
+        this.clock.monoMs() > attack.defenseDeadlineMonoMs
+      ) {
         outcome = 'expired';
       }
       resolvedTarget = target;
@@ -2555,12 +2742,8 @@ export class MatchEngine {
             })),
           }
         : null,
-      pendingAttack: match.pendingAttack
-        ? { ...match.pendingAttack }
-        : null,
-      lastPowerGrant: match.lastPowerGrant
-        ? { ...match.lastPowerGrant }
-        : null,
+      pendingAttack: match.pendingAttack ? { ...match.pendingAttack } : null,
+      lastPowerGrant: match.lastPowerGrant ? { ...match.lastPowerGrant } : null,
       powerActionActorIds: [...(match.powerActionActorIds ?? [])],
       lastRoundResult: match.lastRoundResult
         ? {
@@ -2582,6 +2765,9 @@ export class MatchEngine {
             seatVariants: cloneSeatVariants(
               match.currentChallenge.seatVariants,
             ),
+            completeSumState: match.currentChallenge.completeSumState
+              ? cloneCompleteSumState(match.currentChallenge.completeSumState)
+              : undefined,
             definition: pinDefinition(match.currentChallenge.definition),
           }
         : null,

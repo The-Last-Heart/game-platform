@@ -640,6 +640,7 @@ const ar: Record<MessageKey, string> = {
   'studio.engine.circuit_rotation': 'تدوير الدائرة',
   'studio.engine.cable_untangle': 'فك التشابك',
   'studio.engine.balance_scale': 'ميزان الأوزان',
+  'studio.engine.complete_sum': 'أكملوا المجموع',
   'studio.engine.stroop': 'ستروب',
   'studio.engine.select_occurrences': 'اختيار التطابقات',
 
@@ -673,7 +674,7 @@ const ar: Record<MessageKey, string> = {
   'studio.field.fp.tiltLead': 'يوازن اللاعب الجهاز نحو هدف لفترة قصيرة.',
   'studio.field.fp.audioLead':
     'يعدّ اللاعبون النبضات الصوتية (مع بدائل مرئية/لمسية).',
-  'studio.field.fp.pairLead': 'يجب أن يتصرف لاعبان معاً داخل نافذة المزامنة.',
+  'studio.field.fp.pairLead': 'أي لاعبين من الغرفة يضغطان معاً للمدة المحددة.',
   'studio.field.fp.riskLead':
     'يختار اللاعبون خياراً أكثر أماناً أو مخاطرة. وزن أعلى = مخاطرة أكبر.',
   'studio.field.fp.copyKeysGroup': 'مفاتيح النصوص المعروضة (متقدم)',
@@ -734,6 +735,9 @@ const ar: Record<MessageKey, string> = {
   'studio.field.fp.pulseCountHint': 'كم نبضة يجب عدّها',
   'studio.field.fp.partnerRoleKeys': 'أدوار الشريك',
   'studio.field.fp.partnerRoleKeysHint': 'الأدوار المعينة للاعبين',
+  'studio.field.fp.togetherMs': 'مدة الضغط معاً',
+  'studio.field.fp.togetherMsHint':
+    'كم ثانية يجب أن يضغط اللاعبان في نفس الوقت',
   'studio.field.fp.syncWindowMs': 'نافذة المزامنة',
   'studio.field.fp.syncWindowHint': 'مدى قرب تصرف اللاعبين معاً',
   'studio.field.fp.riskWeights': 'أوزان المخاطرة',

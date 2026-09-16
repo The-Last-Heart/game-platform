@@ -112,7 +112,10 @@ describe('advanced evaluators (LH-009)', () => {
 
   describe('SocialPairSyncEvaluator', () => {
     const evaluator = new SocialPairSyncEvaluator();
-    const definition = def('social.pair_sync', { syncWindowMs: 500 });
+    const definition = def('social.pair_sync', {
+      syncWindowMs: 500,
+      togetherMs: 3000,
+    });
 
     it('fair-fallback succeeds without partner', () => {
       const result = evaluator.evaluate({
@@ -158,7 +161,7 @@ describe('advanced evaluators (LH-009)', () => {
       expect(result.reasonKey).toBe('result.pair.partner_absent_ok');
     });
 
-    it('succeeds when both held and press starts within sync window', () => {
+    it('succeeds when overlapping taps reach togetherMs', () => {
       const result = evaluator.evaluate({
         definition,
         answer: {
@@ -166,19 +169,32 @@ describe('advanced evaluators (LH-009)', () => {
           heldMs: 4000,
           _hasPartner: true,
           _partnerSubmitted: true,
-          _partnerHeldMs: 4100,
-          _partnerReleasedEarly: false,
-          // Finish times differ a lot, but first-press stamps align.
-          _selfReceivedMonoMs: 4500,
-          _partnerReceivedMonoMs: 4900,
+          _overlapMs: 3000,
         },
         receivedMonoMs: 4500,
-        deadlineMonoMs: 5000,
+        deadlineMonoMs: 8000,
       });
       expect(result.success).toBe(true);
     });
 
-    it('succeeds when both tap quickly within the sync window', () => {
+    it('succeeds after an accidental release if overlap already reached togetherMs', () => {
+      const result = evaluator.evaluate({
+        definition,
+        answer: {
+          synced: true,
+          heldMs: 4000,
+          holding: false,
+          _hasPartner: true,
+          _partnerSubmitted: true,
+          _overlapMs: 3100,
+        },
+        receivedMonoMs: 4500,
+        deadlineMonoMs: 8000,
+      });
+      expect(result.success).toBe(true);
+    });
+
+    it('fails when both tapped but overlap is short of togetherMs', () => {
       const result = evaluator.evaluate({
         definition,
         answer: {
@@ -187,53 +203,13 @@ describe('advanced evaluators (LH-009)', () => {
           holding: false,
           _hasPartner: true,
           _partnerSubmitted: true,
-          _partnerHeldMs: 70,
-          _selfReceivedMonoMs: 320,
-          _partnerReceivedMonoMs: 480,
+          _overlapMs: 400,
         },
-        receivedMonoMs: 320,
-        deadlineMonoMs: 5000,
+        receivedMonoMs: 480,
+        deadlineMonoMs: 8000,
       });
-      expect(result.success).toBe(true);
-    });
-
-    it('succeeds both sides even if one seat released immediately', () => {
-      const result = evaluator.evaluate({
-        definition,
-        answer: {
-          synced: true,
-          heldMs: 4000,
-          releasedEarly: true,
-          _hasPartner: true,
-          _partnerSubmitted: true,
-          _partnerHeldMs: 200,
-          _partnerReleasedEarly: true,
-          _selfReceivedMonoMs: 4500,
-          _partnerReceivedMonoMs: 4600,
-        },
-        receivedMonoMs: 4500,
-        deadlineMonoMs: 5000,
-      });
-      expect(result.success).toBe(true);
-    });
-
-    it('succeeds when hold durations differ but press starts align', () => {
-      const result = evaluator.evaluate({
-        definition,
-        answer: {
-          synced: true,
-          heldMs: 4000,
-          _hasPartner: true,
-          _partnerSubmitted: true,
-          _partnerHeldMs: 1000,
-          _partnerReleasedEarly: false,
-          _selfReceivedMonoMs: 4500,
-          _partnerReceivedMonoMs: 4600,
-        },
-        receivedMonoMs: 4500,
-        deadlineMonoMs: 5000,
-      });
-      expect(result.success).toBe(true);
+      expect(result.success).toBe(false);
+      expect(result.reasonKey).toBe('result.pair.out_of_sync');
     });
 
     it('fails when released with no press evidence and no partner submit', () => {
@@ -252,7 +228,7 @@ describe('advanced evaluators (LH-009)', () => {
       expect(result.success).toBe(false);
     });
 
-    it('fails when press starts are out of sync', () => {
+    it('fails when overlap never reaches togetherMs', () => {
       const result = evaluator.evaluate({
         definition,
         answer: {
@@ -260,10 +236,7 @@ describe('advanced evaluators (LH-009)', () => {
           heldMs: 4000,
           _hasPartner: true,
           _partnerSubmitted: true,
-          _partnerHeldMs: 4000,
-          _partnerReleasedEarly: false,
-          _selfReceivedMonoMs: 4500,
-          _partnerReceivedMonoMs: 5500,
+          _overlapMs: 800,
         },
         receivedMonoMs: 4500,
         deadlineMonoMs: 8000,

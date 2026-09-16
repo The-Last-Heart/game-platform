@@ -24,6 +24,7 @@ export const MessageTypes = {
   MatchStartLobby: 'match.start_lobby',
   TrainingStart: 'training.start',
   TrainingRetry: 'training.retry',
+  TrainingRestart: 'training.restart',
   MatchRematch: 'match.rematch',
   PowerUse: 'power.use',
   PowerDefend: 'power.defend',
@@ -201,6 +202,13 @@ export const trainingRetryPayloadSchema = z
   })
   .strict();
 
+/** Fresh training pack (reshuffled playlist, full hearts). */
+export const trainingRestartPayloadSchema = z
+  .object({
+    matchId: uuidLike,
+  })
+  .strict();
+
 export const matchRematchPayloadSchema = z
   .object({
     matchId: uuidLike,
@@ -246,6 +254,7 @@ export const clientCommandSchema = envelopeBaseSchema
       MessageTypes.MatchStartLobby,
       MessageTypes.TrainingStart,
       MessageTypes.TrainingRetry,
+      MessageTypes.TrainingRestart,
       MessageTypes.MatchRematch,
       MessageTypes.PowerUse,
       MessageTypes.PowerDefend,
@@ -272,6 +281,7 @@ export const clientCommandSchema = envelopeBaseSchema
       [MessageTypes.MatchStartLobby]: matchStartLobbyPayloadSchema,
       [MessageTypes.TrainingStart]: trainingStartPayloadSchema,
       [MessageTypes.TrainingRetry]: trainingRetryPayloadSchema,
+      [MessageTypes.TrainingRestart]: trainingRestartPayloadSchema,
       [MessageTypes.MatchRematch]: matchRematchPayloadSchema,
       [MessageTypes.PowerUse]: powerUsePayloadSchema,
       [MessageTypes.PowerDefend]: powerDefendPayloadSchema,
@@ -867,6 +877,7 @@ function isClientCommandType(type: string): type is ClientCommand['type'] {
     type === MessageTypes.MatchStartLobby ||
     type === MessageTypes.TrainingStart ||
     type === MessageTypes.TrainingRetry ||
+    type === MessageTypes.TrainingRestart ||
     type === MessageTypes.MatchRematch ||
     type === MessageTypes.PowerUse ||
     type === MessageTypes.PowerDefend ||

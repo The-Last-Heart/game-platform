@@ -357,6 +357,16 @@ export class MatchGateway
             ),
           );
           break;
+        case MessageTypes.TrainingRestart:
+          await this.enqueueIdentity(client, () =>
+            this.handleTrainingRestart(
+              client,
+              commandId!,
+              command.messageId,
+              (command.payload as { matchId: string }).matchId,
+            ),
+          );
+          break;
         case MessageTypes.MatchRematch:
           await this.enqueueIdentity(client, () =>
             this.handleRematch(
@@ -1057,6 +1067,41 @@ export class MatchGateway
       retried.playerId,
       retried.resumeToken,
       retried.snapshot,
+    );
+  }
+
+  private async handleTrainingRestart(
+    client: Socket,
+    commandId: string,
+    correlationId: string,
+    matchId: string,
+  ): Promise<void> {
+    const state = client.data as SocketState;
+    if (!state.matchId || !state.playerId || state.matchId !== matchId) {
+      this.emitError(client, 'UNAUTHORIZED', 'errors.protocol.unauthorized', {
+        commandId,
+      });
+      return;
+    }
+    if (!this.ownsLease(client, state.matchId, state.playerId)) {
+      this.emitError(client, 'UNAUTHORIZED', 'errors.protocol.unauthorized', {
+        commandId,
+      });
+      return;
+    }
+    const restarted = await this.matches.restartTraining(
+      matchId,
+      state.playerId,
+    );
+    await this.clearClientBinding(client);
+    await this.finalizeSeatBind(
+      client,
+      commandId,
+      correlationId,
+      restarted.matchId,
+      restarted.playerId,
+      restarted.resumeToken,
+      restarted.snapshot,
     );
   }
 

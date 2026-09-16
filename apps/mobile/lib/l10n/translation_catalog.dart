@@ -192,6 +192,7 @@ abstract final class TranslationKeys {
   static const String privateInvalidCode = 'private.invalid_code';
   static const String trainingTitle = 'training.title';
   static const String trainingRetry = 'training.retry';
+  static const String trainingRestart = 'training.restart';
   static const String trainingExplain = 'training.explain';
   static const String rematchRequest = 'rematch.request';
   static const String errorsServiceUnavailable = 'errors.service_unavailable';

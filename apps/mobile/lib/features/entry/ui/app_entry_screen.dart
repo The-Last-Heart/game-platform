@@ -535,7 +535,7 @@ class _AppEntryScreenState extends State<AppEntryScreen>
               },
               onRematch: () async {
                 if (widget.controller.state.value.mode == MatchMode.training) {
-                  await widget.controller.retryTraining();
+                  await widget.controller.restartTraining();
                 } else {
                   await widget.controller.requestRematch();
                 }

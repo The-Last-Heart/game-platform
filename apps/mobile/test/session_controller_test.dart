@@ -1359,6 +1359,44 @@ void main() {
       },
     );
 
+    test(
+      'training.restart after round_result sends restart command',
+      () async {
+        await completeJoinHandshake(controller, transport);
+        controller.state.value = controller.state.value.copyWith(
+          mode: () => MatchMode.training,
+          phase: MatchPhase.roundResult,
+          lifecycle: SessionLifecycle.bound,
+          lastRoundResult: () => const LastRoundResult(
+            challengeInstanceId: 'ch-fail',
+            resolutions: <PlayerChallengeResolution>[
+              PlayerChallengeResolution(
+                playerId: 'player-1',
+                outcome: 'timeout',
+                heartsDelta: -1,
+                energyDelta: 0,
+                heartsAfter: 0,
+                energyAfter: 0,
+                statusAfter: PlayerStatus.spectator,
+              ),
+            ],
+          ),
+          serverSequence: 8,
+        );
+
+        await controller.restartTraining();
+        await controller.idle;
+        expect(controller.state.value.phase, MatchPhase.lobby);
+        expect(
+          transport.sentCommands.any(
+            (Map<String, dynamic> c) =>
+                c['type'] == MessageTypes.trainingRestart,
+          ),
+          isTrue,
+        );
+      },
+    );
+
     test('terminal resume: completed snapshot after reconnect', () async {
       await completeJoinHandshake(controller, transport);
       transport.simulateDisconnect();

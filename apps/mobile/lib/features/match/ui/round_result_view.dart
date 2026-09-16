@@ -21,6 +21,7 @@ class RoundResultView extends StatefulWidget {
     required this.estimateServerNowMs,
     this.onBackHome,
     this.onRetry,
+    this.onFreshStart,
     super.key,
   });
 
@@ -28,6 +29,7 @@ class RoundResultView extends StatefulWidget {
   final int Function() estimateServerNowMs;
   final VoidCallback? onBackHome;
   final VoidCallback? onRetry;
+  final VoidCallback? onFreshStart;
 
   @override
   State<RoundResultView> createState() => _RoundResultViewState();
@@ -362,7 +364,15 @@ class _RoundResultViewState extends State<RoundResultView> {
             icon: Icons.replay,
             onPressed: widget.onRetry!,
           ),
-        if (widget.onRetry != null && widget.onBackHome != null)
+        if (widget.onRetry != null && widget.onFreshStart != null)
+          const SizedBox(height: 10),
+        if (widget.onFreshStart != null)
+          LhSecondaryButton(
+            label: resolver.resolve(TranslationKeys.trainingRestart),
+            onPressed: widget.onFreshStart!,
+          ),
+        if ((widget.onRetry != null || widget.onFreshStart != null) &&
+            widget.onBackHome != null)
           const SizedBox(height: 10),
         if (widget.onBackHome != null)
           LhSecondaryButton(

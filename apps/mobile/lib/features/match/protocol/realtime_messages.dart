@@ -23,6 +23,7 @@ abstract final class MessageTypes {
   static const String matchStartLobby = 'match.start_lobby';
   static const String trainingStart = 'training.start';
   static const String trainingRetry = 'training.retry';
+  static const String trainingRestart = 'training.restart';
   static const String matchRematch = 'match.rematch';
   static const String powerUse = 'power.use';
   static const String powerDefend = 'power.defend';

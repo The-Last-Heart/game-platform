@@ -118,6 +118,11 @@ export type CreateMatchOptions = {
   /** Playlist resolved from the pinned catalog (never re-reads "current"). */
   pinnedPlaylist?: readonly ChallengeDefinition[];
   /**
+   * When true with an explicit `pinnedPlaylist`, skip 5+5+5 restructuring
+   * (training.retry re-seats a single last-played definition).
+   */
+  preservePinnedPlaylist?: boolean;
+  /**
    * Hard-only pool for sudden-death after the structured 5+5+5 pack.
    * Defaults to hard-tagged entries from the mode-filtered catalog pool.
    */
@@ -287,6 +292,15 @@ export type ChallengeRound = {
    * Never serialize the full map to clients — overlay only the viewer seat.
    */
   seatVariants?: Map<string, import('./seat-variants').SeatChallengeVariant>;
+  /**
+   * Collaborative complete-sum live state. Hidden solution stays here only —
+   * never mirrored into clientConfig or public snapshots.
+   */
+  completeSumState?: import('./engines/complete-sum').CompleteSumRoundState;
+  /** Pair sync: accumulated ms both seats were pressing at the same time. */
+  pairSyncOverlapMs?: number;
+  /** Pair sync: mono time the current overlapping press started, if any. */
+  pairSyncOverlapStartedMonoMs?: number | null;
 };
 
 export type MatchState = {

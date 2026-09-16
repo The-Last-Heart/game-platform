@@ -43,6 +43,7 @@ import type {
   CreateMatchOptions,
   DomainEvent,
   MatchMode,
+  MatchReleasePinsState,
   MatchState,
 } from '../domain/types';
 import {
@@ -909,15 +910,23 @@ export class MatchService implements OnModuleDestroy, OnModuleInit {
     );
 
     const matchId = randomUUID();
-    const { structured, hardLoop } = buildDifficultyOrderedPlaylist(
-      pinnedPlaylist,
-      matchId,
-    );
-    pinnedPlaylist = structured;
-    const hardLoopPlaylist =
-      options.hardLoopPlaylist != null
-        ? [...options.hardLoopPlaylist]
-        : hardLoop;
+    let hardLoopPlaylist: ChallengeDefinition[];
+    if (options.preservePinnedPlaylist && options.pinnedPlaylist != null) {
+      hardLoopPlaylist =
+        options.hardLoopPlaylist != null
+          ? [...options.hardLoopPlaylist]
+          : pinnedPlaylist.filter((d) => (d.difficulty ?? 'medium') === 'hard');
+    } else {
+      const { structured, hardLoop } = buildDifficultyOrderedPlaylist(
+        pinnedPlaylist,
+        matchId,
+      );
+      pinnedPlaylist = structured;
+      hardLoopPlaylist =
+        options.hardLoopPlaylist != null
+          ? [...options.hardLoopPlaylist]
+          : hardLoop;
+    }
 
     let powerConfig = options.powerConfig ?? undefined;
     if (this.releases && !powerConfig) {
@@ -1259,10 +1268,18 @@ export class MatchService implements OnModuleDestroy, OnModuleInit {
   async startTraining(
     identity: PlayerIdentityInput,
     progress?: { hearts: number; energy: number },
+    options?: {
+      pinnedPlaylist?: readonly ChallengeDefinition[];
+      releasePins?: MatchReleasePinsState | null;
+      preservePinnedPlaylist?: boolean;
+    },
   ): Promise<SeatCredentials> {
     const match = await this.createPinnedMatch({
       mode: 'training',
       playerCapacity: 1,
+      pinnedPlaylist: options?.pinnedPlaylist,
+      releasePins: options?.releasePins ?? undefined,
+      preservePinnedPlaylist: options?.preservePinnedPlaylist,
     });
     const seated = await this.joinMatch(match.matchId, identity, progress);
     return {
@@ -1275,8 +1292,9 @@ export class MatchService implements OnModuleDestroy, OnModuleInit {
 
   /**
    * Retry training after completed/halted/round_result.
+   * Replays the last played challenge (same definition).
    * Mid-run (hearts still > 0): carry remaining hearts/energy into the new seat.
-   * Full wipe (0 hearts): fresh restart at INITIAL_HEARTS.
+   * Full wipe (0 hearts): restart that challenge at INITIAL_HEARTS.
    */
   async retryTraining(
     matchId: string,
@@ -1300,6 +1318,13 @@ export class MatchService implements OnModuleDestroy, OnModuleInit {
         'training retry only after result',
       );
     }
+    const lastDefinition = this.lastPlayedTrainingDefinition(match);
+    if (!lastDefinition) {
+      throw new DomainError(
+        'TRAINING_UNAVAILABLE',
+        'no challenge to retry',
+      );
+    }
     const identity: PlayerIdentityInput = {
       displayName: player.displayName ?? 'Trainee',
       avatarColor: player.avatarColor ?? '#94A3B8',
@@ -1308,7 +1333,58 @@ export class MatchService implements OnModuleDestroy, OnModuleInit {
       player.hearts > 0
         ? { hearts: player.hearts, energy: player.energy }
         : undefined;
-    return this.startTraining(identity, progress);
+    return this.startTraining(identity, progress, {
+      pinnedPlaylist: [lastDefinition],
+      releasePins: match.releasePins,
+      preservePinnedPlaylist: true,
+    });
+  }
+
+  /**
+   * Fresh training pack after completed/halted/round_result.
+   * Always reseats with INITIAL_HEARTS and a newly structured playlist.
+   */
+  async restartTraining(
+    matchId: string,
+    playerId: string,
+  ): Promise<SeatCredentials> {
+    const match = await this.requireMatch(matchId);
+    if (match.mode !== 'training') {
+      throw new DomainError('TRAINING_UNAVAILABLE', 'not a training match');
+    }
+    const player = match.players.get(playerId);
+    if (!player) {
+      throw new DomainError('NOT_IN_MATCH', 'player not in match');
+    }
+    if (
+      match.phase !== 'completed' &&
+      match.phase !== 'halted' &&
+      match.phase !== 'round_result'
+    ) {
+      throw new DomainError(
+        'TRAINING_UNAVAILABLE',
+        'training restart only after result',
+      );
+    }
+    const identity: PlayerIdentityInput = {
+      displayName: player.displayName ?? 'Trainee',
+      avatarColor: player.avatarColor ?? '#94A3B8',
+    };
+    return this.startTraining(identity);
+  }
+
+  /** Definition for the most recently introduced training challenge. */
+  private lastPlayedTrainingDefinition(
+    match: MatchState,
+  ): ChallengeDefinition | null {
+    if (match.roundNumber <= 0 || match.pinnedPlaylist.length === 0) {
+      return null;
+    }
+    const index = Math.min(
+      match.roundNumber - 1,
+      match.pinnedPlaylist.length - 1,
+    );
+    return match.pinnedPlaylist[index] ?? null;
   }
 
   /**

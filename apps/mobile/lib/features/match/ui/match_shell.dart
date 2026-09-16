@@ -133,6 +133,11 @@ class _MatchShellState extends State<MatchShell> {
                     widget.controller.retryTraining();
                   }
                 : null,
+            onFreshStart: state.mode == MatchMode.training
+                ? () {
+                    widget.controller.restartTraining();
+                  }
+                : null,
           );
         }
         return const Center(child: CircularProgressIndicator());
@@ -147,6 +152,11 @@ class _MatchShellState extends State<MatchShell> {
                   // Always training.retry — do not route through rematch
                   // (rematch rejects round_result and leaves the fail screen).
                   widget.controller.retryTraining();
+                }
+              : null,
+          onFreshStart: state.mode == MatchMode.training
+              ? () {
+                  widget.controller.restartTraining();
                 }
               : null,
         );

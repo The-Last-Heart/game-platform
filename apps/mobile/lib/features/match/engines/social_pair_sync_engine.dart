@@ -4,6 +4,7 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 
 import '../../../l10n/app_localization.dart';
+import '../../../l10n/localized_digits.dart';
 import '../../../l10n/translation_resolver.dart';
 import '../../../theme/lh_tokens.dart';
 import '../protocol/realtime_messages.dart';
@@ -31,7 +32,6 @@ class _PairSyncWidget extends StatefulWidget {
 
 class _PairSyncWidgetState extends State<_PairSyncWidget>
     with TickerProviderStateMixin {
-  static const int _deadlineSuccessBufferMs = 120;
   static const double _avatarSize = 64;
 
   bool _submitted = false;
@@ -39,6 +39,8 @@ class _PairSyncWidgetState extends State<_PairSyncWidget>
   Stopwatch? _holdWatch;
   Timer? _holdTimer;
   DateTime _lastProgressEmit = DateTime.fromMillisecondsSinceEpoch(0);
+  int _overlapMs = 0;
+  Stopwatch? _overlapWatch;
 
   late final AnimationController _glowPulse;
   late final AnimationController _wave;
@@ -79,14 +81,36 @@ class _PairSyncWidgetState extends State<_PairSyncWidget>
     return false;
   }
 
-  double get _syncWindowSec {
-    final num? ms = _cfg['syncWindowMs'] as num?;
-    return ((ms?.toDouble() ?? 500) / 1000.0);
+  /// Server-authored overlap time. Never fall back to round `durationMs`.
+  int get _togetherMs {
+    final Object? raw = _cfg['togetherMs'];
+    if (raw is! num) {
+      return 0;
+    }
+    final int ms = raw.round();
+    return ms < 1 ? 0 : ms;
+  }
+
+  int get _togetherSec {
+    final int sec = (_togetherMs / 1000).round();
+    return sec < 1 ? 1 : sec;
+  }
+
+  String _secondsLabel(TranslationResolver resolver) {
+    return formatLocalizedCount(
+      _togetherSec,
+      resolver.resolveLocaleMetadata().localeCode,
+    );
   }
 
   int get _heldMs => _holdWatch?.elapsedMilliseconds ?? 0;
 
-  bool get _waveActive => _holding || _partnerHolding;
+  int get _totalOverlapMs =>
+      _overlapMs + (_overlapWatch?.elapsedMilliseconds ?? 0);
+
+  /// The connector current is a remote cue: it follows the partner's press,
+  /// never the local seat's own tap.
+  bool get _waveActive => _partnerHolding;
 
   PlayerPublic? get _localPlayer {
     final String? id = widget.challengeContext.localPlayerId;
@@ -124,11 +148,14 @@ class _PairSyncWidgetState extends State<_PairSyncWidget>
   void didUpdateWidget(covariant _PairSyncWidget oldWidget) {
     super.didUpdateWidget(oldWidget);
     _syncWaveAnimation();
+    _syncOverlapClock();
+    _submitIfOverlapComplete();
   }
 
   @override
   void dispose() {
     _holdTimer?.cancel();
+    _overlapWatch?.stop();
     _glowPulse.dispose();
     _wave.dispose();
     super.dispose();
@@ -147,6 +174,25 @@ class _PairSyncWidgetState extends State<_PairSyncWidget>
     }
   }
 
+  void _syncOverlapClock() {
+    final bool bothPressing = _holding && _partnerHolding;
+    if (bothPressing) {
+      _overlapWatch ??= Stopwatch()..start();
+      return;
+    }
+    if (_overlapWatch != null) {
+      _overlapMs += _overlapWatch!.elapsedMilliseconds;
+      _overlapWatch!.stop();
+      _overlapWatch = null;
+    }
+  }
+
+  void _submitIfOverlapComplete() {
+    if (_submitted || _togetherMs <= 0) return;
+    if (_totalOverlapMs < _togetherMs) return;
+    _submitPress(heldMs: _heldMs);
+  }
+
   void _onPointerDown(PointerDownEvent event) {
     if (widget.challengeContext.isInteractionLocked || _submitted || _holding) {
       return;
@@ -154,20 +200,29 @@ class _PairSyncWidgetState extends State<_PairSyncWidget>
     setState(() => _holding = true);
     _holdWatch = Stopwatch()..start();
     unawaited(_glowPulse.repeat(reverse: true));
-    _syncWaveAnimation();
     _holdTimer?.cancel();
     _holdTimer = Timer.periodic(const Duration(milliseconds: 50), (_) {
       _onHoldTick();
     });
+    _syncOverlapClock();
     // Stamp press-start immediately so the server can compare arrivals.
     _emitProgress(heldMs: 0, holding: true, force: true);
+    _submitIfOverlapComplete();
   }
 
   void _onPointerUp() {
     if (!_holding || _submitted) return;
     final int heldMs = _heldMs;
     _endHoldAnimation();
-    _submitPress(heldMs: heldMs);
+    _syncOverlapClock();
+    if (_partnerPlayerId == null) {
+      _submitPress(heldMs: heldMs);
+      return;
+    }
+    // Accidental lift is progress, not a round-ending submit.
+    _emitProgress(heldMs: heldMs, holding: false, force: true);
+    _submitIfOverlapComplete();
+    if (mounted) setState(() {});
   }
 
   void _endHoldAnimation() {
@@ -177,38 +232,17 @@ class _PairSyncWidgetState extends State<_PairSyncWidget>
     _glowPulse.stop();
     _glowPulse.reset();
     _holding = false;
-    _syncWaveAnimation();
   }
 
   void _onHoldTick() {
     if (!_holding || _submitted) return;
 
     final int heldMs = _heldMs;
+    _syncOverlapClock();
+    _submitIfOverlapComplete();
+    if (_submitted) return;
 
-    // Interaction lock (ACK in flight / confirmed) must not count as a release
-    // while the player is still holding toward a valid sync.
     if (widget.challengeContext.isInteractionLocked) {
-      final int nowMs = widget.challengeContext.estimateServerNowMs();
-      if (nowMs > 0) {
-        final int remainingMs =
-            widget.challengeContext.challenge.deadlineAtMs - nowMs;
-        if (remainingMs < _deadlineSuccessBufferMs) {
-          _submitPress(heldMs: heldMs);
-        }
-      }
-      return;
-    }
-
-    final int nowMs = widget.challengeContext.estimateServerNowMs();
-    if (nowMs <= 0) {
-      _emitProgress(heldMs: heldMs, holding: true);
-      return;
-    }
-
-    final int remainingMs =
-        widget.challengeContext.challenge.deadlineAtMs - nowMs;
-    if (remainingMs < _deadlineSuccessBufferMs) {
-      _submitPress(heldMs: heldMs);
       return;
     }
 
@@ -258,21 +292,24 @@ class _PairSyncWidgetState extends State<_PairSyncWidget>
     }
 
     final String? partnerName = _partnerDisplayName;
+    final String seconds = _secondsLabel(resolver);
     final String prompt = partnerName == null
-        ? resolver.resolve('challenge.pair_sync.prompt')
+        ? resolver.resolve(
+            'challenge.pair_sync.prompt',
+            params: <String, String>{'seconds': seconds},
+          )
         : resolver.resolve(
             'challenge.pair_sync.prompt_with_partner',
-            params: <String, String>{'name': partnerName},
+            params: <String, String>{'name': partnerName, 'seconds': seconds},
           );
 
     final PlayerPublic? local = _localPlayer;
     final PlayerPublic? partner = _partnerPlayer;
-    final bool partnerReady =
-        _partnerHolding || partner?.submittedForCurrentChallenge == true;
-    final bool youReady = _holding || _submitted;
+    // Live press only — a finished submit must not freeze "جاهز" after untap.
+    final bool partnerReady = _partnerHolding;
+    final bool youReady = _holding;
     final bool interactionLocked =
         widget.challengeContext.isInteractionLocked || _submitted;
-    final bool bothHolding = _holding && _partnerHolding;
 
     return Center(
       child: Padding(
@@ -333,9 +370,7 @@ class _PairSyncWidgetState extends State<_PairSyncWidget>
                         return CustomPaint(
                           painter: PairSyncWavePainter(
                             progress: _wave.value,
-                            localHolding: _holding,
                             partnerHolding: _partnerHolding,
-                            bothHolding: bothHolding,
                           ),
                           child: child,
                         );
@@ -349,9 +384,7 @@ class _PairSyncWidgetState extends State<_PairSyncWidget>
                   color: _avatarColor(local),
                   status: youReady
                       ? resolver.resolve('challenge.pair_sync.status_ready')
-                      : resolver.resolve(
-                          'challenge.pair_sync.status_waiting_you',
-                        ),
+                      : resolver.resolve('challenge.pair_sync.status_waiting'),
                   statusReady: youReady,
                   size: _avatarSize,
                 ),
@@ -423,12 +456,8 @@ class _PairSyncWidgetState extends State<_PairSyncWidget>
             const SizedBox(height: 16),
             Text(
               resolver.resolve(
-                'challenge.pair_sync.allowed_delta',
-                params: <String, String>{
-                  'seconds': _syncWindowSec == 0.5
-                      ? resolver.resolve('challenge.pair_sync.half_second')
-                      : _syncWindowSec.toStringAsFixed(1),
-                },
+                'challenge.pair_sync.hint',
+                params: <String, String>{'seconds': seconds},
               ),
               style: Theme.of(
                 context,
@@ -560,20 +589,13 @@ class _AvatarChip extends StatelessWidget {
 }
 
 /// Electrical current along the pair connector; aligned to avatar centers.
+///
+/// Animation is a remote cue only: it runs while [partnerHolding] is true.
 class PairSyncWavePainter extends CustomPainter {
-  PairSyncWavePainter({
-    required this.progress,
-    required this.localHolding,
-    required this.partnerHolding,
-    required this.bothHolding,
-  });
+  PairSyncWavePainter({required this.progress, required this.partnerHolding});
 
   final double progress;
-  final bool localHolding;
   final bool partnerHolding;
-  final bool bothHolding;
-
-  bool get _active => localHolding || partnerHolding;
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -583,15 +605,15 @@ class PairSyncWavePainter extends CustomPainter {
     final Offset right = Offset(size.width, midY);
 
     final Paint base = Paint()
-      ..color = LhColors.success.withValues(alpha: _active ? 0.42 : 0.28)
+      ..color = LhColors.success.withValues(alpha: partnerHolding ? 0.42 : 0.28)
       ..strokeWidth = 2
       ..strokeCap = StrokeCap.round
       ..style = PaintingStyle.stroke;
     canvas.drawLine(left, right, base);
 
-    if (!_active) return;
+    if (!partnerHolding) return;
 
-    final double amp = bothHolding ? 7.5 : 4.2;
+    const double amp = 7.5;
     final double phase = progress * math.pi * 2;
     final Path wave = Path();
     const int samples = 56;
@@ -609,10 +631,8 @@ class PairSyncWavePainter extends CustomPainter {
     }
 
     final Paint glow = Paint()
-      ..color = const Color(
-        0xFF7CFFF8,
-      ).withValues(alpha: bothHolding ? 0.95 : 0.7)
-      ..strokeWidth = bothHolding ? 3.2 : 2.2
+      ..color = const Color(0xFF7CFFF8).withValues(alpha: 0.95)
+      ..strokeWidth = 3.2
       ..strokeCap = StrokeCap.round
       ..strokeJoin = StrokeJoin.round
       ..style = PaintingStyle.stroke
@@ -620,46 +640,32 @@ class PairSyncWavePainter extends CustomPainter {
     canvas.drawPath(wave, glow);
 
     final Paint core = Paint()
-      ..color = Colors.white.withValues(alpha: bothHolding ? 0.95 : 0.75)
-      ..strokeWidth = bothHolding ? 1.6 : 1.1
+      ..color = Colors.white.withValues(alpha: 0.95)
+      ..strokeWidth = 1.6
       ..strokeCap = StrokeCap.round
       ..strokeJoin = StrokeJoin.round
       ..style = PaintingStyle.stroke;
     canvas.drawPath(wave, core);
 
-    void paintSpark(double t, Color color) {
-      final double x = (t % 1.0) * size.width;
-      final double envelope = math.sin((t % 1.0) * math.pi);
-      final double y =
-          midY + math.sin((t % 1.0) * math.pi * 5 + phase) * amp * envelope;
-      final Offset p = Offset(x, y);
-      canvas.drawCircle(
-        p,
-        bothHolding ? 5.5 : 4,
-        Paint()
-          ..color = color.withValues(alpha: 0.35)
-          ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 6),
-      );
-      canvas.drawCircle(
-        p,
-        bothHolding ? 2.6 : 2,
-        Paint()..color = Colors.white,
-      );
-    }
-
-    if (localHolding) {
-      paintSpark(progress, const Color(0xFF3DF0FA));
-    }
-    if (partnerHolding) {
-      paintSpark(1 - progress, const Color(0xFF7CFFF8));
-    }
+    final double sparkT = progress % 1.0;
+    final double sparkX = sparkT * size.width;
+    final double sparkEnv = math.sin(sparkT * math.pi);
+    final double sparkY =
+        midY + math.sin(sparkT * math.pi * 5 + phase) * amp * sparkEnv;
+    final Offset spark = Offset(sparkX, sparkY);
+    canvas.drawCircle(
+      spark,
+      5.5,
+      Paint()
+        ..color = const Color(0xFF3DF0FA).withValues(alpha: 0.35)
+        ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 6),
+    );
+    canvas.drawCircle(spark, 2.6, Paint()..color = Colors.white);
   }
 
   @override
   bool shouldRepaint(covariant PairSyncWavePainter oldDelegate) {
     return oldDelegate.progress != progress ||
-        oldDelegate.localHolding != localHolding ||
-        oldDelegate.partnerHolding != partnerHolding ||
-        oldDelegate.bothHolding != bothHolding;
+        oldDelegate.partnerHolding != partnerHolding;
   }
 }

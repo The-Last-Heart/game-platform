@@ -14,6 +14,17 @@ import type {
 } from '../types';
 import { evaluateCableUntangleAnswer } from './cable-untangle';
 import { evaluateCircuit } from './circuit-rotation';
+import {
+  LogicCompleteSumEvaluator,
+  materializeCompleteSumRound,
+  LOGIC_COMPLETE_SUM_ENGINE_ID,
+} from './complete-sum-runtime';
+
+export {
+  LogicCompleteSumEvaluator,
+  materializeCompleteSumRound,
+  LOGIC_COMPLETE_SUM_ENGINE_ID,
+};
 
 function num(value: unknown, fallback = 0): number {
   return typeof value === 'number' && Number.isFinite(value) ? value : fallback;
@@ -448,6 +459,7 @@ export function createPack31Evaluators(): ChallengeEvaluator[] {
     new LogicBalanceScaleEvaluator(),
     new FocusStroopEvaluator(),
     new SearchSelectOccurrencesEvaluator(),
+    new LogicCompleteSumEvaluator(),
   ];
 }
 

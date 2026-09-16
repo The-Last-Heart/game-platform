@@ -20,17 +20,20 @@ function def(engineId: string): ChallengeDefinition {
 }
 
 describe('training-eligibility', () => {
-  it('treats pair sync as multi-seat only', () => {
+  it('treats pair sync and complete_sum as multi-seat', () => {
     expect(MULTI_SEAT_ENGINE_IDS.has('social.pair_sync')).toBe(true);
+    expect(MULTI_SEAT_ENGINE_IDS.has('logic.complete_sum')).toBe(true);
     expect(isSoloTrainingEngine('social.pair_sync')).toBe(false);
+    expect(isSoloTrainingEngine('logic.complete_sum')).toBe(false);
     expect(isSoloTrainingEngine('memory.sequence')).toBe(true);
     expect(isSoloTrainingEngine('hold.multitouch')).toBe(true);
   });
 
-  it('filters pair sync from training playlists but keeps live intact', () => {
+  it('filters multi-seat engines from training playlists but keeps live intact', () => {
     const playlist = [
       def('memory.sequence'),
       def('social.pair_sync'),
+      def('logic.complete_sum'),
       def('audio.cue'),
       def('motion.shake'),
     ];
@@ -40,6 +43,6 @@ describe('training-eligibility', () => {
       'audio.cue',
       'motion.shake',
     ]);
-    expect(filterPlaylistForMode(playlist, 'quick_survival')).toHaveLength(4);
+    expect(filterPlaylistForMode(playlist, 'quick_survival')).toHaveLength(5);
   });
 });

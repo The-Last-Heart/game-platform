@@ -363,6 +363,14 @@ class MatchSessionController {
   }
 
   Future<void> retryTraining() async {
+    await _reseatTraining(MessageTypes.trainingRetry);
+  }
+
+  Future<void> restartTraining() async {
+    await _reseatTraining(MessageTypes.trainingRestart);
+  }
+
+  Future<void> _reseatTraining(String messageType) async {
     final String? matchId = state.value.matchId;
     if (matchId == null) return;
 
@@ -390,7 +398,7 @@ class MatchSessionController {
       kind: _HandshakeKind.join,
       commandId: commandId,
     );
-    _sendCommandWithId(commandId, MessageTypes.trainingRetry, <String, dynamic>{
+    _sendCommandWithId(commandId, messageType, <String, dynamic>{
       'matchId': matchId,
     });
   }
@@ -1188,7 +1196,7 @@ class MatchSessionController {
 
       handshake.tokenPersisted = true;
 
-      // Rematch / training.retry seats a *new* matchId while the prior match
+      // Rematch / training.retry|restart seats a *new* matchId while the prior match
       // may already be at a high serverSequence. Reset sequence and leave the
       // prior phase (round_result / completed) so low-seq snapshots apply and
       // the failure/winner chrome does not stick.

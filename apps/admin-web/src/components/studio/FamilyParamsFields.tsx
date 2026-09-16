@@ -462,6 +462,20 @@ export function defaultClientConfig(
         ],
         targetValue: '8',
       };
+    case 'logic.complete_sum':
+      return {
+        categoryKey: 'challenge.category.logic',
+        titleKey: 'challenge.complete_sum.intro',
+        promptKey: 'challenge.complete_sum.prompt',
+        currentTotalKey: 'challenge.complete_sum.current_total',
+        chooseNumberKey: 'challenge.complete_sum.choose',
+        readyKey: 'challenge.complete_sum.ready',
+        thinkingKey: 'challenge.complete_sum.thinking',
+        youKey: 'challenge.complete_sum.you',
+        footerKey: 'challenge.complete_sum.footer',
+      };
+    default:
+      return {};
   }
 }
 
@@ -498,6 +512,7 @@ export function defaultServerConfig(
     case 'social.pair_sync':
       return {
         partnerRoleKeys: ['role.leader', 'role.follower'],
+        togetherMs: 5000,
         syncWindowMs: 2000,
       };
     case 'tactical.risk_choice':
@@ -661,6 +676,19 @@ export function defaultServerConfig(
         targetValue: '8',
         requiredIndices: [1, 7, 10],
       };
+    case 'logic.complete_sum':
+      return {
+        maxGenerationAttempts: 48,
+        generationRules: {
+          '2': { minValue: 0, maxValue: 8, choicesPerPlayer: 4 },
+          '3': { minValue: 0, maxValue: 6, choicesPerPlayer: 4 },
+          '4': { minValue: 0, maxValue: 5, choicesPerPlayer: 4 },
+          '5': { minValue: 0, maxValue: 4, choicesPerPlayer: 4 },
+          '6': { minValue: 0, maxValue: 3, choicesPerPlayer: 4 },
+        },
+      };
+    default:
+      return {};
   }
 }
 
@@ -1323,6 +1351,7 @@ function SocialPairSyncFields(props: FamilyParamsFieldsProps) {
     disabled,
   } = props;
   const partnerRoleKeys = (clientConfig.partnerRoleKeys as string[]) ?? [];
+  const togetherMs = (serverConfig.togetherMs as number) ?? 5000;
   const syncWindowMs = (serverConfig.syncWindowMs as number) ?? 2000;
 
   return (
@@ -1338,6 +1367,16 @@ function SocialPairSyncFields(props: FamilyParamsFieldsProps) {
           onServerChange({ ...serverConfig, partnerRoleKeys: keys });
         }}
         localize={(k) => L(locale, k)}
+        disabled={disabled}
+      />
+      <DurationSecondsField
+        id="fp-ps-togetherMs"
+        label={lbl(locale, 'fp.togetherMs')}
+        hint={lbl(locale, 'fp.togetherMsHint')}
+        valueMs={togetherMs}
+        onChangeMs={(ms) => onServerChange({ ...serverConfig, togetherMs: ms })}
+        minSec={1}
+        maxSec={15}
         disabled={disabled}
       />
       <DurationSecondsField

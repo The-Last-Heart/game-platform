@@ -603,7 +603,11 @@ void main() {
   });
 
   group('SocialPairSyncEngine', () {
-    PublicChallenge pairChallenge({bool partnerHolding = false}) {
+    PublicChallenge pairChallenge({
+      bool partnerHolding = false,
+      int togetherMs = 3000,
+      int durationMs = 8000,
+    }) {
       return PublicChallenge(
         challengeInstanceId: 'ch-pair',
         definitionId: 'social.pair_sync.dev',
@@ -618,11 +622,12 @@ void main() {
           'partnerDisplayName': 'Nour',
           'partnerHolding': partnerHolding,
           'syncWindowMs': 500,
+          'togetherMs': togetherMs,
         },
         serverNowMs: 1700000000000,
         startsAtMs: 1700000000000,
-        deadlineAtMs: 1700000005000,
-        durationMs: 5000,
+        deadlineAtMs: 1700000000000 + durationMs,
+        durationMs: durationMs,
         roundPhase: RoundPhase.answer,
       );
     }
@@ -661,6 +666,57 @@ void main() {
       );
     }
 
+    testWidgets(
+      'shows tap-together copy from togetherMs, not durationMs or sync window',
+      (WidgetTester tester) async {
+        final SocialPairSyncEngine engine = SocialPairSyncEngine();
+        final TranslationResolver resolver = TranslationResolver(
+          isProduction: false,
+        );
+        await tester.pumpWidget(
+          wrapWithL10n(
+            Builder(
+              builder: (BuildContext context) {
+                return engine.build(
+                  context,
+                  pairContext(
+                    challenge: pairChallenge(
+                      togetherMs: 3000,
+                      durationMs: 8000,
+                    ),
+                    onSubmit: (_) {},
+                  ),
+                );
+              },
+            ),
+          ),
+        );
+        await tester.pump();
+
+        expect(
+          find.text(
+            resolver.resolve(
+              'challenge.pair_sync.prompt_with_partner',
+              params: <String, String>{'name': 'Nour', 'seconds': '٣'},
+            ),
+          ),
+          findsOneWidget,
+        );
+        expect(
+          find.text(
+            resolver.resolve(
+              'challenge.pair_sync.hint',
+              params: <String, String>{'seconds': '٣'},
+            ),
+          ),
+          findsOneWidget,
+        );
+        expect(find.textContaining('٨'), findsNothing);
+        expect(find.textContaining('0.5'), findsNothing);
+        expect(find.textContaining('نصف ثانية'), findsNothing);
+      },
+    );
+
     testWidgets('centers the electrical connector on the avatars', (
       WidgetTester tester,
     ) async {
@@ -687,7 +743,7 @@ void main() {
       expect(waveSize.height, 64);
     });
 
-    testWidgets('press down stamps holding progress, release submits tap', (
+    testWidgets('press down stamps holding progress, release is not final', (
       WidgetTester tester,
     ) async {
       final List<Map<String, dynamic>> answers = <Map<String, dynamic>>[];
@@ -724,12 +780,160 @@ void main() {
       expect(answers.first['final'], isFalse);
       expect(answers.first['synced'], isTrue);
 
+      PairSyncWavePainter painter() {
+        final CustomPaint paint = tester.widget<CustomPaint>(
+          find.byWidgetPredicate(
+            (Widget w) => w is CustomPaint && w.painter is PairSyncWavePainter,
+          ),
+        );
+        return paint.painter! as PairSyncWavePainter;
+      }
+
+      // Local press must not start the electrical current on this seat.
+      expect(painter().partnerHolding, isFalse);
+
       await gesture.up();
       await tester.pump();
       expect(answers.last['holding'], isFalse);
-      expect(answers.last['final'], isTrue);
+      expect(answers.last['final'], isFalse);
       expect(answers.last['synced'], isTrue);
       expect(answers.last.containsKey('releasedEarly'), isFalse);
+
+      final TestGesture again = await tester.startGesture(
+        tester.getCenter(button),
+      );
+      await tester.pump();
+      expect(answers.last['holding'], isTrue);
+      expect(answers.last['final'], isFalse);
+      await again.up();
+      await tester.pump();
+      expect(answers.last['holding'], isFalse);
+      expect(answers.last['final'], isFalse);
+    });
+
+    testWidgets('wave follows partner holding, not the local press', (
+      WidgetTester tester,
+    ) async {
+      final SocialPairSyncEngine engine = SocialPairSyncEngine();
+      final TranslationResolver resolver = TranslationResolver(
+        isProduction: false,
+      );
+      bool partnerHolding = false;
+
+      await tester.pumpWidget(
+        wrapWithL10n(
+          StatefulBuilder(
+            builder: (BuildContext context, StateSetter setState) {
+              return Column(
+                children: <Widget>[
+                  Expanded(
+                    child: engine.build(
+                      context,
+                      pairContext(
+                        challenge: pairChallenge(
+                          partnerHolding: partnerHolding,
+                        ),
+                        onSubmit: (_) {},
+                      ),
+                    ),
+                  ),
+                  TextButton(
+                    onPressed: () => setState(() => partnerHolding = true),
+                    child: const Text('partner-down'),
+                  ),
+                  TextButton(
+                    onPressed: () => setState(() => partnerHolding = false),
+                    child: const Text('partner-up'),
+                  ),
+                ],
+              );
+            },
+          ),
+        ),
+      );
+      await tester.pump();
+
+      PairSyncWavePainter painter() {
+        final CustomPaint paint = tester.widget<CustomPaint>(
+          find.byWidgetPredicate(
+            (Widget w) => w is CustomPaint && w.painter is PairSyncWavePainter,
+          ),
+        );
+        return paint.painter! as PairSyncWavePainter;
+      }
+
+      expect(painter().partnerHolding, isFalse);
+      expect(
+        find.text(resolver.resolve('challenge.pair_sync.status_waiting')),
+        findsWidgets,
+      );
+      expect(
+        find.text(resolver.resolve('challenge.pair_sync.status_ready')),
+        findsNothing,
+      );
+
+      await tester.tap(find.text('partner-down'));
+      await tester.pump();
+      expect(painter().partnerHolding, isTrue);
+      expect(
+        find.text(resolver.resolve('challenge.pair_sync.status_ready')),
+        findsOneWidget,
+      );
+
+      await tester.tap(find.text('partner-up'));
+      await tester.pump();
+      expect(painter().partnerHolding, isFalse);
+      expect(
+        find.text(resolver.resolve('challenge.pair_sync.status_ready')),
+        findsNothing,
+      );
+      expect(
+        find.text(resolver.resolve('challenge.pair_sync.status_waiting')),
+        findsWidgets,
+      );
+    });
+
+    testWidgets('auto-submits after overlapping taps reach togetherMs', (
+      WidgetTester tester,
+    ) async {
+      final List<Map<String, dynamic>> answers = <Map<String, dynamic>>[];
+      final SocialPairSyncEngine engine = SocialPairSyncEngine();
+      final TranslationResolver resolver = TranslationResolver(
+        isProduction: false,
+      );
+
+      await tester.pumpWidget(
+        wrapWithL10n(
+          Builder(
+            builder: (BuildContext context) {
+              return engine.build(
+                context,
+                pairContext(
+                  challenge: pairChallenge(
+                    partnerHolding: true,
+                    togetherMs: 80,
+                  ),
+                  onSubmit: answers.add,
+                ),
+              );
+            },
+          ),
+        ),
+      );
+      await tester.pump();
+
+      final Finder button = find.text(
+        resolver.resolve('challenge.pair_sync.action'),
+      );
+      final TestGesture gesture = await tester.startGesture(
+        tester.getCenter(button),
+      );
+      await tester.pump();
+      expect(answers.first['final'], isFalse);
+
+      await tester.pump(const Duration(milliseconds: 160));
+      expect(answers.last['final'], isTrue);
+      await gesture.up();
     });
   });
 }

@@ -25,6 +25,7 @@ const FIXTURE_FILES = [
   'precision.circuit_rotation.v1.json',
   'precision.cable_untangle.v1.json',
   'logic.balance_scale.v1.json',
+  'logic.complete_sum.v1.json',
   'focus.stroop.v1.json',
   'search.select_occurrences.v1.json',
 ] as const;
@@ -51,6 +52,7 @@ const PLAYLIST_DEFINITION_IDS = [
   'precision.circuit_rotation.dev',
   'precision.cable_untangle.dev',
   'logic.balance_scale.dev',
+  'logic.complete_sum.dev',
   'focus.stroop.dev',
   'search.select_occurrences.dev',
 ] as const;

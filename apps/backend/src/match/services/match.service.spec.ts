@@ -663,8 +663,10 @@ describe('MatchService', () => {
     const store = service.getStoreForTests();
 
     let match = await store.get(started.matchId);
+    const firstDefinitionId = match!.pinnedPlaylist[0]!.definitionId;
     match!.phase = 'round_result';
     match!.status = 'waiting';
+    match!.roundNumber = 1;
     const player = match!.players.get(started.playerId)!;
     player.hearts = 2;
     player.energy = 1;
@@ -681,8 +683,11 @@ describe('MatchService', () => {
 
     await service.finalizeJoin(midRetry.matchId, midRetry.playerId);
     match = await store.get(midRetry.matchId);
+    expect(match!.pinnedPlaylist).toHaveLength(1);
+    expect(match!.pinnedPlaylist[0]!.definitionId).toBe(firstDefinitionId);
     match!.phase = 'round_result';
     match!.status = 'waiting';
+    match!.roundNumber = 1;
     const wiped = match!.players.get(midRetry.playerId)!;
     wiped.hearts = 0;
     wiped.energy = 4;
@@ -697,6 +702,47 @@ describe('MatchService', () => {
     expect(fresh.snapshot.players[0]?.hearts).toBe(3);
     expect(fresh.snapshot.players[0]?.energy).toBe(0);
     expect(fresh.snapshot.players[0]?.status).toBe('active');
+
+    await service.finalizeJoin(fresh.matchId, fresh.playerId);
+    const retriedMatch = await store.get(fresh.matchId);
+    expect(retriedMatch!.pinnedPlaylist).toHaveLength(1);
+    expect(retriedMatch!.pinnedPlaylist[0]!.definitionId).toBe(
+      firstDefinitionId,
+    );
+
+    service.onModuleDestroy();
+  });
+
+  it('training.restart opens a fresh full pack with full hearts', async () => {
+    const clock = new FakeClock(5_000_000);
+    const service = MatchService.forTests({ clock, nodeEnv: 'test' });
+    const started = await service.startTraining({
+      displayName: 'Trainee',
+      avatarColor: '#ABCDEF',
+    });
+    await service.finalizeJoin(started.matchId, started.playerId);
+    const store = service.getStoreForTests();
+
+    let match = await store.get(started.matchId);
+    match!.phase = 'round_result';
+    match!.status = 'waiting';
+    match!.roundNumber = 3;
+    const player = match!.players.get(started.playerId)!;
+    player.hearts = 1;
+    player.energy = 2;
+    await store.save(match!);
+
+    const restarted = await service.restartTraining(
+      started.matchId,
+      started.playerId,
+    );
+    expect(restarted.matchId).not.toBe(started.matchId);
+    expect(restarted.snapshot.players[0]?.hearts).toBe(3);
+    expect(restarted.snapshot.players[0]?.energy).toBe(0);
+
+    await service.finalizeJoin(restarted.matchId, restarted.playerId);
+    match = await store.get(restarted.matchId);
+    expect(match!.pinnedPlaylist.length).toBe(15);
 
     service.onModuleDestroy();
   });

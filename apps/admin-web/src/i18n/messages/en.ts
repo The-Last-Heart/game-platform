@@ -646,6 +646,7 @@ const en = {
   'studio.engine.circuit_rotation': 'Circuit Rotation',
   'studio.engine.cable_untangle': 'Cable Untangle',
   'studio.engine.balance_scale': 'Balance Scale',
+  'studio.engine.complete_sum': 'Complete the Sum',
   'studio.engine.stroop': 'Stroop',
   'studio.engine.select_occurrences': 'Select Occurrences',
 
@@ -685,7 +686,7 @@ const en = {
   'studio.field.fp.audioLead':
     'Players count audio pulses (with visual/haptic fallbacks).',
   'studio.field.fp.pairLead':
-    'Two players must act together inside the sync window.',
+    'Any two players in the room tap together for the configured time.',
   'studio.field.fp.riskLead':
     'Players pick safer vs riskier options. Higher weight = riskier outcome chance.',
   'studio.field.fp.copyKeysGroup': 'Player-facing copy keys (advanced)',
@@ -751,6 +752,9 @@ const en = {
   'studio.field.fp.pulseCountHint': 'How many beats players must count',
   'studio.field.fp.partnerRoleKeys': 'Partner roles',
   'studio.field.fp.partnerRoleKeysHint': 'Roles assigned to the two players',
+  'studio.field.fp.togetherMs': 'Tap-together time',
+  'studio.field.fp.togetherMsHint':
+    'How many seconds both players must tap at the same time',
   'studio.field.fp.syncWindowMs': 'Sync window',
   'studio.field.fp.syncWindowHint':
     'How closely both players must act together',

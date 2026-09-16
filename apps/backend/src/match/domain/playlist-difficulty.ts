@@ -38,6 +38,7 @@ export const DIFFICULTY_ENGINE_PRIORITY: Record<
     'precision.maze_path',
     'focus.stroop',
     'logic.balance_scale',
+    'logic.complete_sum',
     'social.pair_sync',
     'motion.shake',
   ],

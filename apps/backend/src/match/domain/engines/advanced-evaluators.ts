@@ -126,8 +126,8 @@ export class SocialPairSyncEvaluator implements ChallengeEvaluator {
       };
     }
 
-    // A press is any in-window submit. Short taps must be able to succeed —
-    // requiring a 75% hold made simultaneous taps look like "we always lose".
+    // A press is any in-window submit. Short taps must be able to succeed
+    // when the partner never arrives (fair continue).
     const selfPressed =
       input.answer['synced'] === true ||
       input.answer['holding'] === true ||
@@ -145,23 +145,18 @@ export class SocialPairSyncEvaluator implements ChallengeEvaluator {
       };
     }
 
-    const syncWindow = num(input.definition.serverConfig['syncWindowMs'], 500);
-    // Compare first-press arrival stamps (preserved on the submission), not
-    // finish stamps or client heldMs mixed with server time.
-    const selfStart = num(
-      input.answer['_selfReceivedMonoMs'],
-      input.receivedMonoMs,
-    );
-    const partnerStart = num(input.answer['_partnerReceivedMonoMs']);
-    const delta = Math.abs(selfStart - partnerStart);
-    if (delta > syncWindow) {
-      return { success: false, reasonKey: 'result.pair.out_of_sync' };
+    const togetherMs = num(input.definition.serverConfig['togetherMs'], 0);
+    const overlapMs = num(input.answer['_overlapMs'], 0);
+    // Win by overlapping taps for togetherMs. Accidental release pauses
+    // the overlap clock; it must not fail the pair by itself.
+    if (togetherMs > 0 && overlapMs >= togetherMs) {
+      return {
+        success: true,
+        reasonKey: 'result.success',
+        measureMs: Math.max(0, Math.floor(overlapMs)),
+      };
     }
-    return {
-      success: true,
-      reasonKey: 'result.success',
-      measureMs: Math.max(0, Math.floor(delta)),
-    };
+    return { success: false, reasonKey: 'result.pair.out_of_sync' };
   }
 }
 

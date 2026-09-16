@@ -158,6 +158,13 @@ export const STUDIO_ENGINE_REGISTRY: readonly StudioEngineRegistryEntry[] = [
     labelKey: 'engine.logic.balance_scale',
   },
   {
+    engineId: 'logic.complete_sum',
+    familyId: 'logic',
+    categoryId: 'logic.complete_sum',
+    runtimeReadiness: ENGINE_RUNTIME_READINESS['logic.complete_sum'],
+    labelKey: 'engine.logic.complete_sum',
+  },
+  {
     engineId: 'focus.stroop',
     familyId: 'focus',
     categoryId: 'focus.stroop',

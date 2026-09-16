@@ -529,10 +529,11 @@ void main() {
       );
     });
 
-    testWidgets('training mode shows retry and back home instead of auto-continue', (
+    testWidgets('training mode shows retry, fresh start, and back home', (
       WidgetTester tester,
     ) async {
       var retryPressed = false;
+      var freshPressed = false;
       var homePressed = false;
       const MatchViewState state = MatchViewState(
         playerId: 'p1',
@@ -560,6 +561,7 @@ void main() {
             state: state,
             estimateServerNowMs: () => 1_000_000,
             onRetry: () => retryPressed = true,
+            onFreshStart: () => freshPressed = true,
             onBackHome: () => homePressed = true,
           ),
         ),
@@ -575,6 +577,10 @@ void main() {
         findsOneWidget,
       );
       expect(
+        find.text(resolver.resolve(TranslationKeys.trainingRestart)),
+        findsOneWidget,
+      );
+      expect(
         find.text(resolver.resolve(TranslationKeys.winnerBackHome)),
         findsOneWidget,
       );
@@ -585,6 +591,15 @@ void main() {
       await tester.tap(find.text(resolver.resolve(TranslationKeys.trainingRetry)));
       await tester.pump();
       expect(retryPressed, isTrue);
+
+      await tester.ensureVisible(
+        find.text(resolver.resolve(TranslationKeys.trainingRestart)),
+      );
+      await tester.tap(
+        find.text(resolver.resolve(TranslationKeys.trainingRestart)),
+      );
+      await tester.pump();
+      expect(freshPressed, isTrue);
 
       await tester.ensureVisible(
         find.text(resolver.resolve(TranslationKeys.winnerBackHome)),

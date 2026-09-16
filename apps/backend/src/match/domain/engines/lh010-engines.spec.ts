@@ -63,10 +63,28 @@ describe('LH-010 engine extensions', () => {
         },
         {
           partnerRoleKeys: ['role.b', 'role.a'],
+          togetherMs: 4000,
           syncWindowMs: 3000,
         },
       );
       expect(result.engineId).toBe('social.pair_sync');
+    });
+
+    it('rejects social.pair_sync without togetherMs', () => {
+      expect(() =>
+        validateEngineConfigs(
+          'social.pair_sync',
+          {
+            categoryKey: 'cat.social',
+            promptKey: 'pair.prompt',
+            partnerRoleKeys: ['role.a', 'role.b'],
+          },
+          {
+            partnerRoleKeys: ['role.a', 'role.b'],
+            syncWindowMs: 3000,
+          },
+        ),
+      ).toThrow();
     });
 
     it('rejects social.pair_sync with mismatched partnerRoleKeys', () => {
@@ -80,6 +98,7 @@ describe('LH-010 engine extensions', () => {
           },
           {
             partnerRoleKeys: ['role.x'],
+            togetherMs: 4000,
             syncWindowMs: 3000,
           },
         ),
@@ -156,7 +175,9 @@ describe('LH-010 engine extensions', () => {
     });
 
     it('marks every registered engine as live', () => {
-      expect(Object.keys(ENGINE_RUNTIME_READINESS).length).toBeGreaterThanOrEqual(11);
+      expect(
+        Object.keys(ENGINE_RUNTIME_READINESS).length,
+      ).toBeGreaterThanOrEqual(11);
       expect(
         Object.values(ENGINE_RUNTIME_READINESS).every((v) => v === 'live'),
       ).toBe(true);

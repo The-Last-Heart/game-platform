@@ -1,0 +1,34 @@
+{
+  "definitionId": "logic.complete_sum.dev",
+  "definitionVersion": 1,
+  "engineId": "logic.complete_sum",
+  "durationMs": 15000,
+  "introDurationMs": 1200,
+  "resultHoldMs": 2000,
+  "heartPenaltyOnFailure": 1,
+  "energyRewardOnSuccess": 1,
+  "promptKey": "challenge.complete_sum.intro",
+  "choiceKeys": [],
+  "clientConfig": {
+    "categoryKey": "challenge.category.logic",
+    "titleKey": "challenge.complete_sum.intro",
+    "promptKey": "challenge.complete_sum.prompt",
+    "currentTotalKey": "challenge.complete_sum.current_total",
+    "chooseNumberKey": "challenge.complete_sum.choose",
+    "readyKey": "challenge.complete_sum.ready",
+    "thinkingKey": "challenge.complete_sum.thinking",
+    "youKey": "challenge.complete_sum.you",
+    "footerKey": "challenge.complete_sum.footer"
+  },
+  "serverConfig": {
+    "maxGenerationAttempts": 48,
+    "generationRules": {
+      "2": { "minValue": 0, "maxValue": 8, "choicesPerPlayer": 4 },
+      "3": { "minValue": 0, "maxValue": 6, "choicesPerPlayer": 4 },
+      "4": { "minValue": 0, "maxValue": 5, "choicesPerPlayer": 4 },
+      "5": { "minValue": 0, "maxValue": 4, "choicesPerPlayer": 4 },
+      "6": { "minValue": 0, "maxValue": 3, "choicesPerPlayer": 4 }
+    }
+  },
+  "difficulty": "hard"
+}
