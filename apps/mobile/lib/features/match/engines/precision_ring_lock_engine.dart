@@ -8,7 +8,6 @@ import 'package:flutter/services.dart';
 
 import '../../../l10n/app_localization.dart';
 import '../../../l10n/translation_resolver.dart';
-import '../../../theme/lh_tokens.dart';
 import 'challenge_engine.dart';
 
 /// Individual concentric ring timing challenge (`precision.ring_lock`).
@@ -407,22 +406,27 @@ class _RingLockWidgetState extends State<_RingLockWidget>
                   resolver.resolve(titleKey),
                   textAlign: TextAlign.center,
                   style: Theme.of(context).textTheme.headlineLarge?.copyWith(
-                        color: LhColors.success,
+                        color: const Color(0xFF7CF7FF),
                         fontWeight: FontWeight.w800,
-                        shadows: <Shadow>[
-                          Shadow(
-                            color: LhColors.success.withValues(alpha: 0.55),
-                            blurRadius: 18,
-                          ),
+                        fontSize: 30,
+                        height: 1.15,
+                        shadows: const <Shadow>[
+                          Shadow(color: Color(0xAA22E7F2), blurRadius: 8),
+                          Shadow(color: Color(0x8822E7F2), blurRadius: 22),
+                          Shadow(color: Color(0x5522E7F2), blurRadius: 40),
                         ],
                       ),
                 ),
-                const SizedBox(height: 4),
+                const SizedBox(height: 6),
                 Text(
                   resolver.resolve(promptKey),
                   textAlign: TextAlign.center,
                   style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                        color: LhColors.text,
+                        color: const Color(0xFFD7EEF5),
+                        fontWeight: FontWeight.w500,
+                        shadows: const <Shadow>[
+                          Shadow(color: Color(0x4422E7F2), blurRadius: 10),
+                        ],
                       ),
                 ),
               ],
@@ -539,6 +543,20 @@ class _RingLockWidgetState extends State<_RingLockWidget>
   }
 }
 
+// ---------------------------------------------------------------------------
+// Visual chrome — match reference: thick metallic segments, amber lock wedges,
+// chamber pillars, neon bloom, hexagonal lock button.
+// ---------------------------------------------------------------------------
+
+const Color _kCyan = Color(0xFF22E7F2);
+const Color _kCyanBright = Color(0xFF7CF7FF);
+const Color _kCyanDeep = Color(0xFF0A3A4A);
+const Color _kNavy = Color(0xFF071526);
+const Color _kNavyMid = Color(0xFF0D2740);
+const Color _kAmber = Color(0xFFFFC247);
+const Color _kAmberHot = Color(0xFFFFE08A);
+const Color _kFail = Color(0xFFFF6B4A);
+
 class _TimePanel extends StatelessWidget {
   const _TimePanel({
     required this.label,
@@ -562,7 +580,11 @@ class _TimePanel extends StatelessWidget {
               child: Text(
                 label,
                 style: Theme.of(context).textTheme.labelMedium?.copyWith(
-                      color: LhColors.success.withValues(alpha: 0.9),
+                      color: _kCyanBright.withValues(alpha: 0.95),
+                      fontWeight: FontWeight.w600,
+                      shadows: const <Shadow>[
+                        Shadow(color: Color(0x6622E7F2), blurRadius: 8),
+                      ],
                     ),
               ),
             ),
@@ -571,19 +593,22 @@ class _TimePanel extends StatelessWidget {
               child: Text(
                 timeLabel,
                 style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                      color: LhColors.success,
+                      color: _kCyanBright,
                       fontFeatures: const <ui.FontFeature>[
                         ui.FontFeature.tabularFigures(),
                       ],
-                      fontWeight: FontWeight.w700,
+                      fontWeight: FontWeight.w800,
+                      shadows: const <Shadow>[
+                        Shadow(color: Color(0x8822E7F2), blurRadius: 12),
+                      ],
                     ),
               ),
             ),
           ],
         ),
-        const SizedBox(height: 4),
+        const SizedBox(height: 6),
         SizedBox(
-          height: 10,
+          height: 12,
           width: double.infinity,
           child: CustomPaint(
             painter: _TimerBarPainter(progress: progress, shimmer: shimmer),
@@ -603,43 +628,46 @@ class _TimerBarPainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
     final RRect frame = RRect.fromRectAndRadius(
-      Offset.zero & size,
-      const Radius.circular(4),
+      Rect.fromLTWH(0, 1, size.width, size.height - 2),
+      const Radius.circular(3),
+    );
+    canvas.drawRRect(
+      frame.inflate(2),
+      Paint()
+        ..color = _kCyan.withValues(alpha: 0.22)
+        ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 6),
     );
     canvas.drawRRect(
       frame,
       Paint()
         ..style = PaintingStyle.stroke
-        ..strokeWidth = 1.2
-        ..color = LhColors.success.withValues(alpha: 0.55),
+        ..strokeWidth = 1.4
+        ..color = _kCyan.withValues(alpha: 0.7),
     );
-    final double fillW = size.width * progress.clamp(0.0, 1.0);
+    final double fillW = (size.width - 4) * progress.clamp(0.0, 1.0);
     if (fillW <= 0) return;
-    final Rect fill = Rect.fromLTWH(0, 1.5, fillW, size.height - 3);
+    final Rect fill = Rect.fromLTWH(2, 3, fillW, size.height - 6);
     canvas.drawRRect(
-      RRect.fromRectAndRadius(fill, const Radius.circular(3)),
+      RRect.fromRectAndRadius(fill, const Radius.circular(2)),
       Paint()
         ..shader = ui.Gradient.linear(
-          fill.topLeft,
-          fill.topRight,
-          <Color>[
-            const Color(0xFF0A3A4A),
-            LhColors.success,
-            const Color(0xFF7CF0FF),
-          ],
-          <double>[0, 0.55, 1],
+          fill.centerLeft,
+          fill.centerRight,
+          const <Color>[_kCyanDeep, _kCyan, _kCyanBright],
+          const <double>[0, 0.55, 1],
         ),
     );
-    final double hx = (fillW * shimmer).clamp(0.0, fillW);
+    final double hx = fill.left + fill.width * shimmer;
     canvas.drawRect(
-      Rect.fromLTWH(hx - 12, 1.5, 24, size.height - 3),
+      Rect.fromLTWH(hx - 16, fill.top, 32, fill.height),
       Paint()
+        ..blendMode = BlendMode.plus
         ..shader = ui.Gradient.linear(
-          Offset(hx - 12, 0),
-          Offset(hx + 12, 0),
+          Offset(hx - 16, 0),
+          Offset(hx + 16, 0),
           <Color>[
             Colors.transparent,
-            Colors.white.withValues(alpha: 0.35),
+            Colors.white.withValues(alpha: 0.45),
             Colors.transparent,
           ],
           const <double>[0, 0.5, 1],
@@ -682,59 +710,70 @@ class _StatusRow extends StatelessWidget {
             (result == 'timeout' || result == 'failed') &&
             i == activeIndex;
         final Color accent = locked
-            ? LhColors.success
+            ? _kCyan
             : failed
-                ? const Color(0xFFFF6B4A)
+                ? _kFail
                 : active
-                    ? LhColors.warning
-                    : LhColors.success.withValues(alpha: 0.7);
+                    ? _kAmber
+                    : _kCyan.withValues(alpha: 0.75);
         final String status = locked
             ? lockedLabels
             : failed
                 ? failedLabel
                 : rotatingLabel;
-        final IconData icon = locked
-            ? Icons.lock
-            : failed
-                ? Icons.lock_open
-                : Icons.sync;
         return Expanded(
           child: Semantics(
             label: '${labels[i]}, $status',
             child: Column(
               children: <Widget>[
-                Container(
-                  width: 42,
-                  height: 42,
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    color: accent.withValues(alpha: locked ? 0.22 : 0.1),
-                    border: Border.all(color: accent, width: 1.6),
-                    boxShadow: <BoxShadow>[
-                      BoxShadow(
-                        color: accent.withValues(alpha: 0.35),
-                        blurRadius: 10,
-                      ),
-                    ],
+                SizedBox(
+                  width: 52,
+                  height: 52,
+                  child: CustomPaint(
+                    painter: _StatusBadgePainter(
+                      accent: accent,
+                      locked: locked,
+                      active: active,
+                      failed: failed,
+                    ),
+                    child: Icon(
+                      locked
+                          ? Icons.lock_rounded
+                          : failed
+                              ? Icons.lock_open_rounded
+                              : Icons.sync_rounded,
+                      color: Colors.white,
+                      size: 22,
+                      shadows: <Shadow>[
+                        Shadow(color: accent.withValues(alpha: 0.9), blurRadius: 10),
+                      ],
+                    ),
                   ),
-                  child: Icon(icon, color: accent, size: 20),
                 ),
                 const SizedBox(height: 4),
                 Text(
                   labels[i],
                   textAlign: TextAlign.center,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
                   style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                        color: LhColors.text,
+                        color: const Color(0xFFE8F6FA),
                         fontSize: 11,
+                        fontWeight: FontWeight.w600,
                       ),
                 ),
                 Text(
                   status,
                   textAlign: TextAlign.center,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
                   style: Theme.of(context).textTheme.labelSmall?.copyWith(
                         color: accent,
                         fontSize: 11,
-                        fontWeight: FontWeight.w600,
+                        fontWeight: FontWeight.w700,
+                        shadows: <Shadow>[
+                          Shadow(color: accent.withValues(alpha: 0.55), blurRadius: 8),
+                        ],
                       ),
                 ),
               ],
@@ -743,6 +782,83 @@ class _StatusRow extends StatelessWidget {
         );
       }),
     );
+  }
+}
+
+class _StatusBadgePainter extends CustomPainter {
+  _StatusBadgePainter({
+    required this.accent,
+    required this.locked,
+    required this.active,
+    required this.failed,
+  });
+
+  final Color accent;
+  final bool locked;
+  final bool active;
+  final bool failed;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final Offset c = size.center(Offset.zero);
+    final double r = size.shortestSide * 0.46;
+    canvas.drawCircle(
+      c,
+      r + 4,
+      Paint()
+        ..color = accent.withValues(alpha: active || locked ? 0.4 : 0.2)
+        ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 10),
+    );
+    canvas.drawCircle(
+      c,
+      r,
+      Paint()
+        ..shader = ui.Gradient.radial(
+          c,
+          r,
+          <Color>[
+            accent.withValues(alpha: locked ? 0.45 : 0.18),
+            _kNavy.withValues(alpha: 0.92),
+          ],
+        ),
+    );
+    // Mini segmented ring.
+    const int segs = 12;
+    for (int s = 0; s < segs; s += 1) {
+      final double a0 = (s / segs) * math.pi * 2 - math.pi / 2;
+      final double sweep = (math.pi * 2 / segs) * 0.72;
+      final bool marker = s == 0;
+      final Color col = marker && !locked
+          ? (failed ? _kFail : _kAmber)
+          : accent.withValues(alpha: locked ? 0.95 : 0.7);
+      canvas.drawArc(
+        Rect.fromCircle(center: c, radius: r * 0.88),
+        a0,
+        sweep,
+        false,
+        Paint()
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = 3.2
+          ..strokeCap = StrokeCap.butt
+          ..color = col,
+      );
+    }
+    canvas.drawCircle(
+      c,
+      r,
+      Paint()
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 1.8
+        ..color = accent,
+    );
+  }
+
+  @override
+  bool shouldRepaint(covariant _StatusBadgePainter oldDelegate) {
+    return oldDelegate.accent != accent ||
+        oldDelegate.locked != locked ||
+        oldDelegate.active != active ||
+        oldDelegate.failed != failed;
   }
 }
 
@@ -765,12 +881,12 @@ class _LockButton extends StatelessWidget {
   Widget build(BuildContext context) {
     return SizedBox(
       width: double.infinity,
-      height: 54,
+      height: 56,
       child: Material(
         color: Colors.transparent,
         child: InkWell(
           onTap: enabled ? onPressed : null,
-          borderRadius: BorderRadius.circular(28),
+          customBorder: const _BevelButtonBorder(),
           child: CustomPaint(
             painter: _LockButtonPainter(
               enabled: enabled,
@@ -782,8 +898,13 @@ class _LockButton extends StatelessWidget {
                 label,
                 style: Theme.of(context).textTheme.titleLarge?.copyWith(
                       color: Colors.white,
-                      fontWeight: FontWeight.w800,
-                      letterSpacing: 1.2,
+                      fontWeight: FontWeight.w900,
+                      letterSpacing: 1.4,
+                      fontSize: 26,
+                      shadows: const <Shadow>[
+                        Shadow(color: Color(0xAA22E7F2), blurRadius: 12),
+                        Shadow(color: Color(0x66000000), blurRadius: 4),
+                      ],
                     ),
               ),
             ),
@@ -792,6 +913,41 @@ class _LockButton extends StatelessWidget {
       ),
     );
   }
+}
+
+class _BevelButtonBorder extends ShapeBorder {
+  const _BevelButtonBorder();
+
+  @override
+  EdgeInsetsGeometry get dimensions => EdgeInsets.zero;
+
+  @override
+  Path getInnerPath(Rect rect, {TextDirection? textDirection}) =>
+      _bevelPath(rect.deflate(2));
+
+  @override
+  Path getOuterPath(Rect rect, {TextDirection? textDirection}) =>
+      _bevelPath(rect);
+
+  @override
+  void paint(Canvas canvas, Rect rect, {TextDirection? textDirection}) {}
+
+  @override
+  ShapeBorder scale(double t) => this;
+}
+
+Path _bevelPath(Rect rect) {
+  final double cut = math.min(18, rect.height * 0.38);
+  return Path()
+    ..moveTo(rect.left + cut, rect.top)
+    ..lineTo(rect.right - cut, rect.top)
+    ..lineTo(rect.right, rect.top + cut)
+    ..lineTo(rect.right, rect.bottom - cut)
+    ..lineTo(rect.right - cut, rect.bottom)
+    ..lineTo(rect.left + cut, rect.bottom)
+    ..lineTo(rect.left, rect.bottom - cut)
+    ..lineTo(rect.left, rect.top + cut)
+    ..close();
 }
 
 class _LockButtonPainter extends CustomPainter {
@@ -807,56 +963,64 @@ class _LockButtonPainter extends CustomPainter {
 
   @override
   void paint(Canvas canvas, Size size) {
-    final RRect r = RRect.fromRectAndRadius(
-      Offset.zero & size,
-      const Radius.circular(28),
-    );
-    final Color edge = enabled
-        ? LhColors.success
-        : LhColors.success.withValues(alpha: 0.35);
-    canvas.drawRRect(
-      r.inflate(3),
+    final Rect rect = Offset.zero & size;
+    final Path path = _bevelPath(rect);
+    final Color edge = enabled ? _kCyanBright : _kCyan.withValues(alpha: 0.35);
+
+    canvas.drawPath(
+      path,
       Paint()
-        ..color = edge.withValues(alpha: 0.25)
-        ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 10),
+        ..color = edge.withValues(alpha: enabled ? 0.45 : 0.18)
+        ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 16),
     );
-    canvas.drawRRect(
-      r,
+    canvas.drawPath(
+      path,
       Paint()
         ..shader = ui.Gradient.linear(
-          const Offset(0, 0),
-          Offset(0, size.height),
+          rect.topCenter,
+          rect.bottomCenter,
           <Color>[
-            const Color(0xFF061018),
-            const Color(0xFF0A2A38),
-            LhColors.success.withValues(alpha: enabled ? 0.55 : 0.2),
+            const Color(0xFF051018),
+            const Color(0xFF0A2C3C),
+            _kCyan.withValues(alpha: enabled ? 0.65 : 0.22),
           ],
-          <double>[0, 0.45, 1],
+          const <double>[0, 0.42, 1],
         ),
     );
-    canvas.drawRRect(
-      r,
+    // Inner bevel highlight.
+    canvas.drawPath(
+      _bevelPath(rect.deflate(3)),
       Paint()
         ..style = PaintingStyle.stroke
-        ..strokeWidth = 2
+        ..strokeWidth = 1.2
+        ..color = Colors.white.withValues(alpha: enabled ? 0.28 : 0.1),
+    );
+    canvas.drawPath(
+      path,
+      Paint()
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 2.4
         ..color = edge,
     );
     final double sx = size.width * shimmer;
-    canvas.drawRRect(
-      r,
+    canvas.save();
+    canvas.clipPath(path);
+    canvas.drawRect(
+      rect,
       Paint()
         ..blendMode = BlendMode.plus
         ..shader = ui.Gradient.linear(
-          Offset(sx - 40, 0),
-          Offset(sx + 40, 0),
+          Offset(sx - 50, 0),
+          Offset(sx + 50, 0),
           <Color>[
             Colors.transparent,
-            Colors.white.withValues(alpha: pending ? 0.12 : 0.22),
+            Colors.white.withValues(alpha: pending ? 0.1 : 0.28),
             Colors.transparent,
           ],
           const <double>[0, 0.5, 1],
         ),
     );
+    canvas.restore();
   }
 
   @override
@@ -898,6 +1062,8 @@ class _RingLockPainter extends CustomPainter {
   final bool reduceMotion;
   final String result;
 
+  static const int _segments = 28;
+
   @override
   void paint(Canvas canvas, Size size) {
     final Offset c = size.center(Offset.zero);
@@ -907,404 +1073,535 @@ class _RingLockPainter extends CustomPainter {
     canvas.scale(scale);
     canvas.translate(-c.dx, -c.dy);
 
-    _paintBackground(canvas, size, c);
-    _paintSideFrames(canvas, size);
+    _paintChamber(canvas, size, c);
 
+    final double beamLen = size.shortestSide * 0.44;
     final double beamAlpha =
-        (0.55 + 0.25 * math.sin(tickMs / 420)) * entrance * (1 - timeout * 0.7);
-    _paintBeam(canvas, c, size.shortestSide * 0.42, beamAlpha);
+        (0.7 + 0.25 * math.sin(tickMs / 380)) * entrance * (1 - timeout * 0.75);
 
     final List<double> radii = <double>[
-      size.shortestSide * 0.42,
-      size.shortestSide * 0.31,
-      size.shortestSide * 0.20,
+      size.shortestSide * 0.435,
+      size.shortestSide * 0.325,
+      size.shortestSide * 0.215,
+    ];
+    final List<double> thicknesses = <double>[
+      size.shortestSide * 0.055,
+      size.shortestSide * 0.048,
+      size.shortestSide * 0.042,
     ];
 
-    for (int i = 0; i < rings.length && i < 3; i += 1) {
+    // Beam under rings so segments sit on top of it.
+    _paintBeam(canvas, c, beamLen, beamAlpha);
+
+    for (int i = rings.length - 1; i >= 0; i -= 1) {
+      if (i >= radii.length) continue;
       final _RingSpec ring = rings[i];
       final double angle = i < anglesDeg.length ? anglesDeg[i] : 0;
       final bool active = !ring.locked && i == activeIndex && result == 'active';
-      final double dim = ring.locked
-          ? 1.0
-          : active
+      final double dim = (ring.locked
               ? 1.0
-              : 0.72;
-      _paintRing(
+              : active
+                  ? 1.0
+                  : 0.78) *
+          (1 - timeout * 0.4);
+      _paintMetallicRing(
         canvas,
         c,
         radii[i],
+        thicknesses[i],
         angle,
         locked: ring.locked,
         active: active,
-        dim: dim * (1 - timeout * 0.35),
+        dim: dim,
         direction: ring.direction,
+        ringIndex: i,
       );
     }
 
-    _paintArrow(canvas, c, radii.first + 10, beamAlpha);
-    _paintHeart(canvas, c, size.shortestSide * 0.07);
-    if (!reduceMotion && success < 0.01 && timeout < 0.5) {
-      _paintParticles(canvas, c, size.shortestSide * 0.45);
+    _paintGateArrow(canvas, c, radii.first + thicknesses.first * 0.7, beamAlpha);
+    _paintHeart(canvas, c, size.shortestSide * 0.075);
+
+    if (!reduceMotion && success < 0.02 && timeout < 0.4) {
+      _paintRisingParticles(canvas, c, size.shortestSide * 0.48);
     }
     if (lockBurst > 0 && lockBurst < 1) {
       _paintLockBurst(canvas, c, radii[math.min(activeIndex, 2)]);
     }
     if (success > 0) {
-      _paintSuccess(canvas, c, size.shortestSide * 0.48);
+      _paintSuccess(canvas, c, size.shortestSide * 0.5);
     }
 
     canvas.restore();
   }
 
-  void _paintBackground(Canvas canvas, Size size, Offset c) {
+  void _paintChamber(Canvas canvas, Size size, Offset c) {
     final Rect rect = Offset.zero & size;
     canvas.drawRect(
       rect,
       Paint()
         ..shader = ui.Gradient.radial(
           c,
-          size.shortestSide * 0.65,
-          <Color>[
-            const Color(0xFF0A1C2E),
-            const Color(0xFF040B16),
-            const Color(0xFF02060E),
+          size.shortestSide * 0.72,
+          const <Color>[
+            Color(0xFF0B1E32),
+            Color(0xFF050E1A),
+            Color(0xFF02060D),
           ],
-          <double>[0, 0.55, 1],
+          const <double>[0, 0.55, 1],
         ),
     );
-    // Technical grid.
+
+    // Soft hex / tech grid.
     final Paint grid = Paint()
-      ..color = LhColors.success.withValues(alpha: 0.05 * entrance)
+      ..color = _kCyan.withValues(alpha: 0.045 * entrance)
       ..strokeWidth = 1;
-    const double step = 18;
+    const double step = 16;
     for (double x = 0; x < size.width; x += step) {
       canvas.drawLine(Offset(x, 0), Offset(x, size.height), grid);
     }
     for (double y = 0; y < size.height; y += step) {
       canvas.drawLine(Offset(0, y), Offset(size.width, y), grid);
     }
-    // Floor reflection disc.
+
+    // Side pillars with vertical neon strips.
+    _paintPillar(canvas, size, left: true);
+    _paintPillar(canvas, size, left: false);
+
+    // Floor reflection pool.
     canvas.drawOval(
       Rect.fromCenter(
-        center: Offset(c.dx, c.dy + size.shortestSide * 0.28),
-        width: size.shortestSide * 0.7,
-        height: size.shortestSide * 0.12,
+        center: Offset(c.dx, c.dy + size.shortestSide * 0.34),
+        width: size.shortestSide * 0.78,
+        height: size.shortestSide * 0.14,
       ),
       Paint()
         ..shader = ui.Gradient.radial(
-          Offset(c.dx, c.dy + size.shortestSide * 0.28),
-          size.shortestSide * 0.35,
+          Offset(c.dx, c.dy + size.shortestSide * 0.34),
+          size.shortestSide * 0.4,
           <Color>[
-            LhColors.success.withValues(alpha: 0.12 * entrance),
+            _kCyan.withValues(alpha: 0.16 * entrance),
             Colors.transparent,
           ],
         ),
     );
   }
 
-  void _paintSideFrames(Canvas canvas, Size size) {
-    final Paint glow = Paint()
-      ..color = LhColors.success.withValues(alpha: 0.35 * entrance)
-      ..strokeWidth = 2
-      ..style = PaintingStyle.stroke
-      ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 4);
-    final Path left = Path()
-      ..moveTo(10, 24)
-      ..lineTo(22, 40)
-      ..lineTo(22, size.height - 40)
-      ..lineTo(10, size.height - 24);
-    final Path right = Path()
-      ..moveTo(size.width - 10, 24)
-      ..lineTo(size.width - 22, 40)
-      ..lineTo(size.width - 22, size.height - 40)
-      ..lineTo(size.width - 10, size.height - 24);
-    canvas.drawPath(left, glow);
-    canvas.drawPath(right, glow);
+  void _paintPillar(Canvas canvas, Size size, {required bool left}) {
+    final double x = left ? 8.0 : size.width - 8.0;
+    final double inset = left ? 18.0 : size.width - 18.0;
+    final double pulse = reduceMotion
+        ? 1
+        : 0.75 + 0.25 * math.sin((tickMs / 500) + (left ? 0 : 1.4));
+
+    final Path frame = Path()
+      ..moveTo(x, 20)
+      ..lineTo(inset, 36)
+      ..lineTo(inset, size.height - 36)
+      ..lineTo(x, size.height - 20);
+
     canvas.drawPath(
-      left,
+      frame,
       Paint()
-        ..shader = ui.Gradient.linear(
-          const Offset(10, 0),
-          Offset(24, size.height),
-          <Color>[
-            const Color(0xFF1A3348),
-            LhColors.success.withValues(alpha: 0.5),
-            const Color(0xFF1A3348),
-          ],
-          const <double>[0, 0.5, 1],
-        )
-        ..style = PaintingStyle.stroke
-        ..strokeWidth = 3,
+        ..color = _kCyan.withValues(alpha: 0.28 * entrance * pulse)
+        ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 8),
     );
     canvas.drawPath(
-      right,
+      frame,
       Paint()
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 2.6
         ..shader = ui.Gradient.linear(
-          Offset(size.width - 10, 0),
-          Offset(size.width - 24, size.height),
+          Offset(x, 0),
+          Offset(inset, size.height),
           <Color>[
-            const Color(0xFF1A3348),
-            LhColors.success.withValues(alpha: 0.5),
-            const Color(0xFF1A3348),
+            _kNavyMid,
+            _kCyan.withValues(alpha: 0.85 * pulse),
+            _kNavyMid,
           ],
           const <double>[0, 0.5, 1],
-        )
-        ..style = PaintingStyle.stroke
-        ..strokeWidth = 3,
+        ),
+    );
+
+    // Vertical neon filament.
+    final double fx = left ? 14.0 : size.width - 14.0;
+    canvas.drawLine(
+      Offset(fx, 48),
+      Offset(fx, size.height - 48),
+      Paint()
+        ..color = _kCyan.withValues(alpha: 0.35 * entrance * pulse)
+        ..strokeWidth = 3
+        ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 6),
+    );
+    canvas.drawLine(
+      Offset(fx, 48),
+      Offset(fx, size.height - 48),
+      Paint()
+        ..color = _kCyanBright.withValues(alpha: 0.7 * entrance * pulse)
+        ..strokeWidth = 1.2,
     );
   }
 
   void _paintBeam(Canvas canvas, Offset c, double length, double alpha) {
     final double flicker = reduceMotion
         ? 1
-        : 0.85 + 0.15 * math.sin(tickMs / 180);
-    final Paint beam = Paint()
-      ..shader = ui.Gradient.linear(
-        Offset(c.dx, c.dy - length),
-        Offset(c.dx, c.dy),
-        <Color>[
-          LhColors.success.withValues(alpha: 0.05),
-          LhColors.success.withValues(alpha: 0.55 * alpha * flicker),
-          LhColors.success.withValues(alpha: 0.15 * alpha),
-        ],
-        const <double>[0, 0.55, 1],
-      )
-      ..strokeWidth = 3
-      ..strokeCap = StrokeCap.round;
+        : 0.88 + 0.12 * math.sin(tickMs / 160);
+    final Offset top = Offset(c.dx, c.dy - length);
     canvas.drawLine(
-      Offset(c.dx, c.dy - length),
-      Offset(c.dx, c.dy),
-      beam,
+      top,
+      c,
+      Paint()
+        ..color = _kCyan.withValues(alpha: 0.22 * alpha * flicker)
+        ..strokeWidth = 14
+        ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 12),
     );
     canvas.drawLine(
-      Offset(c.dx, c.dy - length),
-      Offset(c.dx, c.dy),
+      top,
+      c,
       Paint()
-        ..color = LhColors.success.withValues(alpha: 0.25 * alpha * flicker)
-        ..strokeWidth = 8
-        ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 8),
+        ..shader = ui.Gradient.linear(
+          top,
+          c,
+          <Color>[
+            _kCyanBright.withValues(alpha: 0.15 * alpha),
+            _kCyan.withValues(alpha: 0.85 * alpha * flicker),
+            _kCyan.withValues(alpha: 0.2 * alpha),
+          ],
+          const <double>[0, 0.35, 1],
+        )
+        ..strokeWidth = 3.2
+        ..strokeCap = StrokeCap.round,
     );
   }
 
-  void _paintArrow(Canvas canvas, Offset c, double y, double alpha) {
-    final double pulse = reduceMotion ? 1 : 0.75 + 0.25 * breathe;
+  void _paintGateArrow(Canvas canvas, Offset c, double y, double alpha) {
+    final double pulse = reduceMotion ? 1 : 0.72 + 0.28 * breathe;
     final Path tri = Path()
-      ..moveTo(c.dx, c.dy - y + 4)
-      ..lineTo(c.dx - 12, c.dy - y - 16)
-      ..lineTo(c.dx + 12, c.dy - y - 16)
+      ..moveTo(c.dx, c.dy - y + 2)
+      ..lineTo(c.dx - 14, c.dy - y - 18)
+      ..lineTo(c.dx + 14, c.dy - y - 18)
       ..close();
     canvas.drawPath(
       tri,
       Paint()
-        ..color = LhColors.success.withValues(alpha: 0.35 * alpha * pulse)
-        ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 10),
+        ..color = _kCyan.withValues(alpha: 0.45 * alpha * pulse)
+        ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 14),
     );
     canvas.drawPath(
       tri,
-      Paint()..color = LhColors.success.withValues(alpha: 0.95 * alpha * pulse),
+      Paint()
+        ..shader = ui.Gradient.linear(
+          Offset(c.dx, c.dy - y - 18),
+          Offset(c.dx, c.dy - y + 2),
+          <Color>[
+            _kCyanBright.withValues(alpha: alpha * pulse),
+            _kCyan.withValues(alpha: alpha * pulse),
+          ],
+        ),
     );
   }
 
-  void _paintRing(
+  void _paintMetallicRing(
     Canvas canvas,
     Offset c,
     double radius,
+    double thickness,
     double markerAngleDeg, {
     required bool locked,
     required bool active,
     required double dim,
     required int direction,
+    required int ringIndex,
   }) {
-    const int segments = 24;
-    final double stroke = radius * 0.11;
-    final double halo = active ? (0.55 + 0.25 * breathe) : 0.25;
+    final double rOuter = radius + thickness * 0.5;
+    final double rInner = radius - thickness * 0.5;
+    final double halo = active
+        ? (0.55 + 0.35 * breathe)
+        : locked
+            ? 0.5
+            : 0.22;
+
+    // Soft neon halo around the whole ring.
     canvas.drawCircle(
       c,
       radius,
       Paint()
         ..style = PaintingStyle.stroke
-        ..strokeWidth = stroke + 6
-        ..color = LhColors.success.withValues(alpha: 0.12 * dim * halo)
-        ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 8),
+        ..strokeWidth = thickness + 10
+        ..color = _kCyan.withValues(alpha: 0.14 * dim * halo)
+        ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 12),
     );
 
-    for (int s = 0; s < segments; s += 1) {
-      final double a0 = (s / segments) * math.pi * 2 - math.pi / 2;
-      final double a1 = ((s + 0.82) / segments) * math.pi * 2 - math.pi / 2;
-      final Path seg = Path()
-        ..addArc(
-          Rect.fromCircle(center: c, radius: radius),
-          a0,
-          a1 - a0,
+    // Rotate so segment 0 (lock marker) is centered on markerAngleDeg.
+    final double segSweep = (math.pi * 2) / _segments;
+    final double markerCenter =
+        _degToRad(markerAngleDeg) - math.pi / 2;
+    final double base = markerCenter - segSweep * 0.5;
+
+    for (int s = 0; s < _segments; s += 1) {
+      final double a0 = base + s * segSweep + 0.012;
+      final double a1 = base + (s + 1) * segSweep - 0.012;
+      final bool isMarker = s == 0;
+      final Path seg = _annularSegment(c, rOuter, rInner, a0, a1);
+
+      Color fillLow = _kNavy;
+      Color fillHigh = _kNavyMid;
+      Color edge = _kCyan.withValues(alpha: 0.75 * dim);
+      if (isMarker) {
+        if (locked) {
+          fillLow = const Color(0xFF0A4A55);
+          fillHigh = _kCyanBright;
+          edge = Colors.white.withValues(alpha: 0.95);
+        } else if (result == 'timeout' && active) {
+          fillLow = const Color(0xFF4A1810);
+          fillHigh = _kFail;
+          edge = _kFail;
+        } else {
+          fillLow = const Color(0xFF5A3A08);
+          fillHigh = _kAmberHot;
+          edge = _kAmberHot;
+        }
+      } else if (locked) {
+        fillLow = const Color(0xFF083040);
+        fillHigh = Color.lerp(_kNavyMid, _kCyan, 0.35)!;
+        edge = _kCyanBright.withValues(alpha: 0.9 * dim);
+      }
+
+      // Marker bloom.
+      if (isMarker) {
+        canvas.drawPath(
+          seg,
+          Paint()
+            ..color = (locked ? _kCyan : _kAmber).withValues(alpha: 0.45 * dim)
+            ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 10),
         );
-      final bool bright = ((s + (tickMs / 80).floor()) % 5) == 0;
+      }
+
       canvas.drawPath(
         seg,
         Paint()
-          ..style = PaintingStyle.stroke
-          ..strokeWidth = stroke
-          ..strokeCap = StrokeCap.butt
-          ..color = Color.lerp(
-            const Color(0xFF0B1E30),
-            LhColors.success,
-            (locked ? 0.55 : (bright ? 0.35 : 0.18)) * dim,
-          )!,
+          ..shader = ui.Gradient.radial(
+            c,
+            rOuter,
+            <Color>[
+              fillHigh.withValues(alpha: dim),
+              fillLow.withValues(alpha: dim),
+            ],
+            <double>[rInner / rOuter * 0.85, 1],
+          ),
       );
-      canvas.drawPath(
-        seg,
+
+      // Outer / inner edge highlights.
+      canvas.drawArc(
+        Rect.fromCircle(center: c, radius: rOuter - 0.6),
+        a0,
+        a1 - a0,
+        false,
         Paint()
           ..style = PaintingStyle.stroke
-          ..strokeWidth = 1.4
-          ..color = LhColors.success.withValues(alpha: 0.45 * dim),
+          ..strokeWidth = 1.6
+          ..color = edge,
       );
+      canvas.drawArc(
+        Rect.fromCircle(center: c, radius: rInner + 0.6),
+        a0,
+        a1 - a0,
+        false,
+        Paint()
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = 1.1
+          ..color = _kCyanBright.withValues(alpha: 0.35 * dim),
+      );
+
+      // Traveling light streak on non-marker segments.
+      if (!reduceMotion && !isMarker && ((s + tickMs ~/ 70 + ringIndex) % 7) == 0) {
+        canvas.drawPath(
+          seg,
+          Paint()
+            ..blendMode = BlendMode.plus
+            ..color = Colors.white.withValues(alpha: 0.12 * dim),
+        );
+      }
     }
 
-    // Specular highlight traveling around the ring.
-    if (!reduceMotion) {
-      final double spec = (tickMs / 14.0) * direction;
-      final double sa = _degToRad(spec) - math.pi / 2;
-      final Offset sp = Offset(
-        c.dx + math.cos(sa) * radius,
-        c.dy + math.sin(sa) * radius,
-      );
+    // Active ring breathing outline.
+    if (active) {
       canvas.drawCircle(
-        sp,
-        stroke * 0.55,
+        c,
+        radius,
         Paint()
-          ..color = Colors.white.withValues(alpha: 0.35 * dim)
-          ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 6),
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = thickness + 4
+          ..color = _kAmber.withValues(alpha: 0.18 + 0.12 * breathe)
+          ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 8),
       );
     }
 
-    // Lock marker.
-    final double markerRad = _degToRad(markerAngleDeg) - math.pi / 2;
-    final Offset mp = Offset(
-      c.dx + math.cos(markerRad) * radius,
-      c.dy + math.sin(markerRad) * radius,
+    // Direction curved arrow outside the ring.
+    _paintDirectionArrow(
+      canvas,
+      c,
+      rOuter + 10,
+      direction,
+      locked ? _kCyan : (active ? _kAmber : _kCyanBright),
+      dim,
     );
-    final Color markerColor = locked
-        ? Color.lerp(
-              Colors.white,
-              LhColors.success,
-              lockBurst > 0.2 ? 1 : 0.85,
-            )!
-        : (result == 'timeout' && active
-            ? const Color(0xFFFF6B4A)
-            : LhColors.warning);
-    canvas.drawCircle(
-      mp,
-      stroke * 0.72,
-      Paint()
-        ..color = markerColor.withValues(alpha: 0.45)
-        ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 8),
-    );
-    canvas.drawCircle(mp, stroke * 0.55, Paint()..color = markerColor);
-    canvas.drawCircle(
-      mp,
-      stroke * 0.55,
+  }
+
+  Path _annularSegment(
+    Offset c,
+    double rOuter,
+    double rInner,
+    double a0,
+    double a1,
+  ) {
+    final Path p = Path();
+    final Offset o0 = Offset(c.dx + math.cos(a0) * rOuter, c.dy + math.sin(a0) * rOuter);
+    final Offset i1 = Offset(c.dx + math.cos(a1) * rInner, c.dy + math.sin(a1) * rInner);
+    p.moveTo(o0.dx, o0.dy);
+    p.arcTo(Rect.fromCircle(center: c, radius: rOuter), a0, a1 - a0, false);
+    p.lineTo(i1.dx, i1.dy);
+    p.arcTo(Rect.fromCircle(center: c, radius: rInner), a1, -(a1 - a0), false);
+    p.close();
+    return p;
+  }
+
+  void _paintDirectionArrow(
+    Canvas canvas,
+    Offset c,
+    double radius,
+    int direction,
+    Color color,
+    double dim,
+  ) {
+    // Place curved arrow near ~2 o'clock for CW, ~10 o'clock for CCW.
+    final double mid = direction > 0 ? -0.35 : math.pi + 0.35;
+    final double a0 = mid - 0.28 * direction;
+    final double a1 = mid + 0.28 * direction;
+    final Path arc = Path()
+      ..addArc(Rect.fromCircle(center: c, radius: radius), a0, a1 - a0);
+    canvas.drawPath(
+      arc,
       Paint()
         ..style = PaintingStyle.stroke
-        ..strokeWidth = 1.5
-        ..color = Colors.white.withValues(alpha: 0.7),
+        ..strokeWidth = 2.2
+        ..strokeCap = StrokeCap.round
+        ..color = color.withValues(alpha: 0.85 * dim)
+        ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 3),
     );
-
-    // Direction chevron outside the ring.
-    final double dirAng = markerRad + direction * 0.55;
-    final Offset dp = Offset(
-      c.dx + math.cos(dirAng) * (radius + stroke * 0.95),
-      c.dy + math.sin(dirAng) * (radius + stroke * 0.95),
-    );
-    final Path chev = Path()
-      ..moveTo(dp.dx, dp.dy)
-      ..relativeLineTo(-6.0 * direction, -5)
-      ..relativeLineTo(0, 10)
-      ..close();
     canvas.drawPath(
-      chev,
+      arc,
       Paint()
-        ..color = (locked ? LhColors.success : markerColor)
-            .withValues(alpha: 0.85 * dim),
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 1.4
+        ..strokeCap = StrokeCap.round
+        ..color = color.withValues(alpha: 0.95 * dim),
     );
+    final Offset tip = Offset(
+      c.dx + math.cos(a1) * radius,
+      c.dy + math.sin(a1) * radius,
+    );
+    final double tang = a1 + (direction > 0 ? math.pi / 2 : -math.pi / 2);
+    final Path head = Path()
+      ..moveTo(tip.dx, tip.dy)
+      ..lineTo(
+        tip.dx + math.cos(tang + 2.5) * 7,
+        tip.dy + math.sin(tang + 2.5) * 7,
+      )
+      ..lineTo(
+        tip.dx + math.cos(tang - 2.5) * 7,
+        tip.dy + math.sin(tang - 2.5) * 7,
+      )
+      ..close();
+    canvas.drawPath(head, Paint()..color = color.withValues(alpha: 0.95 * dim));
   }
 
   void _paintHeart(Canvas canvas, Offset c, double r) {
     final double beat = reduceMotion
         ? 1
-        : 1 + 0.04 * math.sin(breathe * math.pi * 2) * (1 + lockedCount * 0.15);
+        : 1 +
+            0.05 *
+                math.sin(breathe * math.pi * 2) *
+                (1 + lockedCount * 0.2);
     final double fill = (lockedCount / 3.0).clamp(0.0, 1.0);
-    final double glow = (0.25 + fill * 0.55 + success * 0.4) * (1 - timeout);
+    final double glow =
+        (0.3 + fill * 0.55 + success * 0.45) * (1 - timeout);
     final Path heart = _heartPath(c, r * beat);
+
+    canvas.drawCircle(
+      c,
+      r * 1.55,
+      Paint()
+        ..color = _kCyan.withValues(alpha: 0.12 * glow)
+        ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 16),
+    );
     canvas.drawPath(
       heart,
       Paint()
-        ..color = LhColors.success.withValues(alpha: glow * 0.45)
-        ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 12),
+        ..color = _kCyan.withValues(alpha: glow * 0.5)
+        ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 14),
     );
     canvas.drawPath(
       heart,
       Paint()
         ..style = PaintingStyle.stroke
-        ..strokeWidth = 2.4
-        ..color = LhColors.success.withValues(
-          alpha: (0.45 + fill * 0.5) * (1 - timeout * 0.7),
+        ..strokeWidth = 2.6
+        ..color = _kCyanBright.withValues(
+          alpha: (0.55 + fill * 0.45) * (1 - timeout * 0.7),
         ),
     );
     if (fill > 0) {
       canvas.drawPath(
         heart,
-        Paint()
-          ..color = LhColors.success.withValues(alpha: 0.15 + fill * 0.55),
+        Paint()..color = _kCyan.withValues(alpha: 0.12 + fill * 0.55),
       );
     }
-    if (success > 0.2) {
+    if (success > 0.15) {
       canvas.drawPath(
         heart,
         Paint()
-          ..color = Colors.white.withValues(alpha: 0.25 * success)
-          ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 8),
+          ..color = Colors.white.withValues(alpha: 0.3 * success)
+          ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 10),
       );
     }
   }
 
   Path _heartPath(Offset c, double r) {
     final Path p = Path();
-    p.moveTo(c.dx, c.dy + r * 0.7);
+    p.moveTo(c.dx, c.dy + r * 0.72);
     p.cubicTo(
-      c.dx - r * 1.2,
-      c.dy + r * 0.1,
-      c.dx - r * 1.1,
-      c.dy - r * 0.8,
+      c.dx - r * 1.25,
+      c.dy + r * 0.12,
+      c.dx - r * 1.15,
+      c.dy - r * 0.85,
       c.dx,
-      c.dy - r * 0.35,
+      c.dy - r * 0.32,
     );
     p.cubicTo(
-      c.dx + r * 1.1,
-      c.dy - r * 0.8,
-      c.dx + r * 1.2,
-      c.dy + r * 0.1,
+      c.dx + r * 1.15,
+      c.dy - r * 0.85,
+      c.dx + r * 1.25,
+      c.dy + r * 0.12,
       c.dx,
-      c.dy + r * 0.7,
+      c.dy + r * 0.72,
     );
     p.close();
     return p;
   }
 
-  void _paintParticles(Canvas canvas, Offset c, double radius) {
-    final math.Random rng = math.Random(42);
-    for (int i = 0; i < 10; i += 1) {
-      final double base = rng.nextDouble() * math.pi * 2;
-      final double rise = ((tickMs / 40) + i * 37) % 120 / 120;
-      final double ang = base + rise * 0.4;
-      final double rad = radius * (0.55 + rise * 0.45);
+  void _paintRisingParticles(Canvas canvas, Offset c, double radius) {
+    for (int i = 0; i < 14; i += 1) {
+      final double seed = i * 1.7;
+      final double rise = ((tickMs / 35) + seed * 20) % 140 / 140;
+      final double ang = seed + rise * 0.55;
+      final double rad = radius * (0.5 + rise * 0.5);
       final Offset p = Offset(
-        c.dx + math.cos(ang) * rad,
-        c.dy + math.sin(ang) * rad - rise * 20,
+        c.dx + math.cos(ang) * rad * 0.35,
+        c.dy + math.sin(ang) * rad - rise * 28,
       );
       canvas.drawCircle(
         p,
-        1.4 + rng.nextDouble(),
-        Paint()
-          ..color = LhColors.success.withValues(alpha: 0.35 * (1 - rise)),
+        1.2 + (i % 3) * 0.5,
+        Paint()..color = _kCyanBright.withValues(alpha: 0.4 * (1 - rise)),
       );
     }
   }
@@ -1313,34 +1610,35 @@ class _RingLockPainter extends CustomPainter {
     final double t = lockBurst;
     canvas.drawCircle(
       c,
-      radius * (0.9 + t * 0.35),
+      radius * (0.85 + t * 0.45),
       Paint()
         ..style = PaintingStyle.stroke
-        ..strokeWidth = 3 * (1 - t)
-        ..color = LhColors.success.withValues(alpha: 0.55 * (1 - t)),
+        ..strokeWidth = 4 * (1 - t)
+        ..color = _kCyan.withValues(alpha: 0.6 * (1 - t)),
     );
     canvas.drawCircle(
       c,
-      radius * (0.7 + t * 0.5),
+      radius * (0.65 + t * 0.55),
       Paint()
         ..style = PaintingStyle.stroke
-        ..strokeWidth = 2 * (1 - t)
-        ..color = Colors.white.withValues(alpha: 0.35 * (1 - t)),
+        ..strokeWidth = 2.2 * (1 - t)
+        ..color = Colors.white.withValues(alpha: 0.4 * (1 - t)),
     );
   }
 
   void _paintSuccess(Canvas canvas, Offset c, double radius) {
     final double t = success;
-    for (int i = 0; i < 8; i += 1) {
-      final double a = (i / 8) * math.pi * 2 - math.pi / 2;
-      final double len = radius * (0.3 + 0.5 * t);
+    for (int i = 0; i < 10; i += 1) {
+      final double a = (i / 10) * math.pi * 2 - math.pi / 2;
+      final double len = radius * (0.25 + 0.55 * t);
       canvas.drawLine(
-        Offset(c.dx + math.cos(a) * 12, c.dy + math.sin(a) * 12),
+        Offset(c.dx + math.cos(a) * 14, c.dy + math.sin(a) * 14),
         Offset(c.dx + math.cos(a) * len, c.dy + math.sin(a) * len),
         Paint()
-          ..color = LhColors.success.withValues(alpha: 0.45 * (1 - t * 0.3))
-          ..strokeWidth = 2
-          ..strokeCap = StrokeCap.round,
+          ..color = _kCyanBright.withValues(alpha: 0.5 * (1 - t * 0.25))
+          ..strokeWidth = 2.2
+          ..strokeCap = StrokeCap.round
+          ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 3),
       );
     }
     if (!reduceMotion) {
@@ -1349,8 +1647,8 @@ class _RingLockPainter extends CustomPainter {
         radius * t,
         Paint()
           ..style = PaintingStyle.stroke
-          ..strokeWidth = 4 * (1 - t)
-          ..color = LhColors.success.withValues(alpha: 0.5 * (1 - t)),
+          ..strokeWidth = 5 * (1 - t)
+          ..color = _kCyan.withValues(alpha: 0.55 * (1 - t)),
       );
     }
   }
@@ -1395,6 +1693,5 @@ String _formatMmSs(int remainingMs) {
   final int s = totalSec % 60;
   final String mm = m.toString().padLeft(2, '0');
   final String ss = s.toString().padLeft(2, '0');
-  // Timer digits stay LTR regardless of Arabic UI.
   return '$mm:$ss';
 }

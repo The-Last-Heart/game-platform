@@ -372,6 +372,7 @@ describe('MatchService', () => {
       displayName: 'Host',
       avatarColor: '#112233',
       countryCode: 'SA',
+      playerId: 'install-test-player-01',
     });
     await service.finalizeJoin(room.matchId, room.playerId);
     const guest = await service.joinPrivateRoom({
@@ -379,6 +380,7 @@ describe('MatchService', () => {
       displayName: 'Guest',
       avatarColor: '#445566',
       countryCode: 'SA',
+      playerId: 'install-test-player-01',
     });
     await service.finalizeJoin(room.matchId, guest.playerId);
 
@@ -397,8 +399,8 @@ describe('MatchService', () => {
     const clock = new FakeClock(5_000_000);
     const service = MatchService.forTests({ clock, nodeEnv: 'test' });
     const created = await service.createQuickSurvivalMatch([
-      { displayName: 'Host', avatarColor: '#111111', countryCode: 'SA' },
-      { displayName: 'Guest', avatarColor: '#222222', countryCode: 'SA' },
+      { displayName: 'Host', avatarColor: '#111111', countryCode: 'SA' , playerId: 'install-test-player-01' },
+      { displayName: 'Guest', avatarColor: '#222222', countryCode: 'SA' , playerId: 'install-test-player-01' },
     ]);
     const guestId = created.assignments[1]!.playerId;
 
@@ -428,7 +430,7 @@ describe('MatchService', () => {
     const clock = new FakeClock(5_000_000);
     const service = MatchService.forTests({ clock, nodeEnv: 'test' });
     const created = await service.createQuickSurvivalMatch([
-      { displayName: 'SoloHost', avatarColor: '#111111', countryCode: 'SA' },
+      { displayName: 'SoloHost', avatarColor: '#111111', countryCode: 'SA' , playerId: 'install-test-player-01' },
     ]);
     clock.advance(60_000);
     expect(await service.findOpenQuickSurvivalLobby()).toBe(created.matchId);
@@ -439,7 +441,7 @@ describe('MatchService', () => {
     const clock = new FakeClock(5_000_000);
     const service = MatchService.forTests({ clock, nodeEnv: 'test' });
     const created = await service.createQuickSurvivalMatch([
-      { displayName: 'Host', avatarColor: '#111111', countryCode: 'SA' },
+      { displayName: 'Host', avatarColor: '#111111', countryCode: 'SA' , playerId: 'install-test-player-01' },
     ]);
     expect(created.snapshot.lobbyFillDeadlineAtMs).toBe(
       clock.nowMs() + 60_000,
@@ -454,8 +456,8 @@ describe('MatchService', () => {
     const clock = new FakeClock(5_000_000);
     const service = MatchService.forTests({ clock, nodeEnv: 'test' });
     const created = await service.createQuickSurvivalMatch([
-      { displayName: 'Host', avatarColor: '#111111', countryCode: 'SA' },
-      { displayName: 'Guest', avatarColor: '#222222', countryCode: 'SA' },
+      { displayName: 'Host', avatarColor: '#111111', countryCode: 'SA' , playerId: 'install-test-player-01' },
+      { displayName: 'Guest', avatarColor: '#222222', countryCode: 'SA' , playerId: 'install-test-player-01' },
     ]);
     const hostId = created.assignments[0]!.playerId;
     const guestId = created.assignments[1]!.playerId;
@@ -483,15 +485,15 @@ describe('MatchService', () => {
     const clock = new FakeClock(5_000_000);
     const service = MatchService.forTests({ clock, nodeEnv: 'test' });
     const solo = await service.createQuickSurvivalMatch([
-      { displayName: 'Alone', avatarColor: '#111111', countryCode: 'SA' },
+      { displayName: 'Alone', avatarColor: '#111111', countryCode: 'SA' , playerId: 'install-test-player-01' },
     ]);
     await expect(
       service.startLobbyNow(solo.matchId, solo.assignments[0]!.playerId),
     ).rejects.toMatchObject({ code: 'NOT_ENOUGH_PLAYERS' });
 
     const created = await service.createQuickSurvivalMatch([
-      { displayName: 'Host', avatarColor: '#111111', countryCode: 'SA' },
-      { displayName: 'Guest', avatarColor: '#222222', countryCode: 'SA' },
+      { displayName: 'Host', avatarColor: '#111111', countryCode: 'SA' , playerId: 'install-test-player-01' },
+      { displayName: 'Guest', avatarColor: '#222222', countryCode: 'SA' , playerId: 'install-test-player-01' },
     ]);
     const hostId = created.assignments[0]!.playerId;
     const guestId = created.assignments[1]!.playerId;
@@ -511,9 +513,9 @@ describe('MatchService', () => {
     const clock = new FakeClock(5_000_000);
     const service = MatchService.forTests({ clock, nodeEnv: 'test' });
     const created = await service.createQuickSurvivalMatch([
-      { displayName: 'Host', avatarColor: '#111111', countryCode: 'SA' },
-      { displayName: 'Guest', avatarColor: '#222222', countryCode: 'SA' },
-      { displayName: 'Third', avatarColor: '#333333', countryCode: 'SA' },
+      { displayName: 'Host', avatarColor: '#111111', countryCode: 'SA' , playerId: 'install-test-player-01' },
+      { displayName: 'Guest', avatarColor: '#222222', countryCode: 'SA' , playerId: 'install-test-player-01' },
+      { displayName: 'Third', avatarColor: '#333333', countryCode: 'SA' , playerId: 'install-test-player-01' },
     ]);
     for (const a of created.assignments) {
       await service.finalizeJoin(created.matchId, a.playerId);
@@ -543,9 +545,10 @@ describe('MatchService', () => {
     const clock = new FakeClock(5_000_000);
     const service = MatchService.forTests({ clock, nodeEnv: 'test' });
     const seats = Array.from({ length: 6 }, (_, i) => ({
-      displayName: `P${i}`,
+      displayName: `N${String.fromCharCode(97 + (i % 26))}${String.fromCharCode(97 + (Math.floor(i / 26) % 26))}${String.fromCharCode(97 + Math.floor(i / 676))}`,
       avatarColor: '#112233',
       countryCode: 'SA',
+      playerId: 'install-test-player-01',
     }));
     const created = await service.createQuickSurvivalMatch(seats);
     for (const a of created.assignments) {
@@ -566,8 +569,8 @@ describe('MatchService', () => {
     const clock = new FakeClock(5_000_000);
     const service = MatchService.forTests({ clock, nodeEnv: 'test' });
     const created = await service.createQuickSurvivalMatch([
-      { displayName: 'Host', avatarColor: '#111111', countryCode: 'SA' },
-      { displayName: 'Guest', avatarColor: '#222222', countryCode: 'SA' },
+      { displayName: 'Host', avatarColor: '#111111', countryCode: 'SA' , playerId: 'install-test-player-01' },
+      { displayName: 'Guest', avatarColor: '#222222', countryCode: 'SA' , playerId: 'install-test-player-01' },
     ]);
     const hostId = created.assignments[0]!.playerId;
     const guestId = created.assignments[1]!.playerId;
@@ -585,6 +588,7 @@ describe('MatchService', () => {
         displayName: 'Guest',
         avatarColor: '#445566',
         countryCode: 'SA',
+      playerId: 'install-test-player-01',
       }),
     ).rejects.toMatchObject({ code: 'ROOM_CODE_INVALID' });
     service.onModuleDestroy();
@@ -597,6 +601,7 @@ describe('MatchService', () => {
       displayName: 'وجدي',
       avatarColor: '#111111',
       countryCode: 'SA',
+      playerId: 'install-test-player-01',
     });
     await expect(
       service.joinPrivateRoom({
@@ -604,6 +609,7 @@ describe('MatchService', () => {
         displayName: 'وجدي',
         avatarColor: '#222222',
         countryCode: 'SA',
+      playerId: 'install-test-player-01',
       }),
     ).rejects.toMatchObject({ code: 'DISPLAY_NAME_TAKEN' });
     service.onModuleDestroy();
@@ -616,6 +622,7 @@ describe('MatchService', () => {
       displayName: 'Host',
       avatarColor: '#111111',
       countryCode: 'SA',
+      playerId: 'install-test-player-01',
     });
     await service.finalizeJoin(host.matchId, host.playerId);
 
@@ -623,9 +630,10 @@ describe('MatchService', () => {
     for (let i = 1; i < 6; i += 1) {
       const joined = await service.joinPrivateRoom({
         roomCode: host.roomCode,
-        displayName: `P${i}`,
+        displayName: `N${String.fromCharCode(97 + (i % 26))}${String.fromCharCode(97 + (Math.floor(i / 26) % 26))}${String.fromCharCode(97 + Math.floor(i / 676))}`,
         avatarColor: '#222222',
         countryCode: 'SA',
+      playerId: 'install-test-player-01',
       });
       await service.finalizeJoin(host.matchId, joined.playerId);
       seats.push(joined);
@@ -661,6 +669,7 @@ describe('MatchService', () => {
       displayName: 'Trainee',
       avatarColor: '#ABCDEF',
       countryCode: 'SA',
+      playerId: 'install-test-player-01',
     });
     expect(started.snapshot.mode).toBe('training');
     expect(started.snapshot.players).toHaveLength(1);
@@ -685,6 +694,7 @@ describe('MatchService', () => {
       displayName: 'Trainee',
       avatarColor: '#ABCDEF',
       countryCode: 'SA',
+      playerId: 'install-test-player-01',
     });
     await service.finalizeJoin(started.matchId, started.playerId);
     const store = service.getStoreForTests();
@@ -747,6 +757,7 @@ describe('MatchService', () => {
       displayName: 'Trainee',
       avatarColor: '#ABCDEF',
       countryCode: 'SA',
+      playerId: 'install-test-player-01',
     });
     await service.finalizeJoin(started.matchId, started.playerId);
     const store = service.getStoreForTests();
@@ -782,6 +793,7 @@ describe('MatchService', () => {
       displayName: 'Trainee',
       avatarColor: '#ABCDEF',
       countryCode: 'SA',
+      playerId: 'install-test-player-01',
     });
     await service.finalizeJoin(started.matchId, started.playerId);
     const store = service.getStoreForTests();
@@ -804,8 +816,8 @@ describe('MatchService', () => {
     const clock = new FakeClock(5_000_000);
     const service = MatchService.forTests({ clock, nodeEnv: 'test' });
     const created = await service.createQuickSurvivalMatch([
-      { displayName: 'Host', avatarColor: '#111111', countryCode: 'SA' },
-      { displayName: 'Guest', avatarColor: '#222222', countryCode: 'SA' },
+      { displayName: 'Host', avatarColor: '#111111', countryCode: 'SA' , playerId: 'install-test-player-01' },
+      { displayName: 'Guest', avatarColor: '#222222', countryCode: 'SA' , playerId: 'install-test-player-01' },
     ]);
     const a = created.assignments[0]!;
     const b = created.assignments[1]!;
@@ -862,8 +874,8 @@ describe('MatchService', () => {
     const clock = new FakeClock(5_000_000);
     const service = MatchService.forTests({ clock, nodeEnv: 'test' });
     const created = await service.createQuickSurvivalMatch([
-      { displayName: 'Wajdi', avatarColor: '#111111', countryCode: 'SA' },
-      { displayName: 'Mahmoud', avatarColor: '#222222', countryCode: 'SA' },
+      { displayName: 'Wajdi', avatarColor: '#111111', countryCode: 'SA' , playerId: 'install-test-player-01' },
+      { displayName: 'Mahmoud', avatarColor: '#222222', countryCode: 'SA' , playerId: 'install-test-player-01' },
     ]);
     const a = created.assignments[0]!;
     const b = created.assignments[1]!;
@@ -903,8 +915,8 @@ describe('MatchService', () => {
     const clock = new FakeClock(5_000_000);
     const service = MatchService.forTests({ clock, nodeEnv: 'test' });
     const created = await service.createQuickSurvivalMatch([
-      { displayName: 'A', avatarColor: '#111111', countryCode: 'SA' },
-      { displayName: 'B', avatarColor: '#222222', countryCode: 'SA' },
+      { displayName: 'Ace', avatarColor: '#111111', countryCode: 'SA' , playerId: 'install-test-player-01' },
+      { displayName: 'Bea', avatarColor: '#222222', countryCode: 'SA' , playerId: 'install-test-player-01' },
     ]);
     const a = created.assignments[0]!;
     const b = created.assignments[1]!;
@@ -934,8 +946,8 @@ describe('MatchService', () => {
     const clock = new FakeClock(5_000_000);
     const service = MatchService.forTests({ clock, nodeEnv: 'test' });
     const created = await service.createQuickSurvivalMatch([
-      { displayName: 'A', avatarColor: '#111111', countryCode: 'SA' },
-      { displayName: 'B', avatarColor: '#222222', countryCode: 'SA' },
+      { displayName: 'Ace', avatarColor: '#111111', countryCode: 'SA' , playerId: 'install-test-player-01' },
+      { displayName: 'Bea', avatarColor: '#222222', countryCode: 'SA' , playerId: 'install-test-player-01' },
     ]);
     const a = created.assignments[0]!;
     const b = created.assignments[1]!;
@@ -976,6 +988,7 @@ describe('MatchService', () => {
       displayName: 'Human',
       avatarColor: '#010101',
       countryCode: 'SA',
+      playerId: 'install-test-player-01',
     });
     await service.finalizeJoin(matchId, human.playerId);
     const filled = await service.fillDevBots(matchId);
@@ -994,6 +1007,7 @@ describe('MatchService', () => {
       displayName: 'Queued',
       avatarColor: '#123456',
       countryCode: 'SA',
+      playerId: 'install-test-player-01',
     });
     expect(queued.state).toBe('assigned');
     expect(mm.getTicket(queued.ticketId)).toBeTruthy();
@@ -1007,6 +1021,7 @@ describe('MatchService', () => {
       displayName: 'Queued',
       avatarColor: '#123456',
       countryCode: 'SA',
+      playerId: 'install-test-player-01',
     });
     expect(again.state).toBe('assigned');
 
@@ -1018,8 +1033,8 @@ describe('MatchService', () => {
     const clock = new FakeClock(5_000_000);
     const service = MatchService.forTests({ clock, nodeEnv: 'test' });
     const created = await service.createQuickSurvivalMatch([
-      { displayName: 'Host', avatarColor: '#111111', countryCode: 'SA' },
-      { displayName: 'Guest', avatarColor: '#222222', countryCode: 'SA' },
+      { displayName: 'Host', avatarColor: '#111111', countryCode: 'SA' , playerId: 'install-test-player-01' },
+      { displayName: 'Guest', avatarColor: '#222222', countryCode: 'SA' , playerId: 'install-test-player-01' },
     ]);
     const hostId = created.assignments[0]!.playerId;
     const guestId = created.assignments[1]!.playerId;
@@ -1067,6 +1082,7 @@ describe('MatchService', () => {
       displayName: 'Trainee',
       avatarColor: '#ABCDEF',
       countryCode: 'SA',
+      playerId: 'install-test-player-01',
     });
     await service.finalizeJoin(started.matchId, started.playerId);
     const store = service.getStoreForTests();
@@ -1131,8 +1147,8 @@ describe('MatchService', () => {
     const clock = new FakeClock(5_000_000);
     const service = MatchService.forTests({ clock, nodeEnv: 'test' });
     const created = await service.createQuickSurvivalMatch([
-      { displayName: 'Host', avatarColor: '#111111', countryCode: 'SA' },
-      { displayName: 'Guest', avatarColor: '#222222', countryCode: 'SA' },
+      { displayName: 'Host', avatarColor: '#111111', countryCode: 'SA' , playerId: 'install-test-player-01' },
+      { displayName: 'Guest', avatarColor: '#222222', countryCode: 'SA' , playerId: 'install-test-player-01' },
     ]);
     const hostId = created.assignments[0]!.playerId;
     const guestId = created.assignments[1]!.playerId;
@@ -1166,8 +1182,8 @@ describe('MatchService', () => {
     const clock = new FakeClock(5_000_000);
     const service = MatchService.forTests({ clock, nodeEnv: 'test' });
     const created = await service.createQuickSurvivalMatch([
-      { displayName: 'Host', avatarColor: '#111111', countryCode: 'SA' },
-      { displayName: 'Guest', avatarColor: '#222222', countryCode: 'SA' },
+      { displayName: 'Host', avatarColor: '#111111', countryCode: 'SA' , playerId: 'install-test-player-01' },
+      { displayName: 'Guest', avatarColor: '#222222', countryCode: 'SA' , playerId: 'install-test-player-01' },
     ]);
     const hostId = created.assignments[0]!.playerId;
     const guestId = created.assignments[1]!.playerId;
@@ -1205,8 +1221,8 @@ describe('MatchService', () => {
     const clock = new FakeClock(5_000_000);
     const service = MatchService.forTests({ clock, nodeEnv: 'test' });
     const created = await service.createQuickSurvivalMatch([
-      { displayName: 'Host', avatarColor: '#111111', countryCode: 'SA' },
-      { displayName: 'Guest', avatarColor: '#222222', countryCode: 'SA' },
+      { displayName: 'Host', avatarColor: '#111111', countryCode: 'SA' , playerId: 'install-test-player-01' },
+      { displayName: 'Guest', avatarColor: '#222222', countryCode: 'SA' , playerId: 'install-test-player-01' },
     ]);
     const hostId = created.assignments[0]!.playerId;
     const guestId = created.assignments[1]!.playerId;
@@ -1239,8 +1255,8 @@ describe('MatchService', () => {
     const clock = new FakeClock(5_000_000);
     const service = MatchService.forTests({ clock, nodeEnv: 'test' });
     const created = await service.createQuickSurvivalMatch([
-      { displayName: 'Host', avatarColor: '#111111', countryCode: 'SA' },
-      { displayName: 'Guest', avatarColor: '#222222', countryCode: 'SA' },
+      { displayName: 'Host', avatarColor: '#111111', countryCode: 'SA' , playerId: 'install-test-player-01' },
+      { displayName: 'Guest', avatarColor: '#222222', countryCode: 'SA' , playerId: 'install-test-player-01' },
     ]);
     const guestId = created.assignments[1]!.playerId;
     const guestToken = created.assignments[1]!.resumeToken;
@@ -1275,8 +1291,8 @@ describe('MatchService', () => {
     const clock = new FakeClock(5_000_000);
     const service = MatchService.forTests({ clock, nodeEnv: 'test' });
     const created = await service.createQuickSurvivalMatch([
-      { displayName: 'Host', avatarColor: '#111111', countryCode: 'SA' },
-      { displayName: 'Guest', avatarColor: '#222222', countryCode: 'SA' },
+      { displayName: 'Host', avatarColor: '#111111', countryCode: 'SA' , playerId: 'install-test-player-01' },
+      { displayName: 'Guest', avatarColor: '#222222', countryCode: 'SA' , playerId: 'install-test-player-01' },
     ]);
     const hostId = created.assignments[0]!.playerId;
     const guestId = created.assignments[1]!.playerId;
@@ -1310,8 +1326,8 @@ describe('MatchService', () => {
     const clock = new FakeClock(5_000_000);
     const service = MatchService.forTests({ clock, nodeEnv: 'test' });
     const created = await service.createQuickSurvivalMatch([
-      { displayName: 'Host', avatarColor: '#111111', countryCode: 'SA' },
-      { displayName: 'Guest', avatarColor: '#222222', countryCode: 'SA' },
+      { displayName: 'Host', avatarColor: '#111111', countryCode: 'SA' , playerId: 'install-test-player-01' },
+      { displayName: 'Guest', avatarColor: '#222222', countryCode: 'SA' , playerId: 'install-test-player-01' },
     ]);
     const hostId = created.assignments[0]!.playerId;
     const guestId = created.assignments[1]!.playerId;

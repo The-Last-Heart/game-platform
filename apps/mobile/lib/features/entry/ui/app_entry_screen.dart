@@ -11,6 +11,7 @@ import '../../../l10n/translation_resolver.dart';
 import '../../../theme/lh_tokens.dart';
 import '../../content/content_asset_cache.dart';
 import '../../identity/data/identity_store.dart';
+import '../../leaderboard/ui/leaderboard_screen.dart';
 import '../../match/protocol/realtime_messages.dart';
 import '../../match/session/match_session_controller.dart';
 import '../../match/state/match_snapshot.dart';
@@ -30,6 +31,7 @@ enum _EntryPhase {
   home,
   matchmaking,
   privateAccess,
+  leaderboard,
   onboardingReplay,
   identityEdit,
 }
@@ -200,6 +202,7 @@ class _AppEntryScreenState extends State<AppEntryScreen>
         await _cancelQueue();
         return;
       case _EntryPhase.privateAccess:
+      case _EntryPhase.leaderboard:
       case _EntryPhase.onboardingReplay:
       case _EntryPhase.identityEdit:
         setState(() {
@@ -637,6 +640,10 @@ class _AppEntryScreenState extends State<AppEntryScreen>
                 _queueError = null;
               }),
             ),
+            _EntryPhase.leaderboard => LeaderboardScreen(
+              backendBaseUrl: widget.backendBaseUrl ?? '',
+              onBack: () => setState(() => _phase = _EntryPhase.home),
+            ),
             _EntryPhase.home => _HomeView(
               identity: _identity,
               errorKey: _queueError,
@@ -647,6 +654,19 @@ class _AppEntryScreenState extends State<AppEntryScreen>
                 _queueError = null;
               }),
               onTraining: _startTraining,
+              onLeaderboard: () {
+                if (widget.backendBaseUrl == null ||
+                    widget.backendBaseUrl!.isEmpty) {
+                  setState(() {
+                    _queueError = TranslationKeys.leaderboardLoadError;
+                  });
+                  return;
+                }
+                setState(() {
+                  _phase = _EntryPhase.leaderboard;
+                  _queueError = null;
+                });
+              },
               onHelp: () =>
                   setState(() => _phase = _EntryPhase.onboardingReplay),
               onEditIdentity: () =>
@@ -744,6 +764,7 @@ class _HomeView extends StatelessWidget {
     required this.onPlayNow,
     required this.onPrivate,
     required this.onTraining,
+    required this.onLeaderboard,
     required this.onHelp,
     required this.onEditIdentity,
     this.errorKey,
@@ -756,6 +777,7 @@ class _HomeView extends StatelessWidget {
   final VoidCallback onPlayNow;
   final VoidCallback onPrivate;
   final VoidCallback onTraining;
+  final VoidCallback onLeaderboard;
   final VoidCallback onHelp;
   final VoidCallback onEditIdentity;
 
@@ -890,6 +912,16 @@ class _HomeView extends StatelessWidget {
                         onTap: onTraining,
                       ),
                       const SizedBox(height: 12),
+                      TextButton(
+                        onPressed: () async {
+                          await LhUiSound.instance.playTap();
+                          onLeaderboard();
+                        },
+                        child: Text(
+                          resolver.resolve(TranslationKeys.leaderboardTitle),
+                        ),
+                      ),
+                      const SizedBox(height: 4),
                       TextButton(
                         onPressed: () async {
                           await LhUiSound.instance.playTap();

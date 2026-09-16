@@ -324,6 +324,7 @@ class _IdentityScreenState extends State<IdentityScreen> {
                 decoration: InputDecoration(
                   labelText: resolver.resolve(TranslationKeys.identityNameLabel),
                   errorText: _nameError,
+                  errorMaxLines: 3,
                   filled: true,
                   fillColor: LhColors.surface,
                 ),
@@ -340,6 +341,7 @@ class _IdentityScreenState extends State<IdentityScreen> {
                     TranslationKeys.identityCountryLabel,
                   ),
                   errorText: _countryError,
+                  errorMaxLines: 2,
                   filled: true,
                   fillColor: LhColors.surface,
                 ),

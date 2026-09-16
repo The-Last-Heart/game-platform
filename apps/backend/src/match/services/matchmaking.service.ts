@@ -418,6 +418,7 @@ export class MatchmakingService implements OnModuleDestroy {
         displayName: identity.displayName.trim(),
         avatarColor: identity.avatarColor,
         countryCode: identity.countryCode,
+        playerId: identity.playerId,
       },
       enqueuedAtMs: now,
       timeoutAtMs: now + this.queueTimeoutMs,

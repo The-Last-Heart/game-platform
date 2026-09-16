@@ -105,6 +105,8 @@ export type PlayerIdentity = {
   displayName?: string;
   avatarColor?: string;
   countryCode?: string;
+  /** Durable per-install id for Quick Survival scoring (internal). */
+  persistentPlayerId?: string;
 };
 
 export type MatchReleasePinsState = {
@@ -229,6 +231,8 @@ export type PlayerState = {
   displayName?: string;
   avatarColor?: string;
   countryCode?: string;
+  /** Durable install id for leaderboard scoring; never published in snapshots. */
+  persistentPlayerId?: string;
   /** Explicit ready for private lobbies; other modes may auto-ready on accept. */
   ready: boolean;
   /**

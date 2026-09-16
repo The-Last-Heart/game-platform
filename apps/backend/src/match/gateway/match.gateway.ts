@@ -277,6 +277,7 @@ export class MatchGateway
                 displayName: string;
                 avatarColor: string;
                 countryCode: string;
+                playerId: string;
               },
             ),
           );
@@ -299,6 +300,7 @@ export class MatchGateway
                 displayName: string;
                 avatarColor: string;
                 countryCode: string;
+                playerId: string;
               },
             ),
           );
@@ -313,6 +315,7 @@ export class MatchGateway
                 displayName: string;
                 avatarColor: string;
                 countryCode: string;
+                playerId: string;
                 roomCode: string;
               },
             ),
@@ -360,6 +363,7 @@ export class MatchGateway
                 displayName: string;
                 avatarColor: string;
                 countryCode: string;
+                playerId: string;
               },
             ),
           );
@@ -760,7 +764,7 @@ export class MatchGateway
     client: Socket,
     commandId: string,
     correlationId: string,
-    payload: { displayName: string; avatarColor: string; countryCode: string },
+    payload: { displayName: string; avatarColor: string; countryCode: string; playerId: string },
   ): Promise<void> {
     if (this.isSocketGone(client)) {
       return;
@@ -849,7 +853,7 @@ export class MatchGateway
     client: Socket,
     commandId: string,
     correlationId: string,
-    payload: { displayName: string; avatarColor: string; countryCode: string },
+    payload: { displayName: string; avatarColor: string; countryCode: string; playerId: string },
   ): Promise<void> {
     if (this.isSocketGone(client)) {
       return;
@@ -879,6 +883,7 @@ export class MatchGateway
       displayName: string;
       avatarColor: string;
       countryCode: string;
+      playerId: string;
       roomCode: string;
     },
   ): Promise<void> {
@@ -1035,7 +1040,7 @@ export class MatchGateway
     client: Socket,
     commandId: string,
     correlationId: string,
-    payload: { displayName: string; avatarColor: string; countryCode: string },
+    payload: { displayName: string; avatarColor: string; countryCode: string; playerId: string },
   ): Promise<void> {
     if (this.isSocketGone(client)) {
       return;

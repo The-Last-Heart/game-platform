@@ -645,6 +645,7 @@ export class MatchEngine {
       displayName?: string;
       avatarColor?: string;
       countryCode?: string;
+      persistentPlayerId?: string;
       /** Optional seat vitals (training retry carry-over). Defaults to initial. */
       hearts?: number;
       energy?: number;
@@ -716,6 +717,7 @@ export class MatchEngine {
       displayName: input.displayName,
       avatarColor: input.avatarColor,
       countryCode: input.countryCode,
+      persistentPlayerId: input.persistentPlayerId,
       ready: autoReady,
       // Bots are server-controlled fills — accepted immediately. Humans require
       // gateway finalizeJoin after live lease + credentials.

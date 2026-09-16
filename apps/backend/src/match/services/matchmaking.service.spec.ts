@@ -12,6 +12,7 @@ describe('MatchmakingService', () => {
       displayName: 'Solo',
       avatarColor: '#112233',
       countryCode: 'SA',
+      playerId: 'install-test-player-01',
     });
     expect(status.state).toBe('assigned');
     expect(status.matchId).toBeTruthy();
@@ -36,6 +37,7 @@ describe('MatchmakingService', () => {
       displayName: 'Alpha',
       avatarColor: '#111111',
       countryCode: 'SA',
+      playerId: 'install-test-player-01',
     });
     expect(first.state).toBe('assigned');
 
@@ -43,6 +45,7 @@ describe('MatchmakingService', () => {
       displayName: 'Beta',
       avatarColor: '#222222',
       countryCode: 'SA',
+      playerId: 'install-test-player-01',
     });
     expect(second.state).toBe('assigned');
     expect(second.matchId).toBe(first.matchId);
@@ -64,9 +67,10 @@ describe('MatchmakingService', () => {
     const firstRoom: string[] = [];
     for (let i = 0; i < 6; i += 1) {
       const status = await mm.enqueue({
-        displayName: `P${i}`,
+        displayName: `N${String.fromCharCode(97 + (i % 26))}${String.fromCharCode(97 + (Math.floor(i / 26) % 26))}${String.fromCharCode(97 + Math.floor(i / 676))}`,
         avatarColor: '#112233',
         countryCode: 'SA',
+        playerId: 'install-test-player-01',
       });
       expect(status.state).toBe('assigned');
       firstRoom.push(status.matchId!);
@@ -78,6 +82,7 @@ describe('MatchmakingService', () => {
       displayName: 'Overflow',
       avatarColor: '#ABCDEF',
       countryCode: 'SA',
+      playerId: 'install-test-player-01',
     });
     expect(overflow.state).toBe('assigned');
     expect(overflow.matchId).not.toBe(firstRoom[0]);
@@ -104,6 +109,7 @@ describe('MatchmakingService', () => {
       displayName: 'Solo',
       avatarColor: '#ABCDEF',
       countryCode: 'SA',
+      playerId: 'install-test-player-01',
     });
     expect(first.state).toBe('assigned');
     expect(first.acceptedSeats).toBe(1);
@@ -125,9 +131,10 @@ describe('MatchmakingService', () => {
     const results = await Promise.all(
       Array.from({ length: 100 }, (_, i) =>
         mm.enqueue({
-          displayName: `Burst${i}`,
+          displayName: `N${String.fromCharCode(97 + (i % 26))}${String.fromCharCode(97 + (Math.floor(i / 26) % 26))}${String.fromCharCode(97 + Math.floor(i / 676))}`,
           avatarColor: '#112233',
           countryCode: 'SA',
+          playerId: 'install-test-player-01',
         }),
       ),
     );
@@ -166,6 +173,7 @@ describe('MatchmakingService', () => {
       displayName: 'Alone',
       avatarColor: '#111111',
       countryCode: 'SA',
+      playerId: 'install-test-player-01',
     });
     expect(solo.state).toBe('assigned');
     clock.advance(60_000);
@@ -180,14 +188,16 @@ describe('MatchmakingService', () => {
     expect(await matches.getStoreForTests().get(solo.matchId!)).toBeUndefined();
 
     const a = await mm.enqueue({
-      displayName: 'A',
+      displayName: 'Ace',
       avatarColor: '#222222',
       countryCode: 'SA',
+      playerId: 'install-test-player-01',
     });
     const b = await mm.enqueue({
-      displayName: 'B',
+      displayName: 'Bea',
       avatarColor: '#333333',
       countryCode: 'SA',
+      playerId: 'install-test-player-01',
     });
     expect(a.matchId).toBe(b.matchId);
     clock.advance(60_000);
@@ -210,6 +220,7 @@ describe('MatchmakingService', () => {
       displayName: 'Ghost',
       avatarColor: '#000000',
       countryCode: 'SA',
+      playerId: 'install-test-player-01',
     });
     expect(queued.state).toBe('assigned');
     const matchId = queued.matchId!;
@@ -222,6 +233,7 @@ describe('MatchmakingService', () => {
       displayName: 'Ghost',
       avatarColor: '#000000',
       countryCode: 'SA',
+      playerId: 'install-test-player-01',
     });
     expect(again.state).toBe('assigned');
     expect(again.matchId).toBeTruthy();
@@ -238,6 +250,7 @@ describe('MatchmakingService', () => {
       displayName: 'HostWait',
       avatarColor: '#111111',
       countryCode: 'SA',
+      playerId: 'install-test-player-01',
     });
     expect(host.state).toBe('assigned');
 
@@ -250,6 +263,7 @@ describe('MatchmakingService', () => {
       displayName: 'GuestLate',
       avatarColor: '#222222',
       countryCode: 'SA',
+      playerId: 'install-test-player-01',
     });
     expect(guest.state).toBe('assigned');
     expect(guest.matchId).toBe(host.matchId);
@@ -268,11 +282,13 @@ describe('MatchmakingService', () => {
       displayName: 'HostStay',
       avatarColor: '#111111',
       countryCode: 'SA',
+      playerId: 'install-test-player-01',
     });
     const guest = await mm.enqueue({
       displayName: 'GuestLeave',
       avatarColor: '#222222',
       countryCode: 'SA',
+      playerId: 'install-test-player-01',
     });
     expect(guest.matchId).toBe(host.matchId);
 
@@ -290,6 +306,7 @@ describe('MatchmakingService', () => {
       displayName: 'GuestLeave',
       avatarColor: '#222222',
       countryCode: 'SA',
+      playerId: 'install-test-player-01',
     });
     expect(rejoined.state).toBe('assigned');
     expect(rejoined.matchId).toBe(host.matchId);
@@ -315,14 +332,16 @@ describe('MatchmakingService', () => {
     const mm = MatchmakingService.forTests(matches);
 
     const a = await mm.enqueue({
-      displayName: 'A',
+      displayName: 'Ace',
       avatarColor: '#111111',
       countryCode: 'SA',
+      playerId: 'install-test-player-01',
     });
     const b = await mm.enqueue({
-      displayName: 'B',
+      displayName: 'Bea',
       avatarColor: '#222222',
       countryCode: 'SA',
+      playerId: 'install-test-player-01',
     });
     expect(a.matchId).toBe(b.matchId);
     const matchId = a.matchId!;

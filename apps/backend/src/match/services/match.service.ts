@@ -61,6 +61,7 @@ import { ResumeTokenService } from './resume-token.service';
 import { DevFixtureProvider } from '../challenges/dev-fixture.provider';
 import type { ChallengeDefinitionProvider } from '../challenges/challenge-definition.provider';
 import { RoomCodeRegistry } from './room-code.registry';
+import { LeaderboardService } from '../../leaderboard/leaderboard.service';
 
 const READY_COUNTDOWN_MS = 3000;
 const ROUND_RESULT_MS = DEFAULT_ROUND_RESULT_MS;
@@ -71,6 +72,8 @@ export type PlayerIdentityInput = {
   displayName: string;
   avatarColor: string;
   countryCode: string;
+  /** Durable per-install id for Quick Survival leaderboard scoring. */
+  playerId: string;
 };
 
 export type SeatCredentials = {
@@ -190,6 +193,9 @@ export class MatchService implements OnModuleDestroy, OnModuleInit {
     @Optional()
     @Inject(EmergencyControlsService)
     private readonly emergency: EmergencyControlsService | null = null,
+    @Optional()
+    @Inject(LeaderboardService)
+    private readonly leaderboard: LeaderboardService | null = null,
   ) {
     this.nodeEnv = config.get('NODE_ENV', { infer: true });
     this.store = new InMemoryMatchStore();
@@ -263,6 +269,7 @@ export class MatchService implements OnModuleDestroy, OnModuleInit {
       matchmakingPaused: false,
       releases: null,
       emergency: null,
+      leaderboard: null,
       identityBarrierHooks: {},
     });
     // wait_for_signal always registered
@@ -330,6 +337,7 @@ export class MatchService implements OnModuleDestroy, OnModuleInit {
         displayName: identity?.displayName,
         avatarColor: identity?.avatarColor,
         countryCode: identity?.countryCode,
+        persistentPlayerId: identity?.playerId,
         hearts: progress?.hearts,
         energy: progress?.energy,
       });
@@ -831,6 +839,11 @@ export class MatchService implements OnModuleDestroy, OnModuleInit {
       }
       await this.store.save(result.match);
       this.emit(result.match, result.events);
+      this.awardStrikeLeaderboardPoints(result.match, result.events, {
+        defenderSeatId: input.playerId,
+        originalAttackId: input.attackId,
+        choice: input.choice,
+      });
       this.logger.log(
         JSON.stringify({
           analytics: 'power.defense',
@@ -1358,6 +1371,7 @@ export class MatchService implements OnModuleDestroy, OnModuleInit {
         displayName: input.displayName,
         avatarColor: input.avatarColor,
         countryCode: input.countryCode,
+        playerId: input.playerId,
       });
       return {
         matchId,
@@ -1442,6 +1456,7 @@ export class MatchService implements OnModuleDestroy, OnModuleInit {
       displayName: player.displayName ?? 'Trainee',
       avatarColor: player.avatarColor ?? '#94A3B8',
       countryCode: player.countryCode ?? 'SA',
+      playerId: player.persistentPlayerId ?? playerId,
     };
     const progress =
       player.hearts > 0
@@ -1484,6 +1499,7 @@ export class MatchService implements OnModuleDestroy, OnModuleInit {
       displayName: player.displayName ?? 'Trainee',
       avatarColor: player.avatarColor ?? '#94A3B8',
       countryCode: player.countryCode ?? 'SA',
+      playerId: player.persistentPlayerId ?? playerId,
     };
     return this.startTraining(identity);
   }
@@ -1541,6 +1557,7 @@ export class MatchService implements OnModuleDestroy, OnModuleInit {
       displayName: player.displayName ?? 'Player',
       avatarColor: player.avatarColor ?? '#94A3B8',
       countryCode: player.countryCode ?? 'SA',
+      playerId: player.persistentPlayerId ?? playerId,
     };
     const now = this.clock.nowMs();
     const existing = this.rematchParties.get(matchId);
@@ -1696,7 +1713,7 @@ export class MatchService implements OnModuleDestroy, OnModuleInit {
    * Returns per-player credentials in input order.
    */
   async createQuickSurvivalMatch(
-    seats: Array<PlayerIdentityInput & { playerId?: string }>,
+    seats: PlayerIdentityInput[],
   ): Promise<{
     matchId: string;
     assignments: Array<{
@@ -1724,6 +1741,7 @@ export class MatchService implements OnModuleDestroy, OnModuleInit {
         displayName: seat.displayName,
         avatarColor: seat.avatarColor,
         countryCode: seat.countryCode,
+        playerId: seat.playerId,
       });
       assignments.push({
         playerId: joined.playerId,
@@ -2666,6 +2684,7 @@ export class MatchService implements OnModuleDestroy, OnModuleInit {
     }
     await this.store.save(expired.match);
     this.emit(expired.match, expired.events);
+    this.awardStrikeLeaderboardPoints(expired.match, expired.events);
     if (expired.match.phase === 'round_result') {
       this.schedulePhaseTimer(
         matchId,
@@ -2875,6 +2894,115 @@ export class MatchService implements OnModuleDestroy, OnModuleInit {
   }
 
   /**
+   * Quick Survival challenge wins: +5 per human success (idempotent by instance).
+   */
+  private awardChallengeWinLeaderboardPoints(match: MatchState): void {
+    if (match.mode !== 'quick_survival' || !this.leaderboard) {
+      return;
+    }
+    if (match.currentChallenge?.status !== 'resolved') {
+      return;
+    }
+    const challenge = match.currentChallenge;
+    for (const resolution of challenge.resolutions ?? []) {
+      if (resolution.outcome !== 'success') {
+        continue;
+      }
+      const seat = match.players.get(resolution.playerId);
+      if (!seat || seat.isBot || !seat.persistentPlayerId) {
+        continue;
+      }
+      void this.leaderboard.applyPointEvent({
+        playerId: seat.persistentPlayerId,
+        displayName: seat.displayName ?? 'Player',
+        avatarColor: seat.avatarColor ?? '#94A3B8',
+        countryCode: seat.countryCode ?? 'SA',
+        matchId: match.matchId,
+        reason: 'challenge_win',
+        sourceId: challenge.challengeInstanceId,
+        points: 5,
+      });
+    }
+  }
+
+  /**
+   * Quick Survival strike outcomes: +10 survive (shield/reflect), −5 fail (floor 0).
+   */
+  private awardStrikeLeaderboardPoints(
+    match: MatchState,
+    events: DomainEvent[],
+    reflectContext?: {
+      defenderSeatId: string;
+      originalAttackId: string;
+      choice: 'none' | 'shield' | 'reflect';
+    },
+  ): void {
+    if (match.mode !== 'quick_survival' || !this.leaderboard) {
+      return;
+    }
+
+    if (reflectContext?.choice === 'reflect') {
+      const flipped = events.some(
+        (e) => e.kind === 'power_defense_required' && e.reflected === true,
+      );
+      if (flipped) {
+        const seat = match.players.get(reflectContext.defenderSeatId);
+        if (seat && !seat.isBot && seat.persistentPlayerId) {
+          void this.leaderboard.applyPointEvent({
+            playerId: seat.persistentPlayerId,
+            displayName: seat.displayName ?? 'Player',
+            avatarColor: seat.avatarColor ?? '#94A3B8',
+            countryCode: seat.countryCode ?? 'SA',
+            matchId: match.matchId,
+            reason: 'strike_survive',
+            sourceId: reflectContext.originalAttackId,
+            points: 10,
+          });
+        }
+      }
+    }
+
+    for (const event of events) {
+      if (event.kind !== 'power_resolved') {
+        continue;
+      }
+      const seat = match.players.get(event.targetId);
+      if (!seat || seat.isBot || !seat.persistentPlayerId) {
+        continue;
+      }
+      if (
+        event.outcome === 'shielded' ||
+        event.outcome === 'reflected_shielded'
+      ) {
+        void this.leaderboard.applyPointEvent({
+          playerId: seat.persistentPlayerId,
+          displayName: seat.displayName ?? 'Player',
+          avatarColor: seat.avatarColor ?? '#94A3B8',
+          countryCode: seat.countryCode ?? 'SA',
+          matchId: match.matchId,
+          reason: 'strike_survive',
+          sourceId: event.attackId,
+          points: 10,
+        });
+      } else if (
+        event.outcome === 'hit' ||
+        event.outcome === 'reflected_hit'
+      ) {
+        void this.leaderboard.applyPointEvent({
+          playerId: seat.persistentPlayerId,
+          displayName: seat.displayName ?? 'Player',
+          avatarColor: seat.avatarColor ?? '#94A3B8',
+          countryCode: seat.countryCode ?? 'SA',
+          matchId: match.matchId,
+          reason: 'strike_fail',
+          sourceId: event.attackId,
+          points: -5,
+        });
+      }
+    }
+  }
+
+  /**
    * Emit resolve events together with the round-result hold when applicable so
    * clients never apply an intermediate snapshot of challenge_active with a
    * null currentChallenge (that used to flash the lobby player list).
@@ -2911,6 +3039,8 @@ export class MatchService implements OnModuleDestroy, OnModuleInit {
         });
       }
     }
+
+    this.awardChallengeWinLeaderboardPoints(match);
 
     if (
       match.status === 'completed' ||

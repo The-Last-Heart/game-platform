@@ -10,6 +10,7 @@ import '../state/match_snapshot.dart';
 import '../time/server_time_clock.dart';
 import '../transport/realtime_transport.dart';
 import '../../identity/data/identity_store.dart';
+import '../../presence/presence_client_id_store.dart';
 import 'session_store.dart';
 
 /// Generates a cryptographically-secure 32-hex-char identifier (128 bits).
@@ -82,14 +83,18 @@ class MatchSessionController {
     required this.transport,
     required this.sessionStore,
     ServerTimeClock? serverTimeClock,
+    PresenceClientIdStore? presenceClientIdStore,
     this._snapshotRetryDelay = const Duration(seconds: 2),
     this._snapshotRetryDelayForAttempt,
     this._snapshotRetryDelayCap = const Duration(seconds: 30),
-  }) : serverClock = serverTimeClock ?? ServerTimeClock();
+  }) : serverClock = serverTimeClock ?? ServerTimeClock(),
+       _presenceClientIdStore =
+           presenceClientIdStore ?? PresenceClientIdStore();
 
   final RealtimeTransport transport;
   final SessionStore sessionStore;
   final ServerTimeClock serverClock;
+  final PresenceClientIdStore _presenceClientIdStore;
   final Duration _snapshotRetryDelay;
   final Duration Function(int attempt)? _snapshotRetryDelayForAttempt;
   final Duration _snapshotRetryDelayCap;
@@ -250,6 +255,11 @@ class MatchSessionController {
     state.value = state.value.copyWith(isConnected: true);
   }
 
+  Future<Map<String, dynamic>> _identityPayload(PlayerIdentity identity) async {
+    final String playerId = await _presenceClientIdStore.loadOrCreate();
+    return identity.toCommandPayload(playerId: playerId);
+  }
+
   /// Enqueue Quick Survival. Returns ticketId when status arrives, else null.
   Future<String?> enqueueMatchmaking(PlayerIdentity identity) async {
     await _prepareFreshJoinSocket();
@@ -271,7 +281,7 @@ class MatchSessionController {
     _sendCommandWithId(
       commandId,
       MessageTypes.matchmakingEnqueue,
-      identity.toCommandPayload(),
+      await _identityPayload(identity),
     );
     return completer.future.timeout(
       const Duration(seconds: 8),
@@ -337,7 +347,7 @@ class MatchSessionController {
     _sendCommandWithId(
       commandId,
       MessageTypes.privateRoomCreate,
-      identity.toCommandPayload(),
+      await _identityPayload(identity),
     );
     return _awaitJoinResult(waiter);
   }
@@ -355,7 +365,7 @@ class MatchSessionController {
     );
     state.value = state.value.copyWith(connectionError: () => null);
     _sendCommandWithId(commandId, MessageTypes.privateRoomJoin, <String, dynamic>{
-      ...identity.toCommandPayload(),
+      ...await _identityPayload(identity),
       'roomCode': roomCode,
     });
     return _awaitJoinResult(waiter);
@@ -376,7 +386,7 @@ class MatchSessionController {
     _sendCommandWithId(
       commandId,
       MessageTypes.trainingStart,
-      identity.toCommandPayload(),
+      await _identityPayload(identity),
     );
     return _awaitJoinResult(waiter);
   }

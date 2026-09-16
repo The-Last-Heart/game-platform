@@ -617,11 +617,8 @@ export function applyRingLockCommand(input: {
   if (!prior) {
     return { ok: false, reason: 'no_puzzle', state: input.state };
   }
-  if (prior.result !== 'active') {
-    return { ok: false, reason: 'not_active', state: input.state };
-  }
 
-  // Idempotent replay of the last accepted command.
+  // Idempotent replay of the last accepted command (including after success).
   if (
     prior.lastAcceptedCommandId != null &&
     prior.lastAcceptedCommandId === input.commandId
@@ -634,6 +631,10 @@ export function applyRingLockCommand(input: {
       completed: prior.result === 'success',
       duplicate: true,
     };
+  }
+
+  if (prior.result !== 'active') {
+    return { ok: false, reason: 'not_active', state: input.state };
   }
 
   if (

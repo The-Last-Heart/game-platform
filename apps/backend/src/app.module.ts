@@ -5,6 +5,7 @@ import { ContentModule } from './content/content.module';
 import { validateEnv } from './config/env.validation';
 import { DatabaseModule } from './database/database.module';
 import { HealthModule } from './health/health.module';
+import { LeaderboardModule } from './leaderboard/leaderboard.module';
 import { MatchModule } from './match/match.module';
 import { PresenceModule } from './presence/presence.module';
 
@@ -20,7 +21,9 @@ import { PresenceModule } from './presence/presence.module';
     ContentModule,
     MatchModule,
     PresenceModule,
+    LeaderboardModule,
     AdminModule,
   ],
 })
 export class AppModule {}
+

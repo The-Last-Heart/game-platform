@@ -14,6 +14,10 @@ Previously closed: **LH-001 → LH-007**.
 
 Includes hardening remaining LH-007 engines for real-device play and a mixed eleven-engine live catalog.
 
+## Side delivery (not a milestone close)
+
+**Quick Survival leaderboard** (migration `035_player_leaderboard`): after pull, run `pnpm --filter @thelastheart/backend db:migrate` and **rebuild/restart the baked backend container** before LAN/device APK tests so `GET /v1/leaderboard` and QS scoring hooks are live.
+
 ## Deferred
 
 **LH-010 — Full Challenge Studio and Content Operations** — deferred until LH-009 is formally closed; Studio code remains in-tree but is not the current delivery focus.

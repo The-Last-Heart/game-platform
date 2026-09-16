@@ -19,11 +19,13 @@ class PlayerIdentity {
   final String avatarColor;
   final String countryCode;
 
-  Map<String, dynamic> toCommandPayload() => <String, dynamic>{
-    'displayName': displayName,
-    'avatarColor': avatarColor,
-    'countryCode': countryCode,
-  };
+  Map<String, dynamic> toCommandPayload({required String playerId}) =>
+      <String, dynamic>{
+        'displayName': displayName,
+        'avatarColor': avatarColor,
+        'countryCode': countryCode,
+        'playerId': playerId,
+      };
 
   PlayerIdentity copyWith({
     String? displayName,

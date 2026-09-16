@@ -160,6 +160,12 @@ export const playerIdentityPayloadSchema = z
     displayName: displayNameSchema,
     avatarColor: avatarColorSchema,
     countryCode: playerCountryCodeSchema,
+    /** Durable per-install id (same charset/length as presence clientId). */
+    playerId: z
+      .string()
+      .min(8)
+      .max(128)
+      .regex(/^[A-Za-z0-9._:-]+$/, 'playerId contains unsupported characters'),
   })
   .strict();
 

@@ -212,6 +212,10 @@ abstract final class TranslationKeys {
   static const String homeHeroSubtitle = 'home.hero_subtitle';
   static const String homeModesTitle = 'home.modes_title';
   static const String homeGreeting = 'home.greeting';
+  static const String leaderboardTitle = 'leaderboard.title';
+  static const String leaderboardEmpty = 'leaderboard.empty';
+  static const String leaderboardLoadError = 'leaderboard.load_error';
+  static const String leaderboardPoints = 'leaderboard.points';
   static const String onboardingStepOf = 'onboarding.step_of';
   static const String onboardingHowToPlay = 'onboarding.how_to_play';
   static const String appPressBackAgainToExit = 'app.press_back_again_to_exit';
