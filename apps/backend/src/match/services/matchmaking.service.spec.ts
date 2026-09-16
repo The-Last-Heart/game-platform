@@ -278,6 +278,16 @@ describe('MatchmakingService', () => {
     expect(rejoined.matchId).toBe(host.matchId);
     expect(rejoined.acceptedSeats).toBe(2);
 
+    // Second leave must also free the seat (no ghost from the first cycle).
+    await mm.cancel(rejoined.ticketId);
+    const afterSecondLeave = await matches.requestSnapshot(host.matchId!);
+    expect(afterSecondLeave.snapshot.players).toHaveLength(1);
+    expect(
+      afterSecondLeave.snapshot.players.some(
+        (p) => p.displayName === 'GuestLeave',
+      ),
+    ).toBe(false);
+
     mm.onModuleDestroy();
     matches.onModuleDestroy();
   });

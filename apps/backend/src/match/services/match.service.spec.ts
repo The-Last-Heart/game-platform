@@ -1160,6 +1160,115 @@ describe('MatchService', () => {
 
     match = await store.get(created.matchId);
     expect(match!.players.get(guestId)!.status).toBe('left');
+    // 2→1 live leave must crown the remaining player immediately.
+    expect(match!.phase).toBe('completed');
+    expect(match!.status).toBe('completed');
+    expect(match!.winnerId).toBe(hostId);
+
+    service.onModuleDestroy();
+  });
+
+  it('disconnect grace leave ends a 2-player live match for the survivor', async () => {
+    const clock = new FakeClock(5_000_000);
+    const service = MatchService.forTests({ clock, nodeEnv: 'test' });
+    const created = await service.createQuickSurvivalMatch([
+      { displayName: 'Host', avatarColor: '#111111' },
+      { displayName: 'Guest', avatarColor: '#222222' },
+    ]);
+    const hostId = created.assignments[0]!.playerId;
+    const guestId = created.assignments[1]!.playerId;
+    for (const a of created.assignments) {
+      await service.finalizeJoin(created.matchId, a.playerId);
+    }
+
+    const store = service.getStoreForTests();
+    let match = await store.get(created.matchId);
+    match!.phase = 'challenge_active';
+    match!.status = 'challenge_active';
+    await store.save(match!);
+
+    await service.markDisconnected(created.matchId, guestId);
+    match = await store.get(created.matchId);
+    expect(match!.players.get(guestId)!.presence).toBe('disconnected');
+    expect(match!.players.get(guestId)!.status).toBe('active');
+    expect(match!.phase).toBe('challenge_active');
+
+    await service.expireDisconnectGraceForTests(created.matchId, guestId);
+    match = await store.get(created.matchId);
+    expect(match!.players.get(guestId)!.status).toBe('left');
+    expect(match!.phase).toBe('completed');
+    expect(match!.winnerId).toBe(hostId);
+
+    service.onModuleDestroy();
+  });
+
+  it('resume during disconnect grace keeps the 2-player match alive', async () => {
+    const clock = new FakeClock(5_000_000);
+    const service = MatchService.forTests({ clock, nodeEnv: 'test' });
+    const created = await service.createQuickSurvivalMatch([
+      { displayName: 'Host', avatarColor: '#111111' },
+      { displayName: 'Guest', avatarColor: '#222222' },
+    ]);
+    const guestId = created.assignments[1]!.playerId;
+    const guestToken = created.assignments[1]!.resumeToken;
+    for (const a of created.assignments) {
+      await service.finalizeJoin(created.matchId, a.playerId);
+    }
+
+    const store = service.getStoreForTests();
+    let match = await store.get(created.matchId);
+    match!.phase = 'challenge_active';
+    match!.status = 'challenge_active';
+    await store.save(match!);
+
+    await service.markDisconnected(created.matchId, guestId);
+    await service.resumeMatch({
+      matchId: created.matchId,
+      resumeToken: guestToken,
+      commandId: 'resume-after-disconnect',
+    });
+
+    await service.expireDisconnectGraceForTests(created.matchId, guestId);
+    match = await store.get(created.matchId);
+    expect(match!.players.get(guestId)!.status).toBe('active');
+    expect(match!.players.get(guestId)!.presence).toBe('connected');
+    expect(match!.phase).toBe('challenge_active');
+    expect(match!.winnerId).toBeNull();
+
+    service.onModuleDestroy();
+  });
+
+  it('does not advance to another live round while a survivor is disconnected', async () => {
+    const clock = new FakeClock(5_000_000);
+    const service = MatchService.forTests({ clock, nodeEnv: 'test' });
+    const created = await service.createQuickSurvivalMatch([
+      { displayName: 'Host', avatarColor: '#111111' },
+      { displayName: 'Guest', avatarColor: '#222222' },
+    ]);
+    const hostId = created.assignments[0]!.playerId;
+    const guestId = created.assignments[1]!.playerId;
+    for (const a of created.assignments) {
+      await service.finalizeJoin(created.matchId, a.playerId);
+    }
+
+    const store = service.getStoreForTests();
+    const match = await store.get(created.matchId);
+    match!.phase = 'round_result';
+    match!.status = 'waiting';
+    match!.roundNumber = 2;
+    match!.phaseDeadlineAtMs = clock.nowMs();
+    match!.phaseDeadlineMonoMs = clock.monoMs();
+    match!.players.get(hostId)!.hearts = 2;
+    match!.players.get(guestId)!.hearts = 2;
+    match!.players.get(guestId)!.presence = 'disconnected';
+    await store.save(match!);
+
+    await service.tickDue(created.matchId);
+    const after = await store.get(created.matchId);
+    expect(after?.winnerId).toBeNull();
+    expect(after?.phase).toBe('round_result');
+    expect(after?.status).toBe('waiting');
+    expect(after!.roundNumber).toBe(2);
 
     service.onModuleDestroy();
   });

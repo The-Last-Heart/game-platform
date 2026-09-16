@@ -25,10 +25,18 @@ export type CompleteSumHiddenSolution = {
   solutionByPlayerId: Record<string, number>;
 };
 
+/** How long the active round stays up so clients can play the success ring/total motion. */
+export const COMPLETE_SUM_SUCCESS_ANIM_MS = 1400;
+
 export type CompleteSumRoundState = CompleteSumPublicPayload & {
   /** Authoritative per-seat choices — never broadcast in full. */
   optionsByPlayerId: Record<string, number[]>;
   hidden: CompleteSumHiddenSolution;
+  /**
+   * When set, the target was hit and resolve is deferred until this mono time
+   * so the mobile ring/total success motion can finish.
+   */
+  successResolveAtMonoMs?: number | null;
 };
 
 export type CompleteSumGenerationResult = {
@@ -181,6 +189,17 @@ function absoluteMinMaxTotals(
   };
 }
 
+/**
+ * Choices must never include the target itself: picking it forces every other
+ * seat to contribute 0, which is an easy grief when 0 is not offered.
+ */
+function choicePoolExcludingTarget(
+  pool: readonly number[],
+  target: number,
+): number[] {
+  return pool.filter((v) => v !== target);
+}
+
 function tryGenerateOnce(
   participantIds: readonly string[],
   rule: CompleteSumGenerationRule,
@@ -203,22 +222,35 @@ function tryGenerateOnce(
   if (target <= minTotal || target >= maxTotal) {
     return null;
   }
+  // A seat holding the full target (others must be 0) is rejected as griefable.
+  if (solution.some((v) => v === target)) {
+    return null;
+  }
+
+  const choicePool = choicePoolExcludingTarget(pool, target);
+  if (choicePool.length < rule.choicesPerPlayer) {
+    return null;
+  }
 
   const optionsByPlayerId: Record<string, number[]> = {};
   const solutionByPlayerId: Record<string, number> = {};
   for (let i = 0; i < n; i += 1) {
     const playerId = participantIds[i]!;
+    const seatSolution = solution[i]!;
+    if (seatSolution === target || !choicePool.includes(seatSolution)) {
+      return null;
+    }
     const choices = pickDistinct(
-      pool,
+      choicePool,
       rule.choicesPerPlayer,
       rng,
-      solution[i]!,
+      seatSolution,
     );
     if (!choices) {
       return null;
     }
     optionsByPlayerId[playerId] = choices;
-    solutionByPlayerId[playerId] = solution[i]!;
+    solutionByPlayerId[playerId] = seatSolution;
   }
 
   const optionLists = participantIds.map((id) => optionsByPlayerId[id]!);
@@ -258,10 +290,29 @@ export function buildSafeFallback(
     preferred = rule.minValue + 1;
   }
 
+  const target = preferred * n;
+  if (preferred === target) {
+    throw new CompleteSumConfigError(
+      'safe fallback preferred value must not equal target',
+    );
+  }
+
+  const choicePool = choicePoolExcludingTarget(pool, target);
+  if (choicePool.length < rule.choicesPerPlayer || !choicePool.includes(preferred)) {
+    throw new CompleteSumConfigError(
+      'safe fallback choice pool cannot exclude target and still fill seats',
+    );
+  }
+
   const optionsByPlayerId: Record<string, number[]> = {};
   const solutionByPlayerId: Record<string, number> = {};
   for (const playerId of participantIds) {
-    const choices = pickDistinct(pool, rule.choicesPerPlayer, rng, preferred);
+    const choices = pickDistinct(
+      choicePool,
+      rule.choicesPerPlayer,
+      rng,
+      preferred,
+    );
     if (!choices) {
       throw new CompleteSumConfigError('safe fallback could not build choices');
     }
@@ -269,7 +320,6 @@ export function buildSafeFallback(
     solutionByPlayerId[playerId] = preferred;
   }
 
-  const target = preferred * n;
   const optionLists = participantIds.map((id) => optionsByPlayerId[id]!);
   if (!isTargetReachable(optionLists, target)) {
     throw new CompleteSumConfigError('safe fallback failed reachability');
@@ -371,6 +421,7 @@ export function buildInitialCompleteSumState(input: {
     allSelected: false,
     stateSequence: 0,
     incorrectTotal: false,
+    successResolveAtMonoMs: null,
     hidden: input.generated.hidden,
   };
 }
@@ -394,12 +445,21 @@ export function applyCompleteSumSelection(input: {
   state: CompleteSumRoundState;
   playerId: string;
   selectedValue: number;
+  /** Mono clock used to stamp deferred success resolve. */
+  nowMonoMs?: number;
 }):
   | { ok: true; state: CompleteSumRoundState; succeeded: boolean }
   | { ok: false; reason: string } {
   const { state, playerId, selectedValue } = input;
   if (!state.participantIds.includes(playerId)) {
     return { ok: false, reason: 'not_participating' };
+  }
+  // Target already hit — keep the round frozen while success motion plays.
+  if (
+    state.successResolveAtMonoMs != null ||
+    (state.allSelected && state.currentTotal === state.target)
+  ) {
+    return { ok: false, reason: 'already_succeeded' };
   }
   const options = state.optionsByPlayerId[playerId];
   if (!options || !options.includes(selectedValue)) {
@@ -413,6 +473,7 @@ export function applyCompleteSumSelection(input: {
   );
   const succeeded = allSelected && currentTotal === state.target;
   const incorrectTotal = allSelected && currentTotal !== state.target;
+  const nowMono = input.nowMonoMs ?? 0;
 
   return {
     ok: true,
@@ -424,6 +485,9 @@ export function applyCompleteSumSelection(input: {
       allSelected,
       incorrectTotal,
       stateSequence: state.stateSequence + 1,
+      successResolveAtMonoMs: succeeded
+        ? nowMono + COMPLETE_SUM_SUCCESS_ANIM_MS
+        : (state.successResolveAtMonoMs ?? null),
     },
   };
 }

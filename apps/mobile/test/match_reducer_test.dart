@@ -689,12 +689,50 @@ void main() {
 
       final ReducerResult presenceResult = reducer.reduce(lobby, presenceRaw);
       expect(presenceResult.disposition, ReducerDisposition.applied);
+      // Lobby disconnect frees the seat — do not keep a ghost row.
+      expect(presenceResult.state.players.length, 1);
+      expect(
+        presenceResult.state.players.any(
+          (PlayerPublic p) => p.playerId == 'player-2',
+        ),
+        isFalse,
+      );
+    });
+
+    test('mid-match disconnect presence keeps the seat on the roster', () {
+      final Map<String, dynamic> lobbyRaw = clone(
+        fixtures['match_snapshot_lobby'] as Map<String, dynamic>,
+      );
+      // Advance into challenge_active while keeping the two-player roster.
+      (lobbyRaw['payload'] as Map<String, dynamic>)['phase'] = 'challenge_active';
+      (lobbyRaw['payload'] as Map<String, dynamic>)['status'] =
+          'challenge_active';
+      lobbyRaw['serverSequence'] = 10;
+      (lobbyRaw['payload'] as Map<String, dynamic>)['sequence'] = 10;
+      (lobbyRaw['payload'] as Map<String, dynamic>)['revision'] = 10;
+
+      final MatchViewState active = reducer
+          .reduce(initialState(), lobbyRaw)
+          .state;
+      expect(active.phase, MatchPhase.challengeActive);
+      expect(active.players.length, 2);
+
+      final Map<String, dynamic> presenceRaw = clone(
+        fixtures['player_presence'] as Map<String, dynamic>,
+      );
+      (presenceRaw['payload'] as Map<String, dynamic>)['playerId'] = 'player-2';
+      (presenceRaw['payload'] as Map<String, dynamic>)['presence'] =
+          'disconnected';
+      (presenceRaw['payload'] as Map<String, dynamic>)['joined'] = false;
+      presenceRaw['serverSequence'] = active.serverSequence + 1;
+
+      final ReducerResult presenceResult = reducer.reduce(active, presenceRaw);
+      expect(presenceResult.disposition, ReducerDisposition.applied);
+      expect(presenceResult.state.players.length, 2);
       final PlayerPublic updated = presenceResult.state.players.firstWhere(
         (PlayerPublic p) => p.playerId == 'player-2',
       );
       expect(updated.presence, Presence.disconnected);
-      expect(updated.hearts, 3);
-      expect(updated.energy, 0);
       expect(updated.status, PlayerStatus.active);
     });
 

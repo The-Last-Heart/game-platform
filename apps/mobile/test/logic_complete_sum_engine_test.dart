@@ -257,11 +257,14 @@ void main() {
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 50));
 
-      // Selected zero on local seat.
+      // Selected zero on local seat — number badge, not identity replacement.
       expect(find.text('0'), findsWidgets);
-      // Unselected remotes show thinking copy.
+      expect(find.text('P'), findsWidgets);
+      // Local keeps "you"; remotes keep thinking while unselected.
+      expect(find.text('أنت'), findsOneWidget);
       expect(find.text('يفكر...'), findsWidgets);
-      expect(find.text('جاهز'), findsNothing);
+      expect(find.text('Player 1'), findsOneWidget);
+      expect(find.text('Player 2'), findsOneWidget);
     });
 
     testWidgets('local pending selection submits without changing total', (

@@ -38,9 +38,12 @@ describe('complete-sum generator', () => {
           for (const v of choices) {
             expect(v).toBeGreaterThanOrEqual(rule.minValue);
             expect(v).toBeLessThanOrEqual(rule.maxValue);
+            // Target as a seat option lets one player force others to need 0.
+            expect(v).not.toBe(generated.target);
           }
           const solution = generated.hidden.solutionByPlayerId[id]!;
           expect(choices).toContain(solution);
+          expect(solution).not.toBe(generated.target);
         }
         const lists = ids.map((id) => generated.optionsByPlayerId[id]!);
         expect(isTargetReachable(lists, generated.target)).toBe(true);
@@ -116,6 +119,23 @@ describe('complete-sum generator', () => {
     const fallback = buildSafeFallback(ids, rule, rng);
     const lists = ids.map((id) => fallback.optionsByPlayerId[id]!);
     expect(isTargetReachable(lists, fallback.target)).toBe(true);
+    for (const choices of lists) {
+      expect(choices).not.toContain(fallback.target);
+    }
+  });
+
+  it('never offers the target as a selectable option (anti-grief)', () => {
+    const ids = participantIds(2);
+    for (let seed = 0; seed < 500; seed += 1) {
+      const generated = generateCompleteSumRound({
+        participantIds: ids,
+        seed,
+        maxAttempts: 64,
+      });
+      for (const id of ids) {
+        expect(generated.optionsByPlayerId[id]).not.toContain(generated.target);
+      }
+    }
   });
 
   it('selection replacement recalculates total; null ≠ zero', () => {

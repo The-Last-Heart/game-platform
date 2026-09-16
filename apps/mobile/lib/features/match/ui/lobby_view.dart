@@ -36,7 +36,14 @@ class LobbyView extends StatelessWidget {
     final bool isTraining = state.mode == MatchMode.training;
     final bool isQuick = state.mode == MatchMode.quickSurvival;
     final int capacity = isTraining ? 1 : 6;
-    final int playerCount = state.players.length;
+    // Quick lobbies free seats on leave/disconnect — never paint a disconnected
+    // ghost name after leave/rejoin/leave. Private keeps disconnected for resume.
+    final List<PlayerPublic> rosterPlayers = isQuick
+        ? state.players
+            .where((PlayerPublic p) => p.presence != Presence.disconnected)
+            .toList()
+        : state.players;
+    final int playerCount = rosterPlayers.length;
     final int emptySlots = (capacity - playerCount).clamp(0, capacity);
     final String? code = state.roomCode;
     final bool showRoomCode =
@@ -181,7 +188,7 @@ class LobbyView extends StatelessWidget {
             child: ListView(
               padding: const EdgeInsets.symmetric(horizontal: 20),
               children: <Widget>[
-                for (final PlayerPublic player in state.players)
+                for (final PlayerPublic player in rosterPlayers)
                   _PlayerRow(
                     player: player,
                     isHost: player.playerId == hostId || player.isHost == true,

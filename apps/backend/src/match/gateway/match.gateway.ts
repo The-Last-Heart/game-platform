@@ -99,19 +99,6 @@ export class MatchGateway
     state.disconnected = true;
     this.disconnectHookForTests?.(client.id);
 
-    if (state.ticketId) {
-      const ticketId = state.ticketId;
-      if (this.queueSockets.get(ticketId) === client.id) {
-        this.queueSockets.delete(ticketId);
-        try {
-          await this.matchmaking.cancel(ticketId);
-        } catch {
-          // Ticket may already be assigned/cancelled.
-        }
-      }
-      state.ticketId = undefined;
-    }
-
     const matchId = state.matchId;
     const playerId = state.playerId;
     if (matchId && playerId) {
@@ -119,10 +106,12 @@ export class MatchGateway
       // Lease-owner-aware: only disconnect while this socket still owns the lease.
       // Holding the lease until after the presence write prevents a concurrent
       // resume from being overwritten by a stale disconnect.
+      // Free the seat BEFORE cancelling the queue ticket so a cancelled-status
+      // clearClientBinding cannot race markDisconnected over a still-seated player.
       if (this.connectionLeases.get(key) === client.id) {
         // Pre-challenge: free the seat immediately so the roster drops the name
-        // and open-lobby packing can reuse the same room. Mid-challenge keeps
-        // markDisconnected for resume grace.
+        // and open-lobby packing can reuse the same room. Mid-challenge marks
+        // disconnected and arms resume grace; expiry treats the seat as left.
         const canLeaveLobby = await this.matches.canLeaveLobbySeat(matchId);
         if (
           canLeaveLobby &&
@@ -152,6 +141,21 @@ export class MatchGateway
           this.connectionLeases.delete(key);
         }
       }
+    }
+
+    if (state.ticketId) {
+      const ticketId = state.ticketId;
+      if (this.queueSockets.get(ticketId) === client.id) {
+        this.queueSockets.delete(ticketId);
+        try {
+          // Seat already freed above when bound; cancel is idempotent leave +
+          // queue bookkeeping. Prefer cancel so solo-search sockets still clear.
+          await this.matchmaking.cancel(ticketId);
+        } catch {
+          // Ticket may already be assigned/cancelled.
+        }
+      }
+      state.ticketId = undefined;
     }
 
     // Drop any residual leases for this socket (never leave ghost owners).
@@ -1919,9 +1923,9 @@ export class MatchGateway
   }
 
   /**
-   * Tear down a prior player binding before create_dev (Play Again).
-   * Marks the previous player disconnected only while this socket remains the
-   * lease owner, then releases lease/room and clears socket identity.
+   * Tear down a prior player binding before create_dev (Play Again) or queue
+   * abort. Quick-survival lobby seats are freed (not left as disconnected
+   * ghosts); other modes mark disconnected so resume tokens remain valid.
    */
   private async clearClientBinding(client: Socket): Promise<void> {
     const state = client.data as SocketState;
@@ -1940,9 +1944,32 @@ export class MatchGateway
         }
         // Re-check after barrier: resume may have taken the lease.
         if (this.connectionLeases.get(key) === client.id) {
-          await this.matches.markDisconnected(matchId, playerId, {
-            stillOwnsLease: () => this.connectionLeases.get(key) === client.id,
-          });
+          const canLeaveLobby = await this.matches.canLeaveLobbySeat(matchId);
+          if (
+            canLeaveLobby &&
+            this.connectionLeases.get(key) === client.id
+          ) {
+            try {
+              const left = await this.matches.leaveMatch(matchId, playerId);
+              this.matchmaking.releaseTicketForPlayer(playerId);
+              this.matchmaking.onLobbyCompositionChanged(matchId, {
+                emptied: left.emptied,
+                lobbyFillWaitMs: left.lobbyFillWaitMs,
+              });
+            } catch {
+              if (this.connectionLeases.get(key) === client.id) {
+                await this.matches.markDisconnected(matchId, playerId, {
+                  stillOwnsLease: () =>
+                    this.connectionLeases.get(key) === client.id,
+                });
+              }
+            }
+          } else if (this.connectionLeases.get(key) === client.id) {
+            await this.matches.markDisconnected(matchId, playerId, {
+              stillOwnsLease: () =>
+                this.connectionLeases.get(key) === client.id,
+            });
+          }
           if (this.connectionLeases.get(key) === client.id) {
             this.connectionLeases.delete(key);
           }

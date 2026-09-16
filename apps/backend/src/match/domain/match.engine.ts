@@ -103,6 +103,7 @@ function cloneCompleteSumState(
     allSelected: state.allSelected,
     stateSequence: state.stateSequence,
     incorrectTotal: state.incorrectTotal,
+    successResolveAtMonoMs: state.successResolveAtMonoMs ?? null,
     hidden: {
       solutionByPlayerId: { ...state.hidden.solutionByPlayerId },
     },
@@ -795,7 +796,23 @@ export class MatchEngine {
       next.phaseDeadlineMonoMs = null;
     }
     const bump = this.bump(next);
-    return { match: next, events: [bump], removed: true };
+    // Emit presence_changed so lobby clients drop the seat immediately even if
+    // a concurrent snapshot is delayed/reordered relative to other events.
+    return {
+      match: next,
+      events: [
+        bump,
+        {
+          kind: 'presence_changed',
+          sequence: next.sequence,
+          revision: next.revision,
+          serverTimestampMs: bump.serverTimestampMs,
+          playerId,
+          presence: 'disconnected',
+        },
+      ],
+      removed: true,
+    };
   }
 
   /**
@@ -1806,9 +1823,13 @@ export class MatchEngine {
         state: priorState,
         playerId: input.playerId,
         selectedValue: parsed.selectedValue,
+        nowMonoMs: this.clock.monoMs(),
       });
       if (!applied.ok) {
-        const ack = { accepted: false, reason: applied.reason };
+        const ack = {
+          accepted: applied.reason === 'already_succeeded',
+          reason: applied.reason,
+        };
         next.commandAcks.set(input.commandId, ack);
         next.updatedAtMs = this.clock.nowMs();
         return { match: next, events: [], duplicate: false, ack };
@@ -1826,15 +1847,7 @@ export class MatchEngine {
       const ack = { accepted: true, reason: 'progress' };
       next.commandAcks.set(input.commandId, ack);
       next.updatedAtMs = this.clock.nowMs();
-      if (applied.succeeded) {
-        const resolved = this.resolveChallenge(next);
-        return {
-          match: resolved.match,
-          events: resolved.events,
-          duplicate: false,
-          ack,
-        };
-      }
+      // Defer resolve so clients can finish the ring/total success motion.
       return {
         match: next,
         events: [],
@@ -1936,6 +1949,35 @@ export class MatchEngine {
     // Inclusive deadline boundary: timeout due only when strictly after
     // deadline (not at equality).
     if (this.clock.monoMs() <= match.currentChallenge.deadlineMonoMs) {
+      return { match, events: [] };
+    }
+    return this.resolveChallenge(this.cloneMatch(match));
+  }
+
+  /**
+   * Resolve complete_sum after the short success-motion hold (ring/total anim).
+   * Safe to call when the hold is not due — returns no events.
+   */
+  resolveDueCompleteSumSuccess(match: MatchState): {
+    match: MatchState;
+    events: DomainEvent[];
+  } {
+    if (
+      match.status !== 'challenge_active' ||
+      !match.currentChallenge ||
+      match.currentChallenge.status !== 'active' ||
+      match.currentChallenge.engineId !== LOGIC_COMPLETE_SUM_ENGINE_ID
+    ) {
+      return { match, events: [] };
+    }
+    const sumState = match.currentChallenge.completeSumState;
+    const dueAt = sumState?.successResolveAtMonoMs;
+    if (
+      dueAt == null ||
+      !sumState?.allSelected ||
+      sumState.currentTotal !== sumState.target ||
+      this.clock.monoMs() < dueAt
+    ) {
       return { match, events: [] };
     }
     return this.resolveChallenge(this.cloneMatch(match));

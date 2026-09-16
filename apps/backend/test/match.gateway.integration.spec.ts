@@ -202,10 +202,16 @@ describe('MatchGateway integration', () => {
         : 0;
   });
 
-  afterEach(() => {
+  afterEach(async () => {
     matchService.setIdentityBarrierHooksForTests({});
     matchGateway.setDisconnectHookForTests(undefined);
     matchGateway.setClearBindingBarrierForTests(undefined);
+    // Drop leftover quick lobbies so matchmaking packing cannot join a prior
+    // test's host seat and make leave/rejoin assertions flaky.
+    const store = matchService.getStoreForTests();
+    for (const id of await store.listIds()) {
+      await store.delete(id);
+    }
   });
 
   afterAll(async () => {
@@ -2347,6 +2353,211 @@ describe('MatchGateway integration', () => {
     });
     expect(asString(again.payload?.['state'])).toBe('assigned');
   }, 15000);
+
+  it('quick lobby: leave, rejoin, leave drops guest from host roster', async () => {
+    const host = await tracked();
+    sendCommand(host.socket, MessageTypes.MatchmakingEnqueue, {
+      displayName: 'HostStay',
+      avatarColor: '#111111',
+    });
+    const hostStatus = await waitForType(host, MessageTypes.MatchmakingStatus);
+    expect(asString(hostStatus.payload?.['state'])).toBe('assigned');
+    const matchId = asString(hostStatus.payload?.['matchId']);
+    await waitForType(host, MessageTypes.SessionAccepted);
+    await waitForType(host, MessageTypes.MatchSnapshot);
+
+    const guest = await tracked();
+    sendCommand(guest.socket, MessageTypes.MatchmakingEnqueue, {
+      displayName: 'GuestBounce',
+      avatarColor: '#222222',
+    });
+    const guestStatus = await waitForType(guest, MessageTypes.MatchmakingStatus);
+    expect(asString(guestStatus.payload?.['state'])).toBe('assigned');
+    expect(asString(guestStatus.payload?.['matchId'])).toBe(matchId);
+    const guestAccepted = await waitForType(guest, MessageTypes.SessionAccepted);
+    const guestPlayerId1 = asString(guestAccepted.payload?.['playerId']);
+
+    const hostSawGuest = await waitForType(host, MessageTypes.MatchSnapshot, {
+      afterIndex: host.events.findIndex((e) => e.type === MessageTypes.MatchSnapshot),
+    });
+    const hostPlayers1 = (hostSawGuest.payload?.['players'] as Array<{ playerId?: string }>) ?? [];
+    expect(hostPlayers1.some((p) => p.playerId === guestPlayerId1)).toBe(true);
+
+    // Leave via match.leave (same path as mobile Leave button).
+    const beforeLeave1 = host.events.length - 1;
+    sendCommand(guest.socket, MessageTypes.MatchLeave, { matchId });
+    await waitForType(guest, MessageTypes.MatchSnapshot);
+    const hostAfterLeave1 = await waitForType(host, MessageTypes.MatchSnapshot, {
+      afterIndex: beforeLeave1,
+    });
+    const playersAfterLeave1 =
+      (hostAfterLeave1.payload?.['players'] as Array<{ playerId?: string }>) ?? [];
+    expect(playersAfterLeave1).toHaveLength(1);
+    expect(playersAfterLeave1.some((p) => p.playerId === guestPlayerId1)).toBe(
+      false,
+    );
+
+    // Guest disconnects and rejoins on a fresh socket (mobile tears down transport).
+    guest.socket.disconnect();
+    const guest2 = await tracked();
+    sendCommand(guest2.socket, MessageTypes.MatchmakingEnqueue, {
+      displayName: 'GuestBounce',
+      avatarColor: '#222222',
+    });
+    const rejoinStatus = await waitForType(guest2, MessageTypes.MatchmakingStatus);
+    expect(asString(rejoinStatus.payload?.['state'])).toBe('assigned');
+    expect(asString(rejoinStatus.payload?.['matchId'])).toBe(matchId);
+    const rejoinAccepted = await waitForType(guest2, MessageTypes.SessionAccepted);
+    const guestPlayerId2 = asString(rejoinAccepted.payload?.['playerId']);
+    expect(guestPlayerId2).not.toBe(guestPlayerId1);
+
+    const beforeLeave2 = host.events.length - 1;
+    // Wait until host sees the rejoined guest.
+    const started = Date.now();
+    for (;;) {
+      const latest = [...host.events]
+        .reverse()
+        .find((e) => e.type === MessageTypes.MatchSnapshot);
+      const players =
+        (latest?.payload?.['players'] as Array<{ playerId?: string }>) ?? [];
+      if (players.some((p) => p.playerId === guestPlayerId2)) break;
+      if (Date.now() - started > 5000) {
+        throw new Error('host never saw rejoined guest');
+      }
+      await sleep(20);
+    }
+
+    sendCommand(guest2.socket, MessageTypes.MatchLeave, { matchId });
+    await waitForType(guest2, MessageTypes.MatchSnapshot);
+    const hostAfterLeave2 = await waitForType(host, MessageTypes.MatchSnapshot, {
+      afterIndex: beforeLeave2,
+    });
+    const playersAfterLeave2 =
+      (hostAfterLeave2.payload?.['players'] as Array<{
+        playerId?: string;
+        displayName?: string;
+      }>) ?? [];
+    expect(playersAfterLeave2).toHaveLength(1);
+    expect(playersAfterLeave2.some((p) => p.playerId === guestPlayerId2)).toBe(
+      false,
+    );
+    expect(
+      playersAfterLeave2.some((p) => p.displayName === 'GuestBounce'),
+    ).toBe(false);
+
+    const store = matchService.getStoreForTests();
+    const match = await store.get(matchId);
+    expect(match?.players.size).toBe(1);
+  }, 30000);
+
+  it('quick lobby: disconnect-only leave/rejoin/leave drops guest (no ghost)', async () => {
+    const host = await tracked();
+    sendCommand(host.socket, MessageTypes.MatchmakingEnqueue, {
+      displayName: 'HostStay2',
+      avatarColor: '#111111',
+    });
+    const hostStatus = await waitForType(host, MessageTypes.MatchmakingStatus);
+    const matchId = asString(hostStatus.payload?.['matchId']);
+    await waitForType(host, MessageTypes.SessionAccepted);
+    await waitForType(host, MessageTypes.MatchSnapshot);
+
+    async function seatGuest(name: string): Promise<{
+      tracked: TrackedSocket;
+      playerId: string;
+    }> {
+      const g = await tracked();
+      sendCommand(g.socket, MessageTypes.MatchmakingEnqueue, {
+        displayName: name,
+        avatarColor: '#222222',
+      });
+      await waitForType(g, MessageTypes.MatchmakingStatus);
+      const accepted = await waitForType(g, MessageTypes.SessionAccepted);
+      const playerId = asString(accepted.payload?.['playerId']);
+      const started = Date.now();
+      for (;;) {
+        const latest = [...host.events]
+          .reverse()
+          .find((e) => e.type === MessageTypes.MatchSnapshot);
+        const players =
+          (latest?.payload?.['players'] as Array<{ playerId?: string }>) ?? [];
+        if (players.some((p) => p.playerId === playerId)) {
+          return { tracked: g, playerId };
+        }
+        if (Date.now() - started > 5000) {
+          throw new Error(`host never saw ${name}`);
+        }
+        await sleep(20);
+      }
+    }
+
+    const first = await seatGuest('GuestDisc');
+    const beforeLeave1 = host.events.length - 1;
+    // Disconnect without match.leave — exercises ticket cancel + lobby free.
+    first.tracked.socket.disconnect();
+    const startedLeave1 = Date.now();
+    for (;;) {
+      const storeMatch = await matchService.getStoreForTests().get(matchId);
+      const gone = storeMatch && !storeMatch.players.has(first.playerId);
+      const latest = host.events
+        .slice(beforeLeave1 + 1)
+        .reverse()
+        .find((e) => e.type === MessageTypes.MatchSnapshot);
+      const players =
+        (latest?.payload?.['players'] as Array<{ playerId?: string }>) ?? [];
+      if (gone && latest && !players.some((p) => p.playerId === first.playerId)) {
+        break;
+      }
+      if (Date.now() - startedLeave1 > 5000) {
+        throw new Error(
+          `guest still seated after disconnect: storeHas=${storeMatch?.players.has(first.playerId)} snapHas=${players.some((p) => p.playerId === first.playerId)}`,
+        );
+      }
+      await sleep(20);
+    }
+
+    const second = await seatGuest('GuestDisc');
+    expect(second.playerId).not.toBe(first.playerId);
+    const beforeLeave2 = host.events.length - 1;
+    second.tracked.socket.disconnect();
+    const startedLeave2 = Date.now();
+    for (;;) {
+      const storeMatch = await matchService.getStoreForTests().get(matchId);
+      const gone = storeMatch && !storeMatch.players.has(second.playerId);
+      const latest = host.events
+        .slice(beforeLeave2 + 1)
+        .reverse()
+        .find((e) => e.type === MessageTypes.MatchSnapshot);
+      const players =
+        (latest?.payload?.['players'] as Array<{
+          playerId?: string;
+          displayName?: string;
+        }>) ?? [];
+      if (
+        gone &&
+        latest &&
+        !players.some((p) => p.playerId === second.playerId)
+      ) {
+        expect(players.some((p) => p.displayName === 'GuestDisc')).toBe(false);
+        break;
+      }
+      if (Date.now() - startedLeave2 > 5000) {
+        throw new Error(
+          `guest still seated after second disconnect: storeHas=${storeMatch?.players.has(second.playerId)}`,
+        );
+      }
+      await sleep(20);
+    }
+
+    const store = matchService.getStoreForTests();
+    const match = await store.get(matchId);
+    expect(match?.players.has(second.playerId)).toBe(false);
+    expect(match?.players.has(first.playerId)).toBe(false);
+    expect(
+      [...(match?.players.values() ?? [])].some(
+        (p) => p.presence === 'disconnected',
+      ),
+    ).toBe(false);
+  }, 30000);
 
   it('LH-005 training start seats capacity-1 and rematch issues new matchId', async () => {
     const client = await tracked();

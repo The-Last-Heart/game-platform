@@ -23,6 +23,7 @@ export {
   applyCompleteSumSelection,
   buildInitialCompleteSumState,
   buildSafeFallback,
+  COMPLETE_SUM_SUCCESS_ANIM_MS,
   createSeededRng,
   emptySelections,
   generateCompleteSumRound,

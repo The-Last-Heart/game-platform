@@ -403,6 +403,24 @@ class MatchReducer {
         final PlayerPresencePayload presence = PlayerPresencePayload.fromJson(
           envelope.payload!,
         );
+        // Pre-challenge: a disconnected presence means the seat was freed.
+        // Drop them from the roster immediately so leave/rejoin/leave cannot
+        // leave a ghost name on the host until a later snapshot arrives.
+        final bool lobbyPhase =
+            state.phase == MatchPhase.lobby ||
+            state.phase == MatchPhase.readyCountdown;
+        if (lobbyPhase &&
+            !presence.joined &&
+            presence.presence == Presence.disconnected) {
+          return state.copyWith(
+            players: state.players
+                .where(
+                  (PlayerPublic p) => p.playerId != presence.playerId,
+                )
+                .toList(),
+            serverSequence: envelope.serverSequence ?? state.serverSequence,
+          );
+        }
         final List<PlayerPublic> updatedPlayers = state.players.map((
           PlayerPublic p,
         ) {

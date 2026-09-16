@@ -47,6 +47,7 @@ import type {
   MatchState,
 } from '../domain/types';
 import {
+  DISCONNECT_GRACE_MS,
   DomainError,
   MATCH_PLAYER_CAPACITY,
   MIN_LIVE_MATCH_PLAYERS,
@@ -455,10 +456,12 @@ export class MatchService implements OnModuleDestroy, OnModuleInit {
           'connected',
         );
         const next = presence.match;
+        this.clearDisconnectGrace(input.matchId, existingAck.playerId);
         if (presence.events.length > 0) {
           await this.store.save(next);
           this.emit(next, presence.events);
         }
+        this.rearmAfterReconnect(next);
         const replayResult = {
           playerId: existingAck.playerId,
           resumeToken: existingAck.resumeToken,
@@ -494,6 +497,7 @@ export class MatchService implements OnModuleDestroy, OnModuleInit {
         'connected',
       );
       next = presence.match;
+      this.clearDisconnectGrace(input.matchId, player.playerId);
       next.commandAcks = new Map(next.commandAcks);
       next.commandAcks.set(ackKey, {
         type: 'match.resume',
@@ -506,6 +510,7 @@ export class MatchService implements OnModuleDestroy, OnModuleInit {
       if (presence.events.length > 0) {
         this.emit(next, presence.events);
       }
+      this.rearmAfterReconnect(next);
       const resumeResult = {
         playerId: player.playerId,
         resumeToken: issued.token,
@@ -595,16 +600,79 @@ export class MatchService implements OnModuleDestroy, OnModuleInit {
       if (!owns()) {
         return;
       }
+      // Seat may already have been freed by leaveMatch / lobby cancel.
+      if (!match.players.has(playerId)) {
+        return;
+      }
+      // Quick Survival open lobbies must free the seat — a disconnected ghost
+      // stays visible on the host roster and blocks clean leave/rejoin cycles.
+      if (
+        match.mode === 'quick_survival' &&
+        match.status === 'waiting' &&
+        (match.phase === 'lobby' || match.phase === 'ready_countdown')
+      ) {
+        const departed = this.engine.leavePlayer(match, playerId);
+        if (!departed.left || !departed.removedFromLobby) {
+          return;
+        }
+        let next = departed.match;
+        if (
+          next.phase === 'lobby' &&
+          next.players.size > 0 &&
+          next.players.size < next.playerCapacity
+        ) {
+          this.armLobbyFillWait(next, QUICK_LOBBY_FILL_WAIT_MS);
+        }
+        if (next.players.size > 0) {
+          this.ensureQuickHost(next, playerId);
+        }
+        this.clearTimer(matchId);
+        await this.store.save(next);
+        if (departed.events.length > 0) {
+          this.emit(next, departed.events);
+        }
+        if (next.players.size === 0) {
+          this.roomCodes.unregisterMatch(matchId);
+          await this.store.delete(matchId);
+        }
+        return;
+      }
       try {
         const result = this.engine.setPresence(match, playerId, 'disconnected');
         await this.store.save(result.match);
         if (result.events.length > 0) {
           this.emit(result.match, result.events);
         }
+        // Mid-match: allow a short resume window, then treat as leave so a
+        // 2→1 live table cannot keep playing against a ghost seat.
+        if (
+          result.match.status !== 'completed' &&
+          result.match.phase !== 'completed' &&
+          result.match.phase !== 'draw' &&
+          result.match.phase !== 'halted' &&
+          result.match.phase !== 'lobby' &&
+          result.match.phase !== 'ready_countdown'
+        ) {
+          const seat = result.match.players.get(playerId);
+          if (seat?.status === 'active') {
+            this.scheduleDisconnectGrace(matchId, playerId);
+          }
+        }
       } catch {
         // Ignore unknown player on disconnect.
       }
     });
+  }
+
+  /**
+   * Test helper: fire a pending disconnect-grace expiry as if the timer elapsed.
+   */
+  async expireDisconnectGraceForTests(
+    matchId: string,
+    playerId: string,
+  ): Promise<void> {
+    this.clearDisconnectGrace(matchId, playerId);
+    await this.onDisconnectGraceExpired(matchId, playerId);
   }
 
   async submitAnswer(input: {
@@ -647,8 +715,8 @@ export class MatchService implements OnModuleDestroy, OnModuleInit {
         );
         await this.maybeContinue(await this.requireMatch(input.matchId));
       } else if (result.liveUpdate) {
-        // Same-sequence snapshot: clients replace clientConfig (partnerHolding)
-        // without advancing the recovery watermark.
+        // Same-sequence snapshot: clients replace clientConfig (partnerHolding /
+        // complete_sum selections) without advancing the recovery watermark.
         this.emit(result.match, [
           {
             kind: 'sequence',
@@ -657,6 +725,18 @@ export class MatchService implements OnModuleDestroy, OnModuleInit {
             serverTimestampMs: this.clock.nowMs(),
           },
         ]);
+        const holdAt =
+          result.match.currentChallenge?.completeSumState
+            ?.successResolveAtMonoMs;
+        if (
+          result.match.currentChallenge?.engineId === 'logic.complete_sum' &&
+          typeof holdAt === 'number'
+        ) {
+          this.scheduleCompleteSumSuccessResolve(
+            input.matchId,
+            Math.max(1, holdAt - this.clock.monoMs()),
+          );
+        }
       }
       const latest = await this.requireMatch(input.matchId);
       return {
@@ -1059,6 +1139,7 @@ export class MatchService implements OnModuleDestroy, OnModuleInit {
   async leaveMatch(
     matchId: string,
     playerId: string,
+    options?: { onlyIfDisconnected?: boolean },
   ): Promise<{
     snapshot: ReturnType<MatchEngine['toPublicSnapshot']> | null;
     left: boolean;
@@ -1068,6 +1149,20 @@ export class MatchService implements OnModuleDestroy, OnModuleInit {
   }> {
     return this.enqueue(matchId, async () => {
       const match = await this.requireMatch(matchId);
+      if (options?.onlyIfDisconnected) {
+        const seat = match.players.get(playerId);
+        if (
+          !seat ||
+          seat.status !== 'active' ||
+          seat.presence !== 'disconnected'
+        ) {
+          return {
+            snapshot: this.engine.toPublicSnapshot(match),
+            left: false,
+            emptied: false,
+          };
+        }
+      }
       const departed = this.engine.leavePlayer(match, playerId);
       if (!departed.left) {
         return {
@@ -1120,6 +1215,7 @@ export class MatchService implements OnModuleDestroy, OnModuleInit {
       }
 
       // Mid-match / terminal: keep the seat as status=left for results.
+      this.clearDisconnectGrace(matchId, playerId);
       await this.store.save(next);
       if (next.currentChallenge?.status === 'resolved') {
         this.clearTimer(matchId);
@@ -1134,12 +1230,14 @@ export class MatchService implements OnModuleDestroy, OnModuleInit {
         );
         if (
           next.mode !== 'training' &&
-          activeWithHearts.length <= 1 &&
+          activeWithHearts.length < MIN_LIVE_MATCH_PLAYERS &&
           next.phase !== 'completed' &&
           next.phase !== 'draw' &&
-          next.phase !== 'halted' &&
-          next.currentChallenge?.status !== 'active'
+          next.phase !== 'halted'
         ) {
+          // Dropping below the live minimum (e.g. 2→1) ends the match even if
+          // a challenge was still open — do not leave the survivor playing alone.
+          this.clearTimer(matchId);
           const finished = this.engine.completeByStandings(next);
           if (finished.events.length > 0) {
             await this.store.save(finished.match);
@@ -1964,6 +2062,26 @@ export class MatchService implements OnModuleDestroy, OnModuleInit {
       }
     }
 
+    // complete_sum: resolve after ring/total success motion hold.
+    if (
+      match.status === 'challenge_active' &&
+      match.currentChallenge &&
+      match.currentChallenge.status === 'active' &&
+      match.currentChallenge.engineId === 'logic.complete_sum'
+    ) {
+      const successResult = this.engine.resolveDueCompleteSumSuccess(match);
+      if (successResult.events.length > 0) {
+        match = successResult.match;
+        await this.store.save(match);
+        this.clearTimer(matchId);
+        await this.publishResolveAndMaybeRoundResult(
+          match,
+          successResult.events,
+        );
+        match = await this.requireMatch(matchId);
+      }
+    }
+
     // Inclusive deadline boundary: timeout due only when strictly after
     // deadline (not at equality), so a submit stamped at exact deadlineMonoMs
     // is not raced by timeout.
@@ -2269,6 +2387,64 @@ export class MatchService implements OnModuleDestroy, OnModuleInit {
     this.timers.set(key, timer);
   }
 
+  private scheduleCompleteSumSuccessResolve(
+    matchId: string,
+    delayMs: number,
+  ): void {
+    if (this.nodeEnv === 'test') return;
+    const key = `${matchId}:complete_sum_success`;
+    const existing = this.timers.get(key);
+    if (existing) {
+      clearTimeout(existing);
+      this.timers.delete(key);
+    }
+    const timer = setTimeout(
+      () => {
+        void this.enqueue(matchId, async () => {
+          const match = await this.requireMatch(matchId);
+          const result = this.engine.resolveDueCompleteSumSuccess(match);
+          if (result.events.length === 0) {
+            const holdAt =
+              match.currentChallenge?.completeSumState?.successResolveAtMonoMs;
+            if (
+              match.status === 'challenge_active' &&
+              match.currentChallenge?.status === 'active' &&
+              typeof holdAt === 'number' &&
+              this.clock.monoMs() < holdAt
+            ) {
+              this.scheduleCompleteSumSuccessResolve(
+                matchId,
+                Math.max(1, holdAt - this.clock.monoMs()),
+              );
+            }
+            return;
+          }
+          await this.store.save(result.match);
+          this.clearTimer(matchId);
+          const keyed = this.timers.get(key);
+          if (keyed) {
+            clearTimeout(keyed);
+            this.timers.delete(key);
+          }
+          await this.publishResolveAndMaybeRoundResult(
+            result.match,
+            result.events,
+          );
+          await this.maybeContinue(await this.requireMatch(matchId));
+        }).catch((error: unknown) => {
+          this.logger.error({
+            event: 'complete_sum_success_resolve_failed',
+            matchId,
+            category: error instanceof Error ? error.name : 'UnknownError',
+          });
+        });
+      },
+      Math.max(1, delayMs),
+    );
+    timer.unref?.();
+    this.timers.set(key, timer);
+  }
+
   private async advanceFromRoundResult(matchId: string): Promise<void> {
     const match = await this.requireMatch(matchId);
     if (match.phase !== 'round_result') return;
@@ -2299,12 +2475,21 @@ export class MatchService implements OnModuleDestroy, OnModuleInit {
 
     // Live / private: The Last Heart ends the match. With 2+ hearts remaining,
     // keep advancing (and recycle after the base playlist).
-    if (withHearts.length < 2) {
+    if (withHearts.length < MIN_LIVE_MATCH_PLAYERS) {
       const finished = this.engine.completeByStandings(match);
       if (finished.events.length > 0) {
         await this.store.save(finished.match);
         this.emit(finished.match, finished.events);
       }
+      return;
+    }
+
+    // Do not start another round while a survivor is only present via resume
+    // grace — otherwise a 2-player match keeps going against a ghost.
+    const connectedWithHearts = withHearts.filter(
+      (p) => p.presence === 'connected',
+    );
+    if (connectedWithHearts.length < MIN_LIVE_MATCH_PLAYERS) {
       return;
     }
 
@@ -2503,12 +2688,20 @@ export class MatchService implements OnModuleDestroy, OnModuleInit {
       const survivors = [...match.players.values()].filter(
         (p) => p.status === 'active',
       );
-      if (survivors.length >= 2) {
+      if (survivors.length >= MIN_LIVE_MATCH_PLAYERS) {
         await this.enterRoundResult(match);
         return;
       }
       if (match.mode === 'training' && survivors.length <= 1) {
         await this.enterRoundResult(match);
+        return;
+      }
+      if (match.mode !== 'training' && survivors.length < MIN_LIVE_MATCH_PLAYERS) {
+        const finished = this.engine.completeByStandings(match);
+        if (finished.events.length > 0) {
+          await this.store.save(finished.match);
+          this.emit(finished.match, finished.events);
+        }
       }
       return;
     }
@@ -2518,10 +2711,19 @@ export class MatchService implements OnModuleDestroy, OnModuleInit {
       const survivors = [...match.players.values()].filter(
         (p) => p.status === 'active',
       );
-      if (survivors.length >= 2) {
+      if (survivors.length >= MIN_LIVE_MATCH_PLAYERS) {
         this.schedulePhaseTimer(match.matchId, ROUND_RESULT_MS);
       } else if (match.mode === 'training' && survivors.length <= 1) {
         this.schedulePhaseTimer(match.matchId, ROUND_RESULT_MS);
+      } else if (
+        match.mode !== 'training' &&
+        survivors.length < MIN_LIVE_MATCH_PLAYERS
+      ) {
+        const finished = this.engine.completeByStandings(match);
+        if (finished.events.length > 0) {
+          await this.store.save(finished.match);
+          this.emit(finished.match, finished.events);
+        }
       }
       return;
     }
@@ -2537,7 +2739,7 @@ export class MatchService implements OnModuleDestroy, OnModuleInit {
       const survivors = [...match.players.values()].filter(
         (p) => p.status === 'active',
       );
-      if (survivors.length >= 2) {
+      if (survivors.length >= MIN_LIVE_MATCH_PLAYERS) {
         await this.startDevRoundLocked(match.matchId);
       }
     }
@@ -2596,9 +2798,19 @@ export class MatchService implements OnModuleDestroy, OnModuleInit {
       (p) => p.status === 'active',
     );
     const shouldHold =
-      survivors.length >= 2 ||
+      survivors.length >= MIN_LIVE_MATCH_PLAYERS ||
       (match.mode === 'training' && survivors.length <= 1);
     if (!shouldHold) {
+      if (
+        match.mode !== 'training' &&
+        survivors.length < MIN_LIVE_MATCH_PLAYERS
+      ) {
+        const finished = this.engine.completeByStandings(match);
+        await this.store.save(finished.match);
+        this.clearTimer(match.matchId);
+        this.emit(finished.match, [...resolveEvents, ...finished.events]);
+        return;
+      }
       this.emit(match, resolveEvents);
       return;
     }
@@ -2876,6 +3088,77 @@ export class MatchService implements OnModuleDestroy, OnModuleInit {
     }, delayMs);
     timer.unref?.();
     this.timers.set(matchId, timer);
+  }
+
+  private disconnectGraceKey(matchId: string, playerId: string): string {
+    return `${matchId}:disconnect:${playerId}`;
+  }
+
+  private scheduleDisconnectGrace(matchId: string, playerId: string): void {
+    const key = this.disconnectGraceKey(matchId, playerId);
+    this.clearDisconnectGrace(matchId, playerId);
+    // Tests drive expiry explicitly via expireDisconnectGraceForTests.
+    if (this.nodeEnv === 'test') {
+      return;
+    }
+    const timer = setTimeout(() => {
+      this.timers.delete(key);
+      void this.onDisconnectGraceExpired(matchId, playerId).catch(
+        (error: unknown) => {
+          this.logger.error({
+            event: 'disconnect_grace_failed',
+            matchId,
+            category: error instanceof Error ? error.name : 'UnknownError',
+          });
+        },
+      );
+    }, DISCONNECT_GRACE_MS);
+    timer.unref?.();
+    this.timers.set(key, timer);
+  }
+
+  private clearDisconnectGrace(matchId: string, playerId: string): void {
+    const key = this.disconnectGraceKey(matchId, playerId);
+    const timer = this.timers.get(key);
+    if (timer) {
+      clearTimeout(timer);
+      this.timers.delete(key);
+    }
+  }
+
+  private async onDisconnectGraceExpired(
+    matchId: string,
+    playerId: string,
+  ): Promise<void> {
+    await this.leaveMatch(matchId, playerId, { onlyIfDisconnected: true });
+  }
+
+  /**
+   * After a successful resume, continue a round_result that was paused while a
+   * survivor was only present via disconnect grace.
+   */
+  private rearmAfterReconnect(match: MatchState): void {
+    if (match.mode === 'training') {
+      return;
+    }
+    if (match.status === 'completed' || match.winnerId != null) {
+      return;
+    }
+    if (match.phase !== 'round_result') {
+      return;
+    }
+    const connectedWithHearts = [...match.players.values()].filter(
+      (p) =>
+        p.status === 'active' && p.hearts > 0 && p.presence === 'connected',
+    );
+    if (connectedWithHearts.length < MIN_LIVE_MATCH_PLAYERS) {
+      return;
+    }
+    const remainingMs =
+      match.phaseDeadlineAtMs != null
+        ? Math.max(1, match.phaseDeadlineAtMs - this.clock.nowMs())
+        : 1;
+    this.schedulePhaseTimer(match.matchId, remainingMs);
   }
 
   private scheduleTimeout(matchId: string, durationMs: number): void {

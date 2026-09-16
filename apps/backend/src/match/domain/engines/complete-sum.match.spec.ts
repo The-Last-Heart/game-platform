@@ -234,7 +234,7 @@ describe('logic.complete_sum match behavior', () => {
     expect(result.match.currentChallenge!.status).toBe('active');
   });
 
-  it('succeeds only when all selected and total matches target', () => {
+  it('defers resolve after target hit so success motion can play', () => {
     const clock = new FakeClock(1_000_000);
     const eng = engine(clock);
     let match = fill(eng, 2);
@@ -261,11 +261,25 @@ describe('logic.complete_sum match behavior', () => {
       answer: { selectedValue: solution['p1'], final: false },
     });
     expect(result.events.some((e) => e.kind === 'challenge_resolved')).toBe(
+      false,
+    );
+    expect(result.liveUpdate).toBe(true);
+    expect(result.match.currentChallenge!.status).toBe('active');
+    expect(
+      result.match.currentChallenge!.completeSumState!.successResolveAtMonoMs,
+    ).toBeGreaterThan(clock.monoMs());
+
+    const early = eng.resolveDueCompleteSumSuccess(result.match);
+    expect(early.events).toHaveLength(0);
+
+    clock.advance(1500);
+    const resolved = eng.resolveDueCompleteSumSuccess(result.match);
+    expect(resolved.events.some((e) => e.kind === 'challenge_resolved')).toBe(
       true,
     );
     const resolutions =
-      result.match.lastRoundResult?.resolutions ??
-      result.match.currentChallenge?.resolutions ??
+      resolved.match.lastRoundResult?.resolutions ??
+      resolved.match.currentChallenge?.resolutions ??
       [];
     expect(resolutions.every((r) => r.outcome === 'success')).toBe(true);
   });

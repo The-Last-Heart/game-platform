@@ -1,6 +1,11 @@
 export const MATCH_PLAYER_CAPACITY = 6;
 /** Quick Survival / live lobbies: need at least two humans to start. */
 export const MIN_LIVE_MATCH_PLAYERS = 2;
+/**
+ * After an in-match disconnect, how long to wait for resume before treating the
+ * seat as left (so a 2→1 live match can crown the remaining player).
+ */
+export const DISCONNECT_GRACE_MS = 30_000;
 /** How long an open quick lobby waits to fill before starting (if ≥2) or aborting (if 1). */
 export const QUICK_LOBBY_FILL_WAIT_MS = 60_000;
 /** Host extend adds this much to the open-lobby fill wait. */

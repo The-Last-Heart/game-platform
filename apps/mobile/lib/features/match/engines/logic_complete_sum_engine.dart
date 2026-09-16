@@ -114,7 +114,7 @@ class _CompleteSumWidgetState extends State<_CompleteSumWidget>
     );
     _successBurst = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 780),
+      duration: const Duration(milliseconds: 980),
     );
     _centerShake = AnimationController(
       vsync: this,
@@ -340,12 +340,21 @@ class _CompleteSumWidgetState extends State<_CompleteSumWidget>
   void _fireSuccess() {
     _successFired = true;
     try {
-      HapticFeedback.lightImpact();
+      HapticFeedback.mediumImpact();
     } catch (_) {}
     if (!_reduceMotion) {
+      // Replay total punch so the inner readout pops with the ring.
+      _totalFrom = _displayTotal.toDouble();
+      _totalTo = _target.toDouble();
+      _arcFrom = _displayArc;
+      _arcTo = 1;
+      unawaited(_totalAnim.forward(from: 0));
       unawaited(_successBurst.forward(from: 0));
     } else {
       _successBurst.value = 1;
+      _totalAnim.value = 1;
+      _authTotal = _target;
+      _arcFill = 1;
     }
   }
 
@@ -370,6 +379,12 @@ class _CompleteSumWidgetState extends State<_CompleteSumWidget>
       unawaited(_optionPress.forward(from: 0));
     }
 
+    // Start the ring/total win motion as soon as this seat completes the sum,
+    // without waiting for the live snapshot (which can lose the race to resolve).
+    if (_wouldCompleteTarget(value)) {
+      _fireSuccess();
+    }
+
     _ctx.onSubmit(<String, dynamic>{
       'selectedValue': value,
       'final': false,
@@ -388,6 +403,24 @@ class _CompleteSumWidgetState extends State<_CompleteSumWidget>
         unawaited(_rejectShake.forward(from: 0));
       }
     });
+  }
+
+  /// True when [localValue] plus every other seat's authoritative pick equals target.
+  bool _wouldCompleteTarget(int localValue) {
+    if (_target <= 0 || _participantIds.isEmpty) return false;
+    final String? localId = _localId;
+    if (localId == null || !_participantIds.contains(localId)) return false;
+    int total = 0;
+    for (final String id in _participantIds) {
+      if (id == localId) {
+        total += localValue;
+        continue;
+      }
+      final int? other = _selections[id];
+      if (other == null) return false;
+      total += other;
+    }
+    return total == _target;
   }
 
   List<String> _parseStringList(Object? raw) {
@@ -449,11 +482,16 @@ class _CompleteSumWidgetState extends State<_CompleteSumWidget>
   }
 
   String _initialFor(String id) {
+    final String source = _displayNameFor(id);
+    if (source.isEmpty) return '?';
+    return String.fromCharCode(source.runes.first).toUpperCase();
+  }
+
+  String _displayNameFor(String id) {
     final PlayerPublic? p = _playerFor(id);
     final String? name = p?.displayName?.trim();
-    final String source =
-        (name != null && name.isNotEmpty) ? name : (id.isNotEmpty ? id : '?');
-    return String.fromCharCode(source.runes.first).toUpperCase();
+    if (name != null && name.isNotEmpty) return name;
+    return id.isNotEmpty ? id : '?';
   }
 
   Color _colorFor(String id, int index) {
@@ -719,10 +757,11 @@ class _CompleteSumWidgetState extends State<_CompleteSumWidget>
               size: Size(size, size),
               painter: _SuccessBurstPainter(t: successT, color: LhColors.success),
             ),
-          // Center meter readout
+          // Center meter readout — scales and brightens on hit.
           Transform.scale(
             scale: successVisual
-                ? 1 + Curves.elasticOut.transform(successT.clamp(0.0, 1.0)) * 0.08
+                ? 1 +
+                    Curves.elasticOut.transform(successT.clamp(0.0, 1.0)) * 0.22
                 : 1,
             child: Column(
               mainAxisSize: MainAxisSize.min,
@@ -731,8 +770,12 @@ class _CompleteSumWidgetState extends State<_CompleteSumWidget>
                   totalLabel,
                   textAlign: TextAlign.center,
                   style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                    color: LhColors.textMuted,
+                    color: successVisual
+                        ? LhColors.success.withValues(alpha: 0.9)
+                        : LhColors.textMuted,
                     letterSpacing: 0.2,
+                    fontWeight:
+                        successVisual ? FontWeight.w600 : FontWeight.w400,
                   ),
                 ),
                 const SizedBox(height: 4),
@@ -743,11 +786,21 @@ class _CompleteSumWidgetState extends State<_CompleteSumWidget>
                     key: const ValueKey<String>('complete_sum_total'),
                     style: Theme.of(context).textTheme.headlineLarge?.copyWith(
                       color: meterColor,
-                      fontWeight: FontWeight.w700,
+                      fontWeight: FontWeight.w800,
+                      fontSize: successVisual
+                          ? (Theme.of(context)
+                                      .textTheme
+                                      .headlineLarge
+                                      ?.fontSize ??
+                                  32) +
+                              4 * successT
+                          : null,
                       shadows: <Shadow>[
                         Shadow(
-                          color: meterColor.withValues(alpha: 0.55),
-                          blurRadius: 12,
+                          color: meterColor.withValues(
+                            alpha: 0.55 + successT * 0.35,
+                          ),
+                          blurRadius: 12 + successT * 18,
                         ),
                       ],
                     ),
@@ -818,7 +871,7 @@ class _CompleteSumWidgetState extends State<_CompleteSumWidget>
       left: pos.dx,
       top: pos.dy,
       width: nodeSize,
-      height: nodeSize + 18,
+      height: nodeSize + 28,
       child: Opacity(
         opacity: nodeOpacity,
         child: Transform.scale(
@@ -826,70 +879,117 @@ class _CompleteSumWidgetState extends State<_CompleteSumWidget>
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: <Widget>[
-              AnimatedContainer(
-                duration: _reduceMotion
-                    ? Duration.zero
-                    : const Duration(milliseconds: 220),
-                width: nodeSize * 0.78,
-                height: nodeSize * 0.78,
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  color: LhColors.elevated,
-                  border: Border.all(
-                    color: selected
-                        ? LhColors.success
-                        : color.withValues(alpha: 0.7 + glow * 0.3),
-                    width: selected ? 2.4 : 1.6,
-                  ),
-                  boxShadow: <BoxShadow>[
-                    BoxShadow(
-                      color: (selected ? LhColors.success : color).withValues(
-                        alpha: selected ? 0.45 : glow * 0.5,
-                      ),
-                      blurRadius: selected ? 14 : 10 + breathe * 8,
-                      spreadRadius: selected ? 1 : 0,
-                    ),
-                  ],
-                ),
-                alignment: Alignment.center,
-                child: selected
-                    ? AnimatedSwitcher(
-                        duration: _reduceMotion
-                            ? Duration.zero
-                            : const Duration(milliseconds: 220),
-                        transitionBuilder:
-                            (Widget child, Animation<double> anim) {
-                          return FadeTransition(
-                            opacity: anim,
-                            child: ScaleTransition(scale: anim, child: child),
-                          );
-                        },
-                        child: Text(
-                          '$shown',
-                          key: ValueKey<String>('sel-$id-$shown'),
-                          style: TextStyle(
-                            color: LhColors.text,
-                            fontWeight: FontWeight.w800,
-                            fontSize: nodeSize * 0.28,
-                          ),
+              SizedBox(
+                width: nodeSize * 0.9,
+                height: nodeSize * 0.9,
+                child: Stack(
+                  clipBehavior: Clip.none,
+                  alignment: Alignment.center,
+                  children: <Widget>[
+                    AnimatedContainer(
+                      duration: _reduceMotion
+                          ? Duration.zero
+                          : const Duration(milliseconds: 220),
+                      width: nodeSize * 0.78,
+                      height: nodeSize * 0.78,
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        color: LhColors.elevated,
+                        border: Border.all(
+                          color: selected
+                              ? LhColors.success
+                              : color.withValues(alpha: 0.7 + glow * 0.3),
+                          width: selected ? 2.4 : 1.6,
                         ),
-                      )
-                    : Text(
+                        boxShadow: <BoxShadow>[
+                          BoxShadow(
+                            color: (selected ? LhColors.success : color)
+                                .withValues(
+                              alpha: selected ? 0.45 : glow * 0.5,
+                            ),
+                            blurRadius: selected ? 14 : 10 + breathe * 8,
+                            spreadRadius: selected ? 1 : 0,
+                          ),
+                        ],
+                      ),
+                      alignment: Alignment.center,
+                      // Identity stays in the avatar — never swap for the pick.
+                      child: Text(
                         _initialFor(id),
                         style: TextStyle(
-                          color: LhColors.textMuted,
+                          color: selected ? LhColors.text : LhColors.textMuted,
                           fontWeight: FontWeight.w700,
                           fontSize: nodeSize * 0.22,
                         ),
                       ),
+                    ),
+                    if (selected)
+                      Positioned(
+                        right: 0,
+                        top: -2,
+                        child: AnimatedSwitcher(
+                          duration: _reduceMotion
+                              ? Duration.zero
+                              : const Duration(milliseconds: 220),
+                          transitionBuilder:
+                              (Widget child, Animation<double> anim) {
+                            return FadeTransition(
+                              opacity: anim,
+                              child: ScaleTransition(
+                                scale: anim,
+                                child: child,
+                              ),
+                            );
+                          },
+                          child: Container(
+                            key: ValueKey<String>('sel-$id-$shown'),
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 5,
+                              vertical: 2,
+                            ),
+                            decoration: BoxDecoration(
+                              color: LhColors.success,
+                              borderRadius: BorderRadius.circular(8),
+                              boxShadow: <BoxShadow>[
+                                BoxShadow(
+                                  color: LhColors.success.withValues(
+                                    alpha: 0.45,
+                                  ),
+                                  blurRadius: 6,
+                                ),
+                              ],
+                            ),
+                            child: Text(
+                              '$shown',
+                              style: TextStyle(
+                                color: LhColors.bg,
+                                fontWeight: FontWeight.w800,
+                                fontSize: math.max(10, nodeSize * 0.16),
+                                height: 1.1,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                  ],
+                ),
               ),
-              const SizedBox(height: 2),
+              Text(
+                isLocal ? youLabel : _displayNameFor(id),
+                key: ValueKey<String>(isLocal ? 'local-name' : 'name-$id'),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                textAlign: TextAlign.center,
+                style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                  color: LhColors.text,
+                  fontSize: 10,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
               Text(
                 isLocal
-                    ? youLabel
-                    : (authSelected || (pending && isLocal)
-                        ? readyLabel
-                        : thinkingLabel),
+                    ? (selected ? readyLabel : thinkingLabel)
+                    : (authSelected ? readyLabel : thinkingLabel),
                 key: ValueKey<String>(
                   isLocal
                       ? 'local-status'
@@ -897,9 +997,10 @@ class _CompleteSumWidgetState extends State<_CompleteSumWidget>
                 ),
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
+                textAlign: TextAlign.center,
                 style: Theme.of(context).textTheme.labelSmall?.copyWith(
                   color: selected ? LhColors.success : LhColors.textMuted,
-                  fontSize: 10,
+                  fontSize: 9,
                 ),
               ),
             ],
@@ -1096,11 +1197,25 @@ class _EnergyRingPainter extends CustomPainter {
     );
 
     if (success && successT > 0) {
+      final double ease = Curves.easeOut.transform(successT.clamp(0.0, 1.0));
       final Paint halo = Paint()
         ..style = PaintingStyle.stroke
-        ..strokeWidth = stroke * (1 + successT)
-        ..color = LhColors.success.withValues(alpha: 0.35 * (1 - successT));
-      canvas.drawCircle(c, radius + successT * 18, halo);
+        ..strokeWidth = stroke * (1.2 + ease * 1.4)
+        ..color = LhColors.success.withValues(alpha: 0.45 * (1 - ease));
+      canvas.drawCircle(c, radius + ease * 28, halo);
+
+      final Paint fillPulse = Paint()
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = stroke * (1 + (1 - ease) * 0.6)
+        ..color = LhColors.success.withValues(alpha: 0.55 + (1 - ease) * 0.35)
+        ..strokeCap = StrokeCap.round;
+      canvas.drawArc(rect, -math.pi / 2, math.pi * 2, false, fillPulse);
+
+      final Paint outer = Paint()
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = stroke * 0.55
+        ..color = LhColors.success.withValues(alpha: 0.28 * (1 - ease));
+      canvas.drawCircle(c, radius + ease * 46, outer);
     }
   }
 
