@@ -39,6 +39,15 @@ import {
   type CompleteSumRoundState,
 } from './engines/complete-sum-runtime';
 import {
+  applyPassThePulseTap,
+  clonePassThePulseState,
+  materializePassThePulseRound,
+  mergePassThePulseIntoClientConfig,
+  resolveDuePassThePulseMisses,
+  SOCIAL_PASS_THE_PULSE_ENGINE_ID,
+  validatePassThePulseTapAnswer,
+} from './engines/pass-the-pulse-runtime';
+import {
   cloneInventory,
   convertEnergyForPlayer,
   defaultPowerConfig,
@@ -246,6 +255,27 @@ export function validateChallengeDefinition(
           `clientConfig.${key} must be a non-empty string`,
         );
       }
+    }
+  }
+
+  if (definition.engineId === 'memory.sequence') {
+    const previewMs = definition.serverConfig['previewMs'];
+    if (
+      typeof previewMs !== 'number' ||
+      !Number.isFinite(previewMs) ||
+      previewMs <= 0
+    ) {
+      throw new DomainError(
+        'INVALID_DEFINITION',
+        'memory.sequence previewMs must be a positive number',
+      );
+    }
+    const minAnswerMs = 2000;
+    if (previewMs + minAnswerMs > definition.durationMs) {
+      throw new DomainError(
+        'INVALID_DEFINITION',
+        'memory.sequence durationMs must leave at least 2000ms after previewMs',
+      );
     }
   }
 }
@@ -463,6 +493,18 @@ export function toPublicChallengeView(
     mergeCompleteSumIntoClientConfig(
       clientConfig,
       challenge.completeSumState,
+      viewerPlayerId,
+    );
+  }
+
+  // Pass the Pulse: frozen names + authoritative timeline/results.
+  if (
+    challenge.engineId === SOCIAL_PASS_THE_PULSE_ENGINE_ID &&
+    challenge.passThePulseState
+  ) {
+    mergePassThePulseIntoClientConfig(
+      clientConfig,
+      challenge.passThePulseState,
       viewerPlayerId,
     );
   }
@@ -1140,6 +1182,15 @@ export class MatchEngine {
       challenge.signalEndsAtMs = null;
       challenge.signalEndsAtMonoMs = null;
       materializeCompleteSumRound(challenge);
+    } else if (challenge.engineId === SOCIAL_PASS_THE_PULSE_ENGINE_ID) {
+      challenge.roundPhase = 'answer';
+      challenge.previewEndsAtMonoMs = null;
+      challenge.signalToken = null;
+      challenge.signalAtMonoMs = null;
+      challenge.signaledAtMs = null;
+      challenge.signalEndsAtMs = null;
+      challenge.signalEndsAtMonoMs = null;
+      materializePassThePulseRound(challenge, next.players, this.clock);
     } else {
       challenge.roundPhase = 'answer';
       challenge.previewEndsAtMonoMs = null;
@@ -1325,6 +1376,10 @@ export class MatchEngine {
       round.roundPhase = 'answer';
       round.previewEndsAtMonoMs = null;
       materializeCompleteSumRound(round);
+    } else if (pinned.engineId === SOCIAL_PASS_THE_PULSE_ENGINE_ID) {
+      round.roundPhase = 'answer';
+      round.previewEndsAtMonoMs = null;
+      materializePassThePulseRound(round, next.players, this.clock);
     } else {
       round.roundPhase = 'answer';
       round.previewEndsAtMonoMs = null;
@@ -1421,30 +1476,47 @@ export class MatchEngine {
       challenge.signaledAtMs = activeSeat?.signaledAtMs ?? nowWall;
       challenge.signalEndsAtMs = activeSeat?.signalEndsAtMs ?? null;
       challenge.signalEndsAtMonoMs = activeSeat?.signalEndsAtMonoMs ?? null;
-    } else {
-      if (challenge.roundPhase !== 'waiting_signal') {
-        return { match, events: [] };
-      }
-      const signalAtMono = challenge.signalAtMonoMs;
-      if (signalAtMono == null || nowMono < signalAtMono) {
-        return { match, events: [] };
-      }
-      challenge.roundPhase = 'signal_active';
-      challenge.signaledAtMs = nowWall;
-      challenge.signalEndsAtMs = nowWall + windowMs;
-      challenge.signalEndsAtMonoMs = nowMono + windowMs;
-      events.push({
-        kind: 'challenge_signal',
-        sequence: 0,
-        revision: 0,
-        serverTimestampMs: nowWall,
-        challengeInstanceId: challenge.challengeInstanceId,
-        signalToken: challenge.signalToken!,
-        signaledAtMs: nowWall,
-        signalEndsAtMs: challenge.signalEndsAtMs,
-        serverNowMs: nowWall,
-      });
+      // Seat-private signals are unsequenced on the wire — do not bump
+      // match.sequence or clients see a phantom gap on the next room event.
+      next.revision += 1;
+      next.updatedAtMs = nowWall;
+      return {
+        match: next,
+        events: events.map((event) =>
+          event.kind === 'challenge_signal'
+            ? {
+                ...event,
+                sequence: next.sequence,
+                revision: next.revision,
+                serverTimestampMs: nowWall,
+              }
+            : event,
+        ),
+      };
     }
+
+    if (challenge.roundPhase !== 'waiting_signal') {
+      return { match, events: [] };
+    }
+    const signalAtMono = challenge.signalAtMonoMs;
+    if (signalAtMono == null || nowMono < signalAtMono) {
+      return { match, events: [] };
+    }
+    challenge.roundPhase = 'signal_active';
+    challenge.signaledAtMs = nowWall;
+    challenge.signalEndsAtMs = nowWall + windowMs;
+    challenge.signalEndsAtMonoMs = nowMono + windowMs;
+    events.push({
+      kind: 'challenge_signal',
+      sequence: 0,
+      revision: 0,
+      serverTimestampMs: nowWall,
+      challengeInstanceId: challenge.challengeInstanceId,
+      signalToken: challenge.signalToken!,
+      signaledAtMs: nowWall,
+      signalEndsAtMs: challenge.signalEndsAtMs,
+      serverNowMs: nowWall,
+    });
 
     const bump = this.bump(next);
     return {
@@ -1549,26 +1621,42 @@ export class MatchEngine {
         : stillActive
           ? 'signal_active'
           : 'signal_expired';
-    } else {
-      if (challenge.roundPhase !== 'signal_active') {
-        return { match, events: [] };
-      }
-      const endsAtMono = challenge.signalEndsAtMonoMs;
-      // Inclusive blue window: expire only after the end instant.
-      if (endsAtMono == null || nowMono <= endsAtMono) {
-        return { match, events: [] };
-      }
-      challenge.roundPhase = 'signal_expired';
-      events.push({
-        kind: 'challenge_signal_ended',
-        sequence: 0,
-        revision: 0,
-        serverTimestampMs: nowWall,
-        challengeInstanceId: challenge.challengeInstanceId,
-        signalEndsAtMs: challenge.signalEndsAtMs ?? nowWall,
-        serverNowMs: nowWall,
-      });
+      // Seat-private ends are unsequenced — keep match.sequence stable.
+      next.revision += 1;
+      next.updatedAtMs = nowWall;
+      return {
+        match: next,
+        events: events.map((event) =>
+          event.kind === 'challenge_signal_ended'
+            ? {
+                ...event,
+                sequence: next.sequence,
+                revision: next.revision,
+                serverTimestampMs: nowWall,
+              }
+            : event,
+        ),
+      };
     }
+
+    if (challenge.roundPhase !== 'signal_active') {
+      return { match, events: [] };
+    }
+    const endsAtMono = challenge.signalEndsAtMonoMs;
+    // Inclusive blue window: expire only after the end instant.
+    if (endsAtMono == null || nowMono <= endsAtMono) {
+      return { match, events: [] };
+    }
+    challenge.roundPhase = 'signal_expired';
+    events.push({
+      kind: 'challenge_signal_ended',
+      sequence: 0,
+      revision: 0,
+      serverTimestampMs: nowWall,
+      challengeInstanceId: challenge.challengeInstanceId,
+      signalEndsAtMs: challenge.signalEndsAtMs ?? nowWall,
+      serverNowMs: nowWall,
+    });
 
     const bump = this.bump(next);
     return {
@@ -1777,24 +1865,30 @@ export class MatchEngine {
 
     const existing = challenge.submissions.get(input.playerId);
     const isCompleteSum = challenge.engineId === LOGIC_COMPLETE_SUM_ENGINE_ID;
+    const isPassThePulse =
+      challenge.engineId === SOCIAL_PASS_THE_PULSE_ENGINE_ID;
     const isPairSync = challenge.engineId === 'social.pair_sync';
     const pairHasPartner = isPairSync
       ? challenge.pairAssignments?.get(input.playerId) != null
       : false;
     // Pair sync with a partner only completes when overlapping taps reach
     // togetherMs — a release is progress, not a final answer.
-    let isFinal = isCompleteSum
+    let isFinal = isCompleteSum || isPassThePulse
       ? false
       : isPairSync && pairHasPartner
         ? false
         : input.answer['final'] !== false;
-    if (!isCompleteSum && existing && existing.final !== false) {
+    if (!isCompleteSum && !isPassThePulse && existing && existing.final !== false) {
       const ack = { accepted: true, reason: 'already_submitted' };
       const next = this.cloneMatch(match);
       next.commandAcks.set(input.commandId, ack);
       return { match: next, events: [], duplicate: false, ack };
     }
-    if (!isCompleteSum && player.submittedForCurrentChallenge) {
+    if (
+      !isCompleteSum &&
+      !isPassThePulse &&
+      player.submittedForCurrentChallenge
+    ) {
       const ack = { accepted: true, reason: 'already_submitted' };
       const next = this.cloneMatch(match);
       next.commandAcks.set(input.commandId, ack);
@@ -1803,6 +1897,55 @@ export class MatchEngine {
 
     const next = this.cloneMatch(match);
     const nextChallenge = next.currentChallenge!;
+
+    if (isPassThePulse) {
+      const parsed = validatePassThePulseTapAnswer(input.answer);
+      if (!parsed.ok) {
+        const ack = { accepted: false, reason: parsed.reason };
+        next.commandAcks.set(input.commandId, ack);
+        next.updatedAtMs = this.clock.nowMs();
+        return { match: next, events: [], duplicate: false, ack };
+      }
+      const priorState = nextChallenge.passThePulseState;
+      if (!priorState) {
+        const ack = { accepted: false, reason: 'malformed' };
+        next.commandAcks.set(input.commandId, ack);
+        next.updatedAtMs = this.clock.nowMs();
+        return { match: next, events: [], duplicate: false, ack };
+      }
+      const applied = applyPassThePulseTap({
+        state: priorState,
+        playerId: input.playerId,
+        legId: parsed.legId,
+        nowMonoMs: receivedMonoMs,
+      });
+      if (!applied.ok) {
+        const ack = { accepted: false, reason: applied.reason };
+        next.commandAcks.set(input.commandId, ack);
+        next.updatedAtMs = this.clock.nowMs();
+        return { match: next, events: [], duplicate: false, ack };
+      }
+      nextChallenge.passThePulseState = applied.state;
+      nextChallenge.submissions.set(input.playerId, {
+        commandId: input.commandId,
+        answer: {
+          legId: parsed.legId,
+          final: false,
+        },
+        receivedMonoMs,
+        final: false,
+      });
+      const ack = { accepted: true, reason: 'progress' };
+      next.commandAcks.set(input.commandId, ack);
+      next.updatedAtMs = this.clock.nowMs();
+      return {
+        match: next,
+        events: [],
+        duplicate: false,
+        ack,
+        liveUpdate: true,
+      };
+    }
 
     if (isCompleteSum) {
       const parsed = validateCompleteSumSelectionAnswer(input.answer);
@@ -1951,7 +2094,34 @@ export class MatchEngine {
     if (this.clock.monoMs() <= match.currentChallenge.deadlineMonoMs) {
       return { match, events: [] };
     }
-    return this.resolveChallenge(this.cloneMatch(match));
+    const next = this.cloneMatch(match);
+    if (
+      next.currentChallenge?.engineId === SOCIAL_PASS_THE_PULSE_ENGINE_ID &&
+      next.currentChallenge.passThePulseState
+    ) {
+      const forced = resolveDuePassThePulseMisses({
+        state: next.currentChallenge.passThePulseState,
+        nowMonoMs: this.clock.monoMs(),
+      });
+      // Force any still-waiting seats to missed at global deadline.
+      const results = { ...forced.state.results };
+      let seq = forced.state.stateSequence;
+      for (const id of forced.state.routePlayerIds) {
+        if (results[id] === 'waiting') {
+          results[id] = 'missed';
+          seq += 1;
+        }
+      }
+      next.currentChallenge.passThePulseState = {
+        ...forced.state,
+        results,
+        stateSequence: seq,
+        challengeStatus: 'completed',
+        currentLegId: null,
+        currentTargetPlayerId: null,
+      };
+    }
+    return this.resolveChallenge(next);
   }
 
   /**
@@ -1981,6 +2151,52 @@ export class MatchEngine {
       return { match, events: [] };
     }
     return this.resolveChallenge(this.cloneMatch(match));
+  }
+
+  /**
+   * Auto-miss closed pass-the-pulse windows and resolve after the final hold.
+   */
+  resolveDuePassThePulse(match: MatchState): {
+    match: MatchState;
+    events: DomainEvent[];
+    liveUpdate?: boolean;
+  } {
+    if (
+      match.status !== 'challenge_active' ||
+      !match.currentChallenge ||
+      match.currentChallenge.status !== 'active' ||
+      match.currentChallenge.engineId !== SOCIAL_PASS_THE_PULSE_ENGINE_ID
+    ) {
+      return { match, events: [] };
+    }
+    const prior = match.currentChallenge.passThePulseState;
+    if (!prior) {
+      return { match, events: [] };
+    }
+    const nowMono = this.clock.monoMs();
+    const missed = resolveDuePassThePulseMisses({
+      state: prior,
+      nowMonoMs: nowMono,
+    });
+    let nextMatch = match;
+    if (missed.changed) {
+      nextMatch = this.cloneMatch(match);
+      nextMatch.currentChallenge!.passThePulseState = missed.state;
+      nextMatch.updatedAtMs = this.clock.nowMs();
+    }
+    const state = nextMatch.currentChallenge!.passThePulseState!;
+    const dueAt = state.completeResolveAtMonoMs;
+    if (
+      state.challengeStatus === 'completed' &&
+      typeof dueAt === 'number' &&
+      nowMono >= dueAt
+    ) {
+      return this.resolveChallenge(this.cloneMatch(nextMatch));
+    }
+    if (missed.changed) {
+      return { match: nextMatch, events: [], liveUpdate: true };
+    }
+    return { match, events: [] };
   }
 
   private resolveChallenge(match: MatchState): {
@@ -2038,7 +2254,23 @@ export class MatchEngine {
       let measureMs: number | undefined;
       let energyDelta = 0;
       if (!submission) {
-        if (evaluator.absenceOutcome === 'success') {
+        if (challenge.engineId === SOCIAL_PASS_THE_PULSE_ENGINE_ID) {
+          const result = challenge.passThePulseState?.results[playerId];
+          if (result === 'hit') {
+            outcome = 'success';
+            reasonKey = 'result.success';
+          } else if (result === 'missed') {
+            outcome = 'failure';
+            reasonKey = 'result.pass_the_pulse.missed';
+          } else if (evaluator.absenceOutcome === 'success') {
+            outcome = 'success';
+            reasonKey = 'result.success';
+            measureMs = challenge.definition.durationMs;
+          } else {
+            outcome = 'timeout';
+            reasonKey = 'result.timeout';
+          }
+        } else if (evaluator.absenceOutcome === 'success') {
           outcome = 'success';
           reasonKey = 'result.success';
           measureMs = challenge.definition.durationMs;
@@ -2099,6 +2331,12 @@ export class MatchEngine {
           answerForEval['_completeSumSucceeded'] = succeeded;
           answerForEval['_completeSumAllSelected'] =
             sumState?.allSelected === true;
+        }
+        if (challenge.engineId === SOCIAL_PASS_THE_PULSE_ENGINE_ID) {
+          const pulse = challenge.passThePulseState;
+          const result = pulse?.results[playerId];
+          answerForEval['_passThePulseHit'] = result === 'hit';
+          answerForEval['_passThePulseMissed'] = result === 'missed';
         }
         const definitionForEval =
           seatVariant && Object.keys(seatVariant.serverOverlay).length > 0
@@ -2809,6 +3047,9 @@ export class MatchEngine {
             ),
             completeSumState: match.currentChallenge.completeSumState
               ? cloneCompleteSumState(match.currentChallenge.completeSumState)
+              : undefined,
+            passThePulseState: match.currentChallenge.passThePulseState
+              ? clonePassThePulseState(match.currentChallenge.passThePulseState)
               : undefined,
             definition: pinDefinition(match.currentChallenge.definition),
           }

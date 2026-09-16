@@ -16,6 +16,7 @@ import {
 } from './Field';
 import {
   CatalogKeyField,
+  ChipMultiSelect,
   CollapsibleGroup,
   DurationSecondsField,
   FractionPercentField,
@@ -35,6 +36,8 @@ import {
   RISK_OPTION_PRESETS,
   SHAKE_SENSITIVITY_PRESETS,
   SIGNAL_FEEL_PRESETS,
+  STROOP_INK_COLOR_OPTIONS,
+  STROOP_WORD_KEY_OPTIONS,
   SWIPE_DISTANCE_PRESETS,
   ZONE_PRESETS,
 } from './studio-catalog-options';
@@ -48,6 +51,14 @@ import {
   triviaClientPreview,
   type TriviaStudioQuestion,
 } from './trivia-question-bank';
+import {
+  createStroopVariant,
+  normalizeStroopVariant,
+  parseStroopVariants,
+  serializeStroopVariants,
+  stroopClientPreview,
+  type StroopStudioVariant,
+} from './stroop-variant-bank';
 
 const DEFAULT_FOG_WIPE_REVEAL_VARIANTS = FOG_WIPE_REVEAL_VARIANT_OPTIONS.map(
   (o) => o.value,
@@ -64,6 +75,12 @@ function defaultFogWipeAssetIds(revealContent: string): Record<string, string> {
     glassReflections: 'fog_wipe.glass_reflections',
     swipeSfx: 'fog_wipe.swipe',
   };
+}
+
+/** Ensure Pass the Pulse references shared pack heartbeat (no duplicate file). */
+export function ensurePassThePulseRequiredAssets(current: string[]): string[] {
+  if (current.includes('sfx.pulse')) return current;
+  return ['sfx.pulse', ...current];
 }
 
 /** Merge fog layers + reveal variants into requiredAssetIds (preserve extras). */
@@ -474,6 +491,19 @@ export function defaultClientConfig(
         youKey: 'challenge.complete_sum.you',
         footerKey: 'challenge.complete_sum.footer',
       };
+    case 'social.pass_the_pulse':
+      return {
+        categoryKey: 'challenge.category.social',
+        titleKey: 'challenge.pass_the_pulse.intro',
+        promptKey: 'challenge.pass_the_pulse.prompt',
+        actionKey: 'challenge.pass_the_pulse.action',
+        youKey: 'challenge.pass_the_pulse.you',
+        timeRemainingKey: 'challenge.pass_the_pulse.time_remaining',
+        turnAnnounceKey: 'challenge.pass_the_pulse.turn_announce',
+        a11yTapReadyKey: 'challenge.pass_the_pulse.a11y_tap_ready',
+        a11yTapWaitKey: 'challenge.pass_the_pulse.a11y_tap_wait',
+        pulseSfxAssetId: 'sfx.pulse',
+      };
     default:
       return {};
   }
@@ -484,7 +514,7 @@ export function defaultServerConfig(
 ): Record<string, unknown> {
   switch (engineId) {
     case 'reaction.wait_for_signal':
-      return { signalDelayMs: 1500, signalWindowMs: 750 };
+      return { signalDelayMs: 1500, signalWindowMs: 1500 };
     case 'trap.no_touch':
       return {};
     case 'gesture.reverse_swipe':
@@ -651,6 +681,20 @@ export function defaultServerConfig(
         inkColorId: 'cyan',
         optionKeys: ['cyan', 'red', 'yellow'],
         correctOptionKey: 'cyan',
+        variants: [
+          {
+            wordKey: 'color.red',
+            inkColorId: 'cyan',
+            optionKeys: ['cyan', 'red', 'yellow'],
+            correctOptionKey: 'cyan',
+          },
+          {
+            wordKey: 'color.blue',
+            inkColorId: 'yellow',
+            optionKeys: ['cyan', 'red', 'yellow'],
+            correctOptionKey: 'yellow',
+          },
+        ],
       };
     case 'search.select_occurrences':
       return {
@@ -686,6 +730,16 @@ export function defaultServerConfig(
           '5': { minValue: 0, maxValue: 4, choicesPerPlayer: 4 },
           '6': { minValue: 0, maxValue: 3, choicesPerPlayer: 4 },
         },
+      };
+    case 'social.pass_the_pulse':
+      return {
+        minPlayers: 2,
+        maxPlayers: 6,
+        startDelayMs: 800,
+        segmentDurationMs: 1800,
+        hitWindowEarlyMs: 280,
+        hitWindowLateMs: 320,
+        resultTransitionMs: 900,
       };
     default:
       return {};
@@ -769,7 +823,7 @@ function ReactionWaitForSignalFields(props: FamilyParamsFieldsProps) {
   } = props;
   const sc = serverConfig as Record<string, number>;
   const delay = sc.signalDelayMs ?? 1500;
-  const windowMs = sc.signalWindowMs ?? 750;
+  const windowMs = sc.signalWindowMs ?? 1500;
   const activeFeel =
     SIGNAL_FEEL_PRESETS.find(
       (p) => p.signalDelayMs === delay && p.signalWindowMs === windowMs,
@@ -1071,11 +1125,11 @@ function MemorySequenceFields(props: FamilyParamsFieldsProps) {
   } = props;
   const optionKeys = (clientConfig.optionKeys as string[]) ?? [];
   const sequence = (serverConfig.sequence as string[]) ?? [];
-  const previewMs = (clientConfig.previewMs as number) ?? 2000;
 
   return (
     <>
       <p className="studio-section-lead">{lbl(locale, 'fp.memoryLead')}</p>
+      <p className="studio-inline-hint">{lbl(locale, 'fp.memoryTimingNote')}</p>
       <OrderedChipEditor
         label={lbl(locale, 'fp.optionKeys')}
         hint={lbl(locale, 'fp.optionKeysHint')}
@@ -1095,24 +1149,6 @@ function MemorySequenceFields(props: FamilyParamsFieldsProps) {
         options={MEMORY_OPTION_PRESETS}
         onChange={(seq) => onServerChange({ ...serverConfig, sequence: seq })}
         localize={(k) => L(locale, k)}
-        disabled={disabled}
-      />
-      <DurationSecondsField
-        id="fp-ms-previewMs"
-        label={lbl(locale, 'fp.previewMs')}
-        hint={lbl(locale, 'fp.previewMsHint')}
-        valueMs={previewMs}
-        onChangeMs={(ms) => {
-          onClientChange({ ...clientConfig, previewMs: ms });
-          onServerChange({ ...serverConfig, previewMs: ms });
-        }}
-        minSec={0.5}
-        maxSec={8}
-        presets={[
-          { ms: 1500, label: L(locale, 'studio.preset.intro.brief') },
-          { ms: 2000, label: L(locale, 'studio.preset.intro.standard') },
-          { ms: 3000, label: L(locale, 'studio.preset.intro.clear') },
-        ]}
         disabled={disabled}
       />
       <CopyKeysBlock
@@ -1845,6 +1881,157 @@ function serializeGeoQuestion(
   };
 }
 
+function FocusStroopFields(props: FamilyParamsFieldsProps) {
+  const {
+    locale,
+    clientConfig,
+    serverConfig,
+    onClientChange,
+    onServerChange,
+    disabled,
+  } = props;
+  const variants = parseStroopVariants(serverConfig);
+
+  function commit(next: StroopStudioVariant[]) {
+    const normalized = next
+      .map((v) => normalizeStroopVariant(v))
+      .filter((v): v is StroopStudioVariant => v != null);
+    const safe =
+      normalized.length > 0 ? normalized : [createStroopVariant([])];
+    const first = safe[0]!;
+    const rest = { ...serverConfig };
+    onServerChange({
+      ...rest,
+      wordKey: first.wordKey,
+      inkColorId: first.inkColorId,
+      optionKeys: first.optionKeys,
+      correctOptionKey: first.correctOptionKey,
+      variants: serializeStroopVariants(safe),
+    });
+    onClientChange(stroopClientPreview(first, clientConfig));
+  }
+
+  function updateVariant(
+    index: number,
+    patch: Partial<StroopStudioVariant>,
+  ): void {
+    const current = variants[index];
+    if (!current) return;
+    const next = [...variants];
+    const merged = normalizeStroopVariant({ ...current, ...patch });
+    if (!merged) return;
+    // Keep correct answer aligned with ink when ink changes and still selectable.
+    if (
+      patch.inkColorId &&
+      merged.optionKeys.includes(patch.inkColorId) &&
+      patch.correctOptionKey == null
+    ) {
+      merged.correctOptionKey = patch.inkColorId;
+    }
+    next[index] = merged;
+    commit(next);
+  }
+
+  return (
+    <>
+      <p className="studio-section-lead">{lbl(locale, 'fp.stroopLead')}</p>
+      {variants.map((variant, index) => (
+        <section
+          key={`stroop-${index}-${variant.wordKey}-${variant.inkColorId}`}
+          className="studio-trivia-question"
+        >
+          <div className="studio-geo-map-head">
+            <h3 className="studio-geo-map-title">
+              {lbl(locale, 'fp.stroopQuestionN').replace(
+                '{n}',
+                String(index + 1),
+              )}
+            </h3>
+            <button
+              type="button"
+              className="btn btn-ghost"
+              disabled={disabled || variants.length <= 1}
+              onClick={() => commit(variants.filter((_, i) => i !== index))}
+            >
+              {lbl(locale, 'fp.stroopRemoveQuestion')}
+            </button>
+          </div>
+          <FieldGroup>
+            <CatalogKeyField
+              id={`fp-stroop-word-${index}`}
+              label={lbl(locale, 'fp.stroopWordKey')}
+              hint={lbl(locale, 'fp.stroopWordKeyHint')}
+              value={variant.wordKey}
+              onChange={(wordKey) => updateVariant(index, { wordKey })}
+              options={STROOP_WORD_KEY_OPTIONS}
+              localize={(k) => L(locale, k)}
+              disabled={disabled}
+            />
+            <SegmentedChoice
+              label={lbl(locale, 'fp.stroopInkColor')}
+              hint={lbl(locale, 'fp.stroopInkColorHint')}
+              value={variant.inkColorId}
+              options={STROOP_INK_COLOR_OPTIONS.map((o) => ({
+                value: o.value,
+                label: L(locale, o.labelKey),
+              }))}
+              onChange={(inkColorId) => updateVariant(index, { inkColorId })}
+              disabled={disabled}
+            />
+          </FieldGroup>
+          <ChipMultiSelect
+            label={lbl(locale, 'fp.stroopOptionKeys')}
+            hint={lbl(locale, 'fp.stroopOptionKeysHint')}
+            options={STROOP_INK_COLOR_OPTIONS}
+            selected={variant.optionKeys}
+            localize={(k) => L(locale, k)}
+            disabled={disabled}
+            onChange={(optionKeys) => {
+              if (optionKeys.length < 2) return;
+              updateVariant(index, { optionKeys });
+            }}
+          />
+          <SegmentedChoice
+            label={lbl(locale, 'fp.stroopCorrect')}
+            value={variant.correctOptionKey}
+            options={variant.optionKeys.map((key) => {
+              const opt = STROOP_INK_COLOR_OPTIONS.find((o) => o.value === key);
+              return {
+                value: key,
+                label: opt ? L(locale, opt.labelKey) : key,
+              };
+            })}
+            onChange={(correctOptionKey) =>
+              updateVariant(index, { correctOptionKey })
+            }
+            disabled={disabled}
+          />
+        </section>
+      ))}
+      {variants.length < 32 ? (
+        <button
+          type="button"
+          className="btn btn-secondary"
+          disabled={disabled}
+          onClick={() => commit([...variants, createStroopVariant(variants)])}
+        >
+          {lbl(locale, 'fp.stroopAddQuestion')}
+        </button>
+      ) : null}
+      <CopyKeysBlock
+        locale={locale}
+        clientConfig={clientConfig}
+        onClientChange={onClientChange}
+        disabled={disabled}
+        keys={[
+          { field: 'promptKey', labelKey: 'fp.promptKey' },
+          { field: 'footerKey', labelKey: 'fp.footerKey' },
+        ]}
+      />
+    </>
+  );
+}
+
 function TriviaMultipleChoiceFields(props: FamilyParamsFieldsProps) {
   const {
     locale,
@@ -2291,6 +2478,8 @@ export function FamilyParamsFields(props: FamilyParamsFieldsProps) {
         return <GestureFogWipeFields {...props} />;
       case 'trivia.multiple_choice':
         return <TriviaMultipleChoiceFields {...props} />;
+      case 'focus.stroop':
+        return <FocusStroopFields {...props} />;
       case 'geography.select_on_map':
         return <GeographySelectOnMapFields {...props} />;
       default:

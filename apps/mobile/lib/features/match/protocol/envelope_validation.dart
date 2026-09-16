@@ -731,6 +731,7 @@ EnvelopeValidation _validateChallengeSignal(Map<String, dynamic> payload) {
     'signaledAtMs',
     'signalEndsAtMs',
     'serverNowMs',
+    'playerId',
   }, 'challenge.signal');
   if (extra != null) return extra;
   if (!_isUuidLike(payload['challengeInstanceId'])) {
@@ -750,6 +751,13 @@ EnvelopeValidation _validateChallengeSignal(Map<String, dynamic> payload) {
       'challenge.signal timing fields invalid',
     );
   }
+  if (payload.containsKey('playerId') &&
+      payload['playerId'] != null &&
+      !_isUuidLike(payload['playerId'])) {
+    return const EnvelopeValidation.invalid(
+      'challenge.signal.playerId invalid',
+    );
+  }
   final int signaledAtMs = payload['signaledAtMs'] as int;
   final int signalEndsAtMs = payload['signalEndsAtMs'] as int;
   if (signalEndsAtMs <= signaledAtMs) {
@@ -765,6 +773,7 @@ EnvelopeValidation _validateChallengeSignalEnded(Map<String, dynamic> payload) {
     'challengeInstanceId',
     'signalEndsAtMs',
     'serverNowMs',
+    'playerId',
   }, 'challenge.signal_ended');
   if (extra != null) return extra;
   if (!_isUuidLike(payload['challengeInstanceId'])) {
@@ -776,6 +785,13 @@ EnvelopeValidation _validateChallengeSignalEnded(Map<String, dynamic> payload) {
       !_isNonNegInt(payload['serverNowMs'])) {
     return const EnvelopeValidation.invalid(
       'challenge.signal_ended timing fields invalid',
+    );
+  }
+  if (payload.containsKey('playerId') &&
+      payload['playerId'] != null &&
+      !_isUuidLike(payload['playerId'])) {
+    return const EnvelopeValidation.invalid(
+      'challenge.signal_ended.playerId invalid',
     );
   }
   return const EnvelopeValidation.valid();

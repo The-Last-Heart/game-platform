@@ -882,6 +882,7 @@ class ChallengeSignalPayload {
     required this.signaledAtMs,
     required this.signalEndsAtMs,
     required this.serverNowMs,
+    this.playerId,
   });
 
   final String challengeInstanceId;
@@ -890,6 +891,9 @@ class ChallengeSignalPayload {
   final int signalEndsAtMs;
   final int serverNowMs;
 
+  /// When set, only the matching local seat should apply this signal.
+  final String? playerId;
+
   factory ChallengeSignalPayload.fromJson(Map<String, dynamic> json) {
     return ChallengeSignalPayload(
       challengeInstanceId: json['challengeInstanceId'] as String,
@@ -897,6 +901,7 @@ class ChallengeSignalPayload {
       signaledAtMs: json['signaledAtMs'] as int,
       signalEndsAtMs: json['signalEndsAtMs'] as int,
       serverNowMs: json['serverNowMs'] as int,
+      playerId: json['playerId'] as String?,
     );
   }
 }
@@ -907,17 +912,22 @@ class ChallengeSignalEndedPayload {
     required this.challengeInstanceId,
     required this.signalEndsAtMs,
     required this.serverNowMs,
+    this.playerId,
   });
 
   final String challengeInstanceId;
   final int signalEndsAtMs;
   final int serverNowMs;
 
+  /// When set, only the matching local seat should apply this end.
+  final String? playerId;
+
   factory ChallengeSignalEndedPayload.fromJson(Map<String, dynamic> json) {
     return ChallengeSignalEndedPayload(
       challengeInstanceId: json['challengeInstanceId'] as String,
       signalEndsAtMs: json['signalEndsAtMs'] as int,
       serverNowMs: json['serverNowMs'] as int,
+      playerId: json['playerId'] as String?,
     );
   }
 }

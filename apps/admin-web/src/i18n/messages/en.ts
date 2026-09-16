@@ -345,6 +345,8 @@ const en = {
     'Family is set by the engine. Choose how hard this should feel.',
   'studio.editor.timingLead':
     'Times are in seconds. After approve, an already-live challenge uses these values on the next match.',
+  'studio.editor.memoryTimingLead':
+    'Memory uses two independent timers: memorize, then answer. Changing one does not steal time from the other.',
   'studio.editor.effectsLead':
     'What happens to hearts and energy when this challenge ends.',
   'studio.editor.assetsLead':
@@ -412,6 +414,14 @@ const en = {
   'studio.field.durationMs': 'Active challenge time',
   'studio.field.durationMsHint':
     'How long players have to succeed (3–15 seconds)',
+  'studio.field.memoryPreviewMs': 'Memorize time',
+  'studio.field.memoryPreviewMsHint':
+    'How long the sequence is shown before players rebuild it',
+  'studio.field.memoryAnswerMs': 'Answer time',
+  'studio.field.memoryAnswerMsHint':
+    'How long players have to rebuild the sequence after memorizing',
+  'studio.field.memoryTotalMs':
+    'Total active time: {seconds}s (memorize + answer)',
   'studio.field.introDurationMs': 'Intro time',
   'studio.field.introDurationMsHint':
     'Countdown / instruction screen before play starts',
@@ -619,6 +629,13 @@ const en = {
   'studio.catalog.pair.follower': 'Follower',
   'studio.catalog.risk.safe': 'Safer choice',
   'studio.catalog.risk.risky': 'Riskier choice',
+  'studio.catalog.stroop.word.red': 'Word: Red',
+  'studio.catalog.stroop.word.blue': 'Word: Blue',
+  'studio.catalog.stroop.word.cyan': 'Word: Cyan',
+  'studio.catalog.stroop.word.yellow': 'Word: Yellow',
+  'studio.catalog.stroop.ink.cyan': 'Cyan',
+  'studio.catalog.stroop.ink.red': 'Red',
+  'studio.catalog.stroop.ink.yellow': 'Yellow',
 
   // Engine families
   'studio.engine.wait_for_signal': 'Wait for Signal',
@@ -678,7 +695,7 @@ const en = {
   'studio.field.fp.precisionLead':
     'Place tap targets on the phone frame. Click a target to cycle its position.',
   'studio.field.fp.memoryLead':
-    'Build the option set, then the order players must recall.',
+    'Build the option set, then the order players must recall. Set memorize and answer timers in Timing.',
   'studio.field.fp.holdLead': 'Players hold two fingers for the chosen time.',
   'studio.field.fp.shakeLead': 'Pick how hard the shake challenge should feel.',
   'studio.field.fp.tiltLead':
@@ -727,6 +744,8 @@ const en = {
   'studio.field.fp.previewMs': 'Memorize time',
   'studio.field.fp.previewMsHint':
     'How long the sequence is shown before input',
+  'studio.field.fp.memoryTimingNote':
+    'Memorize and answer timers are under Timing — each is set separately.',
   'studio.field.fp.requiredContacts': 'Fingers required',
   'studio.field.fp.holdMs': 'Hold duration',
   'studio.field.fp.holdMsHint': 'How long both fingers must stay down',
@@ -809,6 +828,21 @@ const en = {
   'studio.field.fp.triviaRemoveQuestion': 'Remove question',
   'studio.field.fp.triviaAddAnswer': 'Add answer',
   'studio.field.fp.triviaRemoveAnswer': 'Remove',
+  'studio.field.fp.stroopLead':
+    'Players see one random Stroop card from this list. The written word and the ink color should conflict; the correct answer is the ink color, not the word meaning.',
+  'studio.field.fp.stroopQuestionN': 'Card {n}',
+  'studio.field.fp.stroopWordKey': 'Written word',
+  'studio.field.fp.stroopWordKeyHint':
+    'Translation key for the word shown on screen (ignore its meaning when answering).',
+  'studio.field.fp.stroopInkColor': 'Ink color',
+  'studio.field.fp.stroopInkColorHint':
+    'Actual text color. This should match the correct answer.',
+  'studio.field.fp.stroopOptionKeys': 'Answer colors',
+  'studio.field.fp.stroopOptionKeysHint':
+    'Colors shown as answer chips (2–6). Include the ink color.',
+  'studio.field.fp.stroopCorrect': 'Correct answer',
+  'studio.field.fp.stroopAddQuestion': 'Add card',
+  'studio.field.fp.stroopRemoveQuestion': 'Remove card',
   'studio.field.fp.footerKey': 'Footer copy',
   'studio.field.fp.advancedExport': 'Advanced export (read-only)',
   'studio.field.fp.unknownEngine':
@@ -999,6 +1033,8 @@ const en = {
   'studio.validation.tooLong': 'Value is too long',
   'studio.validation.invalidRange': 'Invalid range',
   'studio.validation.missingArabic': 'Arabic content is required',
+  'studio.validation.stroopVariants':
+    'Add at least one valid Stroop card (word, ink color, and 2+ answers)',
 
   // Permissions
   'studio.permissions.cannotDraft':

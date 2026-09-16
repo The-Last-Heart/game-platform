@@ -192,12 +192,24 @@ Color _stroopColor(String id) {
 }
 
 String _stroopLabel(TranslationResolver resolver, String id) {
-  final String key = 'color.$id';
-  final String resolved = resolver.resolve(key);
-  if (resolved.contains('MISSING') || resolved == '…') {
-    return id.toUpperCase();
+  // Option ids are bare color tokens (cyan/red/yellow). Prefer color.* keys;
+  // fall back to the bare id used by older localization packs.
+  for (final String key in <String>['color.$id', id]) {
+    final String resolved = resolver.resolve(key);
+    if (!_isUnavailableLabel(resolved, resolver)) {
+      return resolved;
+    }
   }
-  return resolved;
+  return id.toUpperCase();
+}
+
+bool _isUnavailableLabel(String resolved, TranslationResolver resolver) {
+  if (resolved.contains('MISSING') || resolved == '…') {
+    return true;
+  }
+  // Production missing-key fallback is locale copy, not MISSING:…
+  final String unavailable = resolver.resolve('errors.content_unavailable');
+  return resolved == unavailable;
 }
 
 class _StroopOptionChip extends StatelessWidget {

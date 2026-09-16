@@ -269,6 +269,40 @@ void main() {
       expect(endedResult.state.currentChallenge!.signalToken, isNull);
     });
 
+    test('seat-private signal for another player is ignored', () {
+      final Map<String, dynamic> snapRaw = clone(
+        fixtures['match_snapshot_challenge_active'] as Map<String, dynamic>,
+      );
+      final ReducerResult snapResult = reducer.reduce(
+        initialState(playerId: 'player-local'),
+        snapRaw,
+      );
+
+      final Map<String, dynamic> signalRaw = clone(
+        fixtures['challenge_signal'] as Map<String, dynamic>,
+      );
+      // Seat-private signals are unsequenced on the wire.
+      signalRaw.remove('serverSequence');
+      (signalRaw['payload'] as Map<String, dynamic>)['playerId'] =
+          'player-other';
+      final ReducerResult ignored = reducer.reduce(snapResult.state, signalRaw);
+      expect(ignored.disposition, ReducerDisposition.applied);
+      expect(
+        ignored.state.currentChallenge!.roundPhase,
+        RoundPhase.waitingSignal,
+      );
+      expect(ignored.state.currentChallenge!.signalToken, isNull);
+
+      (signalRaw['payload'] as Map<String, dynamic>)['playerId'] =
+          'player-local';
+      final ReducerResult applied = reducer.reduce(snapResult.state, signalRaw);
+      expect(
+        applied.state.currentChallenge!.roundPhase,
+        RoundPhase.signalActive,
+      );
+      expect(applied.state.currentChallenge!.signalToken, 'signal-tok-xyz');
+    });
+
     test('challenge resolved transitions to round_result phase', () {
       final MatchViewState stateAtSeq10 = initialState(
         sequence: 10,

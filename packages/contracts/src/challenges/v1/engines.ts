@@ -28,6 +28,7 @@ export const LAUNCH_ENGINE_IDS = [
   "logic.complete_sum",
   "focus.stroop",
   "search.select_occurrences",
+  "social.pass_the_pulse",
 ] as const;
 
 export const launchEngineIdSchema = z.enum(LAUNCH_ENGINE_IDS);
@@ -2062,6 +2063,163 @@ export type LogicCompleteSumAnswer = z.infer<
 >;
 
 // ---------------------------------------------------------------------------
+// 21. social.pass_the_pulse — sequential clockwise pulse timing challenge
+// ---------------------------------------------------------------------------
+
+export const passThePulsePlayerCountSchema = completeSumPlayerCountSchema;
+export type PassThePulsePlayerCount = CompleteSumPlayerCount;
+
+export const passThePulsePlayerResultSchema = z.enum([
+  "waiting",
+  "hit",
+  "missed",
+]);
+export type PassThePulsePlayerResult = z.infer<
+  typeof passThePulsePlayerResultSchema
+>;
+
+export const passThePulseParticipantSchema = z
+  .object({
+    playerId: z.string().min(1).max(128),
+    displayName: z.string().min(1).max(64),
+  })
+  .strict();
+export type PassThePulseParticipant = z.infer<
+  typeof passThePulseParticipantSchema
+>;
+
+export const passThePulseLegSchema = z
+  .object({
+    legId: z.string().min(1).max(64),
+    playerId: z.string().min(1).max(128),
+    routeIndex: z.number().int().nonnegative().max(5),
+    travelStartAtMs: z.number().int().nonnegative(),
+    expectedArrivalAtMs: z.number().int().nonnegative(),
+    windowOpensAtMs: z.number().int().nonnegative(),
+    windowClosesAtMs: z.number().int().nonnegative(),
+  })
+  .strict();
+export type PassThePulseLeg = z.infer<typeof passThePulseLegSchema>;
+
+/** Defaults used when Studio / fixtures omit timing fields. */
+export const PASS_THE_PULSE_DEFAULT_TIMING = {
+  minPlayers: 2 as const,
+  maxPlayers: 6 as const,
+  startDelayMs: 800,
+  segmentDurationMs: 1800,
+  hitWindowEarlyMs: 280,
+  hitWindowLateMs: 320,
+  resultTransitionMs: 900,
+} as const;
+
+export const socialPassThePulseClientConfigSchema = z
+  .object({
+    categoryKey: translationKey,
+    titleKey: translationKey,
+    promptKey: translationKey,
+    actionKey: translationKey,
+    youKey: translationKey,
+    timeRemainingKey: translationKey,
+    turnAnnounceKey: translationKey.optional(),
+    a11yTapReadyKey: translationKey.optional(),
+    a11yTapWaitKey: translationKey.optional(),
+    /**
+     * Heartbeat played when the pulse arrives at each node.
+     * Defaults to shared content-pack `sfx.pulse` (do not duplicate the file).
+     */
+    pulseSfxAssetId: z.string().min(1).max(128).optional(),
+    /** Frozen authoritative participants (id + displayName). */
+    participants: z.array(passThePulseParticipantSchema).min(2).max(6).optional(),
+    /** Clockwise pulse route (player ids). */
+    routePlayerIds: z.array(z.string().min(1).max(128)).min(2).max(6).optional(),
+    pulseStartAtMs: z.number().int().nonnegative().optional(),
+    startDelayMs: z.number().int().positive().max(10_000).optional(),
+    segmentDurationMs: positiveMs.optional(),
+    hitWindowEarlyMs: nonNegMs.optional(),
+    hitWindowLateMs: nonNegMs.optional(),
+    resultTransitionMs: nonNegMs.optional(),
+    legs: z.array(passThePulseLegSchema).min(2).max(6).optional(),
+    currentLegId: z.string().min(1).max(64).optional(),
+    currentTargetPlayerId: z.string().min(1).max(128).nullable().optional(),
+    results: z.record(passThePulsePlayerResultSchema).optional(),
+    stateSequence: z.number().int().nonnegative().optional(),
+    challengeStatus: z.enum(["active", "completed"]).optional(),
+    schemaVersion: z.literal(1).optional(),
+    isParticipant: z.boolean().optional(),
+  })
+  .strict()
+  .superRefine((cfg, ctx) => {
+    if (cfg.hitWindowEarlyMs != null && cfg.segmentDurationMs != null) {
+      if (cfg.hitWindowEarlyMs + (cfg.hitWindowLateMs ?? 0) > cfg.segmentDurationMs) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: "hit windows must fit within segmentDurationMs",
+          path: ["hitWindowEarlyMs"],
+        });
+      }
+    }
+  });
+export type SocialPassThePulseClientConfig = z.infer<
+  typeof socialPassThePulseClientConfigSchema
+>;
+
+export const socialPassThePulseServerConfigSchema = z
+  .object({
+    minPlayers: z.literal(2).optional(),
+    maxPlayers: z.literal(6).optional(),
+    startDelayMs: z.number().int().positive().max(10_000).optional(),
+    segmentDurationMs: positiveMs.optional(),
+    hitWindowEarlyMs: nonNegMs.optional(),
+    hitWindowLateMs: nonNegMs.optional(),
+    resultTransitionMs: nonNegMs.optional(),
+    /** Optional deterministic seed for tests / reproducible debugging. */
+    seed: z.number().int().optional(),
+    /** Materialized at round start — frozen for reconnect. */
+    frozenParticipantIds: z
+      .array(z.string().min(1).max(128))
+      .min(2)
+      .max(6)
+      .optional(),
+    frozenDisplayNames: z.record(z.string().min(1).max(64)).optional(),
+    routePlayerIds: z
+      .array(z.string().min(1).max(128))
+      .min(2)
+      .max(6)
+      .optional(),
+  })
+  .strict()
+  .superRefine((cfg, ctx) => {
+    const segment =
+      cfg.segmentDurationMs ?? PASS_THE_PULSE_DEFAULT_TIMING.segmentDurationMs;
+    const early =
+      cfg.hitWindowEarlyMs ?? PASS_THE_PULSE_DEFAULT_TIMING.hitWindowEarlyMs;
+    const late =
+      cfg.hitWindowLateMs ?? PASS_THE_PULSE_DEFAULT_TIMING.hitWindowLateMs;
+    if (early + late > segment) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "hitWindowEarlyMs + hitWindowLateMs must be <= segmentDurationMs",
+        path: ["hitWindowEarlyMs"],
+      });
+    }
+  });
+export type SocialPassThePulseServerConfig = z.infer<
+  typeof socialPassThePulseServerConfigSchema
+>;
+
+export const socialPassThePulseAnswerSchema = z
+  .object({
+    /** Authoritative route leg the client believes is active. */
+    legId: z.string().min(1).max(64),
+    /** Progress taps — round resolves only after every seat is settled. */
+    final: z.boolean().optional(),
+  })
+  .strict();
+export type SocialPassThePulseAnswer = z.infer<
+  typeof socialPassThePulseAnswerSchema
+>;
+
+// ---------------------------------------------------------------------------
 // Cross-engine validators
 // ---------------------------------------------------------------------------
 
@@ -2094,6 +2252,7 @@ export const ENGINE_RUNTIME_READINESS: Record<
   "logic.complete_sum": "live",
   "focus.stroop": "live",
   "search.select_occurrences": "live",
+  "social.pass_the_pulse": "live",
 };
 
 type EngineSchemaPair = {
@@ -2223,6 +2382,11 @@ const ENGINE_SCHEMAS: Record<LaunchEngineId, EngineSchemaPair> = {
     server: searchSelectOccurrencesServerConfigSchema,
     answer: searchSelectOccurrencesAnswerSchema,
   },
+  "social.pass_the_pulse": {
+    client: socialPassThePulseClientConfigSchema,
+    server: socialPassThePulseServerConfigSchema,
+    answer: socialPassThePulseAnswerSchema,
+  },
 };
 
 export type ValidatedEngineConfigs =
@@ -2345,6 +2509,11 @@ export type ValidatedEngineConfigs =
       engineId: "search.select_occurrences";
       clientConfig: SearchSelectOccurrencesClientConfig;
       serverConfig: SearchSelectOccurrencesServerConfig;
+    }
+  | {
+      engineId: "social.pass_the_pulse";
+      clientConfig: SocialPassThePulseClientConfig;
+      serverConfig: SocialPassThePulseServerConfig;
     };
 
 export type ValidatedEngineAnswer =
@@ -2386,7 +2555,8 @@ export type ValidatedEngineAnswer =
   | {
       engineId: "search.select_occurrences";
       answer: SearchSelectOccurrencesAnswer;
-    };
+    }
+  | { engineId: "social.pass_the_pulse"; answer: SocialPassThePulseAnswer };
 
 function assertKnownEngineId(engineId: string): LaunchEngineId {
   return launchEngineIdSchema.parse(engineId);

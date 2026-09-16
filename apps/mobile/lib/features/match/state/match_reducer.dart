@@ -290,6 +290,12 @@ class MatchReducer {
           envelope.payload!,
         );
         final PublicChallenge? current = state.currentChallenge;
+        if (signal.playerId != null &&
+            state.playerId != null &&
+            signal.playerId != state.playerId) {
+          // Seat-private signal for another player — ignore.
+          return state;
+        }
         if (current != null &&
             current.challengeInstanceId == signal.challengeInstanceId) {
           return state.copyWith(
@@ -321,6 +327,11 @@ class MatchReducer {
       case MessageTypes.challengeSignalEnded:
         final ChallengeSignalEndedPayload ended =
             ChallengeSignalEndedPayload.fromJson(envelope.payload!);
+        if (ended.playerId != null &&
+            state.playerId != null &&
+            ended.playerId != state.playerId) {
+          return state;
+        }
         final PublicChallenge? currentEnded = state.currentChallenge;
         if (currentEnded != null &&
             currentEnded.challengeInstanceId == ended.challengeInstanceId) {

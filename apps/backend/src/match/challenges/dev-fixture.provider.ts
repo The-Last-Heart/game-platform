@@ -28,6 +28,7 @@ const FIXTURE_FILES = [
   'logic.complete_sum.v1.json',
   'focus.stroop.v1.json',
   'search.select_occurrences.v1.json',
+  'social.pass_the_pulse.v1.json',
 ] as const;
 
 /** Mixed launch playlist — live engines except paused risk choice / pair-sync (training filters pair). */
@@ -55,6 +56,7 @@ const PLAYLIST_DEFINITION_IDS = [
   'logic.complete_sum.dev',
   'focus.stroop.dev',
   'search.select_occurrences.dev',
+  'social.pass_the_pulse.dev',
 ] as const;
 
 /**

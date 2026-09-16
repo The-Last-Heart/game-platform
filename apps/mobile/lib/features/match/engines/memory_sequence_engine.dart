@@ -151,6 +151,7 @@ class _MemorySequenceWidgetState extends State<_MemorySequenceWidget> {
             size: 120,
             ringColor: showAnswer ? LhColors.success : LhColors.primary,
             deadlineOverrideMs: showAnswer ? null : _previewDeadlineMs,
+            startsAtOverrideMs: showAnswer ? _previewDeadlineMs : null,
           ),
         ),
         Padding(

@@ -19,6 +19,7 @@ import 'gesture_fog_wipe_engine.dart';
 import 'reaction_wait_for_signal_engine.dart';
 import 'search_select_occurrences_engine.dart';
 import 'social_pair_sync_engine.dart';
+import 'social_pass_the_pulse_engine.dart';
 import 'tap_precision_engine.dart';
 import 'tactical_risk_choice_engine.dart';
 import 'trap_no_touch_engine.dart';
@@ -40,6 +41,7 @@ class ChallengeEngineRegistry {
     register(MotionTiltBalanceEngine());
     register(AudioCueEngine());
     register(SocialPairSyncEngine());
+    register(SocialPassThePulseEngine());
     register(TacticalRiskChoiceEngine());
     register(TriviaMultipleChoiceEngine());
     register(GeographySelectOnMapEngine());

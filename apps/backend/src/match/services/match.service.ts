@@ -716,7 +716,8 @@ export class MatchService implements OnModuleDestroy, OnModuleInit {
         await this.maybeContinue(await this.requireMatch(input.matchId));
       } else if (result.liveUpdate) {
         // Same-sequence snapshot: clients replace clientConfig (partnerHolding /
-        // complete_sum selections) without advancing the recovery watermark.
+        // complete_sum selections / pass_the_pulse results) without advancing
+        // the recovery watermark.
         this.emit(result.match, [
           {
             kind: 'sequence',
@@ -736,6 +737,11 @@ export class MatchService implements OnModuleDestroy, OnModuleInit {
             input.matchId,
             Math.max(1, holdAt - this.clock.monoMs()),
           );
+        }
+        if (
+          result.match.currentChallenge?.engineId === 'social.pass_the_pulse'
+        ) {
+          this.armPassThePulseTimers(result.match);
         }
       }
       const latest = await this.requireMatch(input.matchId);
@@ -2082,6 +2088,35 @@ export class MatchService implements OnModuleDestroy, OnModuleInit {
       }
     }
 
+    // pass_the_pulse: auto-miss closed windows + resolve after final hold.
+    if (
+      match.status === 'challenge_active' &&
+      match.currentChallenge &&
+      match.currentChallenge.status === 'active' &&
+      match.currentChallenge.engineId === 'social.pass_the_pulse'
+    ) {
+      const pulseResult = this.engine.resolveDuePassThePulse(match);
+      if (pulseResult.events.length > 0) {
+        match = pulseResult.match;
+        await this.store.save(match);
+        this.clearTimer(matchId);
+        await this.publishResolveAndMaybeRoundResult(match, pulseResult.events);
+        match = await this.requireMatch(matchId);
+      } else if (pulseResult.liveUpdate) {
+        match = pulseResult.match;
+        await this.store.save(match);
+        this.emit(match, [
+          {
+            kind: 'sequence',
+            sequence: match.sequence,
+            revision: match.revision,
+            serverTimestampMs: this.clock.nowMs(),
+          },
+        ]);
+        this.armPassThePulseTimers(match);
+      }
+    }
+
     // Inclusive deadline boundary: timeout due only when strictly after
     // deadline (not at equality), so a submit stamped at exact deadlineMonoMs
     // is not raced by timeout.
@@ -2305,6 +2340,89 @@ export class MatchService implements OnModuleDestroy, OnModuleInit {
       this.schedulePreviewAdvance(matchId, previewMs);
     }
     this.scheduleTimeout(matchId, challenge.definition.durationMs);
+    if (challenge.engineId === 'social.pass_the_pulse') {
+      this.armPassThePulseTimers(match);
+    }
+  }
+
+  private armPassThePulseTimers(match: MatchState): void {
+    if (this.nodeEnv === 'test') return;
+    const matchId = match.matchId;
+    const state = match.currentChallenge?.passThePulseState;
+    if (!state || match.currentChallenge?.status !== 'active') return;
+    const now = this.clock.monoMs();
+    // Next window close among waiting legs.
+    let nextMissAt: number | null = null;
+    for (const leg of state.legs) {
+      if (state.results[leg.playerId] !== 'waiting') continue;
+      const closeAt = leg.windowClosesMonoMs + 1;
+      if (closeAt <= now) {
+        nextMissAt = now;
+        break;
+      }
+      if (nextMissAt == null || closeAt < nextMissAt) {
+        nextMissAt = closeAt;
+      }
+    }
+    const completeAt = state.completeResolveAtMonoMs;
+    let delayMs: number | null = null;
+    if (typeof completeAt === 'number') {
+      delayMs = Math.max(1, completeAt - now);
+    }
+    if (nextMissAt != null) {
+      const missDelay = Math.max(1, nextMissAt - now);
+      delayMs = delayMs == null ? missDelay : Math.min(delayMs, missDelay);
+    }
+    if (delayMs == null) return;
+    this.schedulePassThePulseTick(matchId, delayMs);
+  }
+
+  private schedulePassThePulseTick(matchId: string, delayMs: number): void {
+    if (this.nodeEnv === 'test') return;
+    const key = `${matchId}:pass_the_pulse`;
+    const existing = this.timers.get(key);
+    if (existing) {
+      clearTimeout(existing);
+      this.timers.delete(key);
+    }
+    const timer = setTimeout(
+      () => {
+        void this.enqueue(matchId, async () => {
+          const match = await this.requireMatch(matchId);
+          const result = this.engine.resolveDuePassThePulse(match);
+          if (result.events.length > 0) {
+            await this.store.save(result.match);
+            this.clearTimer(matchId);
+            const keyed = this.timers.get(key);
+            if (keyed) {
+              clearTimeout(keyed);
+              this.timers.delete(key);
+            }
+            await this.publishResolveAndMaybeRoundResult(
+              result.match,
+              result.events,
+            );
+            await this.maybeContinue(await this.requireMatch(matchId));
+            return;
+          }
+          if (result.liveUpdate) {
+            await this.store.save(result.match);
+            this.emit(result.match, [
+              {
+                kind: 'sequence',
+                sequence: result.match.sequence,
+                revision: result.match.revision,
+                serverTimestampMs: this.clock.nowMs(),
+              },
+            ]);
+          }
+          this.armPassThePulseTimers(await this.requireMatch(matchId));
+        });
+      },
+      Math.max(1, delayMs),
+    );
+    timer.unref?.();
+    this.timers.set(key, timer);
   }
 
   /** After seat signal activation: expiry for active seats + next waiting seat. */
@@ -2882,7 +3000,9 @@ export class MatchService implements OnModuleDestroy, OnModuleInit {
               challenge,
               this.clock.monoMs(),
             );
-            if (seatDelay != null && seatDelay > 0) {
+            if (seatDelay != null) {
+              // Due seats (≤0) must still retry — activate can no-op briefly
+              // under queue/clock skew; never drop the arm.
               this.scheduleSignalActivation(matchId, Math.max(1, seatDelay));
               return;
             }

@@ -340,6 +340,19 @@ export const RISK_OPTION_PRESETS = [
   { value: 'option.risky', labelKey: 'studio.catalog.risk.risky' },
 ] as const;
 
+export const STROOP_WORD_KEY_OPTIONS: CatalogOption[] = [
+  { value: 'color.red', labelKey: 'studio.catalog.stroop.word.red' },
+  { value: 'color.blue', labelKey: 'studio.catalog.stroop.word.blue' },
+  { value: 'color.cyan', labelKey: 'studio.catalog.stroop.word.cyan' },
+  { value: 'color.yellow', labelKey: 'studio.catalog.stroop.word.yellow' },
+];
+
+export const STROOP_INK_COLOR_OPTIONS: CatalogOption[] = [
+  { value: 'cyan', labelKey: 'studio.catalog.stroop.ink.cyan' },
+  { value: 'red', labelKey: 'studio.catalog.stroop.ink.red' },
+  { value: 'yellow', labelKey: 'studio.catalog.stroop.ink.yellow' },
+];
+
 export const ZONE_PRESETS: {
   id: string;
   labelKey: string;
@@ -405,13 +418,13 @@ export const SIGNAL_FEEL_PRESETS = [
     id: 'standard',
     labelKey: 'studio.preset.signal.standard',
     signalDelayMs: 1500,
-    signalWindowMs: 750,
+    signalWindowMs: 1500,
   },
   {
     id: 'slow',
     labelKey: 'studio.preset.signal.slow',
     signalDelayMs: 2500,
-    signalWindowMs: 1000,
+    signalWindowMs: 1500,
   },
 ] as const;
 

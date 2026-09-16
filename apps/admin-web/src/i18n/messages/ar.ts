@@ -344,6 +344,8 @@ const ar: Record<MessageKey, string> = {
     'العائلة تُحدَّد بالمحرك. اختر مستوى الصعوبة.',
   'studio.editor.timingLead':
     'الأوقات بالثواني. بعد الاعتماد، التحدي المنشور مسبقاً يستخدم هذه القيم في المباراة التالية.',
+  'studio.editor.memoryTimingLead':
+    'تحدي الذاكرة يستخدم مؤقّتين مستقلّين: الحفظ ثم الإجابة. تغيير أحدهما لا يقتطع من الآخر.',
   'studio.editor.effectsLead': 'ماذا يحدث للقلوب والطاقة عند انتهاء التحدي.',
   'studio.editor.assetsLead':
     'اختر الأصوات واللمسات والأشكال. اتركها فارغة إن لم تُحتَج.',
@@ -400,6 +402,14 @@ const ar: Record<MessageKey, string> = {
   'studio.field.promptKeyHint': 'اختر نصاً معروفاً من الكتالوج',
   'studio.field.durationMs': 'مدة التحدي النشط',
   'studio.field.durationMsHint': 'كم ثانية لدى اللاعبين للنجاح (٣–١٥)',
+  'studio.field.memoryPreviewMs': 'وقت الحفظ',
+  'studio.field.memoryPreviewMsHint':
+    'كم يُعرض التسلسل قبل أن يعيد اللاعبون بناءه',
+  'studio.field.memoryAnswerMs': 'وقت الإجابة',
+  'studio.field.memoryAnswerMsHint':
+    'كم ثانية لدى اللاعبين لإعادة بناء التسلسل بعد الحفظ',
+  'studio.field.memoryTotalMs':
+    'المدة النشطة الإجمالية: {seconds}ث (حفظ + إجابة)',
   'studio.field.introDurationMs': 'مدة المقدمة',
   'studio.field.introDurationMsHint': 'شاشة التعليمات قبل بدء اللعب',
   'studio.field.resultHoldMs': 'مدة عرض النتيجة',
@@ -614,6 +624,13 @@ const ar: Record<MessageKey, string> = {
   'studio.catalog.pair.follower': 'تابع',
   'studio.catalog.risk.safe': 'خيار أكثر أماناً',
   'studio.catalog.risk.risky': 'خيار أكثر مخاطرة',
+  'studio.catalog.stroop.word.red': 'الكلمة: أحمر',
+  'studio.catalog.stroop.word.blue': 'الكلمة: أزرق',
+  'studio.catalog.stroop.word.cyan': 'الكلمة: سماوي',
+  'studio.catalog.stroop.word.yellow': 'الكلمة: أصفر',
+  'studio.catalog.stroop.ink.cyan': 'سماوي',
+  'studio.catalog.stroop.ink.red': 'أحمر',
+  'studio.catalog.stroop.ink.yellow': 'أصفر',
 
   'studio.engine.wait_for_signal': 'انتظار الإشارة',
   'studio.engine.no_touch': 'عدم اللمس',
@@ -668,7 +685,7 @@ const ar: Record<MessageKey, string> = {
   'studio.field.fp.precisionLead':
     'ضع أهداف اللمس على إطار الهاتف. انقر هدفاً لتغيير موضعه.',
   'studio.field.fp.memoryLead':
-    'ابنِ مجموعة الخيارات ثم الترتيب الذي يجب تذكّره.',
+    'ابنِ مجموعة الخيارات ثم الترتيب الذي يجب تذكّره. اضبط مؤقّتي الحفظ والإجابة من قسم التوقيت.',
   'studio.field.fp.holdLead': 'يمسك اللاعبون بإصبعين للمدة المحددة.',
   'studio.field.fp.shakeLead': 'اختر صعوبة تحدي الهز.',
   'studio.field.fp.tiltLead': 'يوازن اللاعب الجهاز نحو هدف لفترة قصيرة.',
@@ -712,6 +729,8 @@ const ar: Record<MessageKey, string> = {
   'studio.field.fp.sequenceHint': 'الترتيب المطلوب — انقر الخيارات لإضافتها',
   'studio.field.fp.previewMs': 'وقت الحفظ',
   'studio.field.fp.previewMsHint': 'كم يُعرض التسلسل قبل الإدخال',
+  'studio.field.fp.memoryTimingNote':
+    'مؤقّتا الحفظ والإجابة موجودان تحت التوقيت — كل منهما يُضبط بشكل مستقل.',
   'studio.field.fp.requiredContacts': 'عدد الأصابع',
   'studio.field.fp.holdMs': 'مدة الإمساك',
   'studio.field.fp.holdMsHint': 'كم يجب أن يبقى الإصبعان مضغوطين',
@@ -786,6 +805,21 @@ const ar: Record<MessageKey, string> = {
   'studio.field.fp.triviaRemoveQuestion': 'حذف السؤال',
   'studio.field.fp.triviaAddAnswer': 'إضافة إجابة',
   'studio.field.fp.triviaRemoveAnswer': 'حذف',
+  'studio.field.fp.stroopLead':
+    'يرى اللاعبون بطاقة ستروب عشوائية من هذه القائمة. يجب أن يتعارض معنى الكلمة مع لون الحبر؛ والإجابة الصحيحة هي لون الحبر لا معنى الكلمة.',
+  'studio.field.fp.stroopQuestionN': 'البطاقة {n}',
+  'studio.field.fp.stroopWordKey': 'الكلمة المكتوبة',
+  'studio.field.fp.stroopWordKeyHint':
+    'مفتاح الترجمة للكلمة الظاهرة على الشاشة (يُتجاهل معناها عند الإجابة).',
+  'studio.field.fp.stroopInkColor': 'لون الحبر',
+  'studio.field.fp.stroopInkColorHint':
+    'لون النص الفعلي. يجب أن يطابق الإجابة الصحيحة.',
+  'studio.field.fp.stroopOptionKeys': 'ألوان الإجابات',
+  'studio.field.fp.stroopOptionKeysHint':
+    'الألوان الظاهرة كخيارات (٢–٦). يجب تضمين لون الحبر.',
+  'studio.field.fp.stroopCorrect': 'الإجابة الصحيحة',
+  'studio.field.fp.stroopAddQuestion': 'إضافة بطاقة',
+  'studio.field.fp.stroopRemoveQuestion': 'حذف البطاقة',
   'studio.field.fp.footerKey': 'نص التذييل',
   'studio.field.fp.advancedExport': 'تصدير متقدم (للقراءة فقط)',
   'studio.field.fp.unknownEngine': 'محرك غير معروف — لا يتوفر نموذج معلمات.',
@@ -958,6 +992,8 @@ const ar: Record<MessageKey, string> = {
   'studio.validation.tooLong': 'القيمة طويلة جداً',
   'studio.validation.invalidRange': 'نطاق غير صالح',
   'studio.validation.missingArabic': 'المحتوى العربي مطلوب',
+  'studio.validation.stroopVariants':
+    'أضف بطاقة ستروب واحدة على الأقل (كلمة ولون حبر وخياران فأكثر)',
 
   // Permissions
   'studio.permissions.cannotDraft': 'ليست لديك صلاحية لإنشاء المسودات',

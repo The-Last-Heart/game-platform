@@ -26,12 +26,17 @@ import {
   FamilyParamsFields,
   defaultClientConfig,
   defaultServerConfig,
+  ensurePassThePulseRequiredAssets,
   mergeFogWipeRequiredAssets,
 } from './FamilyParamsFields';
 import {
   parseTriviaQuestions,
   triviaQuestionBankIssues,
 } from './trivia-question-bank';
+import {
+  parseStroopVariants,
+  stroopVariantBankIssues,
+} from './stroop-variant-bank';
 import {
   FieldInput,
   FieldSelect,
@@ -232,6 +237,96 @@ function draftToDefinition(
 // Validation
 // ---------------------------------------------------------------------------
 
+const CHALLENGE_MIN_DURATION_MS = 3000;
+const CHALLENGE_MAX_DURATION_MS = 15_000;
+const MEMORY_MIN_PREVIEW_MS = 500;
+const MEMORY_MAX_PREVIEW_MS = 8000;
+const MEMORY_MIN_ANSWER_MS = 2000;
+const MEMORY_MAX_ANSWER_MS = 12_000;
+
+function readPositiveMs(raw: unknown, fallback: number): number {
+  if (typeof raw === 'number' && Number.isFinite(raw) && raw > 0) {
+    return Math.round(raw);
+  }
+  return fallback;
+}
+
+function memoryPreviewMsFromDraft(draft: DraftDefinition): number {
+  return readPositiveMs(
+    draft.clientConfig.previewMs ?? draft.serverConfig.previewMs,
+    2000,
+  );
+}
+
+function memoryAnswerMsFromDraft(draft: DraftDefinition): number {
+  return Math.max(0, draft.durationMs - memoryPreviewMsFromDraft(draft));
+}
+
+function clampMemoryTimers(previewMs: number, answerMs: number): {
+  previewMs: number;
+  answerMs: number;
+  durationMs: number;
+} {
+  let preview = Math.min(
+    MEMORY_MAX_PREVIEW_MS,
+    Math.max(MEMORY_MIN_PREVIEW_MS, Math.round(previewMs)),
+  );
+  let answer = Math.min(
+    MEMORY_MAX_ANSWER_MS,
+    Math.max(MEMORY_MIN_ANSWER_MS, Math.round(answerMs)),
+  );
+  if (preview + answer > CHALLENGE_MAX_DURATION_MS) {
+    answer = Math.max(
+      MEMORY_MIN_ANSWER_MS,
+      CHALLENGE_MAX_DURATION_MS - preview,
+    );
+  }
+  if (preview + answer > CHALLENGE_MAX_DURATION_MS) {
+    preview = Math.max(
+      MEMORY_MIN_PREVIEW_MS,
+      CHALLENGE_MAX_DURATION_MS - answer,
+    );
+  }
+  if (preview + answer < CHALLENGE_MIN_DURATION_MS) {
+    answer = CHALLENGE_MIN_DURATION_MS - preview;
+  }
+  return {
+    previewMs: preview,
+    answerMs: answer,
+    durationMs: preview + answer,
+  };
+}
+
+function withMemoryPreview(
+  draft: DraftDefinition,
+  nextPreviewMs: number,
+): Pick<DraftDefinition, 'durationMs' | 'clientConfig' | 'serverConfig'> {
+  const clamped = clampMemoryTimers(
+    nextPreviewMs,
+    memoryAnswerMsFromDraft(draft),
+  );
+  return {
+    durationMs: clamped.durationMs,
+    clientConfig: { ...draft.clientConfig, previewMs: clamped.previewMs },
+    serverConfig: { ...draft.serverConfig, previewMs: clamped.previewMs },
+  };
+}
+
+function withMemoryAnswer(
+  draft: DraftDefinition,
+  nextAnswerMs: number,
+): Pick<DraftDefinition, 'durationMs' | 'clientConfig' | 'serverConfig'> {
+  const clamped = clampMemoryTimers(
+    memoryPreviewMsFromDraft(draft),
+    nextAnswerMs,
+  );
+  return {
+    durationMs: clamped.durationMs,
+    clientConfig: { ...draft.clientConfig, previewMs: clamped.previewMs },
+    serverConfig: { ...draft.serverConfig, previewMs: clamped.previewMs },
+  };
+}
+
 function validateDraft(
   draft: DraftDefinition,
   locale: Locale,
@@ -263,16 +358,45 @@ function validateDraft(
       });
     }
   }
+  if (draft.engineId === 'focus.stroop') {
+    const stroopIssues = stroopVariantBankIssues(
+      parseStroopVariants(draft.serverConfig),
+    );
+    if (stroopIssues.length > 0) {
+      errors.push({
+        path: 'serverConfig.variants',
+        message: t(locale, 'studio.validation.stroopVariants'),
+      });
+    }
+  }
   if (!draft.promptKey.trim())
     errors.push({
       path: 'promptKey',
       message: t(locale, 'studio.validation.required'),
     });
-  if (draft.durationMs < 3000 || draft.durationMs > 15_000)
+  if (
+    draft.durationMs < CHALLENGE_MIN_DURATION_MS ||
+    draft.durationMs > CHALLENGE_MAX_DURATION_MS
+  )
     errors.push({
       path: 'durationMs',
       message: t(locale, 'studio.validation.invalidRange'),
     });
+  if (draft.engineId === 'memory.sequence') {
+    const previewMs = memoryPreviewMsFromDraft(draft);
+    const answerMs = memoryAnswerMsFromDraft(draft);
+    if (
+      previewMs < MEMORY_MIN_PREVIEW_MS ||
+      previewMs > MEMORY_MAX_PREVIEW_MS ||
+      answerMs < MEMORY_MIN_ANSWER_MS ||
+      previewMs + answerMs !== draft.durationMs
+    ) {
+      errors.push({
+        path: 'durationMs',
+        message: t(locale, 'studio.validation.invalidRange'),
+      });
+    }
+  }
   if (draft.eligibleModes.length === 0)
     errors.push({
       path: 'eligibleModes',
@@ -334,6 +458,18 @@ function definitionToDraft(def: ChallengeDefinitionContract): DraftDefinition {
       revealContent,
     );
   }
+  if (def.engineId === 'social.pass_the_pulse') {
+    requiredAssetIds = ensurePassThePulseRequiredAssets(requiredAssetIds);
+  }
+  let durationMs = def.durationMs;
+  if (def.engineId === 'memory.sequence') {
+    const previewMs = readPositiveMs(
+      clientConfig.previewMs ?? serverConfig.previewMs,
+      2000,
+    );
+    clientConfig.previewMs = previewMs;
+    serverConfig.previewMs = previewMs;
+  }
   return {
     definitionId: def.definitionId,
     definitionVersion: def.definitionVersion,
@@ -345,7 +481,7 @@ function definitionToDraft(def: ChallengeDefinitionContract): DraftDefinition {
     instructionAr: def.instructionAr,
     hintAr: def.hintAr ?? '',
     promptKey: def.promptKey,
-    durationMs: def.durationMs,
+    durationMs,
     introDurationMs: def.introDurationMs ?? 0,
     resultHoldMs: def.resultHoldMs ?? 2500,
     heartPenaltyOnFailure: def.heartPenaltyOnFailure,
@@ -527,13 +663,22 @@ export function StudioChallengeEditor({
       categoryId: entry.categoryId,
       clientConfig,
       serverConfig,
+      durationMs:
+        entry.engineId === 'memory.sequence'
+          ? clampMemoryTimers(
+              readPositiveMs(clientConfig.previewMs, 2000),
+              4000,
+            ).durationMs
+          : prev.durationMs,
       accessibilityFallbackKey: `${entry.engineId}.v1`,
       promptKey:
         entry.engineId === 'reaction.wait_for_signal'
           ? 'challenge.wait_for_signal.intro'
           : entry.engineId === 'gesture.fog_wipe'
             ? 'challenge.fog_wipe.intro'
-            : prev.promptKey,
+            : entry.engineId === 'memory.sequence'
+              ? 'challenge.memory.intro'
+              : prev.promptKey,
       requiredAssetIds:
         entry.engineId === 'gesture.fog_wipe'
           ? mergeFogWipeRequiredAssets(
@@ -541,7 +686,9 @@ export function StudioChallengeEditor({
               fogVariants,
               revealContent,
             )
-          : prev.requiredAssetIds,
+          : entry.engineId === 'social.pass_the_pulse'
+            ? ensurePassThePulseRequiredAssets([])
+            : prev.requiredAssetIds,
     }));
   }
 
@@ -899,29 +1046,97 @@ export function StudioChallengeEditor({
           >
             <h3>{t(locale, 'studio.section.timing')}</h3>
             <p className="studio-section-lead">
-              {t(locale, 'studio.editor.timingLead')}
+              {draft.engineId === 'memory.sequence'
+                ? t(locale, 'studio.editor.memoryTimingLead')
+                : t(locale, 'studio.editor.timingLead')}
             </p>
             <FieldGroup>
-              <DurationSecondsField
-                id="def-duration"
-                label={t(locale, 'studio.field.durationMs')}
-                hint={t(locale, 'studio.field.durationMsHint')}
-                valueMs={draft.durationMs}
-                onChangeMs={(ms) =>
-                  updateField(
-                    'durationMs',
-                    Math.min(15_000, Math.max(3000, ms)),
-                  )
-                }
-                minSec={3}
-                maxSec={15}
-                stepSec={0.5}
-                presets={TIMING_DURATION_PRESETS_MS.map((p) => ({
-                  ms: p.ms,
-                  label: t(locale, p.labelKey as MessageKey),
-                }))}
-                disabled={!canDraft}
-              />
+              {draft.engineId === 'memory.sequence' ? (
+                <>
+                  <DurationSecondsField
+                    id="def-memory-preview"
+                    label={t(locale, 'studio.field.memoryPreviewMs')}
+                    hint={t(locale, 'studio.field.memoryPreviewMsHint')}
+                    valueMs={memoryPreviewMsFromDraft(draft)}
+                    onChangeMs={(ms) =>
+                      setDraft((prev) => ({
+                        ...prev,
+                        ...withMemoryPreview(prev, ms),
+                      }))
+                    }
+                    minSec={MEMORY_MIN_PREVIEW_MS / 1000}
+                    maxSec={MEMORY_MAX_PREVIEW_MS / 1000}
+                    stepSec={0.5}
+                    presets={[
+                      {
+                        ms: 1500,
+                        label: t(locale, 'studio.preset.intro.brief'),
+                      },
+                      {
+                        ms: 3000,
+                        label: t(locale, 'studio.preset.intro.clear'),
+                      },
+                      {
+                        ms: 4000,
+                        label: t(locale, 'studio.preset.duration.standard'),
+                      },
+                    ]}
+                    disabled={!canDraft}
+                  />
+                  <DurationSecondsField
+                    id="def-memory-answer"
+                    label={t(locale, 'studio.field.memoryAnswerMs')}
+                    hint={t(locale, 'studio.field.memoryAnswerMsHint')}
+                    valueMs={memoryAnswerMsFromDraft(draft)}
+                    onChangeMs={(ms) =>
+                      setDraft((prev) => ({
+                        ...prev,
+                        ...withMemoryAnswer(prev, ms),
+                      }))
+                    }
+                    minSec={MEMORY_MIN_ANSWER_MS / 1000}
+                    maxSec={MEMORY_MAX_ANSWER_MS / 1000}
+                    stepSec={0.5}
+                    presets={TIMING_DURATION_PRESETS_MS.map((p) => ({
+                      ms: p.ms,
+                      label: t(locale, p.labelKey as MessageKey),
+                    }))}
+                    disabled={!canDraft}
+                  />
+                  <p className="studio-inline-hint">
+                    {t(locale, 'studio.field.memoryTotalMs').replace(
+                      '{seconds}',
+                      (draft.durationMs / 1000).toFixed(
+                        draft.durationMs % 1000 === 0 ? 0 : 1,
+                      ),
+                    )}
+                  </p>
+                </>
+              ) : (
+                <DurationSecondsField
+                  id="def-duration"
+                  label={t(locale, 'studio.field.durationMs')}
+                  hint={t(locale, 'studio.field.durationMsHint')}
+                  valueMs={draft.durationMs}
+                  onChangeMs={(ms) =>
+                    updateField(
+                      'durationMs',
+                      Math.min(
+                        CHALLENGE_MAX_DURATION_MS,
+                        Math.max(CHALLENGE_MIN_DURATION_MS, ms),
+                      ),
+                    )
+                  }
+                  minSec={3}
+                  maxSec={15}
+                  stepSec={0.5}
+                  presets={TIMING_DURATION_PRESETS_MS.map((p) => ({
+                    ms: p.ms,
+                    label: t(locale, p.labelKey as MessageKey),
+                  }))}
+                  disabled={!canDraft}
+                />
+              )}
               <DurationSecondsField
                 id="def-intro-duration"
                 label={t(locale, 'studio.field.introDurationMs')}

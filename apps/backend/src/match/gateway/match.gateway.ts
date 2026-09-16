@@ -855,7 +855,6 @@ export class MatchGateway
       created.matchId,
       created.playerId,
       created.resumeToken,
-      created.snapshot,
     );
   }
 
@@ -882,7 +881,6 @@ export class MatchGateway
       joined.matchId,
       joined.playerId,
       joined.resumeToken,
-      joined.snapshot,
     );
   }
 
@@ -1038,7 +1036,6 @@ export class MatchGateway
       started.matchId,
       started.playerId,
       started.resumeToken,
-      started.snapshot,
     );
   }
 
@@ -1070,7 +1067,6 @@ export class MatchGateway
       retried.matchId,
       retried.playerId,
       retried.resumeToken,
-      retried.snapshot,
     );
   }
 
@@ -1105,7 +1101,6 @@ export class MatchGateway
       restarted.matchId,
       restarted.playerId,
       restarted.resumeToken,
-      restarted.snapshot,
     );
   }
 
@@ -1143,7 +1138,6 @@ export class MatchGateway
       rematched.matchId,
       rematched.playerId,
       rematched.resumeToken,
-      rematched.snapshot,
     );
   }
 
@@ -1325,7 +1319,6 @@ export class MatchGateway
       await this.matches.abandonOrphanedJoin(matchId, playerId);
       return;
     }
-    const snap = await this.matches.requestSnapshot(matchId, playerId);
     await this.finalizeSeatBind(
       client,
       commandId,
@@ -1333,7 +1326,6 @@ export class MatchGateway
       matchId,
       playerId,
       resumeToken,
-      snap.snapshot,
     );
   }
 
@@ -1344,13 +1336,6 @@ export class MatchGateway
     matchId: string,
     playerId: string,
     resumeToken: string,
-    snapshot: ReturnType<MatchService['requestSnapshot']> extends Promise<
-      infer R
-    >
-      ? R extends { snapshot: infer S }
-        ? S
-        : never
-      : never,
   ): Promise<void> {
     if (this.isSocketGone(client)) {
       await this.matches.abandonOrphanedJoin(matchId, playerId);
@@ -1361,6 +1346,10 @@ export class MatchGateway
       return;
     }
     await client.join(this.room(matchId));
+    // Rematch party seats (and other concurrent joins) can change the lobby
+    // while this socket was still unbound. Room broadcasts during that gap are
+    // missed — re-read after join so the bind snapshot matches the live table.
+    const { snapshot } = await this.matches.requestSnapshot(matchId, playerId);
     this.emitToClient(
       client,
       MessageTypes.SessionAccepted,
@@ -1440,14 +1429,25 @@ export class MatchGateway
           signaledAtMs: event.signaledAtMs,
           signalEndsAtMs: event.signalEndsAtMs,
           serverNowMs: event.serverNowMs,
+          ...(event.playerId ? { playerId: event.playerId } : {}),
         };
         if (event.playerId) {
+          // Seat-private: room-broadcast (unsequenced) so delivery does not
+          // depend on connectionLeases — clients filter by playerId. Also
+          // unicast when a lease exists as a low-latency fast path.
+          this.server.to(room).emit('event', {
+            schemaVersion: REALTIME_SCHEMA_VERSION,
+            type: MessageTypes.ChallengeSignal,
+            messageId: randomUUID(),
+            matchId: broadcast.matchId,
+            serverTimestampMs: event.serverTimestampMs,
+            payload,
+          });
           this.emitToPlayer(broadcast.matchId, event.playerId, {
             schemaVersion: REALTIME_SCHEMA_VERSION,
             type: MessageTypes.ChallengeSignal,
             messageId: randomUUID(),
             matchId: broadcast.matchId,
-            // Private seat signals are unsequenced so other seats do not see gaps.
             serverTimestampMs: event.serverTimestampMs,
             payload,
           });
@@ -1467,8 +1467,17 @@ export class MatchGateway
           challengeInstanceId: event.challengeInstanceId,
           signalEndsAtMs: event.signalEndsAtMs,
           serverNowMs: event.serverNowMs,
+          ...(event.playerId ? { playerId: event.playerId } : {}),
         };
         if (event.playerId) {
+          this.server.to(room).emit('event', {
+            schemaVersion: REALTIME_SCHEMA_VERSION,
+            type: MessageTypes.ChallengeSignalEnded,
+            messageId: randomUUID(),
+            matchId: broadcast.matchId,
+            serverTimestampMs: event.serverTimestampMs,
+            payload,
+          });
           this.emitToPlayer(broadcast.matchId, event.playerId, {
             schemaVersion: REALTIME_SCHEMA_VERSION,
             type: MessageTypes.ChallengeSignalEnded,

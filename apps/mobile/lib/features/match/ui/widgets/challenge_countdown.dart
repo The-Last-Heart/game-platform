@@ -14,6 +14,7 @@ class ChallengeCountdown extends StatefulWidget {
     this.ringColor,
     this.glow = true,
     this.deadlineOverrideMs,
+    this.startsAtOverrideMs,
     super.key,
   });
 
@@ -25,6 +26,9 @@ class ChallengeCountdown extends StatefulWidget {
 
   /// Optional alternate deadline (e.g. memory preview end).
   final int? deadlineOverrideMs;
+
+  /// Optional alternate start (e.g. memory answer phase begins after preview).
+  final int? startsAtOverrideMs;
 
   @override
   State<ChallengeCountdown> createState() => _ChallengeCountdownState();
@@ -47,7 +51,8 @@ class _ChallengeCountdownState extends State<ChallengeCountdown> {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.challenge.challengeInstanceId !=
             widget.challenge.challengeInstanceId ||
-        oldWidget.deadlineOverrideMs != widget.deadlineOverrideMs) {
+        oldWidget.deadlineOverrideMs != widget.deadlineOverrideMs ||
+        oldWidget.startsAtOverrideMs != widget.startsAtOverrideMs) {
       _tick();
     }
   }
@@ -63,7 +68,8 @@ class _ChallengeCountdownState extends State<ChallengeCountdown> {
     if (nowMs <= 0) return;
     final int deadline =
         widget.deadlineOverrideMs ?? widget.challenge.deadlineAtMs;
-    final int startsAt = widget.challenge.startsAtMs;
+    final int startsAt =
+        widget.startsAtOverrideMs ?? widget.challenge.startsAtMs;
     final int durationMs = (deadline - startsAt).clamp(1, 60000);
     final double prog = 1.0 - ((nowMs - startsAt) / durationMs);
     final double remaining = ((deadline - nowMs) / 1000.0).clamp(0.0, 99.0);

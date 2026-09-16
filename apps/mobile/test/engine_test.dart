@@ -302,13 +302,51 @@ void main() {
       expect(submittedAnswer!['signalToken'], 'tok-signal');
     });
 
-    testWidgets('after signal window ends, tap submits without token', (
+    testWidgets('past endsAt but still signalActive submits with token', (
       WidgetTester tester,
     ) async {
       Map<String, dynamic>? submittedAnswer;
       final PublicChallenge challenge = makeChallenge(
         roundPhase: RoundPhase.signalActive,
         signalToken: 'tok-signal',
+        signaledAtMs: 1700000002000,
+        signalEndsAtMs: 1700000003000,
+      );
+
+      final ReactionWaitForSignalEngine engine = ReactionWaitForSignalEngine();
+
+      await tester.pumpWidget(
+        wrapWithL10n(
+          Builder(
+            builder: (BuildContext context) {
+              return engine.build(
+                context,
+                makeContext(
+                  challenge: challenge,
+                  estimateServerNowMs: () => 1700000003500,
+                  onSubmit: (Map<String, dynamic> a) => submittedAnswer = a,
+                ),
+              );
+            },
+          ),
+        ),
+      );
+      await tester.pump();
+
+      await tester.tap(find.byType(GestureDetector).first);
+      await tester.pump();
+
+      // Soft UI close must not strip the token — server mono window decides.
+      expect(submittedAnswer, isNotNull);
+      expect(submittedAnswer!['signalToken'], 'tok-signal');
+    });
+
+    testWidgets('after signal_expired phase, tap submits without token', (
+      WidgetTester tester,
+    ) async {
+      Map<String, dynamic>? submittedAnswer;
+      final PublicChallenge challenge = makeChallenge(
+        roundPhase: RoundPhase.signalExpired,
         signaledAtMs: 1700000002000,
         signalEndsAtMs: 1700000003000,
       );

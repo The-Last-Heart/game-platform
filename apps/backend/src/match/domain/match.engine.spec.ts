@@ -599,6 +599,7 @@ describe('WaitForSignal engine', () => {
     const { clock, engine } = setup();
     let match = fillSix(engine);
     match = engine.startChallenge(match, createWaitForSignalDefinition()).match;
+    const seqBefore = match.sequence;
 
     // Not yet due
     clock.advance(1000);
@@ -617,6 +618,9 @@ describe('WaitForSignal engine', () => {
     expect(signalEvent).toBeDefined();
     expect(match.currentChallenge!.roundPhase).toBe('signal_active');
     expect(match.currentChallenge!.signaledAtMs).toBeTruthy();
+    // Seat-private activations must not advance sequence (clients never see it).
+    expect(match.sequence).toBe(seqBefore);
+    expect(result.events.every((e) => e.kind !== 'sequence')).toBe(true);
 
     // Public view after signal includes signalToken and window end
     const pub = toPublicChallengeView(match.currentChallenge!, clock.nowMs());

@@ -48,11 +48,16 @@ class _ReactionWaitForSignalWidgetState
 
   PublicChallenge get challenge => widget.challengeContext.challenge;
 
-  /// Blue only while the server says the window is open.
-  /// Prefer roundPhase; also close locally when estimateServerNowMs >= endsAt
-  /// so UI turns red even if challenge.signal_ended is slightly delayed.
+  /// Blue while the server says the window is open.
+  ///
+  /// Prefer roundPhase + token. Local endsAt is only a soft fallback after a
+  /// grace window so a slightly skewed clock / late envelope still shows blue
+  /// long enough to tap; challenge.signal_ended is the hard close.
   bool get _isSignalActive {
     if (challenge.roundPhase != RoundPhase.signalActive) {
+      return false;
+    }
+    if (challenge.signalToken == null) {
       return false;
     }
     final int? endsAt = challenge.signalEndsAtMs;
@@ -63,7 +68,9 @@ class _ReactionWaitForSignalWidgetState
     if (nowMs <= 0) {
       return true;
     }
-    return nowMs < endsAt;
+    // 300ms grace covers typical LAN delivery skew without extending late taps
+    // much past the server mono window (server still validates mono bounds).
+    return nowMs < endsAt + 300;
   }
 
   @override
@@ -108,7 +115,10 @@ class _ReactionWaitForSignalWidgetState
     if (widget.challengeContext.isInteractionLocked) return;
 
     _submitted = true;
-    if (_isSignalActive && challenge.signalToken != null) {
+    // Prefer token submit whenever the server opened the window for this seat,
+    // even if the local endsAt soft-close already flipped the heart red.
+    if (challenge.roundPhase == RoundPhase.signalActive &&
+        challenge.signalToken != null) {
       widget.challengeContext.onSubmit(<String, dynamic>{
         'signalToken': challenge.signalToken,
       });

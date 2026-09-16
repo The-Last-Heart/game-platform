@@ -1,0 +1,35 @@
+{
+  "definitionId": "social.pass_the_pulse.dev",
+  "definitionVersion": 1,
+  "engineId": "social.pass_the_pulse",
+  "durationMs": 15000,
+  "introDurationMs": 1000,
+  "resultHoldMs": 2000,
+  "heartPenaltyOnFailure": 1,
+  "energyRewardOnSuccess": 1,
+  "promptKey": "challenge.pass_the_pulse.intro",
+  "choiceKeys": [],
+  "clientConfig": {
+    "categoryKey": "challenge.category.social",
+    "titleKey": "challenge.pass_the_pulse.intro",
+    "promptKey": "challenge.pass_the_pulse.prompt",
+    "actionKey": "challenge.pass_the_pulse.action",
+    "youKey": "challenge.pass_the_pulse.you",
+    "timeRemainingKey": "challenge.pass_the_pulse.time_remaining",
+    "turnAnnounceKey": "challenge.pass_the_pulse.turn_announce",
+    "a11yTapReadyKey": "challenge.pass_the_pulse.a11y_tap_ready",
+    "a11yTapWaitKey": "challenge.pass_the_pulse.a11y_tap_wait",
+    "pulseSfxAssetId": "sfx.pulse"
+  },
+  "serverConfig": {
+    "minPlayers": 2,
+    "maxPlayers": 6,
+    "startDelayMs": 800,
+    "segmentDurationMs": 1800,
+    "hitWindowEarlyMs": 280,
+    "hitWindowLateMs": 320,
+    "resultTransitionMs": 900
+  },
+  "difficulty": "medium",
+  "requiredAssetIds": ["sfx.pulse"]
+}

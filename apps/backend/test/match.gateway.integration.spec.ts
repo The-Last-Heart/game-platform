@@ -2587,4 +2587,104 @@ describe('MatchGateway integration', () => {
     );
     expect(asString(rematchAccepted.payload?.['matchId'])).not.toBe(matchId);
   }, 20000);
+
+  it('concurrent rematch: first binder sees party after delayed room join', async () => {
+    const host = await tracked();
+    sendCommand(host.socket, MessageTypes.MatchmakingEnqueue, {
+      displayName: 'RematchHost',
+      avatarColor: '#111111',
+    });
+    const hostStatus = await waitForType(host, MessageTypes.MatchmakingStatus);
+    expect(asString(hostStatus.payload?.['state'])).toBe('assigned');
+    const sourceMatchId = asString(hostStatus.payload?.['matchId']);
+    const hostAccepted = await waitForType(host, MessageTypes.SessionAccepted);
+    const hostPlayerId = asString(hostAccepted.payload?.['playerId']);
+    await waitForType(host, MessageTypes.MatchSnapshot);
+
+    const guest = await tracked();
+    sendCommand(guest.socket, MessageTypes.MatchmakingEnqueue, {
+      displayName: 'RematchGuest',
+      avatarColor: '#222222',
+    });
+    const guestStatus = await waitForType(guest, MessageTypes.MatchmakingStatus);
+    expect(asString(guestStatus.payload?.['state'])).toBe('assigned');
+    expect(asString(guestStatus.payload?.['matchId'])).toBe(sourceMatchId);
+    await waitForType(guest, MessageTypes.SessionAccepted);
+    await waitForType(guest, MessageTypes.MatchSnapshot);
+
+    const store = matchService.getStoreForTests();
+    const source = await store.get(sourceMatchId);
+    source!.phase = 'completed';
+    source!.status = 'completed';
+    source!.winnerId = hostPlayerId;
+    await store.save(source!);
+
+    // Pause only the first rematcher's clearClientBinding so the second seat
+    // can join the rematch lobby (and room-broadcast) before the first socket
+    // joins the new room — the race that used to leave the host on a 1-seat snap.
+    let pauseFirstClear = true;
+    const barrier = createBarrier();
+    matchGateway.setClearBindingBarrierForTests(async () => {
+      if (pauseFirstClear) {
+        pauseFirstClear = false;
+        await barrier.wait();
+      }
+    });
+
+    const beforeHostRematch = host.events.length - 1;
+    sendCommand(host.socket, MessageTypes.MatchRematch, {
+      matchId: sourceMatchId,
+    });
+    await barrier.waited();
+
+    const beforeGuestRematch = guest.events.length - 1;
+    sendCommand(guest.socket, MessageTypes.MatchRematch, {
+      matchId: sourceMatchId,
+    });
+    const guestRematchAccepted = await waitForType(
+      guest,
+      MessageTypes.SessionAccepted,
+      { afterIndex: beforeGuestRematch },
+    );
+    const rematchMatchId = asString(guestRematchAccepted.payload?.['matchId']);
+    expect(rematchMatchId).toBeTruthy();
+    expect(rematchMatchId).not.toBe(sourceMatchId);
+
+    const guestBindSnap = await waitForType(guest, MessageTypes.MatchSnapshot, {
+      afterIndex: guest.events.indexOf(guestRematchAccepted),
+    });
+    expect(
+      ((guestBindSnap.payload?.['players'] as unknown[]) ?? []).length,
+    ).toBe(2);
+
+    barrier.release();
+
+    const hostRematchAccepted = await waitForType(
+      host,
+      MessageTypes.SessionAccepted,
+      { afterIndex: beforeHostRematch },
+    );
+    expect(asString(hostRematchAccepted.payload?.['matchId'])).toBe(
+      rematchMatchId,
+    );
+    const hostBindSnap = await waitForType(host, MessageTypes.MatchSnapshot, {
+      afterIndex: host.events.indexOf(hostRematchAccepted),
+    });
+    const hostPlayers =
+      (hostBindSnap.payload?.['players'] as Array<{
+        playerId?: string;
+        displayName?: string;
+      }>) ?? [];
+    expect(hostPlayers).toHaveLength(2);
+    expect(hostPlayers.map((p) => p.displayName).sort()).toEqual([
+      'RematchGuest',
+      'RematchHost',
+    ]);
+    const guestPlayers =
+      (guestBindSnap.payload?.['players'] as Array<{ playerId?: string }>) ??
+      [];
+    expect(guestPlayers.map((p) => p.playerId).sort()).toEqual(
+      hostPlayers.map((p) => p.playerId).sort(),
+    );
+  }, 30000);
 });

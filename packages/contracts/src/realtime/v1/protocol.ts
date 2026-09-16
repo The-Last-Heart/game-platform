@@ -546,6 +546,11 @@ export const challengeSignalPayloadSchema = z
     /** Inclusive-exclusive window end: blue while serverNow < signalEndsAtMs. */
     signalEndsAtMs: z.number().int().nonnegative(),
     serverNowMs: z.number().int().nonnegative(),
+    /**
+     * When set, this signal is seat-private: clients must ignore it unless it
+     * matches their local playerId. Room-broadcast for delivery reliability.
+     */
+    playerId: uuidLike.optional(),
   })
   .strict()
   .superRefine((value, ctx) => {
@@ -563,6 +568,8 @@ export const challengeSignalEndedPayloadSchema = z
     challengeInstanceId: uuidLike,
     signalEndsAtMs: z.number().int().nonnegative(),
     serverNowMs: z.number().int().nonnegative(),
+    /** Seat-private end; clients ignore unless playerId matches locally. */
+    playerId: uuidLike.optional(),
   })
   .strict();
 

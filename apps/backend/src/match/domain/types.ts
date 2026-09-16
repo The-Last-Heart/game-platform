@@ -302,6 +302,11 @@ export type ChallengeRound = {
    * never mirrored into clientConfig or public snapshots.
    */
   completeSumState?: import('./engines/complete-sum').CompleteSumRoundState;
+  /**
+   * Pass-the-pulse authoritative timeline + per-seat hit/miss results.
+   * Reconnect must restore this object — never regenerate the route.
+   */
+  passThePulseState?: import('./engines/pass-the-pulse').PassThePulseRoundState;
   /** Pair sync: accumulated ms both seats were pressing at the same time. */
   pairSyncOverlapMs?: number;
   /** Pair sync: mono time the current overlapping press started, if any. */

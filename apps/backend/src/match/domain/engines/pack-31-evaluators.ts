@@ -19,12 +19,14 @@ import {
   materializeCompleteSumRound,
   LOGIC_COMPLETE_SUM_ENGINE_ID,
 } from './complete-sum-runtime';
+import { SocialPassThePulseEvaluator } from './pass-the-pulse-runtime';
 
 export {
   LogicCompleteSumEvaluator,
   materializeCompleteSumRound,
   LOGIC_COMPLETE_SUM_ENGINE_ID,
 };
+export { SocialPassThePulseEvaluator };
 
 function num(value: unknown, fallback = 0): number {
   return typeof value === 'number' && Number.isFinite(value) ? value : fallback;
@@ -460,6 +462,7 @@ export function createPack31Evaluators(): ChallengeEvaluator[] {
     new FocusStroopEvaluator(),
     new SearchSelectOccurrencesEvaluator(),
     new LogicCompleteSumEvaluator(),
+    new SocialPassThePulseEvaluator(),
   ];
 }
 
