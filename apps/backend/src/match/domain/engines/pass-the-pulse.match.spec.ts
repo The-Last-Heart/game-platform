@@ -151,12 +151,16 @@ describe('social.pass_the_pulse match behavior', () => {
     clock.advance(first.windowClosesMonoMs + 1 - clock.monoMs());
     const tick = eng.resolveDuePassThePulse(match);
     expect(tick.liveUpdate).toBe(true);
+    // Window expiry does not fail the seat — pulse loops to the next waiting.
     expect(
       tick.match.currentChallenge!.passThePulseState!.results[first.playerId],
-    ).toBe('missed');
+    ).toBe('waiting');
     expect(
       tick.match.currentChallenge!.passThePulseState!.routePlayerIds,
     ).toEqual(route);
+    expect(
+      tick.match.currentChallenge!.passThePulseState!.currentTargetPlayerId,
+    ).not.toBe(first.playerId);
 
     // Simulate disconnect/resume: public view still exposes the same timeline.
     const view = toPublicChallengeView(
@@ -174,18 +178,63 @@ describe('social.pass_the_pulse match behavior', () => {
     let match = fill(eng, 2);
     match = eng.startChallenge(match, definition).match;
     const state = match.currentChallenge!.passThePulseState!;
-    const [leg0, leg1] = state.legs;
+    const leg0 = state.legs[0]!;
 
-    clock.advance(leg0!.windowOpensMonoMs - clock.monoMs());
+    clock.advance(leg0.windowOpensMonoMs - clock.monoMs());
     match = eng.submitAnswer(match, {
-      playerId: leg0!.playerId,
+      playerId: leg0.playerId,
       challengeInstanceId: match.currentChallenge!.challengeInstanceId,
       commandId: 'cmd-0',
-      answer: { legId: leg0!.legId },
+      answer: { legId: leg0.legId },
     }).match;
 
-    clock.advance(leg1!.windowClosesMonoMs + 1 - clock.monoMs());
-    match = eng.resolveDuePassThePulse(match).match;
+    const afterHit = match.currentChallenge!.passThePulseState!;
+    const otherId = afterHit.routePlayerIds.find((id) => id !== leg0.playerId)!;
+    // Other seat never presses — global deadline marks them missed only.
+    clock.advance(match.currentChallenge!.deadlineMonoMs + 1 - clock.monoMs());
+    const resolved = eng.resolveDueTimeouts(match);
+    const resolvedEvent = resolved.events.find(
+      (e) => e.kind === 'challenge_resolved',
+    );
+    expect(resolvedEvent).toBeTruthy();
+    if (!resolvedEvent || resolvedEvent.kind !== 'challenge_resolved') return;
+    const byId = Object.fromEntries(
+      resolvedEvent.resolutions.map((r) => [r.playerId, r.outcome]),
+    );
+    expect(byId[leg0.playerId]).toBe('success');
+    expect(byId[otherId]).toBe('failure');
+  });
+
+  it('early wrong-time press fails only that player', () => {
+    const clock = new FakeClock(1_000_000);
+    const eng = engine(clock);
+    let match = fill(eng, 2);
+    match = eng.startChallenge(match, definition).match;
+    const state = match.currentChallenge!.passThePulseState!;
+    const leg0 = state.legs[0]!;
+
+    // Tap before window opens → miss for target only.
+    clock.advance(leg0.travelStartMonoMs + 50 - clock.monoMs());
+    match = eng.submitAnswer(match, {
+      playerId: leg0.playerId,
+      challengeInstanceId: match.currentChallenge!.challengeInstanceId,
+      commandId: 'cmd-early',
+      answer: { legId: leg0.legId },
+    }).match;
+    const mid = match.currentChallenge!.passThePulseState!;
+    expect(mid.results[leg0.playerId]).toBe('missed');
+    const otherId = mid.routePlayerIds.find((id) => id !== leg0.playerId)!;
+    expect(mid.results[otherId]).toBe('waiting');
+    expect(mid.currentTargetPlayerId).toBe(otherId);
+
+    const otherLeg = mid.legs.find((l) => l.legId === mid.currentLegId)!;
+    clock.advance(otherLeg.windowOpensMonoMs - clock.monoMs());
+    match = eng.submitAnswer(match, {
+      playerId: otherId,
+      challengeInstanceId: match.currentChallenge!.challengeInstanceId,
+      commandId: 'cmd-hit',
+      answer: { legId: otherLeg.legId },
+    }).match;
     clock.advance(
       match.currentChallenge!.passThePulseState!.completeResolveAtMonoMs! -
         clock.monoMs(),
@@ -199,8 +248,8 @@ describe('social.pass_the_pulse match behavior', () => {
     const byId = Object.fromEntries(
       resolvedEvent.resolutions.map((r) => [r.playerId, r.outcome]),
     );
-    expect(byId[leg0!.playerId]).toBe('success');
-    expect(byId[leg1!.playerId]).toBe('failure');
+    expect(byId[leg0.playerId]).toBe('failure');
+    expect(byId[otherId]).toBe('success');
   });
 
   it('expires the challenge at the global deadline', () => {

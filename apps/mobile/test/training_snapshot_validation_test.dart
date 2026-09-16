@@ -36,6 +36,7 @@ void main() {
             'submittedForCurrentChallenge': false,
             'displayName': 'وجدي',
             'avatarColor': '#FF3045',
+            'countryCode': 'SA',
             'ready': true,
             'isHost': false,
           },

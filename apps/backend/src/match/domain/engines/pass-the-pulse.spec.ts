@@ -181,6 +181,7 @@ describe('social.pass_the_pulse tap validation', () => {
     expect(early.state.results.p0).toBe('missed');
     expect(early.state.currentTargetPlayerId).toBe('p1');
     expect(early.state.results.p1).toBe('waiting');
+    expect(early.state.legs.length).toBe(2);
   });
 
   it('rejects late taps after the window closed', () => {
@@ -236,17 +237,36 @@ describe('social.pass_the_pulse tap validation', () => {
     });
     expect(second.ok).toBe(false);
     if (second.ok) return;
-    expect(second.reason).toBe('not_your_turn');
+    expect(second.reason).toBe('already_resolved');
   });
 
-  it('auto-misses when the window closes without a tap', () => {
-    const missed = resolveDuePassThePulseMisses({
+  it('loops to the next waiting seat when a window closes without a tap', () => {
+    const advanced = resolveDuePassThePulseMisses({
       state: stateAt(0),
       nowMonoMs: 3301,
     });
-    expect(missed.changed).toBe(true);
-    expect(missed.state.results.p0).toBe('missed');
-    expect(missed.state.currentTargetPlayerId).toBe('p1');
+    expect(advanced.changed).toBe(true);
+    // Did not press → still waiting; pulse moves on and will return later.
+    expect(advanced.state.results.p0).toBe('waiting');
+    expect(advanced.state.currentTargetPlayerId).toBe('p1');
+    expect(advanced.state.legs.length).toBe(2);
+  });
+
+  it('returns to a waiting seat after looping past others', () => {
+    let s = stateAt(0);
+    // p0 window expires without tap → p1
+    s = resolveDuePassThePulseMisses({ state: s, nowMonoMs: 3301 }).state;
+    expect(s.currentTargetPlayerId).toBe('p1');
+    const p1Leg = s.legs.find((l) => l.legId === s.currentLegId)!;
+    // p1 window expires without tap → back to p0
+    s = resolveDuePassThePulseMisses({
+      state: s,
+      nowMonoMs: p1Leg.windowClosesMonoMs + 1,
+    }).state;
+    expect(s.results.p0).toBe('waiting');
+    expect(s.results.p1).toBe('waiting');
+    expect(s.currentTargetPlayerId).toBe('p0');
+    expect(s.legs.length).toBe(3);
   });
 
   it('completes after every participant is resolved', () => {
@@ -260,17 +280,21 @@ describe('social.pass_the_pulse tap validation', () => {
     expect(a.ok).toBe(true);
     if (!a.ok) return;
     s = a.state;
+    const p1LegId = s.currentLegId!;
+    const p1Leg = s.legs.find((l) => l.legId === p1LegId)!;
     const b = applyPassThePulseTap({
       state: s,
       playerId: 'p1',
-      legId: 'leg-1',
-      nowMonoMs: 5000,
+      legId: p1LegId,
+      nowMonoMs: p1Leg.windowOpensMonoMs,
     });
     expect(b.ok).toBe(true);
     if (!b.ok) return;
     expect(b.state.results.p0).toBe('hit');
     expect(b.state.results.p1).toBe('hit');
     expect(b.state.challengeStatus).toBe('completed');
-    expect(b.state.completeResolveAtMonoMs).toBe(5000 + 500);
+    expect(b.state.completeResolveAtMonoMs).toBe(
+      p1Leg.windowOpensMonoMs + 500,
+    );
   });
 });

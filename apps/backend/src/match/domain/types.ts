@@ -104,6 +104,7 @@ export type Presence = 'connected' | 'disconnected';
 export type PlayerIdentity = {
   displayName?: string;
   avatarColor?: string;
+  countryCode?: string;
 };
 
 export type MatchReleasePinsState = {
@@ -227,6 +228,7 @@ export type PlayerState = {
   isBot?: boolean;
   displayName?: string;
   avatarColor?: string;
+  countryCode?: string;
   /** Explicit ready for private lobbies; other modes may auto-ready on accept. */
   ready: boolean;
   /**
@@ -307,6 +309,11 @@ export type ChallengeRound = {
    * Reconnect must restore this object — never regenerate the route.
    */
   passThePulseState?: import('./engines/pass-the-pulse').PassThePulseRoundState;
+  /**
+   * Individual ring-lock puzzles keyed by player. Private angles live here and
+   * in seat overlays only — never in the shared public snapshot.
+   */
+  ringLockState?: import('./engines/ring-lock').RingLockRoundState;
   /** Pair sync: accumulated ms both seats were pressing at the same time. */
   pairSyncOverlapMs?: number;
   /** Pair sync: mono time the current overlapping press started, if any. */
@@ -543,7 +550,10 @@ export class DomainError extends Error {
       | 'POWER_PHASE_INVALID'
       | 'ILLEGAL_POWER_TARGET'
       | 'POWER_ATTACK_NOT_FOUND'
-      | 'OFFENSIVE_POWERS_DISABLED',
+      | 'OFFENSIVE_POWERS_DISABLED'
+      | 'DISPLAY_NAME_TAKEN'
+      | 'DISPLAY_NAME_PROHIBITED'
+      | 'DISPLAY_NAME_INVALID',
     message: string,
   ) {
     super(message);

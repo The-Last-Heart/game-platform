@@ -53,8 +53,7 @@ export type PassThePulsePublicPayload = {
 export type PassThePulseRoundState = Omit<PassThePulsePublicPayload, 'legs'> & {
   pulseStartMonoMs: number;
   legs: PassThePulseLegState[];
-  /** Defer challenge resolve so clients can play the final wave. */
-  completeResolveAtMonoMs?: number | null;
+  completeResolveAtMonoMs: number | null;
 };
 
 export type PassThePulseTimingConfig = {
@@ -66,45 +65,47 @@ export type PassThePulseTimingConfig = {
 };
 
 export class PassThePulseConfigError extends Error {
-  readonly code = 'PASS_THE_PULSE_INVALID_CONFIG';
-
   constructor(message: string) {
     super(message);
     this.name = 'PassThePulseConfigError';
   }
 }
 
+function safeDisplayName(raw: string | undefined, fallback: string): string {
+  const trimmed = typeof raw === 'string' ? raw.trim() : '';
+  return trimmed.length > 0 ? trimmed.slice(0, 64) : fallback;
+}
+
 export function resolvePassThePulseTiming(
-  server: Record<string, unknown>,
+  serverConfig: Record<string, unknown>,
 ): PassThePulseTimingConfig {
-  const startDelayMs = readPositiveMs(
-    server['startDelayMs'],
-    PASS_THE_PULSE_DEFAULT_TIMING.startDelayMs,
-    10_000,
-  );
-  const segmentDurationMs = readPositiveMs(
-    server['segmentDurationMs'],
-    PASS_THE_PULSE_DEFAULT_TIMING.segmentDurationMs,
-    60_000,
-  );
-  const hitWindowEarlyMs = readNonNegMs(
-    server['hitWindowEarlyMs'],
-    PASS_THE_PULSE_DEFAULT_TIMING.hitWindowEarlyMs,
-    60_000,
-  );
-  const hitWindowLateMs = readNonNegMs(
-    server['hitWindowLateMs'],
-    PASS_THE_PULSE_DEFAULT_TIMING.hitWindowLateMs,
-    60_000,
-  );
-  const resultTransitionMs = readNonNegMs(
-    server['resultTransitionMs'],
-    PASS_THE_PULSE_DEFAULT_TIMING.resultTransitionMs,
-    60_000,
-  );
+  const defaults = PASS_THE_PULSE_DEFAULT_TIMING;
+  const startDelayMs =
+    typeof serverConfig['startDelayMs'] === 'number'
+      ? Math.floor(serverConfig['startDelayMs'])
+      : defaults.startDelayMs;
+  const segmentDurationMs =
+    typeof serverConfig['segmentDurationMs'] === 'number'
+      ? Math.floor(serverConfig['segmentDurationMs'])
+      : defaults.segmentDurationMs;
+  const hitWindowEarlyMs =
+    typeof serverConfig['hitWindowEarlyMs'] === 'number'
+      ? Math.floor(serverConfig['hitWindowEarlyMs'])
+      : defaults.hitWindowEarlyMs;
+  const hitWindowLateMs =
+    typeof serverConfig['hitWindowLateMs'] === 'number'
+      ? Math.floor(serverConfig['hitWindowLateMs'])
+      : defaults.hitWindowLateMs;
+  const resultTransitionMs =
+    typeof serverConfig['resultTransitionMs'] === 'number'
+      ? Math.floor(serverConfig['resultTransitionMs'])
+      : defaults.resultTransitionMs;
+  if (startDelayMs < 0 || segmentDurationMs <= 0) {
+    throw new PassThePulseConfigError('invalid pass_the_pulse timing');
+  }
   if (hitWindowEarlyMs + hitWindowLateMs > segmentDurationMs) {
     throw new PassThePulseConfigError(
-      'hitWindowEarlyMs + hitWindowLateMs must be <= segmentDurationMs',
+      'hit windows must fit within segmentDurationMs',
     );
   }
   return {
@@ -116,6 +117,7 @@ export function resolvePassThePulseTiming(
   };
 }
 
+/** Natural one-lap duration (used to fit Studio active time). */
 export function computePassThePulseDurationMs(
   participantCount: number,
   timing: PassThePulseTimingConfig,
@@ -133,11 +135,6 @@ export function computePassThePulseDurationMs(
   );
 }
 
-/**
- * Keep Studio `durationMs` authoritative. If the configured pulse timeline
- * would overrun the active challenge window, compress segment duration so
- * every seat still receives a reachable window before the deadline.
- */
 export function fitPassThePulseTimingToDuration(
   participantCount: number,
   timing: PassThePulseTimingConfig,
@@ -147,56 +144,41 @@ export function fitPassThePulseTimingToDuration(
   if (needed <= durationMs) {
     return timing;
   }
-
-  const fixedOverhead =
+  const fixed =
     timing.startDelayMs + timing.hitWindowLateMs + timing.resultTransitionMs;
-  const availableForSegments = durationMs - fixedOverhead;
-  const minSegment =
-    timing.hitWindowEarlyMs + timing.hitWindowLateMs + 1;
-  if (availableForSegments < participantCount * minSegment) {
+  const budget = durationMs - fixed;
+  if (budget < participantCount * 200) {
     throw new PassThePulseConfigError(
-      `active challenge time ${durationMs}ms is too short for ${participantCount} players with the configured timing windows`,
+      'Studio duration too short for pass_the_pulse',
     );
   }
-
+  let segmentDurationMs = Math.floor(budget / participantCount);
+  let hitWindowEarlyMs = Math.min(
+    timing.hitWindowEarlyMs,
+    Math.floor(segmentDurationMs * 0.35),
+  );
+  let hitWindowLateMs = Math.min(
+    timing.hitWindowLateMs,
+    Math.floor(segmentDurationMs * 0.35),
+  );
+  if (hitWindowEarlyMs + hitWindowLateMs > segmentDurationMs) {
+    throw new PassThePulseConfigError(
+      'compressed hit windows exceed segment',
+    );
+  }
+  if (segmentDurationMs < 200) {
+    throw new PassThePulseConfigError(
+      'compressed segmentDurationMs too small',
+    );
+  }
   return {
     ...timing,
-    segmentDurationMs: Math.floor(availableForSegments / participantCount),
+    segmentDurationMs,
+    hitWindowEarlyMs,
+    hitWindowLateMs,
   };
 }
 
-function readPositiveMs(raw: unknown, fallback: number, max: number): number {
-  if (typeof raw !== 'number' || !Number.isFinite(raw) || !Number.isInteger(raw)) {
-    return fallback;
-  }
-  if (raw < 1 || raw > max) {
-    throw new PassThePulseConfigError(
-      `timing value out of range: ${raw}`,
-    );
-  }
-  return raw;
-}
-
-function readNonNegMs(raw: unknown, fallback: number, max: number): number {
-  if (typeof raw !== 'number' || !Number.isFinite(raw) || !Number.isInteger(raw)) {
-    return fallback;
-  }
-  if (raw < 0 || raw > max) {
-    throw new PassThePulseConfigError(
-      `timing value out of range: ${raw}`,
-    );
-  }
-  return raw;
-}
-
-function safeDisplayName(raw: unknown, fallback: string): string {
-  if (typeof raw !== 'string') return fallback;
-  const trimmed = raw.trim();
-  if (trimmed.length === 0) return fallback;
-  return trimmed.slice(0, 64);
-}
-
-/** Fisher–Yates shuffle with seeded RNG — every participant appears once. */
 export function generatePassThePulseRoute(
   participantIds: string[],
   seed: number,
@@ -206,12 +188,11 @@ export function generatePassThePulseRoute(
       `pass_the_pulse requires 2–6 participants, got ${participantIds.length}`,
     );
   }
-  const unique = new Set(participantIds);
-  if (unique.size !== participantIds.length) {
+  if (new Set(participantIds).size !== participantIds.length) {
     throw new PassThePulseConfigError('duplicate participant ids');
   }
+  const rng = createSeededRng(seed >>> 0);
   const route = [...participantIds];
-  const rng = createSeededRng(seed);
   for (let i = route.length - 1; i > 0; i -= 1) {
     const j = Math.floor(rng() * (i + 1));
     const tmp = route[i]!;
@@ -221,6 +202,96 @@ export function generatePassThePulseRoute(
   return route;
 }
 
+function timingFromState(state: PassThePulseRoundState): PassThePulseTimingConfig {
+  return {
+    startDelayMs: state.startDelayMs,
+    segmentDurationMs: state.segmentDurationMs,
+    hitWindowEarlyMs: state.hitWindowEarlyMs,
+    hitWindowLateMs: state.hitWindowLateMs,
+    resultTransitionMs: state.resultTransitionMs,
+  };
+}
+
+function wallFromMono(state: PassThePulseRoundState, nowMonoMs: number): number {
+  return state.pulseStartAtMs + (nowMonoMs - state.pulseStartMonoMs);
+}
+
+function makeLeg(input: {
+  legIndex: number;
+  playerId: string;
+  routeIndex: number;
+  travelStartAtMs: number;
+  travelStartMonoMs: number;
+  timing: PassThePulseTimingConfig;
+}): PassThePulseLegState {
+  const { timing } = input;
+  const expectedArrivalAtMs = input.travelStartAtMs + timing.segmentDurationMs;
+  const expectedArrivalMonoMs =
+    input.travelStartMonoMs + timing.segmentDurationMs;
+  return {
+    legId: `leg-${input.legIndex}`,
+    playerId: input.playerId,
+    routeIndex: input.routeIndex,
+    travelStartAtMs: input.travelStartAtMs,
+    travelStartMonoMs: input.travelStartMonoMs,
+    expectedArrivalAtMs,
+    expectedArrivalMonoMs,
+    windowOpensAtMs: expectedArrivalAtMs - timing.hitWindowEarlyMs,
+    windowOpensMonoMs: expectedArrivalMonoMs - timing.hitWindowEarlyMs,
+    windowClosesAtMs: expectedArrivalAtMs + timing.hitWindowLateMs,
+    windowClosesMonoMs: expectedArrivalMonoMs + timing.hitWindowLateMs,
+  };
+}
+
+/** Next clockwise waiting seat after `afterPlayerId` (or first waiting). */
+export function nextWaitingPlayerId(
+  state: PassThePulseRoundState,
+  afterPlayerId: string | null,
+): string | null {
+  const waiting = state.routePlayerIds.filter(
+    (id) => state.results[id] === 'waiting',
+  );
+  if (waiting.length === 0) return null;
+  if (afterPlayerId == null || !state.routePlayerIds.includes(afterPlayerId)) {
+    return waiting[0]!;
+  }
+  const route = state.routePlayerIds;
+  const start = route.indexOf(afterPlayerId);
+  for (let step = 1; step <= route.length; step += 1) {
+    const id = route[(start + step) % route.length]!;
+    if (state.results[id] === 'waiting') return id;
+  }
+  return waiting[0]!;
+}
+
+function appendLegTowardWaiting(
+  state: PassThePulseRoundState,
+  afterPlayerId: string | null,
+  travelStartAtMs: number,
+  travelStartMonoMs: number,
+): PassThePulseRoundState | null {
+  const nextId = nextWaitingPlayerId(state, afterPlayerId);
+  if (nextId == null) return null;
+  const routeIndex = state.routePlayerIds.indexOf(nextId);
+  if (routeIndex < 0) return null;
+  const leg = makeLeg({
+    legIndex: state.legs.length,
+    playerId: nextId,
+    routeIndex,
+    travelStartAtMs,
+    travelStartMonoMs,
+    timing: timingFromState(state),
+  });
+  return {
+    ...state,
+    legs: [...state.legs, leg],
+    currentLegId: leg.legId,
+    currentTargetPlayerId: nextId,
+    stateSequence: state.stateSequence + 1,
+  };
+}
+
+/** First-lap helper retained for tests / duration math introspection. */
 export function buildPassThePulseLegs(input: {
   routePlayerIds: string[];
   pulseStartAtMs: number;
@@ -234,25 +305,16 @@ export function buildPassThePulseLegs(input: {
       pulseStartAtMs + timing.startDelayMs + i * timing.segmentDurationMs;
     const travelStartMonoMs =
       pulseStartMonoMs + timing.startDelayMs + i * timing.segmentDurationMs;
-    const expectedArrivalAtMs = travelStartAtMs + timing.segmentDurationMs;
-    const expectedArrivalMonoMs = travelStartMonoMs + timing.segmentDurationMs;
-    const windowOpensAtMs = expectedArrivalAtMs - timing.hitWindowEarlyMs;
-    const windowOpensMonoMs = expectedArrivalMonoMs - timing.hitWindowEarlyMs;
-    const windowClosesAtMs = expectedArrivalAtMs + timing.hitWindowLateMs;
-    const windowClosesMonoMs = expectedArrivalMonoMs + timing.hitWindowLateMs;
-    legs.push({
-      legId: `leg-${i}`,
-      playerId: routePlayerIds[i]!,
-      routeIndex: i,
-      travelStartAtMs,
-      travelStartMonoMs,
-      expectedArrivalAtMs,
-      expectedArrivalMonoMs,
-      windowOpensAtMs,
-      windowOpensMonoMs,
-      windowClosesAtMs,
-      windowClosesMonoMs,
-    });
+    legs.push(
+      makeLeg({
+        legIndex: i,
+        playerId: routePlayerIds[i]!,
+        routeIndex: i,
+        travelStartAtMs,
+        travelStartMonoMs,
+        timing,
+      }),
+    );
   }
   return legs;
 }
@@ -286,13 +348,19 @@ export function buildInitialPassThePulseState(input: {
       ),
     });
   }
-  const legs = buildPassThePulseLegs({
-    routePlayerIds,
-    pulseStartAtMs: input.pulseStartAtMs,
-    pulseStartMonoMs: input.pulseStartMonoMs,
+
+  // Start with a single leg; further visits are appended so the pulse can
+  // keep looping among seats that have not pressed yet.
+  const firstId = routePlayerIds[0]!;
+  const firstLeg = makeLeg({
+    legIndex: 0,
+    playerId: firstId,
+    routeIndex: 0,
+    travelStartAtMs: input.pulseStartAtMs + timing.startDelayMs,
+    travelStartMonoMs: input.pulseStartMonoMs + timing.startDelayMs,
     timing,
   });
-  const first = legs[0]!;
+
   return {
     schemaVersion: 1,
     participants,
@@ -304,9 +372,9 @@ export function buildInitialPassThePulseState(input: {
     hitWindowEarlyMs: timing.hitWindowEarlyMs,
     hitWindowLateMs: timing.hitWindowLateMs,
     resultTransitionMs: timing.resultTransitionMs,
-    legs,
-    currentLegId: first.legId,
-    currentTargetPlayerId: first.playerId,
+    legs: [firstLeg],
+    currentLegId: firstLeg.legId,
+    currentTargetPlayerId: firstId,
     results,
     stateSequence: 0,
     challengeStatus: 'active',
@@ -358,25 +426,6 @@ export function clonePassThePulseState(
   };
 }
 
-function advanceCurrentLeg(state: PassThePulseRoundState): PassThePulseRoundState {
-  const nextWaiting = state.legs.find(
-    (leg) => state.results[leg.playerId] === 'waiting',
-  );
-  if (!nextWaiting) {
-    return {
-      ...state,
-      currentLegId: null,
-      currentTargetPlayerId: null,
-      challengeStatus: 'completed',
-    };
-  }
-  return {
-    ...state,
-    currentLegId: nextWaiting.legId,
-    currentTargetPlayerId: nextWaiting.playerId,
-  };
-}
-
 function maybeScheduleComplete(
   state: PassThePulseRoundState,
   nowMonoMs: number,
@@ -387,16 +436,39 @@ function maybeScheduleComplete(
   if (!allResolved) {
     return state;
   }
-  const completed = advanceCurrentLeg({
+  return {
     ...state,
     challengeStatus: 'completed',
-  });
-  return {
-    ...completed,
+    currentLegId: null,
+    currentTargetPlayerId: null,
     completeResolveAtMonoMs:
-      completed.completeResolveAtMonoMs ??
-      nowMonoMs + completed.resultTransitionMs,
+      state.completeResolveAtMonoMs ??
+      nowMonoMs + state.resultTransitionMs,
   };
+}
+
+/** After a seat resolves or a window expires, continue among waiting seats. */
+function continueAmongWaiting(
+  state: PassThePulseRoundState,
+  afterPlayerId: string,
+  nowMonoMs: number,
+): PassThePulseRoundState {
+  const completed = maybeScheduleComplete(state, nowMonoMs);
+  if (completed.challengeStatus === 'completed') {
+    return completed;
+  }
+  const travelStartMonoMs = Math.max(nowMonoMs, nowMonoMs);
+  const travelStartAtMs = wallFromMono(state, travelStartMonoMs);
+  const next = appendLegTowardWaiting(
+    completed,
+    afterPlayerId,
+    travelStartAtMs,
+    travelStartMonoMs,
+  );
+  if (next == null) {
+    return maybeScheduleComplete(completed, nowMonoMs);
+  }
+  return next;
 }
 
 export type ApplyPassThePulseTapResult =
@@ -410,7 +482,8 @@ export type ApplyPassThePulseTapResult =
 /**
  * Authoritative tap handling.
  * Inclusive window: accepted when opens <= now <= closes.
- * Early (before opens) → missed. Late → rejected (timer owns the miss).
+ * Early (before opens) → missed (lose, button disabled). Late → rejected
+ * (timer advances the loop without resolving the seat).
  */
 export function applyPassThePulseTap(input: {
   state: PassThePulseRoundState;
@@ -422,6 +495,9 @@ export function applyPassThePulseTap(input: {
   if (state.challengeStatus === 'completed') {
     return { ok: false, reason: 'already_completed' };
   }
+  if (state.results[playerId] !== 'waiting') {
+    return { ok: false, reason: 'already_resolved' };
+  }
   const leg = state.legs.find((l) => l.legId === legId);
   if (!leg) {
     return { ok: false, reason: 'stale_leg' };
@@ -432,9 +508,6 @@ export function applyPassThePulseTap(input: {
   if (state.currentLegId !== legId || state.currentTargetPlayerId !== playerId) {
     return { ok: false, reason: 'not_your_turn' };
   }
-  if (state.results[playerId] !== 'waiting') {
-    return { ok: false, reason: 'already_resolved' };
-  }
 
   let outcome: 'hit' | 'missed';
   if (nowMonoMs < leg.windowOpensMonoMs) {
@@ -442,7 +515,6 @@ export function applyPassThePulseTap(input: {
   } else if (nowMonoMs > leg.windowClosesMonoMs) {
     return { ok: false, reason: 'late' };
   } else {
-    // Inclusive boundary at both ends.
     outcome = 'hit';
   }
 
@@ -452,12 +524,15 @@ export function applyPassThePulseTap(input: {
     results,
     stateSequence: state.stateSequence + 1,
   };
-  next = advanceCurrentLeg(next);
-  next = maybeScheduleComplete(next, nowMonoMs);
+  next = continueAmongWaiting(next, playerId, nowMonoMs);
   return { ok: true, state: next, outcome };
 }
 
-/** Mark waiting targets whose window has closed as missed. */
+/**
+ * When the current window closes without a tap, do NOT mark a miss — keep the
+ * seat waiting and loop the pulse to the next player who has not pressed yet.
+ * Permanent misses for still-waiting seats happen only at the global deadline.
+ */
 export function resolveDuePassThePulseMisses(input: {
   state: PassThePulseRoundState;
   nowMonoMs: number;
@@ -466,24 +541,38 @@ export function resolveDuePassThePulseMisses(input: {
   if (state.challengeStatus === 'completed') {
     return { changed: false, state };
   }
-  let changed = false;
-  for (const leg of state.legs) {
-    if (state.results[leg.playerId] !== 'waiting') continue;
-    // Inclusive: miss only when strictly after close.
-    if (input.nowMonoMs <= leg.windowClosesMonoMs) continue;
-    state = {
-      ...state,
-      results: { ...state.results, [leg.playerId]: 'missed' },
-      stateSequence: state.stateSequence + 1,
-    };
-    changed = true;
-  }
-  if (!changed) {
+  const current = state.legs.find((l) => l.legId === state.currentLegId);
+  if (!current) {
     return { changed: false, state };
   }
-  state = advanceCurrentLeg(state);
-  state = maybeScheduleComplete(state, input.nowMonoMs);
+  if (input.nowMonoMs <= current.windowClosesMonoMs) {
+    return { changed: false, state };
+  }
+  // Seat stays waiting; pulse continues clockwise among unresolved seats.
+  state = continueAmongWaiting(state, current.playerId, input.nowMonoMs);
   return { changed: true, state };
+}
+
+/** Force remaining waiting seats to missed (global deadline). */
+export function forceMissRemainingPassThePulse(
+  state: PassThePulseRoundState,
+): PassThePulseRoundState {
+  const results = { ...state.results };
+  let seq = state.stateSequence;
+  for (const id of state.routePlayerIds) {
+    if (results[id] === 'waiting') {
+      results[id] = 'missed';
+      seq += 1;
+    }
+  }
+  return {
+    ...state,
+    results,
+    stateSequence: seq,
+    challengeStatus: 'completed',
+    currentLegId: null,
+    currentTargetPlayerId: null,
+  };
 }
 
 export function validatePassThePulseTapAnswer(

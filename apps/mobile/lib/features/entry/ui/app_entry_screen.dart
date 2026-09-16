@@ -254,9 +254,16 @@ class _AppEntryScreenState extends State<AppEntryScreen>
     final bool showToast =
         mapped == TranslationKeys.errorsQueueTimeout ||
         mapped == 'errors.queue_timeout' ||
+        mapped == TranslationKeys.errorsIdentityNameTaken ||
+        mapped == 'errors.identity.name_taken' ||
         _phase == _EntryPhase.matchmaking;
     setState(() {
-      _phase = _EntryPhase.home;
+      _phase = mapped == TranslationKeys.errorsIdentityNameTaken ||
+              mapped == 'errors.identity.name_taken'
+          ? (_phase == _EntryPhase.privateAccess
+                ? _EntryPhase.privateAccess
+                : _EntryPhase.home)
+          : _EntryPhase.home;
       _queueError = mapped;
       _ticketId = null;
       _queueSeats = 0;
@@ -451,11 +458,18 @@ class _AppEntryScreenState extends State<AppEntryScreen>
   Future<void> _createPrivate() async {
     final PlayerIdentity? identity = _identity;
     if (identity == null) return;
+    setState(() => _queueError = null);
     try {
-      await widget.controller.createPrivateRoom(identity);
+      final String? errorKey = await widget.controller.createPrivateRoom(
+        identity,
+      );
+      if (!mounted) return;
+      if (errorKey != null && _queueError != errorKey) {
+        _surfaceJoinError(errorKey);
+      }
     } catch (error) {
       if (!mounted) return;
-      setState(() => _queueError = _mapConnectError(error));
+      _surfaceJoinError(_mapConnectError(error));
     }
   }
 
@@ -467,8 +481,16 @@ class _AppEntryScreenState extends State<AppEntryScreen>
       setState(() => _queueError = TranslationKeys.privateInvalidCode);
       return;
     }
+    setState(() => _queueError = null);
     try {
-      await widget.controller.joinPrivateRoom(identity, code);
+      final String? errorKey = await widget.controller.joinPrivateRoom(
+        identity,
+        code,
+      );
+      if (!mounted) return;
+      if (errorKey != null && _queueError != errorKey) {
+        _surfaceJoinError(errorKey, stayOnPrivateAccess: true);
+      }
     } catch (error) {
       if (!mounted) return;
       setState(() {
@@ -476,6 +498,7 @@ class _AppEntryScreenState extends State<AppEntryScreen>
             ? _mapConnectError(error)
             : TranslationKeys.privateInvalidCode;
       });
+      _showQueueToast(_queueError!);
     }
   }
 
@@ -484,29 +507,38 @@ class _AppEntryScreenState extends State<AppEntryScreen>
     if (identity == null) return;
     setState(() => _queueError = null);
     try {
-      await widget.controller.startTraining(identity);
-      for (int i = 0; i < 40; i++) {
-        await Future<void>.delayed(const Duration(milliseconds: 100));
-        if (!mounted) return;
-        if (widget.controller.state.value.inMatch) return;
-        final String? err = widget.controller.state.value.connectionError;
-        if (err != null && err.isNotEmpty) {
-          setState(() {
-            _queueError = err.startsWith('errors.')
-                ? err
-                : TranslationKeys.errorsServiceUnavailable;
-          });
-          return;
-        }
-      }
+      final String? errorKey = await widget.controller.startTraining(identity);
       if (!mounted) return;
+      if (errorKey != null) {
+        if (_queueError != errorKey) {
+          _surfaceJoinError(errorKey);
+        }
+        return;
+      }
       if (!widget.controller.state.value.inMatch) {
-        setState(() => _queueError = TranslationKeys.errorsServiceUnavailable);
+        _surfaceJoinError(TranslationKeys.errorsServiceUnavailable);
       }
     } catch (error) {
       if (!mounted) return;
-      setState(() => _queueError = _mapConnectError(error));
+      _surfaceJoinError(_mapConnectError(error));
     }
+  }
+
+  void _surfaceJoinError(
+    String errorKey, {
+    bool stayOnPrivateAccess = false,
+  }) {
+    final String mapped = errorKey.startsWith('errors.')
+        ? errorKey
+        : TranslationKeys.errorsServiceUnavailable;
+    setState(() {
+      if (!(stayOnPrivateAccess && _phase == _EntryPhase.privateAccess)) {
+        _phase = _EntryPhase.home;
+      }
+      _queueError = mapped;
+    });
+    _showQueueToast(mapped);
+    widget.controller.clearConnectionError();
   }
 
   @override

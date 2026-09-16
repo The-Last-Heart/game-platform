@@ -16,6 +16,7 @@ import 'precision_cable_untangle_engine.dart';
 import 'precision_maze_path_engine.dart';
 import 'precision_neon_cable_engine.dart';
 import 'gesture_fog_wipe_engine.dart';
+import 'precision_ring_lock_engine.dart';
 import 'reaction_wait_for_signal_engine.dart';
 import 'search_select_occurrences_engine.dart';
 import 'social_pair_sync_engine.dart';
@@ -52,6 +53,7 @@ class ChallengeEngineRegistry {
     register(PrecisionCircuitRotationEngine());
     register(PrecisionCableUntangleEngine());
     register(GestureFogWipeEngine());
+    register(PrecisionRingLockEngine());
     register(LogicBalanceScaleEngine());
     register(LogicCompleteSumEngine());
     register(FocusStroopEngine());

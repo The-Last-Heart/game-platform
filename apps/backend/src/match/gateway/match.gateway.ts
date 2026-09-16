@@ -273,7 +273,11 @@ export class MatchGateway
               client,
               commandId!,
               command.messageId,
-              command.payload as { displayName: string; avatarColor: string },
+              command.payload as {
+                displayName: string;
+                avatarColor: string;
+                countryCode: string;
+              },
             ),
           );
           break;
@@ -291,7 +295,11 @@ export class MatchGateway
               client,
               commandId!,
               command.messageId,
-              command.payload as { displayName: string; avatarColor: string },
+              command.payload as {
+                displayName: string;
+                avatarColor: string;
+                countryCode: string;
+              },
             ),
           );
           break;
@@ -304,6 +312,7 @@ export class MatchGateway
               command.payload as {
                 displayName: string;
                 avatarColor: string;
+                countryCode: string;
                 roomCode: string;
               },
             ),
@@ -347,7 +356,11 @@ export class MatchGateway
               client,
               commandId!,
               command.messageId,
-              command.payload as { displayName: string; avatarColor: string },
+              command.payload as {
+                displayName: string;
+                avatarColor: string;
+                countryCode: string;
+              },
             ),
           );
           break;
@@ -747,7 +760,7 @@ export class MatchGateway
     client: Socket,
     commandId: string,
     correlationId: string,
-    payload: { displayName: string; avatarColor: string },
+    payload: { displayName: string; avatarColor: string; countryCode: string },
   ): Promise<void> {
     if (this.isSocketGone(client)) {
       return;
@@ -836,7 +849,7 @@ export class MatchGateway
     client: Socket,
     commandId: string,
     correlationId: string,
-    payload: { displayName: string; avatarColor: string },
+    payload: { displayName: string; avatarColor: string; countryCode: string },
   ): Promise<void> {
     if (this.isSocketGone(client)) {
       return;
@@ -862,7 +875,12 @@ export class MatchGateway
     client: Socket,
     commandId: string,
     correlationId: string,
-    payload: { displayName: string; avatarColor: string; roomCode: string },
+    payload: {
+      displayName: string;
+      avatarColor: string;
+      countryCode: string;
+      roomCode: string;
+    },
   ): Promise<void> {
     if (this.isSocketGone(client)) {
       return;
@@ -1017,7 +1035,7 @@ export class MatchGateway
     client: Socket,
     commandId: string,
     correlationId: string,
-    payload: { displayName: string; avatarColor: string },
+    payload: { displayName: string; avatarColor: string; countryCode: string },
   ): Promise<void> {
     if (this.isSocketGone(client)) {
       return;
@@ -1868,6 +1886,18 @@ export class MatchGateway
       OFFENSIVE_POWERS_DISABLED: {
         code: 'OFFENSIVE_POWERS_DISABLED',
         key: 'errors.power.offensive_disabled',
+      },
+      DISPLAY_NAME_TAKEN: {
+        code: 'DISPLAY_NAME_TAKEN',
+        key: 'errors.identity.name_taken',
+      },
+      DISPLAY_NAME_PROHIBITED: {
+        code: 'DISPLAY_NAME_PROHIBITED',
+        key: 'errors.identity.name_prohibited',
+      },
+      DISPLAY_NAME_INVALID: {
+        code: 'DISPLAY_NAME_INVALID',
+        key: 'errors.identity.name_invalid',
       },
     };
     const mapped = map[error.code] ?? {

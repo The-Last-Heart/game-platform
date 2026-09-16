@@ -104,6 +104,9 @@ class MatchSessionController {
   bool _initialized = false;
   bool _devMatchStarting = false;
   Completer<String?>? _matchmakingWaiter;
+  /// Completes with `null` on successful private/training bind, or an
+  /// `errors.*` message key when the join command is rejected.
+  Completer<String?>? _joinResultWaiter;
   bool _cleaningUp = false;
   bool _disposed = false;
 
@@ -298,6 +301,7 @@ class MatchSessionController {
   Future<void> _prepareFreshJoinSocket() async {
     _handshake = null;
     _matchmakingWaiter = null;
+    _failJoinWaiter('errors.service_unavailable');
     await sessionStore.clear();
     // Drop stale event/connection jobs from the prior socket before teardown,
     // then bump again after disconnect so teardown's own disconnect callback
@@ -318,48 +322,94 @@ class MatchSessionController {
     );
   }
 
-  Future<void> createPrivateRoom(PlayerIdentity identity) async {
+  /// Create a private room. Returns `null` on success, or an `errors.*` key.
+  Future<String?> createPrivateRoom(PlayerIdentity identity) async {
     await _prepareFreshJoinSocket();
     await _ensureConnected();
     final String commandId = generateSecureId();
+    final Completer<String?> waiter = Completer<String?>();
+    _joinResultWaiter = waiter;
     _handshake = _PendingHandshake(
       kind: _HandshakeKind.join,
       commandId: commandId,
     );
+    state.value = state.value.copyWith(connectionError: () => null);
     _sendCommandWithId(
       commandId,
       MessageTypes.privateRoomCreate,
       identity.toCommandPayload(),
     );
+    return _awaitJoinResult(waiter);
   }
 
-  Future<void> joinPrivateRoom(PlayerIdentity identity, String roomCode) async {
+  /// Join a private room. Returns `null` on success, or an `errors.*` key.
+  Future<String?> joinPrivateRoom(PlayerIdentity identity, String roomCode) async {
     await _prepareFreshJoinSocket();
     await _ensureConnected();
     final String commandId = generateSecureId();
+    final Completer<String?> waiter = Completer<String?>();
+    _joinResultWaiter = waiter;
     _handshake = _PendingHandshake(
       kind: _HandshakeKind.join,
       commandId: commandId,
     );
+    state.value = state.value.copyWith(connectionError: () => null);
     _sendCommandWithId(commandId, MessageTypes.privateRoomJoin, <String, dynamic>{
       ...identity.toCommandPayload(),
       'roomCode': roomCode,
     });
+    return _awaitJoinResult(waiter);
   }
 
-  Future<void> startTraining(PlayerIdentity identity) async {
+  /// Start training. Returns `null` on success, or an `errors.*` key.
+  Future<String?> startTraining(PlayerIdentity identity) async {
     await _prepareFreshJoinSocket();
     await _ensureConnected();
     final String commandId = generateSecureId();
+    final Completer<String?> waiter = Completer<String?>();
+    _joinResultWaiter = waiter;
     _handshake = _PendingHandshake(
       kind: _HandshakeKind.join,
       commandId: commandId,
     );
+    state.value = state.value.copyWith(connectionError: () => null);
     _sendCommandWithId(
       commandId,
       MessageTypes.trainingStart,
       identity.toCommandPayload(),
     );
+    return _awaitJoinResult(waiter);
+  }
+
+  Future<String?> _awaitJoinResult(Completer<String?> waiter) {
+    return waiter.future.timeout(
+      const Duration(seconds: 12),
+      onTimeout: () {
+        if (_joinResultWaiter == waiter && !waiter.isCompleted) {
+          _joinResultWaiter = null;
+          waiter.complete('errors.service_unavailable');
+        }
+        return 'errors.service_unavailable';
+      },
+    );
+  }
+
+  void _completeJoinWaiter([String? errorKey]) {
+    final Completer<String?>? waiter = _joinResultWaiter;
+    if (waiter == null || waiter.isCompleted) {
+      return;
+    }
+    _joinResultWaiter = null;
+    waiter.complete(errorKey);
+  }
+
+  void _failJoinWaiter(String errorKey) {
+    final Completer<String?>? waiter = _joinResultWaiter;
+    if (waiter == null || waiter.isCompleted) {
+      return;
+    }
+    _joinResultWaiter = null;
+    waiter.complete(errorKey);
   }
 
   Future<void> retryTraining() async {
@@ -1083,6 +1133,7 @@ class MatchSessionController {
       _rematchLobbyActive = false;
       _devMatchStarting = false;
       _matchmakingWaiter = null;
+      _failJoinWaiter('errors.service_unavailable');
       _pendingRetriedThisEpisode = false;
       _clearRecoveryState(clearWatermark: true);
       serverClock.setActiveDeadline(null);
@@ -1293,6 +1344,7 @@ class MatchSessionController {
         connectionError: () => null,
       );
       _handshake = null;
+      _completeJoinWaiter();
 
       _updateAnswerFromSnapshot();
       // Resume bind and/or recovery convergence must reconcile unconfirmed
@@ -1477,11 +1529,13 @@ class MatchSessionController {
         _matchmakingWaiter = null;
       }
       _rematchLobbyActive = false;
+      final String errorKey =
+          (messageKey != null && messageKey.startsWith('errors.'))
+          ? messageKey
+          : 'errors.protocol';
+      _completeJoinWaiter(errorKey);
       state.value = state.value.copyWith(
-        connectionError: () =>
-            (messageKey != null && messageKey.startsWith('errors.'))
-            ? messageKey
-            : 'errors.protocol',
+        connectionError: () => errorKey,
         canRetry: true,
         matchmakingAcceptedSeats: 0,
       );

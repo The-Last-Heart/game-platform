@@ -3,6 +3,14 @@ import {
   matchReleasePinsSchema,
   powerIdSchema,
 } from '../../content/v1/releases';
+import {
+  PLAYER_COUNTRY_CODES,
+  type PlayerCountryCode,
+} from '../../identity/v1/countries';
+import {
+  isValidDisplayNameFormat,
+  normalizeDisplayNameFormat,
+} from '../../identity/v1/display-name-moderation';
 
 export const REALTIME_SCHEMA_VERSION = '1' as const;
 
@@ -133,19 +141,25 @@ export type MatchMode = z.infer<typeof matchModeSchema>;
 
 const displayNameSchema = z
   .string()
-  .trim()
-  .min(2)
-  .max(24)
-  .regex(/^[\p{L}\p{N} _.-]+$/u, 'displayName contains unsupported characters');
+  .transform((value) => normalizeDisplayNameFormat(value))
+  .refine(
+    (value) => isValidDisplayNameFormat(value),
+    'displayName must be 1–2 letter-only parts (e.g. Ahmad or Ahmad Khaled)',
+  );
 
 const avatarColorSchema = z
   .string()
   .regex(/^#[0-9A-Fa-f]{6}$/, 'avatarColor must be a hex color');
 
+export const playerCountryCodeSchema = z.enum(PLAYER_COUNTRY_CODES);
+
+export type { PlayerCountryCode };
+
 export const playerIdentityPayloadSchema = z
   .object({
     displayName: displayNameSchema,
     avatarColor: avatarColorSchema,
+    countryCode: playerCountryCodeSchema,
   })
   .strict();
 
@@ -353,6 +367,7 @@ export const playerPublicSchema = z
     lastDangerPulseTargetId: uuidLike.nullable().optional(),
     displayName: displayNameSchema.optional(),
     avatarColor: avatarColorSchema.optional(),
+    countryCode: playerCountryCodeSchema.optional(),
     ready: z.boolean().optional(),
     isBot: z.boolean().optional(),
     isHost: z.boolean().optional(),
@@ -703,6 +718,9 @@ export const protocolErrorPayloadSchema = z
       'ILLEGAL_POWER_TARGET',
       'POWER_ATTACK_NOT_FOUND',
       'OFFENSIVE_POWERS_DISABLED',
+      'DISPLAY_NAME_TAKEN',
+      'DISPLAY_NAME_PROHIBITED',
+      'DISPLAY_NAME_INVALID',
     ]),
     // Translation key for client display — never a product sentence.
     messageKey: nonEmpty,

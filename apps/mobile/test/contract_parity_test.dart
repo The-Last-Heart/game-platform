@@ -466,10 +466,14 @@ void main() {
     });
 
     test('contract protocol error codes set matches Zod enum size', () {
-      expect(protocolErrorCodes.length, 18);
+      expect(protocolErrorCodes.length, 34);
       expect(protocolErrorCodes.contains('INTERNAL_ERROR'), isTrue);
       expect(protocolErrorCodes.contains('POWER_NOT_AVAILABLE'), isTrue);
       expect(protocolErrorCodes.contains('OFFENSIVE_POWERS_DISABLED'), isTrue);
+      expect(protocolErrorCodes.contains('DISPLAY_NAME_TAKEN'), isTrue);
+      expect(protocolErrorCodes.contains('DISPLAY_NAME_PROHIBITED'), isTrue);
+      expect(protocolErrorCodes.contains('DISPLAY_NAME_INVALID'), isTrue);
+      expect(protocolErrorCodes.contains('ROOM_FULL'), isTrue);
       expect(protocolErrorCodes.contains('SESSION_EXPIRED'), isFalse);
       expect(protocolErrorCodes.contains('MATCH_COMPLETED'), isFalse);
     });

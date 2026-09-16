@@ -118,17 +118,26 @@ class _PassThePulseWidgetState extends State<_PassThePulseWidget>
     return false;
   }
 
+  bool get _localResolved {
+    final String? local = _localId;
+    if (local == null) return false;
+    final String result = _results[local] ?? 'waiting';
+    return result == 'hit' || result == 'missed';
+  }
+
   bool get _localIsTarget {
     final String? local = _localId;
     if (local == null || !_isParticipant) return false;
+    if (_localResolved) return false;
     if (_currentTargetId != local) return false;
-    return (_results[local] ?? 'waiting') == 'waiting';
+    return true;
   }
 
   bool get _canTap {
     return _ctx.inputEnabled &&
         _localIsTarget &&
         !_submittedForLeg &&
+        !_localResolved &&
         !_challengeCompleted;
   }
 
@@ -374,35 +383,56 @@ class _PassThePulseWidgetState extends State<_PassThePulseWidget>
     return 0;
   }
 
+  int _routeIndexForPlayer(String playerId) {
+    for (int i = 0; i < _participants.length; i += 1) {
+      if (_participants[i].playerId == playerId) return i;
+    }
+    // Fall back to routePlayerIds if participants order differs.
+    final Object? route = _cfg['routePlayerIds'];
+    if (route is List) {
+      final int idx = route.indexOf(playerId);
+      if (idx >= 0) return idx;
+    }
+    return 0;
+  }
+
   /// Authoritative pulse angle from server timestamps (radians, y-down).
   double _computePulseAngle(int nowMs) {
     final int n = _participants.length;
     if (n < 2 || _legs.isEmpty) return math.pi / 2;
     final int localIdx = _localRouteIndex();
     if (nowMs < _pulseStartAtMs + _startDelayMs) {
-      final double first = _angleForIndex(0, localIdx, n);
+      final int firstTo = _legs.first.routeIndex;
+      final double first = _angleForIndex(firstTo, localIdx, n);
       return first - (2 * math.pi / n);
     }
     for (int i = 0; i < _legs.length; i += 1) {
       final _Leg leg = _legs[i];
+      final int toIdx = leg.routeIndex;
+      final int fromIdx = i == 0
+          ? (toIdx - 1 + n) % n
+          : _routeIndexForPlayer(_legs[i - 1].playerId);
       if (nowMs < leg.travelStartAtMs) {
-        final double end = _angleForIndex(i, localIdx, n);
-        return end - (2 * math.pi / n);
+        return _angleForIndex(fromIdx, localIdx, n);
       }
       if (nowMs <= leg.expectedArrivalAtMs) {
-        final double start = _angleForIndex(i, localIdx, n) - (2 * math.pi / n);
-        final double end = _angleForIndex(i, localIdx, n);
+        final double start = _angleForIndex(fromIdx, localIdx, n);
+        final double end = _angleForIndex(toIdx, localIdx, n);
         final double t = ((nowMs - leg.travelStartAtMs) /
                 math.max(1, leg.expectedArrivalAtMs - leg.travelStartAtMs))
             .clamp(0.0, 1.0);
-        // Clockwise: increasing angle.
         var delta = end - start;
         if (delta < 0) delta += 2 * math.pi;
+        // Multi-hop clockwise when skipping resolved seats.
+        final int hops = ((toIdx - fromIdx) % n + n) % n;
+        if (hops > 1) {
+          delta = 2 * math.pi * hops / n;
+        }
         return start + delta * t;
       }
     }
-    final double last = _angleForIndex(n - 1, localIdx, n);
-    return last;
+    final _Leg last = _legs.last;
+    return _angleForIndex(last.routeIndex, localIdx, n);
   }
 
   double _smoothedAngle(int nowMs) {
@@ -435,9 +465,17 @@ class _PassThePulseWidgetState extends State<_PassThePulseWidget>
     if (_currentTargetId == playerId) {
       _Leg? leg;
       for (final _Leg candidate in _legs) {
-        if (candidate.playerId == playerId) {
+        if (candidate.legId == _currentLegId) {
           leg = candidate;
           break;
+        }
+      }
+      if (leg == null) {
+        for (final _Leg candidate in _legs.reversed) {
+          if (candidate.playerId == playerId) {
+            leg = candidate;
+            break;
+          }
         }
       }
       if (leg != null &&
@@ -666,14 +704,16 @@ class _PassThePulseWidgetState extends State<_PassThePulseWidget>
               child: _TapButton(
                 label: resolver.resolve(actionKey),
                 enabled: _canTap,
-                bright: _localIsTarget,
+                bright: _localIsTarget && !_localResolved,
                 press: _buttonPress.value,
-                optimistic: _optimisticPress,
-                semanticLabel: _localIsTarget
-                    ? resolver.resolve(
-                        tapReadyKey ?? actionKey,
-                      )
-                    : resolver.resolve(tapWaitKey ?? actionKey),
+                optimistic: _optimisticPress || _localResolved,
+                semanticLabel: _localResolved
+                    ? resolver.resolve(actionKey)
+                    : _localIsTarget
+                        ? resolver.resolve(
+                            tapReadyKey ?? actionKey,
+                          )
+                        : resolver.resolve(tapWaitKey ?? actionKey),
                 onTap: _onTap,
               ),
             ),

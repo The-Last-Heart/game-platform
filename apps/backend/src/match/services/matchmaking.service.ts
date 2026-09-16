@@ -1,6 +1,7 @@
 import { Injectable, Logger, OnModuleDestroy } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { randomUUID } from 'node:crypto';
+import { isProhibitedDisplayName, isValidDisplayNameFormat } from '@thelastheart/contracts';
 import type { AppConfig } from '../../config/env.validation';
 import { DomainError, MATCH_PLAYER_CAPACITY, QUICK_LOBBY_FILL_WAIT_MS } from '../domain/types';
 import {
@@ -166,6 +167,19 @@ export class MatchmakingService implements OnModuleDestroy {
         'matchmaking is paused by live ops',
       );
     }
+    // Fail closed before creating a ticket — joinPlayer also enforces this.
+    if (!isValidDisplayNameFormat(identity.displayName)) {
+      throw new DomainError(
+        'DISPLAY_NAME_INVALID',
+        'display name must be one or two letter-only parts',
+      );
+    }
+    if (isProhibitedDisplayName(identity.displayName)) {
+      throw new DomainError(
+        'DISPLAY_NAME_PROHIBITED',
+        'display name contains prohibited content',
+      );
+    }
     try {
       return await this.withSeatingLock(() => this.seatUnderLock(identity));
     } catch (error) {
@@ -173,6 +187,13 @@ export class MatchmakingService implements OnModuleDestroy {
         throw error;
       }
       if (error instanceof DomainError && error.code === 'MATCHMAKING_PAUSED') {
+        throw error;
+      }
+      if (
+        error instanceof DomainError &&
+        (error.code === 'DISPLAY_NAME_PROHIBITED' ||
+          error.code === 'DISPLAY_NAME_INVALID')
+      ) {
         throw error;
       }
       this.logger.error({
@@ -396,6 +417,7 @@ export class MatchmakingService implements OnModuleDestroy {
       identity: {
         displayName: identity.displayName.trim(),
         avatarColor: identity.avatarColor,
+        countryCode: identity.countryCode,
       },
       enqueuedAtMs: now,
       timeoutAtMs: now + this.queueTimeoutMs,
@@ -456,7 +478,8 @@ export class MatchmakingService implements OnModuleDestroy {
             error instanceof DomainError &&
             (error.code === 'MATCH_FULL' ||
               error.code === 'MATCH_NOT_JOINABLE' ||
-              error.code === 'MATCH_NOT_FOUND')
+              error.code === 'MATCH_NOT_FOUND' ||
+              error.code === 'DISPLAY_NAME_TAKEN')
           ) {
             continue;
           }

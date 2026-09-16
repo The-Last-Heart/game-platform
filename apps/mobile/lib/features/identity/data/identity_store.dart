@@ -3,23 +3,37 @@ import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
+import 'countries.dart';
+import 'display_name_moderation.dart';
+
 /// Lightweight local player identity for RC1 (no consumer auth).
 @immutable
 class PlayerIdentity {
-  const PlayerIdentity({required this.displayName, required this.avatarColor});
+  const PlayerIdentity({
+    required this.displayName,
+    required this.avatarColor,
+    required this.countryCode,
+  });
 
   final String displayName;
   final String avatarColor;
+  final String countryCode;
 
   Map<String, dynamic> toCommandPayload() => <String, dynamic>{
     'displayName': displayName,
     'avatarColor': avatarColor,
+    'countryCode': countryCode,
   };
 
-  PlayerIdentity copyWith({String? displayName, String? avatarColor}) {
+  PlayerIdentity copyWith({
+    String? displayName,
+    String? avatarColor,
+    String? countryCode,
+  }) {
     return PlayerIdentity(
       displayName: displayName ?? this.displayName,
       avatarColor: avatarColor ?? this.avatarColor,
+      countryCode: countryCode ?? this.countryCode,
     );
   }
 }
@@ -50,10 +64,20 @@ class IdentityStore {
       final Map<String, dynamic> json = jsonDecode(raw) as Map<String, dynamic>;
       final String? name = json['displayName'] as String?;
       final String? color = json['avatarColor'] as String?;
-      if (name == null || name.trim().length < 2 || color == null) {
+      final String? country = json['countryCode'] as String?;
+      if (name == null ||
+          color == null ||
+          country == null ||
+          !isPlayerCountryCode(country) ||
+          !isValidDisplayNameFormat(name) ||
+          isProhibitedDisplayName(name)) {
         return null;
       }
-      return PlayerIdentity(displayName: name.trim(), avatarColor: color);
+      return PlayerIdentity(
+        displayName: normalizeDisplayNameFormat(name),
+        avatarColor: color,
+        countryCode: country,
+      );
     } catch (_) {
       return null;
     }
@@ -63,8 +87,9 @@ class IdentityStore {
     await _storage.write(
       key: _key,
       value: jsonEncode(<String, String>{
-        'displayName': identity.displayName.trim(),
+        'displayName': normalizeDisplayNameFormat(identity.displayName),
         'avatarColor': identity.avatarColor,
+        'countryCode': identity.countryCode,
       }),
     );
   }

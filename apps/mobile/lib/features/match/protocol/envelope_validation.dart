@@ -1,3 +1,4 @@
+import '../../identity/data/display_name_moderation.dart';
 import 'realtime_messages.dart';
 
 /// Result of validating a server envelope before reducer/controller effects.
@@ -49,11 +50,27 @@ const Set<String> protocolErrorCodes = <String>{
   'DUPLICATE_COMMAND',
   'INTERNAL_ERROR',
   'DEV_ONLY_FORBIDDEN',
+  'ROOM_CODE_INVALID',
+  'ROOM_CODE_EXPIRED',
+  'ROOM_FULL',
+  'QUEUE_CANCELLED',
+  'QUEUE_TIMEOUT',
+  'QUEUE_NOT_FOUND',
+  'ALREADY_IN_QUEUE',
+  'ALREADY_IN_MATCH',
+  'NOT_IN_MATCH',
+  'NOT_HOST',
+  'REMATCH_UNAVAILABLE',
+  'MATCHMAKING_PAUSED',
+  'TRAINING_UNAVAILABLE',
   'POWER_NOT_AVAILABLE',
   'POWER_PHASE_INVALID',
   'ILLEGAL_POWER_TARGET',
   'POWER_ATTACK_NOT_FOUND',
   'OFFENSIVE_POWERS_DISABLED',
+  'DISPLAY_NAME_TAKEN',
+  'DISPLAY_NAME_PROHIBITED',
+  'DISPLAY_NAME_INVALID',
 };
 
 const Set<String> _matchPhases = <String>{
@@ -162,6 +179,7 @@ EnvelopeValidation? _validatePlayerPublic(
     'lastDangerPulseTargetId',
     'displayName',
     'avatarColor',
+    'countryCode',
     'ready',
     'isBot',
     'isHost',
@@ -224,7 +242,7 @@ EnvelopeValidation? _validatePlayerPublic(
   }
   if (json.containsKey('displayName') && json['displayName'] != null) {
     final Object? name = json['displayName'];
-    if (name is! String || name.trim().length < 2 || name.trim().length > 24) {
+    if (name is! String || !isValidDisplayNameFormat(name)) {
       return EnvelopeValidation.invalid('$label.displayName invalid');
     }
   }
@@ -233,6 +251,13 @@ EnvelopeValidation? _validatePlayerPublic(
     if (color is! String ||
         !RegExp(r'^#[0-9A-Fa-f]{6}$').hasMatch(color)) {
       return EnvelopeValidation.invalid('$label.avatarColor invalid');
+    }
+  }
+  if (json.containsKey('countryCode') && json['countryCode'] != null) {
+    final Object? country = json['countryCode'];
+    if (country is! String ||
+        !RegExp(r'^[A-Z]{2}$').hasMatch(country)) {
+      return EnvelopeValidation.invalid('$label.countryCode invalid');
     }
   }
   for (final String key in <String>['ready', 'isBot', 'isHost']) {

@@ -20,6 +20,7 @@ import {
   LOGIC_COMPLETE_SUM_ENGINE_ID,
 } from './complete-sum-runtime';
 import { SocialPassThePulseEvaluator } from './pass-the-pulse-runtime';
+import { PrecisionRingLockEvaluator } from './ring-lock-runtime';
 
 export {
   LogicCompleteSumEvaluator,
@@ -27,6 +28,7 @@ export {
   LOGIC_COMPLETE_SUM_ENGINE_ID,
 };
 export { SocialPassThePulseEvaluator };
+export { PrecisionRingLockEvaluator };
 
 function num(value: unknown, fallback = 0): number {
   return typeof value === 'number' && Number.isFinite(value) ? value : fallback;
@@ -463,6 +465,7 @@ export function createPack31Evaluators(): ChallengeEvaluator[] {
     new SearchSelectOccurrencesEvaluator(),
     new LogicCompleteSumEvaluator(),
     new SocialPassThePulseEvaluator(),
+    new PrecisionRingLockEvaluator(),
   ];
 }
 

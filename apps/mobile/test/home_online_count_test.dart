@@ -74,6 +74,7 @@ void main() {
               identity: const PlayerIdentity(
                 displayName: 'وجدي',
                 avatarColor: '#FF3045',
+                countryCode: 'SA',
               ),
             ),
             entryPreferences: MemoryEntryPreferencesStore(completed: true),
@@ -133,6 +134,7 @@ void main() {
                 identity: const PlayerIdentity(
                   displayName: 'وجدي',
                   avatarColor: '#FF3045',
+                  countryCode: 'SA',
                 ),
               ),
               entryPreferences: MemoryEntryPreferencesStore(completed: true),

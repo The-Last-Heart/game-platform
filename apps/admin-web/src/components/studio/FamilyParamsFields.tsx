@@ -504,6 +504,21 @@ export function defaultClientConfig(
         a11yTapWaitKey: 'challenge.pass_the_pulse.a11y_tap_wait',
         pulseSfxAssetId: 'sfx.pulse',
       };
+    case 'precision.ring_lock':
+      return {
+        categoryKey: 'challenge.category.precision',
+        titleKey: 'challenge.ring_lock.intro',
+        promptKey: 'challenge.ring_lock.prompt',
+        actionKey: 'challenge.ring_lock.action',
+        timeRemainingKey: 'challenge.ring_lock.time_remaining',
+        ring1Key: 'challenge.ring_lock.ring_1',
+        ring2Key: 'challenge.ring_lock.ring_2',
+        ring3Key: 'challenge.ring_lock.ring_3',
+        statusLockedKey: 'challenge.ring_lock.locked',
+        statusRotatingKey: 'challenge.ring_lock.rotating',
+        statusFailedKey: 'challenge.ring_lock.failed',
+        a11yLockButtonKey: 'challenge.ring_lock.a11y_lock',
+      };
     default:
       return {};
   }
@@ -740,6 +755,21 @@ export function defaultServerConfig(
         hitWindowEarlyMs: 280,
         hitWindowLateMs: 320,
         resultTransitionMs: 900,
+      };
+    case 'precision.ring_lock':
+      return {
+        ringCount: 3,
+        startDelayMs: 700,
+        minAngularVelocityDegPerSec: 55,
+        maxAngularVelocityDegPerSec: 110,
+        allowClockwise: true,
+        allowCounterClockwise: true,
+        targetAngleDeg: 0,
+        alignmentToleranceDeg: 14,
+        transitionDelayMs: 180,
+        safetyMarginMs: 600,
+        maxGenerationAttempts: 48,
+        difficulty: 'medium',
       };
     default:
       return {};

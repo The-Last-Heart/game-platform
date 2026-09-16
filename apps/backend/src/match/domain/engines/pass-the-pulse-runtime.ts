@@ -25,6 +25,7 @@ export {
   clonePassThePulseState,
   computePassThePulseDurationMs,
   fitPassThePulseTimingToDuration,
+  forceMissRemainingPassThePulse,
   generatePassThePulseRoute,
   resolveDuePassThePulseMisses,
   resolvePassThePulseSeed,

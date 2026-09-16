@@ -1,4 +1,5 @@
 import { randomInt, randomUUID } from 'node:crypto';
+import { isProhibitedDisplayName, isValidDisplayNameFormat } from '@thelastheart/contracts';
 import type {
   ChallengeDefinition,
   ChallengeEvaluatorRegistry,
@@ -41,12 +42,23 @@ import {
 import {
   applyPassThePulseTap,
   clonePassThePulseState,
+  forceMissRemainingPassThePulse,
   materializePassThePulseRound,
   mergePassThePulseIntoClientConfig,
   resolveDuePassThePulseMisses,
   SOCIAL_PASS_THE_PULSE_ENGINE_ID,
   validatePassThePulseTapAnswer,
 } from './engines/pass-the-pulse-runtime';
+import {
+  applyRingLockCommand,
+  cloneRingLockState,
+  markRingLockTimeouts,
+  materializeRingLockRound,
+  mergeRingLockIntoClientConfig,
+  PRECISION_RING_LOCK_ENGINE_ID,
+  syncRingLockSeatOverlays,
+  validateRingLockAnswer,
+} from './engines/ring-lock-runtime';
 import {
   cloneInventory,
   convertEnergyForPlayer,
@@ -87,6 +99,11 @@ function clonePlayers(
       },
     ]),
   );
+}
+
+/** Trim, collapse whitespace, and case-fold for in-match display name uniqueness. */
+export function normalizeMatchDisplayName(name: string): string {
+  return name.trim().replace(/\s+/g, ' ').toLocaleLowerCase('en-US');
 }
 
 function deepCloneJsonRecord(
@@ -509,6 +526,18 @@ export function toPublicChallengeView(
     );
   }
 
+  // Ring lock: shared timing + viewer-private rings/seed only.
+  if (
+    challenge.engineId === PRECISION_RING_LOCK_ENGINE_ID &&
+    challenge.ringLockState
+  ) {
+    mergeRingLockIntoClientConfig(
+      clientConfig,
+      challenge.ringLockState,
+      viewerPlayerId,
+    );
+  }
+
   // Seat-private overlays (tilt targets/shapes, pair partner, etc.) — viewer only.
   if (seat) {
     Object.assign(clientConfig, seat.clientOverlay);
@@ -615,6 +644,7 @@ export class MatchEngine {
       isBot?: boolean;
       displayName?: string;
       avatarColor?: string;
+      countryCode?: string;
       /** Optional seat vitals (training retry carry-over). Defaults to initial. */
       hearts?: number;
       energy?: number;
@@ -628,6 +658,37 @@ export class MatchEngine {
     }
     if (match.players.has(input.playerId)) {
       throw new DomainError('MATCH_NOT_JOINABLE', 'player already joined');
+    }
+
+    if (
+      input.displayName !== undefined &&
+      input.isBot !== true &&
+      !isValidDisplayNameFormat(input.displayName)
+    ) {
+      throw new DomainError(
+        'DISPLAY_NAME_INVALID',
+        'display name must be one or two letter-only parts',
+      );
+    }
+
+    if (
+      input.displayName !== undefined &&
+      isProhibitedDisplayName(input.displayName)
+    ) {
+      throw new DomainError(
+        'DISPLAY_NAME_PROHIBITED',
+        'display name contains prohibited content',
+      );
+    }
+
+    if (
+      input.displayName !== undefined &&
+      this.isDisplayNameTaken(match, input.displayName)
+    ) {
+      throw new DomainError(
+        'DISPLAY_NAME_TAKEN',
+        'display name already used in this match',
+      );
     }
 
     const hearts = input.hearts !== undefined ? input.hearts : INITIAL_HEARTS;
@@ -654,6 +715,7 @@ export class MatchEngine {
       isBot: input.isBot,
       displayName: input.displayName,
       avatarColor: input.avatarColor,
+      countryCode: input.countryCode,
       ready: autoReady,
       // Bots are server-controlled fills — accepted immediately. Humans require
       // gateway finalizeJoin after live lease + credentials.
@@ -1191,6 +1253,20 @@ export class MatchEngine {
       challenge.signalEndsAtMs = null;
       challenge.signalEndsAtMonoMs = null;
       materializePassThePulseRound(challenge, next.players, this.clock);
+    } else if (challenge.engineId === PRECISION_RING_LOCK_ENGINE_ID) {
+      challenge.roundPhase = 'answer';
+      challenge.previewEndsAtMonoMs = null;
+      challenge.signalToken = null;
+      challenge.signalAtMonoMs = null;
+      challenge.signaledAtMs = null;
+      challenge.signalEndsAtMs = null;
+      challenge.signalEndsAtMonoMs = null;
+      materializeRingLockRound(challenge, {
+        startsAtMs: challenge.startsAtMs,
+        startsMonoMs: nowMono,
+        deadlineAtMs: challenge.deadlineAtMs,
+        deadlineMonoMs: challenge.deadlineMonoMs,
+      });
     } else {
       challenge.roundPhase = 'answer';
       challenge.previewEndsAtMonoMs = null;
@@ -1380,6 +1456,15 @@ export class MatchEngine {
       round.roundPhase = 'answer';
       round.previewEndsAtMonoMs = null;
       materializePassThePulseRound(round, next.players, this.clock);
+    } else if (pinned.engineId === PRECISION_RING_LOCK_ENGINE_ID) {
+      round.roundPhase = 'answer';
+      round.previewEndsAtMonoMs = null;
+      materializeRingLockRound(round, {
+        startsAtMs: round.startsAtMs,
+        startsMonoMs: nowMono,
+        deadlineAtMs: round.deadlineAtMs,
+        deadlineMonoMs: round.deadlineMonoMs,
+      });
     } else {
       round.roundPhase = 'answer';
       round.previewEndsAtMonoMs = null;
@@ -1867,18 +1952,26 @@ export class MatchEngine {
     const isCompleteSum = challenge.engineId === LOGIC_COMPLETE_SUM_ENGINE_ID;
     const isPassThePulse =
       challenge.engineId === SOCIAL_PASS_THE_PULSE_ENGINE_ID;
+    const isRingLock = challenge.engineId === PRECISION_RING_LOCK_ENGINE_ID;
     const isPairSync = challenge.engineId === 'social.pair_sync';
     const pairHasPartner = isPairSync
       ? challenge.pairAssignments?.get(input.playerId) != null
       : false;
     // Pair sync with a partner only completes when overlapping taps reach
     // togetherMs — a release is progress, not a final answer.
-    let isFinal = isCompleteSum || isPassThePulse
-      ? false
-      : isPairSync && pairHasPartner
+    let isFinal =
+      isCompleteSum || isPassThePulse || isRingLock
         ? false
-        : input.answer['final'] !== false;
-    if (!isCompleteSum && !isPassThePulse && existing && existing.final !== false) {
+        : isPairSync && pairHasPartner
+          ? false
+          : input.answer['final'] !== false;
+    if (
+      !isCompleteSum &&
+      !isPassThePulse &&
+      !isRingLock &&
+      existing &&
+      existing.final !== false
+    ) {
       const ack = { accepted: true, reason: 'already_submitted' };
       const next = this.cloneMatch(match);
       next.commandAcks.set(input.commandId, ack);
@@ -1887,6 +1980,7 @@ export class MatchEngine {
     if (
       !isCompleteSum &&
       !isPassThePulse &&
+      !isRingLock &&
       player.submittedForCurrentChallenge
     ) {
       const ack = { accepted: true, reason: 'already_submitted' };
@@ -1942,6 +2036,107 @@ export class MatchEngine {
         match: next,
         events: [],
         duplicate: false,
+        ack,
+        liveUpdate: true,
+      };
+    }
+
+    if (isRingLock) {
+      const parsed = validateRingLockAnswer(input.answer);
+      if (!parsed.ok) {
+        const ack = { accepted: false, reason: parsed.reason };
+        next.commandAcks.set(input.commandId, ack);
+        next.updatedAtMs = this.clock.nowMs();
+        return { match: next, events: [], duplicate: false, ack };
+      }
+      const priorState = nextChallenge.ringLockState;
+      if (!priorState) {
+        const ack = { accepted: false, reason: 'malformed' };
+        next.commandAcks.set(input.commandId, ack);
+        next.updatedAtMs = this.clock.nowMs();
+        return { match: next, events: [], duplicate: false, ack };
+      }
+      const applied = applyRingLockCommand({
+        state: priorState,
+        playerId: input.playerId,
+        ringIndex: parsed.ringIndex,
+        commandId: input.commandId,
+        expectedSequence: parsed.expectedSequence,
+        nowMonoMs: receivedMonoMs,
+        nowWallMs: this.clock.nowMs(),
+      });
+      if (!applied.ok) {
+        const ack = { accepted: false, reason: applied.reason };
+        next.commandAcks.set(input.commandId, ack);
+        next.updatedAtMs = this.clock.nowMs();
+        return { match: next, events: [], duplicate: false, ack };
+      }
+      nextChallenge.ringLockState = applied.state;
+      syncRingLockSeatOverlays(nextChallenge);
+
+      if (applied.completed) {
+        nextChallenge.submissions.set(input.playerId, {
+          commandId: input.commandId,
+          answer: {
+            ringIndex: parsed.ringIndex,
+            final: true,
+            _ringLockSucceeded: true,
+          },
+          receivedMonoMs,
+          final: true,
+        });
+        next.players.get(input.playerId)!.submittedForCurrentChallenge = true;
+        isFinal = true;
+        const ack = { accepted: true };
+        next.commandAcks.set(input.commandId, ack);
+        next.updatedAtMs = this.clock.nowMs();
+
+        const allSubmitted = nextChallenge.participatingPlayerIds.every((id) => {
+          const seat = next.players.get(id);
+          if (!seat || seat.status === 'spectator' || seat.status === 'left') {
+            return true;
+          }
+          const sub = nextChallenge.submissions.get(id);
+          return sub != null && sub.final !== false;
+        });
+        if (allSubmitted) {
+          const resolved = this.resolveChallenge(next);
+          return {
+            match: resolved.match,
+            events: resolved.events,
+            duplicate: false,
+            ack,
+          };
+        }
+        return {
+          match: next,
+          events: [],
+          duplicate: false,
+          ack,
+          liveUpdate: true,
+        };
+      }
+
+      nextChallenge.submissions.set(input.playerId, {
+        commandId: input.commandId,
+        answer: {
+          ringIndex: parsed.ringIndex,
+          final: false,
+          hit: applied.hit,
+        },
+        receivedMonoMs,
+        final: false,
+      });
+      const ack = {
+        accepted: true,
+        reason: 'progress',
+      };
+      next.commandAcks.set(input.commandId, ack);
+      next.updatedAtMs = this.clock.nowMs();
+      return {
+        match: next,
+        events: [],
+        duplicate: applied.duplicate,
         ack,
         liveUpdate: true,
       };
@@ -2099,27 +2294,19 @@ export class MatchEngine {
       next.currentChallenge?.engineId === SOCIAL_PASS_THE_PULSE_ENGINE_ID &&
       next.currentChallenge.passThePulseState
     ) {
-      const forced = resolveDuePassThePulseMisses({
-        state: next.currentChallenge.passThePulseState,
-        nowMonoMs: this.clock.monoMs(),
-      });
-      // Force any still-waiting seats to missed at global deadline.
-      const results = { ...forced.state.results };
-      let seq = forced.state.stateSequence;
-      for (const id of forced.state.routePlayerIds) {
-        if (results[id] === 'waiting') {
-          results[id] = 'missed';
-          seq += 1;
-        }
-      }
-      next.currentChallenge.passThePulseState = {
-        ...forced.state,
-        results,
-        stateSequence: seq,
-        challengeStatus: 'completed',
-        currentLegId: null,
-        currentTargetPlayerId: null,
-      };
+      // Global deadline: only then mark still-waiting seats as missed.
+      // Mid-round window expiry loops among unresolved seats instead.
+      next.currentChallenge.passThePulseState = forceMissRemainingPassThePulse(
+        next.currentChallenge.passThePulseState,
+      );
+    }
+    if (
+      next.currentChallenge?.engineId === PRECISION_RING_LOCK_ENGINE_ID &&
+      next.currentChallenge.ringLockState
+    ) {
+      next.currentChallenge.ringLockState = markRingLockTimeouts(
+        next.currentChallenge.ringLockState,
+      );
     }
     return this.resolveChallenge(next);
   }
@@ -2270,6 +2457,16 @@ export class MatchEngine {
             outcome = 'timeout';
             reasonKey = 'result.timeout';
           }
+        } else if (challenge.engineId === PRECISION_RING_LOCK_ENGINE_ID) {
+          const ringResult =
+            challenge.ringLockState?.players[playerId]?.result;
+          if (ringResult === 'success') {
+            outcome = 'success';
+            reasonKey = 'result.success';
+          } else {
+            outcome = 'timeout';
+            reasonKey = 'result.timeout';
+          }
         } else if (evaluator.absenceOutcome === 'success') {
           outcome = 'success';
           reasonKey = 'result.success';
@@ -2337,6 +2534,13 @@ export class MatchEngine {
           const result = pulse?.results[playerId];
           answerForEval['_passThePulseHit'] = result === 'hit';
           answerForEval['_passThePulseMissed'] = result === 'missed';
+        }
+        if (challenge.engineId === PRECISION_RING_LOCK_ENGINE_ID) {
+          const ringState = challenge.ringLockState?.players[playerId];
+          answerForEval['_ringLockSucceeded'] = ringState?.result === 'success';
+          if (ringState?.result === 'timeout') {
+            answerForEval['_ringLockTimedOut'] = true;
+          }
         }
         const definitionForEval =
           seatVariant && Object.keys(seatVariant.serverOverlay).length > 0
@@ -2574,6 +2778,7 @@ export class MatchEngine {
       submittedForCurrentChallenge: boolean;
       displayName?: string;
       avatarColor?: string;
+      countryCode?: string;
       ready: boolean;
       isBot?: boolean;
       isHost: boolean;
@@ -2641,6 +2846,7 @@ export class MatchEngine {
         lastDangerPulseTargetId: p.lastDangerPulseTargetId,
         ...(p.displayName !== undefined ? { displayName: p.displayName } : {}),
         ...(p.avatarColor !== undefined ? { avatarColor: p.avatarColor } : {}),
+        ...(p.countryCode !== undefined ? { countryCode: p.countryCode } : {}),
         ready: p.ready,
         ...(p.isBot === true ? { isBot: true } : {}),
         isHost: match.hostPlayerId != null && p.playerId === match.hostPlayerId,
@@ -3004,6 +3210,23 @@ export class MatchEngine {
     return next;
   }
 
+  /** Case-insensitive, whitespace-normalized display name uniqueness in-match. */
+  isDisplayNameTaken(match: MatchState, displayName: string): boolean {
+    const normalized = normalizeMatchDisplayName(displayName);
+    if (normalized.length === 0) {
+      return false;
+    }
+    for (const player of match.players.values()) {
+      if (
+        player.displayName !== undefined &&
+        normalizeMatchDisplayName(player.displayName) === normalized
+      ) {
+        return true;
+      }
+    }
+    return false;
+  }
+
   private cloneMatch(match: MatchState): MatchState {
     return {
       ...match,
@@ -3050,6 +3273,9 @@ export class MatchEngine {
               : undefined,
             passThePulseState: match.currentChallenge.passThePulseState
               ? clonePassThePulseState(match.currentChallenge.passThePulseState)
+              : undefined,
+            ringLockState: match.currentChallenge.ringLockState
+              ? cloneRingLockState(match.currentChallenge.ringLockState)
               : undefined,
             definition: pinDefinition(match.currentChallenge.definition),
           }

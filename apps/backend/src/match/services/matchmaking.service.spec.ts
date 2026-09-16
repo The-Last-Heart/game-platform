@@ -11,6 +11,7 @@ describe('MatchmakingService', () => {
     const status = await mm.enqueue({
       displayName: 'Solo',
       avatarColor: '#112233',
+      countryCode: 'SA',
     });
     expect(status.state).toBe('assigned');
     expect(status.matchId).toBeTruthy();
@@ -34,12 +35,14 @@ describe('MatchmakingService', () => {
     const first = await mm.enqueue({
       displayName: 'Alpha',
       avatarColor: '#111111',
+      countryCode: 'SA',
     });
     expect(first.state).toBe('assigned');
 
     const second = await mm.enqueue({
       displayName: 'Beta',
       avatarColor: '#222222',
+      countryCode: 'SA',
     });
     expect(second.state).toBe('assigned');
     expect(second.matchId).toBe(first.matchId);
@@ -63,6 +66,7 @@ describe('MatchmakingService', () => {
       const status = await mm.enqueue({
         displayName: `P${i}`,
         avatarColor: '#112233',
+        countryCode: 'SA',
       });
       expect(status.state).toBe('assigned');
       firstRoom.push(status.matchId!);
@@ -73,6 +77,7 @@ describe('MatchmakingService', () => {
     const overflow = await mm.enqueue({
       displayName: 'Overflow',
       avatarColor: '#ABCDEF',
+      countryCode: 'SA',
     });
     expect(overflow.state).toBe('assigned');
     expect(overflow.matchId).not.toBe(firstRoom[0]);
@@ -98,6 +103,7 @@ describe('MatchmakingService', () => {
     const first = await mm.enqueue({
       displayName: 'Solo',
       avatarColor: '#ABCDEF',
+      countryCode: 'SA',
     });
     expect(first.state).toBe('assigned');
     expect(first.acceptedSeats).toBe(1);
@@ -121,6 +127,7 @@ describe('MatchmakingService', () => {
         mm.enqueue({
           displayName: `Burst${i}`,
           avatarColor: '#112233',
+          countryCode: 'SA',
         }),
       ),
     );
@@ -158,6 +165,7 @@ describe('MatchmakingService', () => {
     const solo = await mm.enqueue({
       displayName: 'Alone',
       avatarColor: '#111111',
+      countryCode: 'SA',
     });
     expect(solo.state).toBe('assigned');
     clock.advance(60_000);
@@ -174,10 +182,12 @@ describe('MatchmakingService', () => {
     const a = await mm.enqueue({
       displayName: 'A',
       avatarColor: '#222222',
+      countryCode: 'SA',
     });
     const b = await mm.enqueue({
       displayName: 'B',
       avatarColor: '#333333',
+      countryCode: 'SA',
     });
     expect(a.matchId).toBe(b.matchId);
     clock.advance(60_000);
@@ -199,6 +209,7 @@ describe('MatchmakingService', () => {
     const queued = await mm.enqueue({
       displayName: 'Ghost',
       avatarColor: '#000000',
+      countryCode: 'SA',
     });
     expect(queued.state).toBe('assigned');
     const matchId = queued.matchId!;
@@ -210,6 +221,7 @@ describe('MatchmakingService', () => {
     const again = await mm.enqueue({
       displayName: 'Ghost',
       avatarColor: '#000000',
+      countryCode: 'SA',
     });
     expect(again.state).toBe('assigned');
     expect(again.matchId).toBeTruthy();
@@ -225,6 +237,7 @@ describe('MatchmakingService', () => {
     const host = await mm.enqueue({
       displayName: 'HostWait',
       avatarColor: '#111111',
+      countryCode: 'SA',
     });
     expect(host.state).toBe('assigned');
 
@@ -236,6 +249,7 @@ describe('MatchmakingService', () => {
     const guest = await mm.enqueue({
       displayName: 'GuestLate',
       avatarColor: '#222222',
+      countryCode: 'SA',
     });
     expect(guest.state).toBe('assigned');
     expect(guest.matchId).toBe(host.matchId);
@@ -253,10 +267,12 @@ describe('MatchmakingService', () => {
     const host = await mm.enqueue({
       displayName: 'HostStay',
       avatarColor: '#111111',
+      countryCode: 'SA',
     });
     const guest = await mm.enqueue({
       displayName: 'GuestLeave',
       avatarColor: '#222222',
+      countryCode: 'SA',
     });
     expect(guest.matchId).toBe(host.matchId);
 
@@ -273,6 +289,7 @@ describe('MatchmakingService', () => {
     const rejoined = await mm.enqueue({
       displayName: 'GuestLeave',
       avatarColor: '#222222',
+      countryCode: 'SA',
     });
     expect(rejoined.state).toBe('assigned');
     expect(rejoined.matchId).toBe(host.matchId);
@@ -300,10 +317,12 @@ describe('MatchmakingService', () => {
     const a = await mm.enqueue({
       displayName: 'A',
       avatarColor: '#111111',
+      countryCode: 'SA',
     });
     const b = await mm.enqueue({
       displayName: 'B',
       avatarColor: '#222222',
+      countryCode: 'SA',
     });
     expect(a.matchId).toBe(b.matchId);
     const matchId = a.matchId!;

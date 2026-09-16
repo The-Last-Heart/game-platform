@@ -70,6 +70,7 @@ const REMATCH_WINDOW_MS = 60_000;
 export type PlayerIdentityInput = {
   displayName: string;
   avatarColor: string;
+  countryCode: string;
 };
 
 export type SeatCredentials = {
@@ -328,6 +329,7 @@ export class MatchService implements OnModuleDestroy, OnModuleInit {
         resumeTokenHash: issued.hash,
         displayName: identity?.displayName,
         avatarColor: identity?.avatarColor,
+        countryCode: identity?.countryCode,
         hearts: progress?.hearts,
         energy: progress?.energy,
       });
@@ -1098,11 +1100,17 @@ export class MatchService implements OnModuleDestroy, OnModuleInit {
       while (match.players.size < match.playerCapacity) {
         const botId = `bot-${randomUUID().slice(0, 8)}`;
         const botHash = `bot-hash-${botId}`;
+        let botLabel = botIds.length;
+        let displayName = `Bot ${String.fromCharCode(65 + botLabel)}`;
+        while (this.engine.isDisplayNameTaken(match, displayName)) {
+          botLabel += 1;
+          displayName = `Bot ${String.fromCharCode(65 + (botLabel % 26))}`;
+        }
         const result = this.engine.joinPlayer(match, {
           playerId: botId,
           resumeTokenHash: botHash,
           isBot: true,
-          displayName: `Bot ${botIds.length + 1}`,
+          displayName,
           avatarColor: '#6B7280',
         });
         match = result.match;
@@ -1349,6 +1357,7 @@ export class MatchService implements OnModuleDestroy, OnModuleInit {
       const seated = await this.joinMatch(matchId, {
         displayName: input.displayName,
         avatarColor: input.avatarColor,
+        countryCode: input.countryCode,
       });
       return {
         matchId,
@@ -1432,6 +1441,7 @@ export class MatchService implements OnModuleDestroy, OnModuleInit {
     const identity: PlayerIdentityInput = {
       displayName: player.displayName ?? 'Trainee',
       avatarColor: player.avatarColor ?? '#94A3B8',
+      countryCode: player.countryCode ?? 'SA',
     };
     const progress =
       player.hearts > 0
@@ -1473,6 +1483,7 @@ export class MatchService implements OnModuleDestroy, OnModuleInit {
     const identity: PlayerIdentityInput = {
       displayName: player.displayName ?? 'Trainee',
       avatarColor: player.avatarColor ?? '#94A3B8',
+      countryCode: player.countryCode ?? 'SA',
     };
     return this.startTraining(identity);
   }
@@ -1529,6 +1540,7 @@ export class MatchService implements OnModuleDestroy, OnModuleInit {
     const identity: PlayerIdentityInput = {
       displayName: player.displayName ?? 'Player',
       avatarColor: player.avatarColor ?? '#94A3B8',
+      countryCode: player.countryCode ?? 'SA',
     };
     const now = this.clock.nowMs();
     const existing = this.rematchParties.get(matchId);
@@ -1711,6 +1723,7 @@ export class MatchService implements OnModuleDestroy, OnModuleInit {
       const joined = await this.joinMatch(match.matchId, {
         displayName: seat.displayName,
         avatarColor: seat.avatarColor,
+        countryCode: seat.countryCode,
       });
       assignments.push({
         playerId: joined.playerId,
@@ -2351,18 +2364,16 @@ export class MatchService implements OnModuleDestroy, OnModuleInit {
     const state = match.currentChallenge?.passThePulseState;
     if (!state || match.currentChallenge?.status !== 'active') return;
     const now = this.clock.monoMs();
-    // Next window close among waiting legs.
+    // Next window close for the *current* waiting leg only (loop appends more).
     let nextMissAt: number | null = null;
-    for (const leg of state.legs) {
-      if (state.results[leg.playerId] !== 'waiting') continue;
-      const closeAt = leg.windowClosesMonoMs + 1;
-      if (closeAt <= now) {
-        nextMissAt = now;
-        break;
-      }
-      if (nextMissAt == null || closeAt < nextMissAt) {
-        nextMissAt = closeAt;
-      }
+    const current = state.legs.find((l) => l.legId === state.currentLegId);
+    if (
+      current &&
+      state.results[current.playerId] === 'waiting' &&
+      state.challengeStatus === 'active'
+    ) {
+      const closeAt = current.windowClosesMonoMs + 1;
+      nextMissAt = closeAt <= now ? now : closeAt;
     }
     const completeAt = state.completeResolveAtMonoMs;
     let delayMs: number | null = null;

@@ -172,6 +172,10 @@ abstract final class TranslationKeys {
   static const String identitySubtitle = 'identity.subtitle';
   static const String identityNameLabel = 'identity.name_label';
   static const String identityNameInvalid = 'identity.name_invalid';
+  static const String identityNameProhibited = 'identity.name_prohibited';
+  static const String identityCountryLabel = 'identity.country_label';
+  static const String identityCountryHint = 'identity.country_hint';
+  static const String identityCountryInvalid = 'identity.country_invalid';
   static const String identityColorLabel = 'identity.color_label';
   static const String identitySave = 'identity.save';
   static const String homeHelpOnboarding = 'home.help_onboarding';
@@ -199,6 +203,7 @@ abstract final class TranslationKeys {
   static const String errorsConnectionTimeout = 'errors.connection_timeout';
   static const String errorsQueueTimeout = 'errors.queue_timeout';
   static const String errorsQueueFailed = 'errors.queue_failed';
+  static const String errorsIdentityNameTaken = 'errors.identity.name_taken';
   static const String errorsProtocolUnauthorized = 'errors.protocol.unauthorized';
   static const String splashTagline = 'splash.tagline';
   static const String splashVersion = 'splash.version';

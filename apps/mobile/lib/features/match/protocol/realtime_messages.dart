@@ -458,6 +458,7 @@ class PlayerPublic {
     this.lastDangerPulseTargetId,
     this.displayName,
     this.avatarColor,
+    this.countryCode,
     this.ready,
     this.isBot,
     this.isHost,
@@ -474,6 +475,7 @@ class PlayerPublic {
   final String? lastDangerPulseTargetId;
   final String? displayName;
   final String? avatarColor;
+  final String? countryCode;
   final bool? ready;
   final bool? isBot;
   final bool? isHost;
@@ -497,6 +499,7 @@ class PlayerPublic {
       lastDangerPulseTargetId: json['lastDangerPulseTargetId'] as String?,
       displayName: json['displayName'] as String?,
       avatarColor: json['avatarColor'] as String?,
+      countryCode: json['countryCode'] as String?,
       ready: json['ready'] as bool?,
       isBot: json['isBot'] as bool?,
       isHost: json['isHost'] as bool?,
@@ -514,6 +517,7 @@ class PlayerPublic {
     String? Function()? lastDangerPulseTargetId,
     String? Function()? displayName,
     String? Function()? avatarColor,
+    String? Function()? countryCode,
     bool? Function()? ready,
     bool? Function()? isBot,
     bool? Function()? isHost,
@@ -535,6 +539,7 @@ class PlayerPublic {
           : this.lastDangerPulseTargetId,
       displayName: displayName != null ? displayName() : this.displayName,
       avatarColor: avatarColor != null ? avatarColor() : this.avatarColor,
+      countryCode: countryCode != null ? countryCode() : this.countryCode,
       ready: ready != null ? ready() : this.ready,
       isBot: isBot != null ? isBot() : this.isBot,
       isHost: isHost != null ? isHost() : this.isHost,

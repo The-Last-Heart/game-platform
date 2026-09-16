@@ -2272,6 +2272,7 @@ describe('MatchGateway integration', () => {
     sendCommand(host.socket, MessageTypes.PrivateRoomCreate, {
       displayName: 'Host',
       avatarColor: '#111111',
+      countryCode: 'SA',
     });
     const hostAccepted = await waitForType(host, MessageTypes.SessionAccepted);
     assertParses(hostAccepted);
@@ -2285,6 +2286,7 @@ describe('MatchGateway integration', () => {
     sendCommand(guest.socket, MessageTypes.PrivateRoomJoin, {
       displayName: 'Guest',
       avatarColor: '#222222',
+      countryCode: 'SA',
       roomCode,
     });
     const guestAccepted = await waitForType(guest, MessageTypes.SessionAccepted);
@@ -2297,6 +2299,7 @@ describe('MatchGateway integration', () => {
     sendCommand(bad.socket, MessageTypes.PrivateRoomJoin, {
       displayName: 'Nope',
       avatarColor: '#333333',
+      countryCode: 'SA',
       roomCode: 'ZZZZZZ',
     });
     const err = await waitForType(bad, MessageTypes.ProtocolError, {
@@ -2328,6 +2331,7 @@ describe('MatchGateway integration', () => {
     sendCommand(client.socket, MessageTypes.MatchmakingEnqueue, {
       displayName: 'Queuer',
       avatarColor: '#ABCDEF',
+      countryCode: 'SA',
     });
     const status = await waitForType(client, MessageTypes.MatchmakingStatus);
     // Open-lobby pairing assigns immediately into a shared quick_survival room.
@@ -2347,6 +2351,7 @@ describe('MatchGateway integration', () => {
     sendCommand(client.socket, MessageTypes.MatchmakingEnqueue, {
       displayName: 'Queuer',
       avatarColor: '#ABCDEF',
+      countryCode: 'SA',
     });
     const again = await waitForType(client, MessageTypes.MatchmakingStatus, {
       afterIndex: beforeEnqueue,
@@ -2359,6 +2364,7 @@ describe('MatchGateway integration', () => {
     sendCommand(host.socket, MessageTypes.MatchmakingEnqueue, {
       displayName: 'HostStay',
       avatarColor: '#111111',
+      countryCode: 'SA',
     });
     const hostStatus = await waitForType(host, MessageTypes.MatchmakingStatus);
     expect(asString(hostStatus.payload?.['state'])).toBe('assigned');
@@ -2370,6 +2376,7 @@ describe('MatchGateway integration', () => {
     sendCommand(guest.socket, MessageTypes.MatchmakingEnqueue, {
       displayName: 'GuestBounce',
       avatarColor: '#222222',
+      countryCode: 'SA',
     });
     const guestStatus = await waitForType(guest, MessageTypes.MatchmakingStatus);
     expect(asString(guestStatus.payload?.['state'])).toBe('assigned');
@@ -2403,6 +2410,7 @@ describe('MatchGateway integration', () => {
     sendCommand(guest2.socket, MessageTypes.MatchmakingEnqueue, {
       displayName: 'GuestBounce',
       avatarColor: '#222222',
+      countryCode: 'SA',
     });
     const rejoinStatus = await waitForType(guest2, MessageTypes.MatchmakingStatus);
     expect(asString(rejoinStatus.payload?.['state'])).toBe('assigned');
@@ -2455,6 +2463,7 @@ describe('MatchGateway integration', () => {
     sendCommand(host.socket, MessageTypes.MatchmakingEnqueue, {
       displayName: 'HostStay2',
       avatarColor: '#111111',
+      countryCode: 'SA',
     });
     const hostStatus = await waitForType(host, MessageTypes.MatchmakingStatus);
     const matchId = asString(hostStatus.payload?.['matchId']);
@@ -2469,6 +2478,7 @@ describe('MatchGateway integration', () => {
       sendCommand(g.socket, MessageTypes.MatchmakingEnqueue, {
         displayName: name,
         avatarColor: '#222222',
+        countryCode: 'SA',
       });
       await waitForType(g, MessageTypes.MatchmakingStatus);
       const accepted = await waitForType(g, MessageTypes.SessionAccepted);
@@ -2564,6 +2574,7 @@ describe('MatchGateway integration', () => {
     sendCommand(client.socket, MessageTypes.TrainingStart, {
       displayName: 'Trainee',
       avatarColor: '#101010',
+      countryCode: 'SA',
     });
     const accepted = await waitForType(client, MessageTypes.SessionAccepted);
     const matchId = asString(accepted.payload?.['matchId']);
@@ -2593,6 +2604,7 @@ describe('MatchGateway integration', () => {
     sendCommand(host.socket, MessageTypes.MatchmakingEnqueue, {
       displayName: 'RematchHost',
       avatarColor: '#111111',
+      countryCode: 'SA',
     });
     const hostStatus = await waitForType(host, MessageTypes.MatchmakingStatus);
     expect(asString(hostStatus.payload?.['state'])).toBe('assigned');
@@ -2605,6 +2617,7 @@ describe('MatchGateway integration', () => {
     sendCommand(guest.socket, MessageTypes.MatchmakingEnqueue, {
       displayName: 'RematchGuest',
       avatarColor: '#222222',
+      countryCode: 'SA',
     });
     const guestStatus = await waitForType(guest, MessageTypes.MatchmakingStatus);
     expect(asString(guestStatus.payload?.['state'])).toBe('assigned');

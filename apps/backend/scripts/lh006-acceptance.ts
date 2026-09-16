@@ -59,6 +59,7 @@ async function main(): Promise<void> {
   const matchA = await matches.createPrivateRoom({
     displayName: 'EvidenceA',
     avatarColor: '#111111',
+    countryCode: 'SA',
   });
   const snapA = matchA.snapshot;
   if (!snapA.releasePins) {
@@ -129,6 +130,7 @@ async function main(): Promise<void> {
   const matchB = await matches.createPrivateRoom({
     displayName: 'EvidenceB',
     avatarColor: '#222222',
+    countryCode: 'SA',
   });
   if (
     matchB.snapshot.releasePins?.challengeCatalogReleaseId !==

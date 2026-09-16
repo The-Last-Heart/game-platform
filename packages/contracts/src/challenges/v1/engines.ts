@@ -29,6 +29,7 @@ export const LAUNCH_ENGINE_IDS = [
   "focus.stroop",
   "search.select_occurrences",
   "social.pass_the_pulse",
+  "precision.ring_lock",
 ] as const;
 
 export const launchEngineIdSchema = z.enum(LAUNCH_ENGINE_IDS);
@@ -2138,7 +2139,7 @@ export const socialPassThePulseClientConfigSchema = z
     hitWindowEarlyMs: nonNegMs.optional(),
     hitWindowLateMs: nonNegMs.optional(),
     resultTransitionMs: nonNegMs.optional(),
-    legs: z.array(passThePulseLegSchema).min(2).max(6).optional(),
+    legs: z.array(passThePulseLegSchema).min(1).max(64).optional(),
     currentLegId: z.string().min(1).max(64).optional(),
     currentTargetPlayerId: z.string().min(1).max(128).nullable().optional(),
     results: z.record(passThePulsePlayerResultSchema).optional(),
@@ -2220,6 +2221,187 @@ export type SocialPassThePulseAnswer = z.infer<
 >;
 
 // ---------------------------------------------------------------------------
+// 22. precision.ring_lock — individual concentric ring timing challenge
+// ---------------------------------------------------------------------------
+
+export const RING_LOCK_RING_COUNT = 3 as const;
+export const ringLockRingIndexSchema = z.union([
+  z.literal(0),
+  z.literal(1),
+  z.literal(2),
+]);
+export type RingLockRingIndex = z.infer<typeof ringLockRingIndexSchema>;
+
+export const ringLockDirectionSchema = z.union([z.literal(1), z.literal(-1)]);
+export type RingLockDirection = z.infer<typeof ringLockDirectionSchema>;
+
+export const ringLockDifficultySchema = z.enum(["easy", "medium", "hard"]);
+export type RingLockDifficulty = z.infer<typeof ringLockDifficultySchema>;
+
+export const ringLockPlayerResultSchema = z.enum([
+  "active",
+  "success",
+  "timeout",
+  "failed",
+]);
+export type RingLockPlayerResult = z.infer<typeof ringLockPlayerResultSchema>;
+
+export const ringLockLastOutcomeSchema = z.enum(["hit", "miss"]);
+export type RingLockLastOutcome = z.infer<typeof ringLockLastOutcomeSchema>;
+
+/** Defaults used when Studio / fixtures omit generation fields. */
+export const RING_LOCK_DEFAULT_CONFIG = {
+  ringCount: RING_LOCK_RING_COUNT,
+  startDelayMs: 700,
+  minAngularVelocityDegPerSec: 55,
+  maxAngularVelocityDegPerSec: 110,
+  allowClockwise: true,
+  allowCounterClockwise: true,
+  targetAngleDeg: 0,
+  alignmentToleranceDeg: 14,
+  transitionDelayMs: 180,
+  safetyMarginMs: 600,
+  maxGenerationAttempts: 48,
+  difficulty: "medium" as const,
+} as const;
+
+export const precisionRingLockClientConfigSchema = z
+  .object({
+    categoryKey: translationKey,
+    titleKey: translationKey,
+    promptKey: translationKey,
+    actionKey: translationKey,
+    timeRemainingKey: translationKey,
+    ring1Key: translationKey.optional(),
+    ring2Key: translationKey.optional(),
+    ring3Key: translationKey.optional(),
+    statusLockedKey: translationKey.optional(),
+    statusRotatingKey: translationKey.optional(),
+    statusFailedKey: translationKey.optional(),
+    a11yLockButtonKey: translationKey.optional(),
+    a11yRingStatusKey: translationKey.optional(),
+    /** Shared public timing mirrors (never private angles). */
+    ringCount: z.literal(3).optional(),
+    startDelayMs: nonNegMs.optional(),
+    targetAngleDeg: z.number().min(0).lt(360).optional(),
+    alignmentToleranceDeg: z.number().positive().max(45).optional(),
+    transitionDelayMs: nonNegMs.optional(),
+    difficulty: ringLockDifficultySchema.optional(),
+    /**
+     * Personalized runtime overlay (viewer seat only). Never broadcast other
+     * players' rings/seeds in the shared snapshot.
+     */
+    seed: z.number().int().nonnegative().optional(),
+    puzzleStartsAtMs: z.number().int().nonnegative().optional(),
+    activeRingIndex: ringLockRingIndexSchema.optional(),
+    rings: z
+      .array(
+        z
+          .object({
+            index: ringLockRingIndexSchema,
+            initialAngleDeg: z.number().min(0).lt(360),
+            direction: ringLockDirectionSchema,
+            angularVelocityDegPerSec: z.number().positive().max(720),
+            locked: z.boolean(),
+            lockedAngleDeg: z.number().min(0).lt(360).nullable().optional(),
+          })
+          .strict(),
+      )
+      .length(3)
+      .optional(),
+    lockedCount: z.number().int().min(0).max(3).optional(),
+    progress: z.number().min(0).max(1).optional(),
+    result: ringLockPlayerResultSchema.optional(),
+    stateSequence: z.number().int().nonnegative().optional(),
+    lastLockOutcome: ringLockLastOutcomeSchema.nullable().optional(),
+    lastLockRingIndex: ringLockRingIndexSchema.nullable().optional(),
+    lastAcceptedCommandId: z.string().min(1).max(128).nullable().optional(),
+    reconnect: z.boolean().optional(),
+    isParticipant: z.boolean().optional(),
+  })
+  .strict();
+export type PrecisionRingLockClientConfig = z.infer<
+  typeof precisionRingLockClientConfigSchema
+>;
+
+export const precisionRingLockServerConfigSchema = z
+  .object({
+    ringCount: z.literal(3).default(3),
+    startDelayMs: nonNegMs.default(RING_LOCK_DEFAULT_CONFIG.startDelayMs),
+    minAngularVelocityDegPerSec: z
+      .number()
+      .positive()
+      .max(720)
+      .default(RING_LOCK_DEFAULT_CONFIG.minAngularVelocityDegPerSec),
+    maxAngularVelocityDegPerSec: z
+      .number()
+      .positive()
+      .max(720)
+      .default(RING_LOCK_DEFAULT_CONFIG.maxAngularVelocityDegPerSec),
+    allowClockwise: z.boolean().default(true),
+    allowCounterClockwise: z.boolean().default(true),
+    targetAngleDeg: z
+      .number()
+      .min(0)
+      .lt(360)
+      .default(RING_LOCK_DEFAULT_CONFIG.targetAngleDeg),
+    alignmentToleranceDeg: z
+      .number()
+      .positive()
+      .max(45)
+      .default(RING_LOCK_DEFAULT_CONFIG.alignmentToleranceDeg),
+    transitionDelayMs: nonNegMs.default(
+      RING_LOCK_DEFAULT_CONFIG.transitionDelayMs,
+    ),
+    safetyMarginMs: nonNegMs.default(RING_LOCK_DEFAULT_CONFIG.safetyMarginMs),
+    maxGenerationAttempts: z
+      .number()
+      .int()
+      .positive()
+      .max(256)
+      .default(RING_LOCK_DEFAULT_CONFIG.maxGenerationAttempts),
+    difficulty: ringLockDifficultySchema.default("medium"),
+    /** Optional fixed seed for deterministic tests / Studio preview. */
+    seed: z.number().int().nonnegative().optional(),
+  })
+  .strict()
+  .superRefine((cfg, ctx) => {
+    if (
+      cfg.minAngularVelocityDegPerSec > cfg.maxAngularVelocityDegPerSec
+    ) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "minAngularVelocityDegPerSec must be <= maxAngularVelocityDegPerSec",
+        path: ["minAngularVelocityDegPerSec"],
+      });
+    }
+    if (!cfg.allowClockwise && !cfg.allowCounterClockwise) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "at least one rotation direction must be allowed",
+        path: ["allowClockwise"],
+      });
+    }
+  });
+export type PrecisionRingLockServerConfig = z.infer<
+  typeof precisionRingLockServerConfigSchema
+>;
+
+export const precisionRingLockAnswerSchema = z
+  .object({
+    /** Ring the client intends to lock (must match authoritative active ring). */
+    ringIndex: ringLockRingIndexSchema,
+    /** Optional optimistic concurrency token from the last personalized state. */
+    expectedSequence: z.number().int().nonnegative().optional(),
+    /** Progress locks stay non-final until all three rings succeed. */
+    final: z.boolean().optional(),
+  })
+  .strict();
+export type PrecisionRingLockAnswer = z.infer<
+  typeof precisionRingLockAnswerSchema
+>;
+
+// ---------------------------------------------------------------------------
 // Cross-engine validators
 // ---------------------------------------------------------------------------
 
@@ -2253,6 +2435,7 @@ export const ENGINE_RUNTIME_READINESS: Record<
   "focus.stroop": "live",
   "search.select_occurrences": "live",
   "social.pass_the_pulse": "live",
+  "precision.ring_lock": "live",
 };
 
 type EngineSchemaPair = {
@@ -2387,6 +2570,11 @@ const ENGINE_SCHEMAS: Record<LaunchEngineId, EngineSchemaPair> = {
     server: socialPassThePulseServerConfigSchema,
     answer: socialPassThePulseAnswerSchema,
   },
+  "precision.ring_lock": {
+    client: precisionRingLockClientConfigSchema,
+    server: precisionRingLockServerConfigSchema,
+    answer: precisionRingLockAnswerSchema,
+  },
 };
 
 export type ValidatedEngineConfigs =
@@ -2514,6 +2702,11 @@ export type ValidatedEngineConfigs =
       engineId: "social.pass_the_pulse";
       clientConfig: SocialPassThePulseClientConfig;
       serverConfig: SocialPassThePulseServerConfig;
+    }
+  | {
+      engineId: "precision.ring_lock";
+      clientConfig: PrecisionRingLockClientConfig;
+      serverConfig: PrecisionRingLockServerConfig;
     };
 
 export type ValidatedEngineAnswer =
@@ -2556,7 +2749,8 @@ export type ValidatedEngineAnswer =
       engineId: "search.select_occurrences";
       answer: SearchSelectOccurrencesAnswer;
     }
-  | { engineId: "social.pass_the_pulse"; answer: SocialPassThePulseAnswer };
+  | { engineId: "social.pass_the_pulse"; answer: SocialPassThePulseAnswer }
+  | { engineId: "precision.ring_lock"; answer: PrecisionRingLockAnswer };
 
 function assertKnownEngineId(engineId: string): LaunchEngineId {
   return launchEngineIdSchema.parse(engineId);

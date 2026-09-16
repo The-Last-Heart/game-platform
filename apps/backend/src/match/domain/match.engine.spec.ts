@@ -97,6 +97,96 @@ describe('MatchEngine', () => {
     expect(match.phaseDeadlineAtMs).toBeNull();
   });
 
+  it('rejects a duplicate display name in the same match (case/whitespace insensitive)', () => {
+    const { engine } = setup();
+    let match = engine.createMatch('m-name');
+    match = engine.joinPlayer(match, {
+      playerId: 'p0',
+      resumeTokenHash: 'h0',
+      displayName: 'وجدي',
+    }).match;
+
+    expect(() =>
+      engine.joinPlayer(match, {
+        playerId: 'p1',
+        resumeTokenHash: 'h1',
+        displayName: '  وجدي  ',
+      }),
+    ).toThrow(
+      expect.objectContaining({
+        code: 'DISPLAY_NAME_TAKEN',
+      }),
+    );
+
+    match = engine.joinPlayer(match, {
+      playerId: 'p2',
+      resumeTokenHash: 'h2',
+      displayName: 'Host',
+    }).match;
+
+    expect(() =>
+      engine.joinPlayer(match, {
+        playerId: 'p3',
+        resumeTokenHash: 'h3',
+        displayName: 'host',
+      }),
+    ).toThrow(
+      expect.objectContaining({
+        code: 'DISPLAY_NAME_TAKEN',
+      }),
+    );
+
+    match = engine.joinPlayer(match, {
+      playerId: 'p4',
+      resumeTokenHash: 'h4',
+      displayName: 'Guest',
+    }).match;
+    expect(match.players.size).toBe(3);
+  });
+
+  it('rejects an invalid display name format', () => {
+    const { engine } = setup();
+    const match = engine.createMatch('m-format');
+    expect(() =>
+      engine.joinPlayer(match, {
+        playerId: 'p0',
+        resumeTokenHash: 'h0',
+        displayName: 'Ahmad Khaled XF',
+      }),
+    ).toThrow(
+      expect.objectContaining({
+        code: 'DISPLAY_NAME_INVALID',
+      }),
+    );
+    expect(() =>
+      engine.joinPlayer(match, {
+        playerId: 'p1',
+        resumeTokenHash: 'h1',
+        displayName: 'Ahmad2',
+      }),
+    ).toThrow(
+      expect.objectContaining({
+        code: 'DISPLAY_NAME_INVALID',
+      }),
+    );
+  });
+
+  it('rejects a prohibited display name', () => {
+    const { engine } = setup();
+    const match = engine.createMatch('m-bad-name');
+    expect(() =>
+      engine.joinPlayer(match, {
+        playerId: 'p0',
+        resumeTokenHash: 'h0',
+        displayName: 'كسمك',
+      }),
+    ).toThrow(
+      expect.objectContaining({
+        code: 'DISPLAY_NAME_PROHIBITED',
+      }),
+    );
+  });
+
   it('rejects challenge durations outside 3–15 seconds', () => {
     const { engine } = setup();
     const match = fillSix(engine);

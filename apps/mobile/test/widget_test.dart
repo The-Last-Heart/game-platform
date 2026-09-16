@@ -608,6 +608,7 @@ void main() {
         'lh_player_identity_v1': jsonEncode(<String, String>{
           'displayName': 'وجدي',
           'avatarColor': '#FF3045',
+          'countryCode': 'SA',
         }),
       });
     });

@@ -178,4 +178,18 @@ export const STUDIO_ENGINE_REGISTRY: readonly StudioEngineRegistryEntry[] = [
     runtimeReadiness: ENGINE_RUNTIME_READINESS['search.select_occurrences'],
     labelKey: 'engine.search.select_occurrences',
   },
+  {
+    engineId: 'social.pass_the_pulse',
+    familyId: 'social',
+    categoryId: 'social.pass_the_pulse',
+    runtimeReadiness: ENGINE_RUNTIME_READINESS['social.pass_the_pulse'],
+    labelKey: 'engine.social.pass_the_pulse',
+  },
+  {
+    engineId: 'precision.ring_lock',
+    familyId: 'precision',
+    categoryId: 'precision.ring_lock',
+    runtimeReadiness: ENGINE_RUNTIME_READINESS['precision.ring_lock'],
+    labelKey: 'engine.precision.ring_lock',
+  },
 ] as const;

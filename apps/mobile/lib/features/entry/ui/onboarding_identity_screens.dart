@@ -4,6 +4,8 @@ import '../../../l10n/app_localization.dart';
 import '../../../l10n/translation_catalog.dart';
 import '../../../l10n/translation_resolver.dart';
 import '../../../theme/lh_tokens.dart';
+import '../../identity/data/countries.dart';
+import '../../identity/data/display_name_moderation.dart';
 import '../../identity/data/identity_store.dart';
 import '../../match/ui/widgets/lh_background.dart';
 import '../../match/ui/widgets/lh_buttons.dart';
@@ -218,7 +220,7 @@ class _OnboardingScreenState extends State<OnboardingScreen>
   }
 }
 
-/// Display name + abstract avatar color editor.
+/// Display name + country + abstract avatar color editor.
 class IdentityScreen extends StatefulWidget {
   const IdentityScreen({
     required this.initial,
@@ -238,7 +240,9 @@ class IdentityScreen extends StatefulWidget {
 class _IdentityScreenState extends State<IdentityScreen> {
   late final TextEditingController _nameController;
   late String _color;
-  String? _error;
+  String? _countryCode;
+  String? _nameError;
+  String? _countryError;
 
   @override
   void initState() {
@@ -247,6 +251,11 @@ class _IdentityScreenState extends State<IdentityScreen> {
       text: widget.initial?.displayName ?? '',
     );
     _color = widget.initial?.avatarColor ?? kApprovedAvatarColors.first;
+    final String? initialCountry = widget.initial?.countryCode;
+    _countryCode =
+        initialCountry != null && isPlayerCountryCode(initialCountry)
+        ? initialCountry
+        : null;
   }
 
   @override
@@ -256,21 +265,40 @@ class _IdentityScreenState extends State<IdentityScreen> {
   }
 
   void _submit() {
-    final String name = _nameController.text.trim();
-    if (name.length < 2 || name.length > 24) {
+    final TranslationResolver resolver = AppLocalization.of(context);
+    final String name = normalizeDisplayNameFormat(_nameController.text);
+    String? nameError;
+    String? countryError;
+    if (!isValidDisplayNameFormat(name)) {
+      nameError = resolver.resolve(TranslationKeys.identityNameInvalid);
+    } else if (isProhibitedDisplayName(name)) {
+      nameError = resolver.resolve(TranslationKeys.identityNameProhibited);
+    }
+    if (_countryCode == null || !isPlayerCountryCode(_countryCode!)) {
+      countryError = resolver.resolve(TranslationKeys.identityCountryInvalid);
+    }
+    if (nameError != null || countryError != null) {
       setState(() {
-        _error = AppLocalization.of(
-          context,
-        ).resolve(TranslationKeys.identityNameInvalid);
+        _nameError = nameError;
+        _countryError = countryError;
       });
       return;
     }
-    widget.onSaved(PlayerIdentity(displayName: name, avatarColor: _color));
+    widget.onSaved(
+      PlayerIdentity(
+        displayName: name,
+        avatarColor: _color,
+        countryCode: _countryCode!,
+      ),
+    );
   }
 
   @override
   Widget build(BuildContext context) {
     final TranslationResolver resolver = AppLocalization.of(context);
+    final String localeCode = resolver.selectedLocaleCode;
+    final List<PlayerCountry> countries =
+        playerCountriesSortedForLocale(localeCode);
     return LhBackground(
       child: SafeArea(
         child: Padding(
@@ -295,12 +323,46 @@ class _IdentityScreenState extends State<IdentityScreen> {
                 maxLength: 24,
                 decoration: InputDecoration(
                   labelText: resolver.resolve(TranslationKeys.identityNameLabel),
-                  errorText: _error,
+                  errorText: _nameError,
                   filled: true,
                   fillColor: LhColors.surface,
                 ),
                 onChanged: (_) {
-                  if (_error != null) setState(() => _error = null);
+                  if (_nameError != null) setState(() => _nameError = null);
+                },
+              ),
+              const SizedBox(height: 8),
+              DropdownButtonFormField<String>(
+                initialValue: _countryCode,
+                isExpanded: true,
+                decoration: InputDecoration(
+                  labelText: resolver.resolve(
+                    TranslationKeys.identityCountryLabel,
+                  ),
+                  errorText: _countryError,
+                  filled: true,
+                  fillColor: LhColors.surface,
+                ),
+                hint: Text(
+                  resolver.resolve(TranslationKeys.identityCountryHint),
+                ),
+                items: countries
+                    .map(
+                      (PlayerCountry country) => DropdownMenuItem<String>(
+                        value: country.code,
+                        child: Text(
+                          '${country.flagEmoji}  ${country.localizedName(localeCode)}',
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                    )
+                    .toList(),
+                onChanged: (String? value) async {
+                  await LhUiSound.instance.playTap();
+                  setState(() {
+                    _countryCode = value;
+                    _countryError = null;
+                  });
                 },
               ),
               const SizedBox(height: 16),
