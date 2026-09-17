@@ -649,6 +649,7 @@ const ar: Record<MessageKey, string> = {
   'studio.engine.pair_sync': 'المزامنة الثنائية',
   'studio.engine.risk_choice': 'اختيار المخاطرة',
   'studio.engine.multiple_choice': 'اختيار متعدد',
+  'studio.engine.audio_multiple_choice': 'خَمّن الصوت',
   'studio.engine.select_on_map': 'اختيار على الخريطة',
   'studio.engine.odd_one_out': 'الشكل المختلف',
   'studio.engine.sequence_sort': 'ترتيب التسلسل',
@@ -661,6 +662,12 @@ const ar: Record<MessageKey, string> = {
   'studio.engine.complete_sum': 'أكملوا المجموع',
   'studio.engine.stroop': 'ستروب',
   'studio.engine.select_occurrences': 'اختيار التطابقات',
+  'studio.engine.pass_the_pulse': 'مرّر النبض',
+  'studio.engine.ring_lock': 'قفل الحلقة',
+  'studio.catalog.prompt.audioMcIntro': 'عنوان خمّن الصوت',
+  'studio.catalog.prompt.audioMcArtist': 'من صاحب هذا الصوت؟',
+  'studio.catalog.prompt.audioMcTrack': 'ما اسم الأغنية؟',
+  'studio.catalog.fallback.audioMc': 'البديل: خمّن الصوت',
 
   'studio.field.fp.categoryKey': 'تسمية التصنيف',
   'studio.field.fp.categoryKeyHint': 'شارة التصنيف التي يراها اللاعبون',
@@ -806,6 +813,43 @@ const ar: Record<MessageKey, string> = {
   'studio.field.fp.triviaRemoveQuestion': 'حذف السؤال',
   'studio.field.fp.triviaAddAnswer': 'إضافة إجابة',
   'studio.field.fp.triviaRemoveAnswer': 'حذف',
+  'studio.field.fp.audioMcLead':
+    'يسمع اللاعبون مقطعاً قصيراً ويختارون إجابة واحدة. حدد إن كان المطلوب اسم المغني أو اسم الأغنية، اضبط أقصى طول للمقطع، ارفع ملفاً MP3 أو WAV، وعيّن الإجابة الصحيحة. العربية هي ما يظهر أولاً.',
+  'studio.field.fp.audioMcMaxDuration': 'أقصى طول للمقطع',
+  'studio.field.fp.audioMcMaxDurationHint':
+    'يُرفض أي رفع أطول من هذا. استبدل أي مقطع موجود يتجاوز الحد الجديد قبل النشر.',
+  'studio.field.fp.audioMcTarget': 'هدف الإجابة',
+  'studio.field.fp.audioMcTargetHint':
+    'اختر هذا صراحة. لا يُستنتج من اسم الملف أو البيانات الوصفية.',
+  'studio.field.fp.audioMcTargetArtist': 'المغني أو صاحب الصوت',
+  'studio.field.fp.audioMcTargetTrack': 'اسم الأغنية أو المقطع',
+  'studio.field.fp.audioMcUpload': 'رفع الصوت',
+  'studio.field.fp.audioMcReplace': 'استبدال الصوت',
+  'studio.field.fp.audioMcRemove': 'إزالة الصوت',
+  'studio.field.fp.audioMcUploading': 'جارٍ الرفع…',
+  'studio.field.fp.audioMcDuration': 'المدة بعد الفك',
+  'studio.field.fp.audioMcRequired': 'الصوت مطلوب قبل النشر.',
+  'studio.field.fp.audioMcVizPending': 'جارٍ تحميل تحليل الموجة…',
+  'studio.field.fp.audioMcCorrectVisible': 'الإجابة الصحيحة (للمشرف فقط)',
+  'studio.field.fp.audioMcPublishHint':
+    'أصلح النص العربي والخيارات والصوت قبل النشر.',
+  'studio.audio.title': 'خَمّن الصوت',
+  'studio.audio.badgeArtist': 'المطلوب: اسم المغني',
+  'studio.audio.badgeTrack': 'المطلوب: اسم الأغنية',
+  'studio.audio.error.duration_exceeded':
+    'يجب أن تكون مدة الصوت بعد الفك أكبر من صفر ولا تتجاوز {seconds} ثوانٍ.',
+  'studio.audio.error.duration_zero':
+    'يجب أن تكون مدة الصوت بعد الفك أكبر من صفر.',
+  'studio.audio.error.invalid_extension': 'يُسمح فقط بملفات ‎.mp3 و‎.wav.',
+  'studio.audio.error.invalid_mime': 'نوع MIME المعلن ليس نوع صوت مسموحاً.',
+  'studio.audio.error.invalid_signature':
+    'توقيع الملف لا يطابق نوع MP3 أو WAV المعلن.',
+  'studio.audio.error.decode_failed': 'تعذّر فك ملف الصوت.',
+  'studio.audio.error.empty_stream': 'الملف لا يحتوي تيار صوت قابلاً للفك.',
+  'studio.audio.error.unsupported_codec': 'ترميز الصوت أو الحاوية غير مدعومة.',
+  'studio.audio.error.analysis_failed': 'تعذّر تحليل المقطع للعرض البصري.',
+  'studio.audio.error.truncated': 'ملف الصوت مقطوع أو تالف.',
+  'studio.audio.error.file_too_large': 'ملف الصوت يتجاوز حد الحجم.',
   'studio.field.fp.stroopLead':
     'يرى اللاعبون بطاقة ستروب عشوائية من هذه القائمة. يجب أن يتعارض معنى الكلمة مع لون الحبر؛ والإجابة الصحيحة هي لون الحبر لا معنى الكلمة.',
   'studio.field.fp.stroopQuestionN': 'البطاقة {n}',
@@ -838,7 +882,8 @@ const ar: Record<MessageKey, string> = {
   'studio.field.fp.pulseLead':
     'زمن انتقال النبضة ونوافذ اللمس تتبعان صعوبة التحدي ما لم تُخصصا.',
   'studio.field.fp.segmentDurationMs': 'زمن انتقال النبضة',
-  'studio.field.fp.segmentDurationHint': 'كم يستغرق النبض للوصول إلى اللاعب التالي',
+  'studio.field.fp.segmentDurationHint':
+    'كم يستغرق النبض للوصول إلى اللاعب التالي',
   'studio.field.fp.hitWindowEarlyMs': 'نافذة اللمس المبكر',
   'studio.field.fp.hitWindowLateMs': 'نافذة اللمس المتأخر',
   'studio.field.fp.hitWindowHint': 'كم يمكن أن يسبق أو يتأخر اللمس ويُحتسب',
@@ -1025,6 +1070,8 @@ const ar: Record<MessageKey, string> = {
   'studio.validation.tooLong': 'القيمة طويلة جداً',
   'studio.validation.invalidRange': 'نطاق غير صالح',
   'studio.validation.missingArabic': 'المحتوى العربي مطلوب',
+  'studio.validation.audioRequired':
+    'كل سؤال يحتاج مقطعاً صالحاً بصيغة MP3 أو WAV لا يتجاوز الطول المسموح قبل النشر.',
   'studio.validation.stroopVariants':
     'أضف بطاقة ستروب واحدة على الأقل (كلمة ولون حبر وخياران فأكثر)',
 

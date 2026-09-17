@@ -47,6 +47,7 @@ import { PermissionsGuard } from '../guards/permissions.guard';
 import type { AdminAuthContext } from '../services/admin.types';
 import { ContentLifecycleService } from '../../content/services/content-lifecycle.service';
 import { ContentPackService } from '../../content/services/content-pack.service';
+import { AudioIngestError } from '../../content/audio';
 import { EmergencyControlsService } from '../../content/services/emergency-controls.service';
 import { ReleaseResolverService } from '../../content/services/release-resolver.service';
 import { MatchService } from '../../match/services/match.service';
@@ -152,6 +153,7 @@ export class AdminContentController {
     const { meta, body } = this.contentPack.getAsset(assetId);
     res.setHeader('Content-Type', meta.contentType);
     res.setHeader('Content-Length', String(body.byteLength));
+    res.setHeader('Accept-Ranges', 'bytes');
     res.setHeader('X-Content-Sha256', meta.sha256);
     res.send(body);
   }
@@ -199,6 +201,60 @@ export class AdminContentController {
       packVersion: this.contentPack.getManifest().packVersion,
       asset,
     });
+  }
+
+  @Post('pack/audio')
+  @RequirePermissions('content:write')
+  @UseInterceptors(
+    FileInterceptor('file', {
+      storage: memoryStorage(),
+      limits: { fileSize: 8 * 1024 * 1024 },
+    }),
+  )
+  async registerChallengeAudio(
+    @UploadedFile() file: Express.Multer.File | undefined,
+    @Query('maxDurationMs') maxDurationMsQuery: string | undefined,
+  ) {
+    if (!file?.buffer?.byteLength) {
+      throw new BadRequestException({
+        ok: false,
+        error: {
+          code: 'VALIDATION_ERROR',
+          message: 'multipart field "file" is required',
+          details: { code: 'audio.empty' },
+        },
+      });
+    }
+    try {
+      const registered = await this.contentPack.registerChallengeAudio({
+        filename: file.originalname,
+        mimeType: file.mimetype,
+        body: file.buffer,
+        maxDurationMs: maxDurationMsQuery,
+      });
+      return ok({
+        packVersion: this.contentPack.getManifest().packVersion,
+        audioAssetId: registered.audio.assetId,
+        visualizationAssetId: registered.visualization.assetId,
+        durationMs: registered.durationMs,
+        analysisSchemaVersion: registered.analysisSchemaVersion,
+        contentType: registered.audio.contentType,
+        sha256: registered.audio.sha256,
+        visualization: registered.visualizationData,
+      });
+    } catch (err) {
+      if (err instanceof AudioIngestError) {
+        throw new BadRequestException({
+          ok: false,
+          error: {
+            code: 'VALIDATION_ERROR',
+            message: err.message,
+            details: { code: `audio.${err.code}`, ...err.details },
+          },
+        });
+      }
+      throw err;
+    }
   }
 
   // ── Draft endpoints ──────────────────────────────────────────────────────

@@ -29,6 +29,7 @@ export const DIFFICULTY_ENGINE_PRIORITY: Record<
     'hold.multitouch',
     'search.select_occurrences',
     'order.sequence_sort',
+    'audio.multiple_choice',
   ],
   hard: [
     'memory.sequence',

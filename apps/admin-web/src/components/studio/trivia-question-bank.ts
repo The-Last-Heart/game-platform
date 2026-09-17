@@ -42,8 +42,15 @@ function asRecord(value: unknown): Record<string, unknown> | null {
 function copyFor(
   key: string,
   stored?: { ar?: string; en?: string },
+  authored = false,
 ): TriviaLocaleCopy {
   const preset = TRIVIA_COPY_PRESETS[key];
+  if (authored) {
+    return {
+      ar: stored?.ar ?? '',
+      en: stored?.en ?? '',
+    };
+  }
   return {
     ar: stored?.ar ?? preset?.ar ?? '',
     en: stored?.en ?? preset?.en ?? '',
@@ -80,12 +87,17 @@ function parseOneQuestion(raw: unknown): TriviaStudioQuestion | null {
   if (!questionKey || optionKeys.length < 2) return null;
   const optionCopy = parseOptionCopy(rec.optionCopy);
   const questionCopy = asRecord(rec.questionCopy);
-  const qCopy = copyFor(questionKey, {
-    ar: typeof questionCopy?.ar === 'string' ? questionCopy.ar : undefined,
-    en: typeof questionCopy?.en === 'string' ? questionCopy.en : undefined,
-  });
+  const qCopy = copyFor(
+    questionKey,
+    {
+      ar: typeof questionCopy?.ar === 'string' ? questionCopy.ar : undefined,
+      en: typeof questionCopy?.en === 'string' ? questionCopy.en : undefined,
+    },
+    questionCopy != null,
+  );
+  const authoredOptions = asRecord(rec.optionCopy) != null;
   const options = optionKeys.map((key) => {
-    const opt = copyFor(key, optionCopy[key]);
+    const opt = copyFor(key, optionCopy[key], authoredOptions);
     return { key, ar: opt.ar, en: opt.en };
   });
   const correct =
@@ -132,28 +144,22 @@ export function parseTriviaQuestions(
 ): TriviaStudioQuestion[] {
   const raw = serverConfig.questions;
   if (Array.isArray(raw)) {
-    const parsed = raw
+    return raw
       .map(parseOneQuestion)
       .filter((q): q is TriviaStudioQuestion => q != null);
-    if (parsed.length > 0) return parsed;
   }
   const legacy = parseOneQuestion({
     questionKey: serverConfig.questionKey,
     optionKeys: serverConfig.optionKeys,
     correctOptionKey: serverConfig.correctOptionKey,
+    questionCopy: serverConfig.questionCopy,
+    optionCopy: serverConfig.optionCopy,
   });
   return legacy ? [legacy] : defaultTriviaQuestions();
 }
 
-function compactCopy(
-  ar: string,
-  en: string,
-): { ar: string; en?: string } | undefined {
-  if (!ar.trim() && !en.trim()) return undefined;
-  return {
-    ar: ar.trim() ? ar : en,
-    ...(en.trim() ? { en } : {}),
-  };
+function persistLocaleCopy(ar: string, en: string): { ar: string; en: string } {
+  return { ar, en };
 }
 
 export function serializeTriviaQuestions(
@@ -161,12 +167,10 @@ export function serializeTriviaQuestions(
 ): Array<Record<string, unknown>> {
   return questions.map((question) => {
     const optionKeys = question.options.map((o) => o.key);
-    const optionCopy: Record<string, { ar: string; en?: string }> = {};
+    const optionCopy: Record<string, { ar: string; en: string }> = {};
     for (const option of question.options) {
-      const copy = compactCopy(option.ar, option.en);
-      if (copy) optionCopy[option.key] = copy;
+      optionCopy[option.key] = persistLocaleCopy(option.ar, option.en);
     }
-    const questionCopy = compactCopy(question.questionAr, question.questionEn);
     const correct = optionKeys.includes(question.correctOptionKey)
       ? question.correctOptionKey
       : optionKeys[0];
@@ -174,10 +178,23 @@ export function serializeTriviaQuestions(
       questionKey: question.questionKey,
       optionKeys,
       correctOptionKey: correct,
-      ...(questionCopy ? { questionCopy } : {}),
-      ...(Object.keys(optionCopy).length > 0 ? { optionCopy } : {}),
+      questionCopy: persistLocaleCopy(question.questionAr, question.questionEn),
+      optionCopy,
     };
   });
+}
+
+export function triviaQuestionBankSignature(
+  questions: TriviaStudioQuestion[],
+): string {
+  return questions
+    .map(
+      (question) =>
+        `${question.questionKey}:${question.correctOptionKey}:${question.options
+          .map((option) => option.key)
+          .join(',')}`,
+    )
+    .join('|');
 }
 
 export function createTriviaQuestion(

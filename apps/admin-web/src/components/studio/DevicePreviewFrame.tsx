@@ -1,10 +1,17 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { t } from '@/i18n/get-dictionary';
 import type { Locale } from '@/i18n/locale';
 import type { MessageKey } from '@/i18n/messages/en';
 import { AssetThumb, collectImageAssetIds } from './AssetThumb';
+import {
+  inferAudioAnswerTarget,
+  parseAudioQuestions,
+  parseAudioVisualization,
+  type AudioVisualizationPreview,
+} from './audio-question-bank';
+import { StudioAudioClipPreview } from './AudioVisualizationPreview';
 
 export type PreviewState = 'intro' | 'active' | 'success' | 'failure' | 'timeout' | 'unsupported';
 
@@ -29,6 +36,104 @@ type DevicePreviewFrameProps = {
   serverConfig?: Record<string, unknown>;
   requiredAssetIds?: string[];
 };
+
+function AudioDevicePreview({
+  locale,
+  serverConfig,
+}: {
+  locale: Locale;
+  clientConfig?: Record<string, unknown>;
+  serverConfig?: Record<string, unknown>;
+}) {
+  const questions = parseAudioQuestions(serverConfig ?? {});
+  const question = questions[0];
+  const visualizationAssetId = question?.visualizationAssetId ?? '';
+  const [loadedVis, setLoadedVis] = useState<{
+    id: string;
+    data: AudioVisualizationPreview | null;
+  } | null>(null);
+
+  useEffect(() => {
+    if (!visualizationAssetId) {
+      return;
+    }
+    let cancelled = false;
+    void fetch(
+      `/api/admin/v1/content/pack/assets/${encodeURIComponent(visualizationAssetId)}`,
+      {
+        credentials: 'same-origin',
+        cache: 'force-cache',
+      },
+    )
+      .then((res) => (res.ok ? res.json() : null))
+      .then((json: unknown) => {
+        if (cancelled) return;
+        setLoadedVis((prev) => {
+          const data = parseAudioVisualization(json);
+          if (prev?.id === visualizationAssetId && prev.data === data) {
+            return prev;
+          }
+          return { id: visualizationAssetId, data };
+        });
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setLoadedVis({ id: visualizationAssetId, data: null });
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [visualizationAssetId]);
+
+  const vis =
+    visualizationAssetId && loadedVis?.id === visualizationAssetId
+      ? loadedVis.data
+      : null;
+
+  if (!question) return null;
+  const badge =
+    inferAudioAnswerTarget(question) === 'track'
+      ? t(locale, 'studio.audio.badgeTrack')
+      : t(locale, 'studio.audio.badgeArtist');
+  const options = question.options.slice(0, 4);
+
+  return (
+    <div className="studio-audio-device-preview" dir="rtl">
+      <span className="studio-audio-device-title">
+        {t(locale, 'studio.audio.title')}
+      </span>
+      <span className="studio-audio-device-prompt">{question.questionAr}</span>
+      <span className="studio-audio-badge">{badge}</span>
+      {question.audioAssetId ? (
+        <StudioAudioClipPreview
+          assetId={question.audioAssetId}
+          durationMs={question.audioDurationMs}
+          visualization={vis}
+          waveformHeight={48}
+          equalizerHeight={56}
+        />
+      ) : null}
+      <div className="studio-audio-device-options">
+        {options.map((option) => (
+          <span
+            key={option.key}
+            className={
+              option.key === question.correctOptionKey
+                ? 'studio-audio-device-option is-correct'
+                : 'studio-audio-device-option'
+            }
+          >
+            {option.ar}
+          </span>
+        ))}
+      </div>
+      <span className="studio-audio-admin-flag">
+        {t(locale, 'studio.field.fp.audioMcCorrectVisible')}
+      </span>
+    </div>
+  );
+}
 
 export function DevicePreviewFrame({
   locale,
@@ -100,6 +205,15 @@ export function DevicePreviewFrame({
                     <AssetThumb key={id} assetId={id} size={imageIds.length === 1 ? 160 : 96} />
                   ))}
                 </div>
+              ) : null}
+
+              {engineId === 'audio.multiple_choice' &&
+              (activeState === 'intro' || activeState === 'active') ? (
+                <AudioDevicePreview
+                  locale={locale}
+                  clientConfig={clientConfig}
+                  serverConfig={serverConfig}
+                />
               ) : null}
 
               {activeState === 'intro' || activeState === 'active' ? (

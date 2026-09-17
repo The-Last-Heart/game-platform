@@ -138,4 +138,35 @@ describe('trivia question bank', () => {
     expect(copy.ar).toBe('ما هي ');
     expect(copy.en).toBe('What is ');
   });
+
+  it('round-trips deleting characters without restoring preset copy', () => {
+    const [question] = parseTriviaQuestions({
+      questions: [
+        {
+          questionKey: 'trivia.q.japan_capital',
+          optionKeys: ['trivia.opt.osaka', 'trivia.opt.tokyo'],
+          correctOptionKey: 'trivia.opt.tokyo',
+        },
+      ],
+    });
+    const shortened = question!.questionAr.slice(0, -1);
+    const edited = [
+      {
+        ...question!,
+        questionAr: shortened,
+        questionEn: '',
+        options: question!.options.map((option, index) =>
+          index === 0 ? { ...option, ar: option.ar.slice(0, -1) } : option,
+        ),
+      },
+    ];
+    const parsed = parseTriviaQuestions({
+      questions: serializeTriviaQuestions(edited),
+    });
+    expect(parsed[0]?.questionAr).toBe(shortened);
+    expect(parsed[0]?.questionEn).toBe('');
+    expect(parsed[0]?.options[0]?.ar).toBe(
+      question!.options[0]!.ar.slice(0, -1),
+    );
+  });
 });

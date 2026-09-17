@@ -13,6 +13,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import sharp from 'sharp';
+import { ingestChallengeAudio } from '../audio';
 
 export type ContentPackAssetMeta = {
   assetId: string;
@@ -20,6 +21,10 @@ export type ContentPackAssetMeta = {
   contentType: string;
   bytes: number;
   sha256: string;
+  durationMs?: number;
+  analysisSchemaVersion?: number;
+  visualizationAssetId?: string;
+  kind?: 'audio' | 'visualization' | 'image' | 'sfx';
 };
 
 export type ContentPackManifest = {
@@ -92,8 +97,7 @@ export class ContentPackService {
     if (!ASSET_ID_RE.test(assetId)) {
       throw new BadRequestException({
         code: 'VALIDATION_ERROR',
-        message:
-          'assetId must match ^[a-z0-9][a-z0-9._-]{1,126}$',
+        message: 'assetId must match ^[a-z0-9][a-z0-9._-]{1,126}$',
       });
     }
     if (!input.body?.byteLength) {
@@ -161,6 +165,148 @@ export class ContentPackService {
     const registered = this.manifest.assets.find((a) => a.assetId === assetId);
     if (!registered) {
       throw new Error(`failed to reload registered asset ${assetId}`);
+    }
+    return { ...registered };
+  }
+
+  /**
+   * Decode, sanitize, analyze, and register a challenge audio clip plus its
+   * visualization JSON. Asset ids are opaque content hashes — never filenames.
+   */
+  async registerChallengeAudio(input: {
+    filename?: string;
+    mimeType?: string;
+    body: Buffer;
+    maxDurationMs?: number | string;
+  }): Promise<{
+    audio: ContentPackAssetMeta;
+    visualization: ContentPackAssetMeta;
+    durationMs: number;
+    analysisSchemaVersion: number;
+    visualizationData: import('../audio').AudioVisualizationData;
+  }> {
+    const ingested = await ingestChallengeAudio({
+      filename: input.filename,
+      mimeType: input.mimeType,
+      body: input.body,
+      maxDurationMs:
+        typeof input.maxDurationMs === 'number'
+          ? input.maxDurationMs
+          : typeof input.maxDurationMs === 'string'
+            ? Number(input.maxDurationMs)
+            : undefined,
+    });
+
+    const existingAudio = this.manifest.assets.find(
+      (a) =>
+        a.assetId === ingested.audioAssetId &&
+        a.sha256 === ingested.contentHash,
+    );
+    const existingViz = this.manifest.assets.find(
+      (a) => a.assetId === ingested.visualizationAssetId,
+    );
+    if (existingAudio && existingViz) {
+      return {
+        audio: { ...existingAudio },
+        visualization: { ...existingViz },
+        durationMs: Math.round(ingested.derivative.decoded.durationMs),
+        analysisSchemaVersion: ingested.visualization.schemaVersion,
+        visualizationData: ingested.visualization,
+      };
+    }
+
+    const audioMeta = this.writePackFile({
+      assetId: ingested.audioAssetId,
+      relativePath: `assets/${ingested.audioAssetId}.${ingested.derivative.extension}`,
+      contentType: ingested.derivative.contentType,
+      body: ingested.derivative.body,
+      extra: {
+        durationMs: Math.round(ingested.derivative.decoded.durationMs),
+        analysisSchemaVersion: ingested.visualization.schemaVersion,
+        visualizationAssetId: ingested.visualizationAssetId,
+        kind: 'audio',
+      },
+    });
+
+    const vizBody = Buffer.from(
+      `${JSON.stringify(ingested.visualization)}\n`,
+      'utf8',
+    );
+    const vizMeta = this.writePackFile({
+      assetId: ingested.visualizationAssetId,
+      relativePath: `assets/${ingested.visualizationAssetId}.json`,
+      contentType: 'application/json',
+      body: vizBody,
+      extra: {
+        durationMs: ingested.visualization.durationMs,
+        analysisSchemaVersion: ingested.visualization.schemaVersion,
+        kind: 'visualization',
+      },
+      bumpVersion: false,
+    });
+
+    return {
+      audio: audioMeta,
+      visualization: vizMeta,
+      durationMs: Math.round(ingested.derivative.decoded.durationMs),
+      analysisSchemaVersion: ingested.visualization.schemaVersion,
+      visualizationData: ingested.visualization,
+    };
+  }
+
+  private writePackFile(input: {
+    assetId: string;
+    relativePath: string;
+    contentType: string;
+    body: Buffer;
+    extra?: Partial<ContentPackAssetMeta>;
+    bumpVersion?: boolean;
+  }): ContentPackAssetMeta {
+    const assetsDir = join(this.rootDir, 'assets');
+    if (!existsSync(assetsDir)) {
+      mkdirSync(assetsDir, { recursive: true });
+    }
+    const absolutePath = join(this.rootDir, input.relativePath);
+    if (!absolutePath.startsWith(this.rootDir)) {
+      throw new BadRequestException({
+        code: 'VALIDATION_ERROR',
+        message: 'invalid asset path',
+      });
+    }
+    writeFileSync(absolutePath, input.body);
+    const sha256 = createHash('sha256').update(input.body).digest('hex');
+    const meta: ContentPackAssetMeta = {
+      assetId: input.assetId,
+      relativePath: input.relativePath,
+      contentType: input.contentType,
+      bytes: input.body.byteLength,
+      sha256,
+      ...input.extra,
+    };
+    const nextAssets = [...this.manifest.assets];
+    const existingIdx = nextAssets.findIndex(
+      (a) => a.assetId === input.assetId,
+    );
+    if (existingIdx >= 0) {
+      nextAssets[existingIdx] = meta;
+    } else {
+      nextAssets.push(meta);
+    }
+    const bump = input.bumpVersion !== false;
+    const nextManifest: ContentPackManifest = {
+      packId: this.manifest.packId,
+      packVersion: bump
+        ? this.manifest.packVersion + 1
+        : this.manifest.packVersion,
+      assets: nextAssets,
+    };
+    this.persistManifestAtomic(nextManifest);
+    this.manifest = this.loadManifestFromDisk();
+    const registered = this.manifest.assets.find(
+      (a) => a.assetId === input.assetId,
+    );
+    if (!registered) {
+      throw new Error(`failed to reload registered asset ${input.assetId}`);
     }
     return { ...registered };
   }

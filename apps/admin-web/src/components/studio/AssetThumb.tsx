@@ -143,5 +143,13 @@ export function collectImageAssetIds(
   }
   collectFromConfig(ids, clientConfig);
   collectFromConfig(ids, serverConfig);
-  return [...ids];
+  return [...ids].filter((id) => !isNonImageAssetId(id));
+}
+
+function isNonImageAssetId(id: string): boolean {
+  return (
+    id.startsWith('ca_') ||
+    id.startsWith('cv_') ||
+    /\.(mp3|wav|json|bin)$/i.test(id)
+  );
 }

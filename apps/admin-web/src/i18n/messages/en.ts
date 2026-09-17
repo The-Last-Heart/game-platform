@@ -654,6 +654,7 @@ const en = {
   'studio.engine.pair_sync': 'Pair Sync',
   'studio.engine.risk_choice': 'Risk Choice',
   'studio.engine.multiple_choice': 'Multiple Choice',
+  'studio.engine.audio_multiple_choice': 'Guess the Audio',
   'studio.engine.select_on_map': 'Select on Map',
   'studio.engine.odd_one_out': 'Odd One Out',
   'studio.engine.sequence_sort': 'Sequence Sort',
@@ -666,6 +667,12 @@ const en = {
   'studio.engine.complete_sum': 'Complete the Sum',
   'studio.engine.stroop': 'Stroop',
   'studio.engine.select_occurrences': 'Select Occurrences',
+  'studio.engine.pass_the_pulse': 'Pass the Pulse',
+  'studio.engine.ring_lock': 'Ring Lock',
+  'studio.catalog.prompt.audioMcIntro': 'Guess the Audio title',
+  'studio.catalog.prompt.audioMcArtist': 'Who owns this voice?',
+  'studio.catalog.prompt.audioMcTrack': 'What is the song name?',
+  'studio.catalog.fallback.audioMc': 'Fallback: Guess the Audio',
 
   // Family param fields
   'studio.field.fp.categoryKey': 'Category label',
@@ -828,6 +835,48 @@ const en = {
   'studio.field.fp.triviaRemoveQuestion': 'Remove question',
   'studio.field.fp.triviaAddAnswer': 'Add answer',
   'studio.field.fp.triviaRemoveAnswer': 'Remove',
+  'studio.field.fp.audioMcLead':
+    'Players hear a short clip and pick one answer. Choose whether they identify the singer or the song, set the allowed clip length, upload MP3 or WAV audio, and mark the correct option. Arabic is what players see first.',
+  'studio.field.fp.audioMcMaxDuration': 'Max clip length',
+  'studio.field.fp.audioMcMaxDurationHint':
+    'Uploads longer than this are rejected. Replace any existing clip that exceeds the new limit before publishing.',
+  'studio.field.fp.audioMcTarget': 'Answer target',
+  'studio.field.fp.audioMcTargetHint':
+    'Choose this explicitly. It is never inferred from the filename or metadata.',
+  'studio.field.fp.audioMcTargetArtist': 'Singer or voice owner',
+  'studio.field.fp.audioMcTargetTrack': 'Song or clip name',
+  'studio.field.fp.audioMcUpload': 'Upload audio',
+  'studio.field.fp.audioMcReplace': 'Replace audio',
+  'studio.field.fp.audioMcRemove': 'Remove audio',
+  'studio.field.fp.audioMcUploading': 'Uploading…',
+  'studio.field.fp.audioMcDuration': 'Decoded duration',
+  'studio.field.fp.audioMcRequired': 'Audio is required before publishing.',
+  'studio.field.fp.audioMcVizPending': 'Loading waveform analysis…',
+  'studio.field.fp.audioMcCorrectVisible': 'Correct answer (admin only)',
+  'studio.field.fp.audioMcPublishHint':
+    'Fix Arabic copy, options, and audio before publishing.',
+  'studio.audio.title': 'Guess the Audio',
+  'studio.audio.badgeArtist': 'Required: singer name',
+  'studio.audio.badgeTrack': 'Required: song name',
+  'studio.audio.error.duration_exceeded':
+    'Decoded duration must be greater than 0 and at most {seconds} seconds.',
+  'studio.audio.error.duration_zero':
+    'Decoded audio duration must be greater than 0.',
+  'studio.audio.error.invalid_extension':
+    'Only .mp3 and .wav uploads are allowed.',
+  'studio.audio.error.invalid_mime':
+    'Declared MIME type is not an allowed audio type.',
+  'studio.audio.error.invalid_signature':
+    'File signature does not match the declared MP3 or WAV type.',
+  'studio.audio.error.decode_failed': 'The audio file could not be decoded.',
+  'studio.audio.error.empty_stream': 'The file has no decodable audio stream.',
+  'studio.audio.error.unsupported_codec':
+    'This audio codec or container is not supported.',
+  'studio.audio.error.analysis_failed':
+    'The clip could not be analyzed for visualization.',
+  'studio.audio.error.truncated': 'The audio file is truncated or corrupted.',
+  'studio.audio.error.file_too_large':
+    'The audio file exceeds the upload size limit.',
   'studio.field.fp.stroopLead':
     'Players see one random Stroop card from this list. The written word and the ink color should conflict; the correct answer is the ink color, not the word meaning.',
   'studio.field.fp.stroopQuestionN': 'Card {n}',
@@ -861,11 +910,13 @@ const en = {
   'studio.field.fp.pulseLead':
     'Pulse travel time and hit windows follow challenge difficulty unless customized.',
   'studio.field.fp.segmentDurationMs': 'Pulse travel time',
-  'studio.field.fp.segmentDurationHint': 'How long the pulse takes to reach the next player',
+  'studio.field.fp.segmentDurationHint':
+    'How long the pulse takes to reach the next player',
   'studio.field.fp.hitWindowEarlyMs': 'Early tap window',
   'studio.field.fp.hitWindowLateMs': 'Late tap window',
   'studio.field.fp.hitWindowHint': 'How early or late a tap still counts',
-  'studio.field.fp.oddLead': 'Grid width. Time pressure comes from challenge difficulty.',
+  'studio.field.fp.oddLead':
+    'Grid width. Time pressure comes from challenge difficulty.',
   'studio.field.fp.columns': 'Columns',
   'studio.field.fp.columnsHint': 'How many glyphs per row',
   'studio.field.fp.orderLead':
@@ -877,7 +928,8 @@ const en = {
   'studio.field.fp.searchLead':
     'Find every matching cell. Time pressure comes from challenge difficulty.',
   'studio.field.fp.targetValue': 'Target to find',
-  'studio.field.fp.targetValueHint': 'Players select every cell with this value',
+  'studio.field.fp.targetValueHint':
+    'Players select every cell with this value',
   'studio.field.fp.layoutLead':
     'Layout stays in the advanced export. Challenge difficulty sets the play time.',
   'studio.field.fp.behaviorNote':
@@ -1066,6 +1118,8 @@ const en = {
   'studio.validation.tooLong': 'Value is too long',
   'studio.validation.invalidRange': 'Invalid range',
   'studio.validation.missingArabic': 'Arabic content is required',
+  'studio.validation.audioRequired':
+    'Each question needs a valid MP3 or WAV clip no longer than the allowed clip length before publishing.',
   'studio.validation.stroopVariants':
     'Add at least one valid Stroop card (word, ink color, and 2+ answers)',
 

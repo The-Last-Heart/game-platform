@@ -495,6 +495,42 @@ export function toPublicChallengeView(
     }
   }
 
+  if (challenge.engineId === 'audio.multiple_choice') {
+    clientConfig['playAtMs'] = challenge.startsAtMs;
+    const duration = challenge.definition.serverConfig['audioDurationMs'];
+    if (typeof duration === 'number') {
+      clientConfig['audioDurationMs'] = duration;
+    }
+    const audioId = challenge.definition.serverConfig['audioAssetId'];
+    if (typeof audioId === 'string' && audioId.length > 0) {
+      clientConfig['audioAssetId'] = audioId;
+    }
+    const vizId = challenge.definition.serverConfig['visualizationAssetId'];
+    if (typeof vizId === 'string' && vizId.length > 0) {
+      clientConfig['visualizationAssetId'] = vizId;
+    }
+    const target = challenge.definition.serverConfig['answerTarget'];
+    if (target === 'artist' || target === 'track') {
+      clientConfig['answerTarget'] = target;
+      clientConfig['targetBadgeKey'] =
+        target === 'track'
+          ? 'challenge.audio_mc.badge_track'
+          : 'challenge.audio_mc.badge_artist';
+      clientConfig['promptKey'] =
+        target === 'track'
+          ? 'challenge.audio_mc.prompt_track'
+          : 'challenge.audio_mc.prompt_artist';
+    }
+    delete clientConfig['correctOptionKey'];
+    delete clientConfig['correctOptionId'];
+    delete clientConfig['isCorrect'];
+    delete clientConfig['originalFilename'];
+    delete clientConfig['artist'];
+    delete clientConfig['title'];
+    delete clientConfig['album'];
+    delete clientConfig['comment'];
+  }
+
   // Pair sync: viewer-private participation flags (seat overlay preferred).
   if (challenge.engineId === 'social.pair_sync') {
     const syncWindowRaw = challenge.definition.serverConfig['syncWindowMs'];
@@ -644,6 +680,7 @@ export class MatchEngine {
       pendingAttack: null,
       lastPowerGrant: null,
       powerActionActorIds: [],
+      lastAudioAnswerTarget: null,
     };
   }
 
@@ -1211,6 +1248,7 @@ export class MatchEngine {
       challenge.seatVariants = assignSeatVariants(challenge, nowMono);
     } else if (
       challenge.engineId === 'trivia.multiple_choice' ||
+      challenge.engineId === 'audio.multiple_choice' ||
       challenge.engineId === 'geography.select_on_map' ||
       challenge.engineId === 'focus.odd_one_out' ||
       challenge.engineId === 'order.sequence_sort' ||
@@ -1223,7 +1261,15 @@ export class MatchEngine {
       challenge.engineId === 'focus.stroop' ||
       challenge.engineId === 'search.select_occurrences'
     ) {
-      materializePack31Round(challenge.definition);
+      materializePack31Round(challenge.definition, {
+        lastAudioAnswerTarget: next.lastAudioAnswerTarget ?? null,
+      });
+      if (challenge.engineId === 'audio.multiple_choice') {
+        const target = challenge.definition.clientConfig['answerTarget'];
+        if (target === 'artist' || target === 'track') {
+          next.lastAudioAnswerTarget = target;
+        }
+      }
       challenge.roundPhase = 'answer';
       challenge.previewEndsAtMonoMs = null;
       challenge.signalToken = null;
@@ -1434,6 +1480,7 @@ export class MatchEngine {
       round.seatVariants = assignSeatVariants(round, nowMono);
     } else if (
       pinned.engineId === 'trivia.multiple_choice' ||
+      pinned.engineId === 'audio.multiple_choice' ||
       pinned.engineId === 'geography.select_on_map' ||
       pinned.engineId === 'focus.odd_one_out' ||
       pinned.engineId === 'order.sequence_sort' ||
@@ -1446,7 +1493,15 @@ export class MatchEngine {
       pinned.engineId === 'focus.stroop' ||
       pinned.engineId === 'search.select_occurrences'
     ) {
-      materializePack31Round(pinned);
+      materializePack31Round(pinned, {
+        lastAudioAnswerTarget: next.lastAudioAnswerTarget ?? null,
+      });
+      if (pinned.engineId === 'audio.multiple_choice') {
+        const target = pinned.clientConfig['answerTarget'];
+        if (target === 'artist' || target === 'track') {
+          next.lastAudioAnswerTarget = target;
+        }
+      }
       round.roundPhase = 'answer';
       round.previewEndsAtMonoMs = null;
       round.seatVariants = assignSeatVariants(round, nowMono);

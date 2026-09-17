@@ -39,6 +39,12 @@ import {
   triviaQuestionBankIssues,
 } from './trivia-question-bank';
 import {
+  parseAudioQuestions,
+  parseMaxAudioDurationMs,
+  audioQuestionBankIssues,
+  collectAudioRequiredAssetIds,
+} from './audio-question-bank';
+import {
   parseStroopVariants,
   stroopVariantBankIssues,
 } from './stroop-variant-bank';
@@ -87,16 +93,45 @@ const ENGINE_OPTIONS: { value: string; label: string }[] =
     label: entry.labelKey,
   }));
 
+function engineMessageKey(engineId: string): MessageKey {
+  if (engineId === 'audio.multiple_choice') {
+    return 'studio.engine.audio_multiple_choice';
+  }
+  return `studio.engine.${engineId.split('.').pop()}` as MessageKey;
+}
+
 function localizedEngineOptions(
   locale: Locale,
+  extraEngineId?: string,
 ): { value: string; label: string }[] {
-  return ENGINE_OPTIONS.map((opt) => ({
-    value: opt.value,
-    label: t(
-      locale,
-      `studio.engine.${opt.value.split('.').pop()}` as MessageKey,
-    ),
-  }));
+  const seen = new Set<string>();
+  const opts: { value: string; label: string }[] = [];
+  for (const opt of ENGINE_OPTIONS) {
+    seen.add(opt.value);
+    opts.push({
+      value: opt.value,
+      label: (() => {
+        try {
+          return t(locale, engineMessageKey(opt.value));
+        } catch {
+          return opt.value;
+        }
+      })(),
+    });
+  }
+  if (extraEngineId && !seen.has(extraEngineId)) {
+    opts.unshift({
+      value: extraEngineId,
+      label: (() => {
+        try {
+          return t(locale, engineMessageKey(extraEngineId));
+        } catch {
+          return extraEngineId;
+        }
+      })(),
+    });
+  }
+  return opts;
 }
 
 const MODE_OPTIONS = [
@@ -318,7 +353,10 @@ function memoryAnswerMsFromDraft(draft: DraftDefinition): number {
   return Math.max(0, draft.durationMs - memoryPreviewMsFromDraft(draft));
 }
 
-function clampMemoryTimers(previewMs: number, answerMs: number): {
+function clampMemoryTimers(
+  previewMs: number,
+  answerMs: number,
+): {
   previewMs: number;
   answerMs: number;
   durationMs: number;
@@ -408,6 +446,30 @@ function validateDraft(
       parseTriviaQuestions(draft.serverConfig),
     );
     if (triviaIssues.length > 0) {
+      errors.push({
+        path: 'serverConfig.questions',
+        message: t(locale, 'studio.validation.missingArabic'),
+      });
+    }
+  }
+  if (draft.engineId === 'audio.multiple_choice') {
+    const audioIssues = audioQuestionBankIssues(
+      parseAudioQuestions(draft.serverConfig),
+      parseMaxAudioDurationMs(draft.serverConfig),
+    );
+    if (
+      audioIssues.some(
+        (issue) =>
+          issue.includes('audioAssetId') ||
+          issue.includes('audioDurationMs') ||
+          issue.includes('visualizationAssetId'),
+      )
+    ) {
+      errors.push({
+        path: 'serverConfig.questions',
+        message: t(locale, 'studio.validation.audioRequired'),
+      });
+    } else if (audioIssues.length > 0) {
       errors.push({
         path: 'serverConfig.questions',
         message: t(locale, 'studio.validation.missingArabic'),
@@ -517,7 +579,7 @@ function definitionToDraft(def: ChallengeDefinitionContract): DraftDefinition {
   if (def.engineId === 'social.pass_the_pulse') {
     requiredAssetIds = ensurePassThePulseRequiredAssets(requiredAssetIds);
   }
-  let durationMs = def.durationMs;
+  const durationMs = def.durationMs;
   if (def.engineId === 'memory.sequence') {
     const previewMs = readPositiveMs(
       clientConfig.previewMs ?? serverConfig.previewMs,
@@ -739,7 +801,9 @@ export function StudioChallengeEditor({
               ? 'challenge.fog_wipe.intro'
               : entry.engineId === 'memory.sequence'
                 ? 'challenge.memory.intro'
-                : prev.promptKey,
+                : entry.engineId === 'audio.multiple_choice'
+                  ? 'challenge.audio_mc.intro'
+                  : prev.promptKey,
         requiredAssetIds:
           entry.engineId === 'gesture.fog_wipe'
             ? mergeFogWipeRequiredAssets(
@@ -749,7 +813,11 @@ export function StudioChallengeEditor({
               )
             : entry.engineId === 'social.pass_the_pulse'
               ? ensurePassThePulseRequiredAssets([])
-              : prev.requiredAssetIds,
+              : entry.engineId === 'audio.multiple_choice'
+                ? collectAudioRequiredAssetIds(
+                    parseAudioQuestions(play.serverConfig),
+                  )
+                : prev.requiredAssetIds,
       };
     });
   }
@@ -881,7 +949,7 @@ export function StudioChallengeEditor({
   }
 
   const isCreate = mode === 'create';
-  const engineOptions = localizedEngineOptions(locale);
+  const engineOptions = localizedEngineOptions(locale, draft.engineId);
 
   return (
     <div className="studio-layout">

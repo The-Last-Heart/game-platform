@@ -1,8 +1,11 @@
 'use client';
 
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import type { LaunchEngineId } from '@thelastheart/contracts';
-import { oppositeSwipeDirection } from '@thelastheart/contracts';
+import {
+  AUDIO_CLIP_DEFAULT_MAX_DURATION_MS,
+  oppositeSwipeDirection,
+} from '@thelastheart/contracts';
 import type { SwipeDirection } from '@thelastheart/contracts';
 import { t } from '@/i18n/get-dictionary';
 import type { Locale } from '@/i18n/locale';
@@ -13,6 +16,7 @@ import {
   FieldGroup,
   FieldInput,
   FieldSelect,
+  readFieldInputValue,
 } from './Field';
 import {
   CatalogKeyField,
@@ -41,6 +45,12 @@ import {
   SWIPE_DISTANCE_PRESETS,
   ZONE_PRESETS,
 } from './studio-catalog-options';
+import { AudioMultipleChoiceFields } from './AudioMultipleChoiceFields';
+import {
+  audioClientPreview,
+  defaultAudioQuestions,
+  serializeAudioQuestions,
+} from './audio-question-bank';
 import {
   addTriviaOption,
   createTriviaQuestion,
@@ -49,6 +59,7 @@ import {
   removeTriviaOption,
   serializeTriviaQuestions,
   triviaClientPreview,
+  triviaQuestionBankSignature,
   type TriviaStudioQuestion,
 } from './trivia-question-bank';
 import {
@@ -310,6 +321,13 @@ export function defaultClientConfig(
         ],
         footerKey: 'challenge.trivia.footer',
       };
+    case 'audio.multiple_choice':
+      return audioClientPreview(defaultAudioQuestions()[0], {
+        categoryKey: 'challenge.category.audio',
+        promptKey: 'challenge.audio_mc.prompt_artist',
+        titleKey: 'challenge.audio_mc.intro',
+        footerKey: 'challenge.audio_mc.footer',
+      });
     case 'geography.select_on_map':
       return {
         categoryKey: 'challenge.category.geography',
@@ -568,6 +586,11 @@ export function defaultServerConfig(
     case 'trivia.multiple_choice':
       return {
         questions: serializeTriviaQuestions(defaultTriviaQuestions()),
+      };
+    case 'audio.multiple_choice':
+      return {
+        maxAudioDurationMs: AUDIO_CLIP_DEFAULT_MAX_DURATION_MS,
+        questions: serializeAudioQuestions(defaultAudioQuestions()),
       };
     case 'geography.select_on_map':
       return {
@@ -1926,8 +1949,7 @@ function FocusStroopFields(props: FamilyParamsFieldsProps) {
     const normalized = next
       .map((v) => normalizeStroopVariant(v))
       .filter((v): v is StroopStudioVariant => v != null);
-    const safe =
-      normalized.length > 0 ? normalized : [createStroopVariant([])];
+    const safe = normalized.length > 0 ? normalized : [createStroopVariant([])];
     const first = safe[0]!;
     const rest = { ...serverConfig };
     onServerChange({
@@ -2071,9 +2093,20 @@ function TriviaMultipleChoiceFields(props: FamilyParamsFieldsProps) {
     onServerChange,
     disabled,
   } = props;
-  const questions = parseTriviaQuestions(serverConfig);
+  const parsedQuestions = useMemo(
+    () => parseTriviaQuestions(serverConfig),
+    [serverConfig],
+  );
+  const parsedSignature = triviaQuestionBankSignature(parsedQuestions);
+  const [questions, setQuestions] = useState(parsedQuestions);
+  const [syncedSignature, setSyncedSignature] = useState(parsedSignature);
+  if (parsedSignature !== syncedSignature) {
+    setSyncedSignature(parsedSignature);
+    setQuestions(parsedQuestions);
+  }
 
   function commit(next: TriviaStudioQuestion[]) {
+    setQuestions(next);
     const serialized = serializeTriviaQuestions(next);
     const rest = { ...serverConfig };
     delete rest.questionKey;
@@ -2115,7 +2148,7 @@ function TriviaMultipleChoiceFields(props: FamilyParamsFieldsProps) {
                 const next = [...questions];
                 next[index] = {
                   ...question,
-                  questionAr: e.currentTarget.value,
+                  questionAr: readFieldInputValue(e),
                 };
                 commit(next);
               }}
@@ -2129,7 +2162,7 @@ function TriviaMultipleChoiceFields(props: FamilyParamsFieldsProps) {
                 const next = [...questions];
                 next[index] = {
                   ...question,
-                  questionEn: e.currentTarget.value,
+                  questionEn: readFieldInputValue(e),
                 };
                 commit(next);
               }}
@@ -2163,10 +2196,9 @@ function TriviaMultipleChoiceFields(props: FamilyParamsFieldsProps) {
                   disabled={disabled}
                   dir="rtl"
                   onChange={(e) => {
+                    const value = readFieldInputValue(e);
                     const nextOptions = question.options.map((o) =>
-                      o.key === option.key
-                        ? { ...o, ar: e.currentTarget.value }
-                        : o,
+                      o.key === option.key ? { ...o, ar: value } : o,
                     );
                     const next = [...questions];
                     next[index] = { ...question, options: nextOptions };
@@ -2179,10 +2211,9 @@ function TriviaMultipleChoiceFields(props: FamilyParamsFieldsProps) {
                   value={option.en}
                   disabled={disabled}
                   onChange={(e) => {
+                    const value = readFieldInputValue(e);
                     const nextOptions = question.options.map((o) =>
-                      o.key === option.key
-                        ? { ...o, en: e.currentTarget.value }
-                        : o,
+                      o.key === option.key ? { ...o, en: value } : o,
                     );
                     const next = [...questions];
                     next[index] = { ...question, options: nextOptions };
@@ -2823,6 +2854,8 @@ export function FamilyParamsFields(props: FamilyParamsFieldsProps) {
         return <GestureFogWipeFields {...props} />;
       case 'trivia.multiple_choice':
         return <TriviaMultipleChoiceFields {...props} />;
+      case 'audio.multiple_choice':
+        return <AudioMultipleChoiceFields {...props} />;
       case 'focus.stroop':
         return <FocusStroopFields {...props} />;
       case 'geography.select_on_map':

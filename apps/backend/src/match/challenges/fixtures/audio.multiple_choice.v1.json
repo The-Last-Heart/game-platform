@@ -1,0 +1,90 @@
+{
+  "definitionId": "audio.multiple_choice.dev",
+  "definitionVersion": 1,
+  "engineId": "audio.multiple_choice",
+  "durationMs": 8000,
+  "heartPenaltyOnFailure": 1,
+  "energyRewardOnSuccess": 1,
+  "promptKey": "challenge.audio_mc.intro",
+  "choiceKeys": [],
+  "clientConfig": {
+    "categoryKey": "challenge.category.audio",
+    "promptKey": "challenge.audio_mc.prompt_artist",
+    "titleKey": "challenge.audio_mc.intro",
+    "questionKey": "audio_mc.q.artist_1",
+    "optionKeys": [
+      "audio_mc.opt.artist_1_a",
+      "audio_mc.opt.artist_1_b",
+      "audio_mc.opt.artist_1_c",
+      "audio_mc.opt.artist_1_d"
+    ],
+    "targetBadgeKey": "challenge.audio_mc.badge_artist",
+    "footerKey": "challenge.audio_mc.footer",
+    "answerTarget": "artist",
+    "audioAssetId": "ca_44384e12ad9a80f1",
+    "visualizationAssetId": "cv_44384e12ad9a80f1",
+    "audioDurationMs": 2000
+  },
+  "serverConfig": {
+    "maxAudioDurationMs": 7000,
+    "questions": [
+      {
+        "questionKey": "audio_mc.q.artist_1",
+        "optionKeys": [
+          "audio_mc.opt.artist_1_a",
+          "audio_mc.opt.artist_1_b",
+          "audio_mc.opt.artist_1_c",
+          "audio_mc.opt.artist_1_d"
+        ],
+        "correctOptionKey": "audio_mc.opt.artist_1_b",
+        "answerTarget": "artist",
+        "audioAssetId": "ca_44384e12ad9a80f1",
+        "visualizationAssetId": "cv_44384e12ad9a80f1",
+        "audioDurationMs": 2000,
+        "analysisSchemaVersion": 1,
+        "questionCopy": {
+          "ar": "من صاحب هذا الصوت؟",
+          "en": "Who is the owner of this voice?"
+        },
+        "optionCopy": {
+          "audio_mc.opt.artist_1_a": { "ar": "رامي", "en": "Rami" },
+          "audio_mc.opt.artist_1_b": { "ar": "نور", "en": "Nour" },
+          "audio_mc.opt.artist_1_c": { "ar": "ليان", "en": "Lyan" },
+          "audio_mc.opt.artist_1_d": { "ar": "سليم", "en": "Salim" }
+        }
+      },
+      {
+        "questionKey": "audio_mc.q.track_1",
+        "optionKeys": [
+          "audio_mc.opt.track_1_a",
+          "audio_mc.opt.track_1_b",
+          "audio_mc.opt.track_1_c",
+          "audio_mc.opt.track_1_d"
+        ],
+        "correctOptionKey": "audio_mc.opt.track_1_a",
+        "answerTarget": "track",
+        "audioAssetId": "ca_76fc12197f19bd1b",
+        "visualizationAssetId": "cv_76fc12197f19bd1b",
+        "audioDurationMs": 2000,
+        "analysisSchemaVersion": 1,
+        "questionCopy": {
+          "ar": "ما اسم الأغنية؟",
+          "en": "What is the name of the song?"
+        },
+        "optionCopy": {
+          "audio_mc.opt.track_1_a": { "ar": "نبض أخير", "en": "Last Pulse" },
+          "audio_mc.opt.track_1_b": { "ar": "ليل بعيد", "en": "Distant Night" },
+          "audio_mc.opt.track_1_c": {
+            "ar": "صوت القلب",
+            "en": "Voice of the Heart"
+          },
+          "audio_mc.opt.track_1_d": {
+            "ar": "بعد الغياب",
+            "en": "After Absence"
+          }
+        }
+      }
+    ]
+  },
+  "difficulty": "medium"
+}

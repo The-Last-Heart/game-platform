@@ -221,6 +221,7 @@ export function difficultyPlayPatch(
         hard: { durationMs: 4000, clientConfig: {}, serverConfig: {} },
       }[difficulty];
     case 'trivia.multiple_choice':
+    case 'audio.multiple_choice':
     case 'geography.select_on_map':
     case 'focus.stroop':
       return {

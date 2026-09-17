@@ -1,6 +1,11 @@
 'use client';
 
-import type { ReactNode, InputHTMLAttributes, SelectHTMLAttributes, TextareaHTMLAttributes } from 'react';
+import type {
+  ReactNode,
+  InputHTMLAttributes,
+  SelectHTMLAttributes,
+  TextareaHTMLAttributes,
+} from 'react';
 
 type FieldProps = {
   label: string;
@@ -13,12 +18,13 @@ type FieldProps = {
 export function Field({ label, hint, error, htmlFor, children }: FieldProps) {
   return (
     <div className="field">
-      <label htmlFor={htmlFor}>
-        {label}
-      </label>
+      <label htmlFor={htmlFor}>{label}</label>
       {children}
       {hint && !error ? (
-        <span className="field-hint" style={{ color: 'var(--lh-text-muted)', fontSize: '0.8rem' }}>
+        <span
+          className="field-hint"
+          style={{ color: 'var(--lh-text-muted)', fontSize: '0.8rem' }}
+        >
           {hint}
         </span>
       ) : null}
@@ -34,7 +40,9 @@ type FieldGroupProps = {
 
 export function FieldGroup({ horizontal, children }: FieldGroupProps) {
   return (
-    <div className={`field-group${horizontal ? ' field-group-horizontal' : ''}`}>
+    <div
+      className={`field-group${horizontal ? ' field-group-horizontal' : ''}`}
+    >
       {children}
     </div>
   );
@@ -46,7 +54,34 @@ type FieldInputProps = {
   error?: string;
 } & InputHTMLAttributes<HTMLInputElement>;
 
-export function FieldInput({ label, hint, error, id, ...rest }: FieldInputProps) {
+export function readFieldInputValue(event: {
+  currentTarget: EventTarget | null;
+  target: EventTarget | null;
+}): string {
+  const current = event.currentTarget;
+  if (
+    current instanceof HTMLInputElement ||
+    current instanceof HTMLTextAreaElement
+  ) {
+    return current.value;
+  }
+  const target = event.target;
+  if (
+    target instanceof HTMLInputElement ||
+    target instanceof HTMLTextAreaElement
+  ) {
+    return target.value;
+  }
+  return '';
+}
+
+export function FieldInput({
+  label,
+  hint,
+  error,
+  id,
+  ...rest
+}: FieldInputProps) {
   return (
     <Field label={label} hint={hint} error={error} htmlFor={id}>
       <input id={id} {...rest} />
@@ -61,7 +96,14 @@ type FieldSelectProps = {
   options: { value: string; label: string }[];
 } & SelectHTMLAttributes<HTMLSelectElement>;
 
-export function FieldSelect({ label, hint, error, id, options, ...rest }: FieldSelectProps) {
+export function FieldSelect({
+  label,
+  hint,
+  error,
+  id,
+  options,
+  ...rest
+}: FieldSelectProps) {
   return (
     <Field label={label} hint={hint} error={error} htmlFor={id}>
       <select id={id} {...rest}>
@@ -81,10 +123,20 @@ type FieldTextareaProps = {
   error?: string;
 } & TextareaHTMLAttributes<HTMLTextAreaElement>;
 
-export function FieldTextarea({ label, hint, error, id, ...rest }: FieldTextareaProps) {
+export function FieldTextarea({
+  label,
+  hint,
+  error,
+  id,
+  ...rest
+}: FieldTextareaProps) {
   return (
     <Field label={label} hint={hint} error={error} htmlFor={id}>
-      <textarea id={id} style={{ minHeight: '5rem', resize: 'vertical' }} {...rest} />
+      <textarea
+        id={id}
+        style={{ minHeight: '5rem', resize: 'vertical' }}
+        {...rest}
+      />
     </Field>
   );
 }
@@ -96,13 +148,34 @@ type FieldCheckboxGroupProps = {
   onChange: (selected: string[]) => void;
 };
 
-export function FieldCheckboxGroup({ label, options, selected, onChange }: FieldCheckboxGroupProps) {
+export function FieldCheckboxGroup({
+  label,
+  options,
+  selected,
+  onChange,
+}: FieldCheckboxGroupProps) {
   return (
     <div className="field">
       <span style={{ fontWeight: 600, fontSize: '0.9rem' }}>{label}</span>
-      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem 1rem', marginTop: '0.25rem' }}>
+      <div
+        style={{
+          display: 'flex',
+          flexWrap: 'wrap',
+          gap: '0.5rem 1rem',
+          marginTop: '0.25rem',
+        }}
+      >
         {options.map((opt) => (
-          <label key={opt.value} style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', fontSize: '0.88rem', cursor: 'pointer' }}>
+          <label
+            key={opt.value}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '0.35rem',
+              fontSize: '0.88rem',
+              cursor: 'pointer',
+            }}
+          >
             <input
               type="checkbox"
               checked={selected.includes(opt.value)}

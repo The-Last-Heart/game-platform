@@ -33,6 +33,21 @@ class ChallengePlayView extends StatefulWidget {
 }
 
 class _ChallengePlayViewState extends State<ChallengePlayView> {
+  String? _localOutcome(PublicChallenge challenge) {
+    final LastRoundResult? result = widget.state.lastRoundResult;
+    if (result == null ||
+        result.challengeInstanceId != challenge.challengeInstanceId) {
+      return null;
+    }
+    final String? playerId = widget.state.playerId;
+    for (final PlayerChallengeResolution resolution in result.resolutions) {
+      if (resolution.playerId == playerId) {
+        return resolution.outcome;
+      }
+    }
+    return null;
+  }
+
   @override
   Widget build(BuildContext context) {
     final TranslationResolver resolver = AppLocalization.of(context);
@@ -86,6 +101,7 @@ class _ChallengePlayViewState extends State<ChallengePlayView> {
                   inputEnabled: inputEnabled,
                   localPlayerId: widget.state.playerId,
                   players: widget.state.players,
+                  localOutcome: _localOutcome(challenge),
                 ),
               ),
             ),

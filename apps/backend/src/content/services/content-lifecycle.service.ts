@@ -37,6 +37,21 @@ const BULK_PAUSE_STATUSES = new Set<ContentLifecycleStatus>([
 ]);
 const BULK_RESUME_STATUSES = new Set<ContentLifecycleStatus>(['paused']);
 
+function parseStoredDefinition(raw: unknown): ChallengeDefinitionContract {
+  const parsed = challengeDefinitionSchema.safeParse(raw);
+  if (!parsed.success) {
+    throw new BadRequestException({
+      ok: false,
+      error: {
+        code: 'VALIDATION_ERROR',
+        message: 'Stored challenge definition is invalid',
+        details: parsed.error.flatten(),
+      },
+    });
+  }
+  return parsed.data;
+}
+
 export function isBulkPauseEligible(
   status: ContentLifecycleStatus,
   paused: boolean,
@@ -1205,8 +1220,7 @@ export class ContentLifecycleService {
 
     const latestDefinitionId =
       versions.rows[0] != null
-        ? (challengeDefinitionSchema.parse(versions.rows[0].definition)
-            .definitionId as string)
+        ? parseStoredDefinition(versions.rows[0].definition).definitionId
         : null;
 
     let catalogPaused = false;
@@ -1312,7 +1326,7 @@ export class ContentLifecycleService {
         templateId: v.template_id,
         version: v.version,
         status: v.status as ContentLifecycleStatus,
-        definition: challengeDefinitionSchema.parse(v.definition),
+        definition: parseStoredDefinition(v.definition),
         validationNotes: v.validation_notes,
         createdAt: v.created_at.toISOString(),
         approvedAt: v.approved_at?.toISOString() ?? null,

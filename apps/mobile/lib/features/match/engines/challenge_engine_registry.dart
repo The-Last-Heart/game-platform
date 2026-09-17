@@ -1,4 +1,5 @@
 import 'audio_cue_engine.dart';
+import 'audio_multiple_choice_engine.dart';
 import 'challenge_engine.dart';
 import 'focus_odd_one_out_engine.dart';
 import 'focus_stroop_engine.dart';
@@ -41,6 +42,7 @@ class ChallengeEngineRegistry {
     register(MotionShakeEngine());
     register(MotionTiltBalanceEngine());
     register(AudioCueEngine());
+    register(AudioMultipleChoiceEngine());
     register(SocialPairSyncEngine());
     register(SocialPassThePulseEngine());
     register(TacticalRiskChoiceEngine());

@@ -14,7 +14,7 @@ describe('ContentPackService', () => {
     const service = new ContentPackService();
     const manifest = service.getManifest();
     expect(manifest.packId).toBe('lh.local.content.v1');
-    expect(manifest.packVersion).toBe(14);
+    expect(manifest.packVersion).toBe(15);
     expect(manifest.assets.some((a) => a.assetId === 'sfx.pulse')).toBe(true);
     expect(
       manifest.assets.some((a) => a.assetId === 'fog_wipe.reveal_content'),

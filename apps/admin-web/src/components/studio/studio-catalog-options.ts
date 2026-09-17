@@ -282,6 +282,18 @@ export const PROMPT_KEY_OPTIONS: CatalogOption[] = [
     labelKey: 'studio.catalog.prompt.audioHaptic',
   },
   {
+    value: 'challenge.audio_mc.intro',
+    labelKey: 'studio.catalog.prompt.audioMcIntro',
+  },
+  {
+    value: 'challenge.audio_mc.prompt_artist',
+    labelKey: 'studio.catalog.prompt.audioMcArtist',
+  },
+  {
+    value: 'challenge.audio_mc.prompt_track',
+    labelKey: 'studio.catalog.prompt.audioMcTrack',
+  },
+  {
     value: 'challenge.pair_sync.prompt',
     labelKey: 'studio.catalog.prompt.pairPrompt',
   },
@@ -307,6 +319,10 @@ export const FALLBACK_KEY_OPTIONS: CatalogOption[] = [
   { value: 'motion.shake.v1', labelKey: 'studio.catalog.fallback.shake' },
   { value: 'motion.tilt_balance.v1', labelKey: 'studio.catalog.fallback.tilt' },
   { value: 'audio.cue.v1', labelKey: 'studio.catalog.fallback.audio' },
+  {
+    value: 'challenge.audio_mc.a11y_fallback',
+    labelKey: 'studio.catalog.fallback.audioMc',
+  },
   { value: 'social.pair_sync.v1', labelKey: 'studio.catalog.fallback.pair' },
   {
     value: 'tactical.risk_choice.v1',

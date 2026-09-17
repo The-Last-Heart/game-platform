@@ -1,6 +1,6 @@
 {
   "packId": "lh.local.content.v1",
-  "packVersion": 14,
+  "packVersion": 15,
   "assets": [
     {
       "assetId": "sfx.pulse",
@@ -288,6 +288,48 @@
       "contentType": "audio/mpeg",
       "bytes": 162048,
       "sha256": "e698ea5774303025e43953109e8e69c2325c3b0bd5f4bb440aa0e1a54934aedb"
+    },
+    {
+      "assetId": "ca_44384e12ad9a80f1",
+      "relativePath": "assets/ca_44384e12ad9a80f1.wav",
+      "contentType": "audio/wav",
+      "bytes": 88244,
+      "sha256": "44384e12ad9a80f1a0837b16bd691179600f8a389e5c658282eb32e6914ca571",
+      "durationMs": 2000,
+      "analysisSchemaVersion": 1,
+      "visualizationAssetId": "cv_44384e12ad9a80f1",
+      "kind": "audio"
+    },
+    {
+      "assetId": "cv_44384e12ad9a80f1",
+      "relativePath": "assets/cv_44384e12ad9a80f1.json",
+      "contentType": "application/json",
+      "bytes": 37554,
+      "sha256": "11a47c5f3e092033a1d4b395fde0d13c5f40341e4e982ae1f3844fac03eac8c7",
+      "durationMs": 2000,
+      "analysisSchemaVersion": 1,
+      "kind": "visualization"
+    },
+    {
+      "assetId": "ca_76fc12197f19bd1b",
+      "relativePath": "assets/ca_76fc12197f19bd1b.wav",
+      "contentType": "audio/wav",
+      "bytes": 88244,
+      "sha256": "76fc12197f19bd1b0cd3139ebc67cc26f24e87ca10d3121021230a9d35b5b85c",
+      "durationMs": 2000,
+      "analysisSchemaVersion": 1,
+      "visualizationAssetId": "cv_76fc12197f19bd1b",
+      "kind": "audio"
+    },
+    {
+      "assetId": "cv_76fc12197f19bd1b",
+      "relativePath": "assets/cv_76fc12197f19bd1b.json",
+      "contentType": "application/json",
+      "bytes": 38452,
+      "sha256": "2d6b7094ed00e9e6208e497c51c7bca8275bb9dc91b20ee66ecd8027af420569",
+      "durationMs": 2000,
+      "analysisSchemaVersion": 1,
+      "kind": "visualization"
     }
   ]
 }

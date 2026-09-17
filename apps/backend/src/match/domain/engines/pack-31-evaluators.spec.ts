@@ -13,6 +13,7 @@ import {
   PrecisionNeonCableEvaluator,
   SearchSelectOccurrencesEvaluator,
   TriviaMultipleChoiceEvaluator,
+  AudioMultipleChoiceEvaluator,
   loadGeographyMaps,
   materializePack31Round,
 } from './pack-31-evaluators';
@@ -770,5 +771,202 @@ describe('pack-31 materialize + geography seats', () => {
         ],
       }).engineId,
     ).toBe('geography.select_on_map');
+  });
+
+  describe('audio.multiple_choice', () => {
+    const artistQuestion = {
+      questionKey: 'audio_mc.q.artist_1',
+      optionKeys: ['a', 'b', 'c', 'd'],
+      correctOptionKey: 'b',
+      answerTarget: 'artist',
+      audioAssetId: 'ca_44384e12ad9a80f1',
+      visualizationAssetId: 'cv_44384e12ad9a80f1',
+      audioDurationMs: 2000,
+      questionCopy: { ar: 'من صاحب هذا الصوت؟' },
+      optionCopy: {
+        a: { ar: 'رامي' },
+        b: { ar: 'نور' },
+        c: { ar: 'ليان' },
+        d: { ar: 'سليم' },
+      },
+    };
+    const trackQuestion = {
+      questionKey: 'audio_mc.q.track_1',
+      optionKeys: ['t1', 't2', 't3', 't4'],
+      correctOptionKey: 't1',
+      answerTarget: 'track',
+      audioAssetId: 'ca_76fc12197f19bd1b',
+      visualizationAssetId: 'cv_76fc12197f19bd1b',
+      audioDurationMs: 2000,
+      questionCopy: { ar: 'ما اسم الأغنية؟' },
+      optionCopy: {
+        t1: { ar: 'نبض أخير' },
+        t2: { ar: 'ليل بعيد' },
+        t3: { ar: 'صوت القلب' },
+        t4: { ar: 'بعد الغياب' },
+      },
+    };
+
+    it('validates artist and track contracts', () => {
+      expect(
+        validateEngineConfigs(
+          'audio.multiple_choice',
+          {
+            categoryKey: 'challenge.category.audio',
+            promptKey: 'challenge.audio_mc.prompt_artist',
+            questionKey: 'audio_mc.q.artist_1',
+            optionKeys: ['a', 'b', 'c', 'd'],
+          },
+          { questions: [artistQuestion, trackQuestion] },
+        ).engineId,
+      ).toBe('audio.multiple_choice');
+    });
+
+    it('rejects a question clip longer than the configured maxAudioDurationMs', () => {
+      expect(() =>
+        validateEngineConfigs(
+          'audio.multiple_choice',
+          {
+            categoryKey: 'challenge.category.audio',
+            promptKey: 'challenge.audio_mc.prompt_artist',
+            questionKey: 'audio_mc.q.artist_1',
+            optionKeys: ['a', 'b', 'c', 'd'],
+          },
+          {
+            maxAudioDurationMs: 3000,
+            questions: [{ ...artistQuestion, audioDurationMs: 4000 }],
+          },
+        ),
+      ).toThrow();
+    });
+
+    it('pins the track badge from the question even if answerTarget was left as artist', () => {
+      const definition = def(
+        'audio.multiple_choice',
+        { questions: [{ ...trackQuestion, answerTarget: 'artist' }] },
+        {
+          categoryKey: 'challenge.category.audio',
+          promptKey: 'challenge.audio_mc.prompt_artist',
+          questionKey: 'audio_mc.q.artist_1',
+          optionKeys: ['a', 'b', 'c', 'd'],
+          targetBadgeKey: 'challenge.audio_mc.badge_artist',
+          answerTarget: 'artist',
+        },
+      );
+      materializePack31Round(definition);
+      expect(definition.clientConfig['answerTarget']).toBe('track');
+      expect(definition.clientConfig['targetBadgeKey']).toBe(
+        'challenge.audio_mc.badge_track',
+      );
+      expect(definition.clientConfig['questionText']).toBe('ما اسم الأغنية؟');
+    });
+
+    it('never pins the correct answer onto the public client config', () => {
+      const definition = def(
+        'audio.multiple_choice',
+        { questions: [artistQuestion] },
+        {
+          categoryKey: 'challenge.category.audio',
+          promptKey: 'challenge.audio_mc.prompt_artist',
+          questionKey: 'audio_mc.q.artist_1',
+          optionKeys: ['a', 'b', 'c', 'd'],
+        },
+      );
+      materializePack31Round(definition);
+      expect(definition.serverConfig['correctOptionKey']).toBe('b');
+      expect(definition.clientConfig['correctOptionKey']).toBeUndefined();
+      expect(definition.clientConfig['correctOptionId']).toBeUndefined();
+      expect(definition.clientConfig['isCorrect']).toBeUndefined();
+      expect(definition.clientConfig['originalFilename']).toBeUndefined();
+      expect(JSON.stringify(definition.clientConfig)).not.toMatch(
+        /correctOption/,
+      );
+      expect(definition.clientConfig['audioAssetId']).toBe(
+        'ca_44384e12ad9a80f1',
+      );
+      expect(definition.clientConfig['answerTarget']).toBe('artist');
+    });
+
+    it('avoids repeating the same answer target when an alternative exists', () => {
+      const seen = new Set<string>();
+      for (let i = 0; i < 8; i += 1) {
+        const definition = def(
+          'audio.multiple_choice',
+          { questions: [artistQuestion, trackQuestion] },
+          {
+            categoryKey: 'challenge.category.audio',
+            promptKey: 'challenge.audio_mc.prompt_artist',
+            questionKey: 'audio_mc.q.artist_1',
+            optionKeys: ['a', 'b', 'c', 'd'],
+          },
+        );
+        materializePack31Round(definition, { lastAudioAnswerTarget: 'artist' });
+        seen.add(String(definition.clientConfig['answerTarget']));
+      }
+      expect(seen.has('track')).toBe(true);
+      expect(seen.has('artist')).toBe(false);
+    });
+
+    it('reuses the shared multiple-choice evaluator', () => {
+      const evaluator = new AudioMultipleChoiceEvaluator();
+      const definition = def('audio.multiple_choice', {
+        correctOptionKey: 'b',
+        optionKeys: ['a', 'b', 'c', 'd'],
+      });
+      expect(
+        evaluator.evaluate({
+          definition,
+          answer: { chosenOptionKey: 'b' },
+          receivedMonoMs: 10,
+          deadlineMonoMs: 5000,
+        }).success,
+      ).toBe(true);
+      expect(
+        evaluator.evaluate({
+          definition,
+          answer: { chosenOptionKey: 'a' },
+          receivedMonoMs: 10,
+          deadlineMonoMs: 5000,
+        }).reasonKey,
+      ).toBe('result.audio_mc.wrong');
+      expect(
+        evaluator.evaluate({
+          definition,
+          answer: { chosenOptionKey: 'b' },
+          receivedMonoMs: 6000,
+          deadlineMonoMs: 5000,
+        }).reasonKey,
+      ).toBe('result.timeout');
+      expect(
+        evaluator.evaluate({
+          definition,
+          answer: { chosenOptionKey: 'b' },
+          receivedMonoMs: 5000,
+          deadlineMonoMs: 5000,
+        }).success,
+      ).toBe(true);
+    });
+
+    it('duplicate option commands stay idempotent at the evaluator', () => {
+      const evaluator = new AudioMultipleChoiceEvaluator();
+      const definition = def('audio.multiple_choice', {
+        correctOptionKey: 'b',
+        optionKeys: ['a', 'b'],
+      });
+      const first = evaluator.evaluate({
+        definition,
+        answer: { chosenOptionKey: 'b' },
+        receivedMonoMs: 20,
+        deadlineMonoMs: 5000,
+      });
+      const second = evaluator.evaluate({
+        definition,
+        answer: { chosenOptionKey: 'b' },
+        receivedMonoMs: 40,
+        deadlineMonoMs: 5000,
+      });
+      expect(first.success).toBe(true);
+      expect(second.success).toBe(true);
+    });
   });
 });

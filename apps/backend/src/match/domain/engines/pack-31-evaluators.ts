@@ -66,6 +66,7 @@ function pickVariant<T extends Record<string, unknown>>(
 }
 
 export const TRIVIA_MULTIPLE_CHOICE_ENGINE_ID = 'trivia.multiple_choice';
+export const AUDIO_MULTIPLE_CHOICE_ENGINE_ID = 'audio.multiple_choice';
 export const GEOGRAPHY_SELECT_ON_MAP_ENGINE_ID = 'geography.select_on_map';
 export const FOCUS_ODD_ONE_OUT_ENGINE_ID = 'focus.odd_one_out';
 export const ORDER_SEQUENCE_SORT_ENGINE_ID = 'order.sequence_sort';
@@ -88,20 +89,51 @@ export class TriviaMultipleChoiceEvaluator implements ChallengeEvaluator {
     receivedMonoMs: number;
     deadlineMonoMs: number;
   }): ChallengeEvaluation {
-    if (input.receivedMonoMs > input.deadlineMonoMs) {
-      return { success: false, reasonKey: 'result.timeout' };
-    }
-    const correct = str(input.definition.serverConfig['correctOptionKey']);
-    const chosen = str(input.answer['chosenOptionKey']);
-    if (!correct || !chosen || chosen !== correct) {
-      return { success: false, reasonKey: 'result.trivia.wrong' };
-    }
-    return {
-      success: true,
-      reasonKey: 'result.success',
-      measureMs: Math.max(0, Math.floor(input.receivedMonoMs)),
-    };
+    return evaluateSharedMultipleChoice(input, 'result.trivia.wrong');
   }
+}
+
+export class AudioMultipleChoiceEvaluator implements ChallengeEvaluator {
+  readonly engineId = AUDIO_MULTIPLE_CHOICE_ENGINE_ID;
+
+  evaluate(input: {
+    definition: ChallengeDefinition;
+    answer: Record<string, unknown>;
+    receivedMonoMs: number;
+    deadlineMonoMs: number;
+  }): ChallengeEvaluation {
+    return evaluateSharedMultipleChoice(input, 'result.audio_mc.wrong');
+  }
+}
+
+function evaluateSharedMultipleChoice(
+  input: {
+    definition: ChallengeDefinition;
+    answer: Record<string, unknown>;
+    receivedMonoMs: number;
+    deadlineMonoMs: number;
+  },
+  wrongReasonKey: string,
+): ChallengeEvaluation {
+  if (input.receivedMonoMs > input.deadlineMonoMs) {
+    return { success: false, reasonKey: 'result.timeout' };
+  }
+  const allowed = Array.isArray(input.definition.serverConfig['optionKeys'])
+    ? (input.definition.serverConfig['optionKeys'] as unknown[])
+    : null;
+  const correct = str(input.definition.serverConfig['correctOptionKey']);
+  const chosen = str(input.answer['chosenOptionKey']);
+  if (allowed && chosen && !allowed.includes(chosen)) {
+    return { success: false, reasonKey: wrongReasonKey };
+  }
+  if (!correct || !chosen || chosen !== correct) {
+    return { success: false, reasonKey: wrongReasonKey };
+  }
+  return {
+    success: true,
+    reasonKey: 'result.success',
+    measureMs: Math.max(0, Math.floor(input.receivedMonoMs)),
+  };
 }
 
 export class GeographySelectOnMapEvaluator implements ChallengeEvaluator {
@@ -452,6 +484,7 @@ export class SearchSelectOccurrencesEvaluator implements ChallengeEvaluator {
 export function createPack31Evaluators(): ChallengeEvaluator[] {
   return [
     new TriviaMultipleChoiceEvaluator(),
+    new AudioMultipleChoiceEvaluator(),
     new GeographySelectOnMapEvaluator(),
     new FocusOddOneOutEvaluator(),
     new OrderSequenceSortEvaluator(),
@@ -574,55 +607,213 @@ function triviaCopyText(copy: unknown): string | null {
   return ar || en || null;
 }
 
-export function materializePack31Round(definition: ChallengeDefinition): void {
+function readQuestionBank(
+  server: Record<string, unknown>,
+): Array<Record<string, unknown>> {
+  return Array.isArray(server['questions'])
+    ? (server['questions'] as Array<Record<string, unknown>>)
+    : [];
+}
+
+function pickTriviaQuestion(
+  server: Record<string, unknown>,
+): Record<string, unknown> {
+  const questions = readQuestionBank(server);
+  if (questions.length > 0) {
+    return questions[randomInt(0, questions.length)]!;
+  }
+  return {
+    questionKey: server['questionKey'],
+    optionKeys: server['optionKeys'],
+    correctOptionKey: server['correctOptionKey'],
+    questionCopy: server['questionCopy'],
+    optionCopy: server['optionCopy'],
+  };
+}
+
+function pickAudioQuestion(
+  server: Record<string, unknown>,
+  lastTarget: 'artist' | 'track' | null,
+): Record<string, unknown> {
+  const questions = readQuestionBank(server);
+  if (questions.length === 0) {
+    return {
+      questionKey: server['questionKey'],
+      optionKeys: server['optionKeys'],
+      correctOptionKey: server['correctOptionKey'],
+      answerTarget: server['answerTarget'],
+      audioAssetId: server['audioAssetId'],
+      visualizationAssetId: server['visualizationAssetId'],
+      audioDurationMs: server['audioDurationMs'],
+      analysisSchemaVersion: server['analysisSchemaVersion'],
+      questionCopy: server['questionCopy'],
+      optionCopy: server['optionCopy'],
+    };
+  }
+  const artist = questions.filter((q) => q['answerTarget'] === 'artist');
+  const track = questions.filter((q) => q['answerTarget'] === 'track');
+  let pool = questions;
+  if (lastTarget === 'artist' && track.length > 0) {
+    pool = track;
+  } else if (lastTarget === 'track' && artist.length > 0) {
+    pool = artist;
+  }
+  return pool[randomInt(0, pool.length)]!;
+}
+
+function pinMultipleChoiceQuestion(
+  definition: ChallengeDefinition,
+  q: Record<string, unknown>,
+): void {
+  const server = definition.serverConfig;
+  const client = definition.clientConfig;
+  const optionKeys = Array.isArray(q['optionKeys'])
+    ? (q['optionKeys'] as string[])
+    : [];
+  const shuffled = shuffleCopy(optionKeys);
+  server['questionKey'] = q['questionKey'];
+  server['optionKeys'] = shuffled;
+  server['correctOptionKey'] = q['correctOptionKey'];
+  client['questionKey'] = q['questionKey'];
+  client['optionKeys'] = shuffled;
+  const questionText = triviaCopyText(q['questionCopy']);
+  if (questionText) {
+    client['questionText'] = questionText;
+  } else {
+    delete client['questionText'];
+  }
+  const optionCopy =
+    q['optionCopy'] &&
+    typeof q['optionCopy'] === 'object' &&
+    !Array.isArray(q['optionCopy'])
+      ? (q['optionCopy'] as Record<string, unknown>)
+      : {};
+  const optionTexts: Record<string, string> = {};
+  for (const key of shuffled) {
+    const text = triviaCopyText(optionCopy[key]);
+    if (text) optionTexts[key] = text;
+  }
+  if (Object.keys(optionTexts).length > 0) {
+    client['optionTexts'] = optionTexts;
+  } else {
+    delete client['optionTexts'];
+  }
+}
+
+const AUDIO_TARGET_BADGE: Record<string, string> = {
+  artist: 'challenge.audio_mc.badge_artist',
+  track: 'challenge.audio_mc.badge_track',
+};
+
+const AUDIO_TARGET_PROMPT: Record<string, string> = {
+  artist: 'challenge.audio_mc.prompt_artist',
+  track: 'challenge.audio_mc.prompt_track',
+};
+
+const AUDIO_TRACK_QUESTION_TEXTS = new Set<string>([
+  'ما اسم الأغنية؟',
+  'What is the name of the song?',
+]);
+
+const AUDIO_ARTIST_QUESTION_TEXTS = new Set<string>([
+  'من صاحب هذا الصوت؟',
+  'Who is the owner of this voice?',
+]);
+
+function audioKeyLooksLikeTarget(
+  key: string,
+  target: 'artist' | 'track',
+): boolean {
+  if (key === AUDIO_TARGET_PROMPT[target]) {
+    return true;
+  }
+  const token = target === 'track' ? 'track' : 'artist';
+  return new RegExp(`(^|[._])${token}([._]|$)`, 'i').test(key);
+}
+
+export function resolveAudioAnswerTarget(
+  q: Record<string, unknown>,
+): 'artist' | 'track' {
+  const declared =
+    q['answerTarget'] === 'track' || q['answerTarget'] === 'artist'
+      ? q['answerTarget']
+      : null;
+  const questionKey = str(q['questionKey']) ?? '';
+  const questionText =
+    (typeof q['questionText'] === 'string' ? q['questionText'].trim() : '') ||
+    triviaCopyText(q['questionCopy']) ||
+    '';
+  if (AUDIO_TRACK_QUESTION_TEXTS.has(questionText)) {
+    return 'track';
+  }
+  if (AUDIO_ARTIST_QUESTION_TEXTS.has(questionText)) {
+    return 'artist';
+  }
+  const looksTrack = audioKeyLooksLikeTarget(questionKey, 'track');
+  const looksArtist = audioKeyLooksLikeTarget(questionKey, 'artist');
+  if (looksTrack && !looksArtist) {
+    return 'track';
+  }
+  if (looksArtist && !looksTrack) {
+    return 'artist';
+  }
+  return declared ?? 'artist';
+}
+
+function pinAudioMultipleChoiceQuestion(
+  definition: ChallengeDefinition,
+  q: Record<string, unknown>,
+): void {
+  pinMultipleChoiceQuestion(definition, q);
+  const server = definition.serverConfig;
+  const client = definition.clientConfig;
+  const answerTarget = resolveAudioAnswerTarget(q);
+  const audioAssetId = str(q['audioAssetId']);
+  const visualizationAssetId = str(q['visualizationAssetId']);
+  const audioDurationMs = num(q['audioDurationMs'], 0);
+  const analysisSchemaVersion = num(q['analysisSchemaVersion'], 1);
+  server['answerTarget'] = answerTarget;
+  server['audioAssetId'] = audioAssetId;
+  server['visualizationAssetId'] = visualizationAssetId;
+  server['audioDurationMs'] = audioDurationMs;
+  server['analysisSchemaVersion'] = analysisSchemaVersion;
+  client['answerTarget'] = answerTarget;
+  client['titleKey'] = 'challenge.audio_mc.intro';
+  client['targetBadgeKey'] = AUDIO_TARGET_BADGE[answerTarget];
+  client['promptKey'] =
+    AUDIO_TARGET_PROMPT[answerTarget] ?? client['promptKey'];
+  if (audioAssetId) client['audioAssetId'] = audioAssetId;
+  if (visualizationAssetId) {
+    client['visualizationAssetId'] = visualizationAssetId;
+  }
+  if (audioDurationMs > 0) client['audioDurationMs'] = audioDurationMs;
+  client['analysisSchemaVersion'] = analysisSchemaVersion;
+  delete client['correctOptionKey'];
+  delete client['correctOptionId'];
+  delete client['isCorrect'];
+  delete client['originalFilename'];
+  delete client['artist'];
+  delete client['title'];
+  delete client['album'];
+}
+
+export function materializePack31Round(
+  definition: ChallengeDefinition,
+  context?: { lastAudioAnswerTarget?: 'artist' | 'track' | null },
+): void {
   const server = definition.serverConfig;
   const client = definition.clientConfig;
 
   if (definition.engineId === TRIVIA_MULTIPLE_CHOICE_ENGINE_ID) {
-    const questions = Array.isArray(server['questions'])
-      ? (server['questions'] as Array<Record<string, unknown>>)
-      : [];
-    const q =
-      questions.length > 0
-        ? questions[randomInt(0, questions.length)]!
-        : {
-            questionKey: server['questionKey'],
-            optionKeys: server['optionKeys'],
-            correctOptionKey: server['correctOptionKey'],
-            questionCopy: server['questionCopy'],
-            optionCopy: server['optionCopy'],
-          };
-    const optionKeys = Array.isArray(q['optionKeys'])
-      ? (q['optionKeys'] as string[])
-      : [];
-    const shuffled = shuffleCopy(optionKeys);
-    server['questionKey'] = q['questionKey'];
-    server['optionKeys'] = shuffled;
-    server['correctOptionKey'] = q['correctOptionKey'];
-    client['questionKey'] = q['questionKey'];
-    client['optionKeys'] = shuffled;
-    const questionText = triviaCopyText(q['questionCopy']);
-    if (questionText) {
-      client['questionText'] = questionText;
-    } else {
-      delete client['questionText'];
-    }
-    const optionCopy =
-      q['optionCopy'] &&
-      typeof q['optionCopy'] === 'object' &&
-      !Array.isArray(q['optionCopy'])
-        ? (q['optionCopy'] as Record<string, unknown>)
-        : {};
-    const optionTexts: Record<string, string> = {};
-    for (const key of shuffled) {
-      const text = triviaCopyText(optionCopy[key]);
-      if (text) optionTexts[key] = text;
-    }
-    if (Object.keys(optionTexts).length > 0) {
-      client['optionTexts'] = optionTexts;
-    } else {
-      delete client['optionTexts'];
-    }
+    pinMultipleChoiceQuestion(definition, pickTriviaQuestion(server));
+    return;
+  }
+
+  if (definition.engineId === AUDIO_MULTIPLE_CHOICE_ENGINE_ID) {
+    pinAudioMultipleChoiceQuestion(
+      definition,
+      pickAudioQuestion(server, context?.lastAudioAnswerTarget ?? null),
+    );
     return;
   }
 

@@ -16,6 +16,7 @@ export const LAUNCH_ENGINE_IDS = [
   "tactical.risk_choice",
   // Challenges 31–38
   "trivia.multiple_choice",
+  "audio.multiple_choice",
   "geography.select_on_map",
   "focus.odd_one_out",
   "order.sequence_sort",
@@ -794,6 +795,156 @@ export const triviaMultipleChoiceAnswerSchema = z
 export type TriviaMultipleChoiceAnswer = z.infer<
   typeof triviaMultipleChoiceAnswerSchema
 >;
+
+// ---------------------------------------------------------------------------
+// 12b. audio.multiple_choice (Guess the Audio — خَمّن الصوت)
+// Reuses trivia option/answer contracts. Correct option never leaves serverConfig.
+// ---------------------------------------------------------------------------
+
+export const audioAnswerTargetSchema = z.enum(["artist", "track"]);
+export type AudioAnswerTarget = z.infer<typeof audioAnswerTargetSchema>;
+
+const opaqueAssetId = z
+  .string()
+  .min(1)
+  .max(128)
+  .regex(/^[a-z0-9][a-z0-9._-]{1,126}$/);
+
+/** Default operator cap when `maxAudioDurationMs` is omitted (exactly 7.000s is valid). */
+export const AUDIO_CLIP_DEFAULT_MAX_DURATION_MS = 7000;
+/** Absolute ingest/publish ceiling (matches the challenge timer hard max). */
+export const AUDIO_CLIP_HARD_MAX_DURATION_MS = 15_000;
+/** Smallest allowed operator-configured clip cap. */
+export const AUDIO_CLIP_MIN_MAX_DURATION_MS = 500;
+
+const audioClipDurationMs = z
+  .number()
+  .int()
+  .positive()
+  .max(AUDIO_CLIP_HARD_MAX_DURATION_MS);
+
+const audioClipMaxDurationMs = z
+  .number()
+  .int()
+  .min(AUDIO_CLIP_MIN_MAX_DURATION_MS)
+  .max(AUDIO_CLIP_HARD_MAX_DURATION_MS);
+
+export function resolveAudioClipMaxDurationMs(requested: unknown): number {
+  const n =
+    typeof requested === "number"
+      ? requested
+      : typeof requested === "string"
+        ? Number(requested)
+        : Number.NaN;
+  if (!Number.isFinite(n)) {
+    return AUDIO_CLIP_DEFAULT_MAX_DURATION_MS;
+  }
+  return Math.min(
+    AUDIO_CLIP_HARD_MAX_DURATION_MS,
+    Math.max(AUDIO_CLIP_MIN_MAX_DURATION_MS, Math.round(n)),
+  );
+}
+
+export const audioMcQuestionSchema = z
+  .object({
+    questionKey: translationKey,
+    optionKeys: z.array(optionKey).min(2).max(6),
+    correctOptionKey: optionKey,
+    answerTarget: audioAnswerTargetSchema,
+    audioAssetId: opaqueAssetId,
+    visualizationAssetId: opaqueAssetId,
+    audioDurationMs: audioClipDurationMs,
+    analysisSchemaVersion: z.number().int().positive().optional(),
+    questionCopy: triviaLocaleCopySchema.optional(),
+    optionCopy: z.record(triviaLocaleCopySchema).optional(),
+  })
+  .strict()
+  .superRefine((value, ctx) => {
+    if (new Set(value.optionKeys).size !== value.optionKeys.length) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "optionKeys must be unique",
+        path: ["optionKeys"],
+      });
+    }
+    if (!value.optionKeys.includes(value.correctOptionKey)) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "correctOptionKey must be one of optionKeys",
+        path: ["correctOptionKey"],
+      });
+    }
+    if (value.optionCopy) {
+      for (const key of Object.keys(value.optionCopy)) {
+        if (!value.optionKeys.includes(key)) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: `optionCopy.${key} is not in optionKeys`,
+            path: ["optionCopy", key],
+          });
+        }
+      }
+    }
+  });
+export type AudioMcQuestion = z.infer<typeof audioMcQuestionSchema>;
+
+export const audioMultipleChoiceClientConfigSchema = z
+  .object({
+    categoryKey: translationKey,
+    promptKey: translationKey,
+    titleKey: translationKey.optional(),
+    questionKey: translationKey,
+    optionKeys: z.array(optionKey).min(2).max(6),
+    footerKey: translationKey.optional(),
+    targetBadgeKey: translationKey.optional(),
+    answerTarget: audioAnswerTargetSchema.optional(),
+    audioAssetId: opaqueAssetId.optional(),
+    visualizationAssetId: opaqueAssetId.optional(),
+    audioDurationMs: audioClipDurationMs.optional(),
+    playAtMs: z.number().int().nonnegative().optional(),
+    analysisSchemaVersion: z.number().int().positive().optional(),
+    questionText: z.string().min(1).max(500).optional(),
+    optionTexts: z.record(z.string().min(1).max(500)).optional(),
+  })
+  .strict();
+export type AudioMultipleChoiceClientConfig = z.infer<
+  typeof audioMultipleChoiceClientConfigSchema
+>;
+
+export const audioMultipleChoiceServerConfigSchema = z
+  .object({
+    questions: z.array(audioMcQuestionSchema).min(1).max(64),
+    maxAudioDurationMs: audioClipMaxDurationMs.optional(),
+    questionKey: translationKey.optional(),
+    optionKeys: z.array(optionKey).min(2).max(6).optional(),
+    correctOptionKey: optionKey.optional(),
+    answerTarget: audioAnswerTargetSchema.optional(),
+    audioAssetId: opaqueAssetId.optional(),
+    visualizationAssetId: opaqueAssetId.optional(),
+    audioDurationMs: audioClipDurationMs.optional(),
+  })
+  .strict()
+  .superRefine((value, ctx) => {
+    const maxMs =
+      value.maxAudioDurationMs ?? AUDIO_CLIP_DEFAULT_MAX_DURATION_MS;
+    value.questions.forEach((question, index) => {
+      if (question.audioDurationMs > maxMs) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: `audioDurationMs must be <= maxAudioDurationMs (${maxMs})`,
+          path: ["questions", index, "audioDurationMs"],
+        });
+      }
+    });
+  });
+export type AudioMultipleChoiceServerConfig = z.infer<
+  typeof audioMultipleChoiceServerConfigSchema
+>;
+
+/** Same command body as trivia — reused, not a parallel engine. */
+export const audioMultipleChoiceAnswerSchema =
+  triviaMultipleChoiceAnswerSchema;
+export type AudioMultipleChoiceAnswer = TriviaMultipleChoiceAnswer;
 
 // ---------------------------------------------------------------------------
 // 13. geography.select_on_map
@@ -2463,6 +2614,7 @@ export const ENGINE_RUNTIME_READINESS: Record<
   "social.pair_sync": "live",
   "tactical.risk_choice": "live",
   "trivia.multiple_choice": "live",
+  "audio.multiple_choice": "live",
   "geography.select_on_map": "live",
   "focus.odd_one_out": "live",
   "order.sequence_sort": "live",
@@ -2545,6 +2697,11 @@ const ENGINE_SCHEMAS: Record<LaunchEngineId, EngineSchemaPair> = {
     client: triviaMultipleChoiceClientConfigSchema,
     server: triviaMultipleChoiceServerConfigSchema,
     answer: triviaMultipleChoiceAnswerSchema,
+  },
+  "audio.multiple_choice": {
+    client: audioMultipleChoiceClientConfigSchema,
+    server: audioMultipleChoiceServerConfigSchema,
+    answer: audioMultipleChoiceAnswerSchema,
   },
   "geography.select_on_map": {
     client: geographySelectOnMapClientConfigSchema,
@@ -2680,6 +2837,11 @@ export type ValidatedEngineConfigs =
       serverConfig: TriviaMultipleChoiceServerConfig;
     }
   | {
+      engineId: "audio.multiple_choice";
+      clientConfig: AudioMultipleChoiceClientConfig;
+      serverConfig: AudioMultipleChoiceServerConfig;
+    }
+  | {
       engineId: "geography.select_on_map";
       clientConfig: GeographySelectOnMapClientConfig;
       serverConfig: GeographySelectOnMapServerConfig;
@@ -2769,6 +2931,7 @@ export type ValidatedEngineAnswer =
   | { engineId: "social.pair_sync"; answer: SocialPairSyncAnswer }
   | { engineId: "tactical.risk_choice"; answer: TacticalRiskChoiceAnswer }
   | { engineId: "trivia.multiple_choice"; answer: TriviaMultipleChoiceAnswer }
+  | { engineId: "audio.multiple_choice"; answer: AudioMultipleChoiceAnswer }
   | { engineId: "geography.select_on_map"; answer: GeographySelectOnMapAnswer }
   | { engineId: "focus.odd_one_out"; answer: FocusOddOneOutAnswer }
   | { engineId: "order.sequence_sort"; answer: OrderSequenceSortAnswer }

@@ -13,6 +13,7 @@ class ChallengeContext {
     required this.inputEnabled,
     this.localPlayerId,
     this.players = const <PlayerPublic>[],
+    this.localOutcome,
   });
 
   /// The public challenge state (definition fields + roundPhase + signal).
@@ -35,6 +36,9 @@ class ChallengeContext {
 
   /// Current match roster for partner display names / avatars.
   final List<PlayerPublic> players;
+
+  /// Authoritative local outcome once the round result is known.
+  final String? localOutcome;
 
   bool get isInteractionLocked =>
       !inputEnabled ||

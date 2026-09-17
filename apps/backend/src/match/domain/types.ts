@@ -374,6 +374,11 @@ export type MatchState = {
   lastPowerGrant: LastPowerGrant | null;
   /** Player ids that still may act in power_action (have charge and not resolved). */
   powerActionActorIds: string[];
+  /**
+   * Last audio.multiple_choice answerTarget in this match, used to avoid
+   * presenting artist/track back-to-back when both exist in the bank.
+   */
+  lastAudioAnswerTarget?: 'artist' | 'track' | null;
 };
 
 export type DomainEvent =
