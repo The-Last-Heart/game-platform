@@ -12,6 +12,8 @@ export const leaderboardEntrySchema = z
     countryCode: z.enum(PLAYER_COUNTRY_CODES),
     avatarColor: avatarColorSchema,
     totalPoints: z.number().int().nonnegative(),
+    challengesPlayed: z.number().int().nonnegative(),
+    playlistsCompleted: z.number().int().nonnegative(),
   })
   .strict();
 

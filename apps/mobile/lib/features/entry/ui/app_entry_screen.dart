@@ -36,6 +36,14 @@ enum _EntryPhase {
   identityEdit,
 }
 
+/// Downloads the pinned content pack. Tests inject a fake; production uses
+/// [ContentAssetCache.sync].
+typedef ContentPackSyncFn =
+    Future<bool> Function({
+      required String backendBaseUrl,
+      void Function(double progress)? onProgress,
+    });
+
 /// Product entry: splash → onboarding → identity → home / modes / match.
 class AppEntryScreen extends StatefulWidget {
   const AppEntryScreen({
@@ -45,6 +53,7 @@ class AppEntryScreen extends StatefulWidget {
     this.appVersionLabel,
     this.backendBaseUrl,
     this.presence,
+    this.contentPackSync,
     super.key,
   });
 
@@ -60,6 +69,9 @@ class AppEntryScreen extends StatefulWidget {
 
   /// Live occupancy for the home hero. Tests inject [FakePresenceSession].
   final PresenceSession? presence;
+
+  /// Optional content-pack sync override for tests.
+  final ContentPackSyncFn? contentPackSync;
 
   @override
   State<AppEntryScreen> createState() => _AppEntryScreenState();
@@ -79,6 +91,8 @@ class _AppEntryScreenState extends State<AppEntryScreen>
   String _versionLabel = '0.0.1';
   double _assetProgress = 0;
   String? _assetStatusKey;
+  bool _packSyncFailed = false;
+  bool _packSyncing = false;
   final TextEditingController _roomCodeController = TextEditingController();
   late final AnimationController _splashPulse;
   late final Animation<double> _splashScale;
@@ -261,7 +275,8 @@ class _AppEntryScreenState extends State<AppEntryScreen>
         mapped == 'errors.identity.name_taken' ||
         _phase == _EntryPhase.matchmaking;
     setState(() {
-      _phase = mapped == TranslationKeys.errorsIdentityNameTaken ||
+      _phase =
+          mapped == TranslationKeys.errorsIdentityNameTaken ||
               mapped == 'errors.identity.name_taken'
           ? (_phase == _EntryPhase.privateAccess
                 ? _EntryPhase.privateAccess
@@ -315,59 +330,82 @@ class _AppEntryScreenState extends State<AppEntryScreen>
   }
 
   Future<void> _bootstrapEntry() async {
+    if (_packSyncing) return;
+    _packSyncing = true;
+
     final String versionLabel = widget.appVersionLabel ?? '0.0.1';
     if (mounted) {
       setState(() {
         _versionLabel = versionLabel;
+        _packSyncFailed = false;
         _assetStatusKey = TranslationKeys.splashDownloadingAssets;
         _assetProgress = 0.02;
       });
     }
 
-    final String? backendUrl = widget.backendBaseUrl;
-    if (backendUrl != null && backendUrl.isNotEmpty) {
-      bool packReady = false;
-      for (int attempt = 0; attempt < 3 && !packReady; attempt++) {
-        packReady = await ContentAssetCache.instance.sync(
-          backendBaseUrl: backendUrl,
-          onProgress: (double p) {
-            if (!mounted) return;
+    try {
+      final String? backendUrl = widget.backendBaseUrl;
+      if (backendUrl != null && backendUrl.isNotEmpty) {
+        bool packReady = false;
+        final ContentPackSyncFn sync =
+            widget.contentPackSync ?? ContentAssetCache.instance.sync;
+        for (int attempt = 0; attempt < 3 && !packReady; attempt++) {
+          try {
+            packReady = await sync(
+              backendBaseUrl: backendUrl,
+              onProgress: (double p) {
+                if (!mounted) return;
+                setState(() {
+                  _assetProgress = p.clamp(0.0, 1.0);
+                  _assetStatusKey = TranslationKeys.splashDownloadingAssets;
+                });
+              },
+            ).timeout(const Duration(seconds: 25));
+          } on TimeoutException {
+            packReady = false;
+          }
+        }
+        if (!packReady) {
+          if (mounted) {
             setState(() {
-              _assetProgress = p.clamp(0.0, 1.0);
-              _assetStatusKey = TranslationKeys.splashDownloadingAssets;
+              _packSyncFailed = true;
+              _assetProgress = 0;
+              _assetStatusKey = TranslationKeys.splashAssetsFailed;
             });
-          },
-        );
-      }
-      if (mounted) {
+          }
+          return;
+        }
+        if (mounted) {
+          setState(() {
+            _assetProgress = 1;
+            _assetStatusKey = TranslationKeys.splashAssetsReady;
+          });
+        }
+      } else if (mounted) {
         setState(() {
           _assetProgress = 1;
-          _assetStatusKey = packReady
-              ? TranslationKeys.splashAssetsReady
-              : TranslationKeys.errorsContentUnavailable;
+          _assetStatusKey = TranslationKeys.splashAssetsReady;
         });
       }
-    } else if (mounted) {
-      setState(() {
-        _assetProgress = 1;
-        _assetStatusKey = TranslationKeys.splashAssetsReady;
-      });
-    }
 
-    final bool onboarded = await _entryPreferences.isOnboardingCompleted();
-    final PlayerIdentity? identity = await _identityStore.load();
-    if (!mounted) return;
-    setState(() {
-      _versionLabel = versionLabel;
-      _identity = identity;
-      if (!onboarded) {
-        _phase = _EntryPhase.onboarding;
-      } else if (identity == null) {
-        _phase = _EntryPhase.identity;
-      } else {
-        _phase = _EntryPhase.home;
-      }
-    });
+      final bool onboarded = await _entryPreferences.isOnboardingCompleted();
+      final PlayerIdentity? identity = await _identityStore.load();
+      if (!mounted) return;
+      setState(() {
+        _versionLabel = versionLabel;
+        _identity = identity;
+        _packSyncFailed = false;
+        if (!onboarded) {
+          _phase = _EntryPhase.onboarding;
+        } else if (identity == null) {
+          _phase = _EntryPhase.identity;
+        } else {
+          _phase = _EntryPhase.home;
+        }
+      });
+    } finally {
+      _packSyncing = false;
+    }
   }
 
   Future<void> _completeOnboarding() async {
@@ -527,10 +565,7 @@ class _AppEntryScreenState extends State<AppEntryScreen>
     }
   }
 
-  void _surfaceJoinError(
-    String errorKey, {
-    bool stayOnPrivateAccess = false,
-  }) {
+  void _surfaceJoinError(String errorKey, {bool stayOnPrivateAccess = false}) {
     final String mapped = errorKey.startsWith('errors.')
         ? errorKey
         : TranslationKeys.errorsServiceUnavailable;
@@ -612,6 +647,10 @@ class _AppEntryScreenState extends State<AppEntryScreen>
               scale: _splashScale,
               progress: _assetProgress,
               statusKey: _assetStatusKey,
+              failed: _packSyncFailed,
+              onRetry: _packSyncFailed
+                  ? () => unawaited(_bootstrapEntry())
+                  : null,
             ),
             _EntryPhase.onboarding ||
             _EntryPhase.onboardingReplay => OnboardingScreen(
@@ -685,12 +724,16 @@ class _SplashView extends StatelessWidget {
     required this.scale,
     required this.progress,
     this.statusKey,
+    this.failed = false,
+    this.onRetry,
   });
 
   final String versionLabel;
   final Animation<double> scale;
   final double progress;
   final String? statusKey;
+  final bool failed;
+  final VoidCallback? onRetry;
 
   @override
   Widget build(BuildContext context) {
@@ -723,23 +766,32 @@ class _SplashView extends StatelessWidget {
                 textAlign: TextAlign.center,
               ),
               const SizedBox(height: 28),
-              ClipRRect(
-                borderRadius: LhRadii.pillAll,
-                child: LinearProgressIndicator(
-                  value: progress <= 0 ? null : progress.clamp(0.0, 1.0),
-                  minHeight: 8,
-                  backgroundColor: LhColors.border,
-                  color: LhColors.success,
+              if (!failed)
+                ClipRRect(
+                  borderRadius: LhRadii.pillAll,
+                  child: LinearProgressIndicator(
+                    value: progress <= 0 ? null : progress.clamp(0.0, 1.0),
+                    minHeight: 8,
+                    backgroundColor: LhColors.border,
+                    color: LhColors.success,
+                  ),
                 ),
-              ),
               if (statusKey != null) ...<Widget>[
                 const SizedBox(height: 12),
                 Text(
                   resolver.resolve(statusKey!),
-                  style: Theme.of(
-                    context,
-                  ).textTheme.bodySmall?.copyWith(color: LhColors.textMuted),
+                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                    color: failed ? LhColors.primaryBright : LhColors.textMuted,
+                  ),
                   textAlign: TextAlign.center,
+                ),
+              ],
+              if (failed && onRetry != null) ...<Widget>[
+                const SizedBox(height: 20),
+                LhPrimaryButton(
+                  key: const Key('splash-asset-retry'),
+                  label: resolver.resolve(TranslationKeys.splashRetry),
+                  onPressed: onRetry,
                 ),
               ],
               const Spacer(flex: 3),
@@ -872,6 +924,13 @@ class _HomeView extends StatelessWidget {
                         icon: Icons.play_arrow_rounded,
                         onPressed: onPlayNow,
                       ),
+                      const SizedBox(height: 10),
+                      LhSecondaryButton(
+                        label: resolver.resolve(
+                          TranslationKeys.leaderboardTitle,
+                        ),
+                        onPressed: onLeaderboard,
+                      ),
                       const SizedBox(height: 20),
                       Text(
                         resolver.resolve(TranslationKeys.homeModesTitle),
@@ -912,16 +971,6 @@ class _HomeView extends StatelessWidget {
                         onTap: onTraining,
                       ),
                       const SizedBox(height: 12),
-                      TextButton(
-                        onPressed: () async {
-                          await LhUiSound.instance.playTap();
-                          onLeaderboard();
-                        },
-                        child: Text(
-                          resolver.resolve(TranslationKeys.leaderboardTitle),
-                        ),
-                      ),
-                      const SizedBox(height: 4),
                       TextButton(
                         onPressed: () async {
                           await LhUiSound.instance.playTap();

@@ -2895,6 +2895,7 @@ export class MatchService implements OnModuleDestroy, OnModuleInit {
 
   /**
    * Quick Survival challenge wins: +5 per human success (idempotent by instance).
+   * Also records challenges_played / playlists_completed display stats.
    */
   private awardChallengeWinLeaderboardPoints(match: MatchState): void {
     if (match.mode !== 'quick_survival' || !this.leaderboard) {
@@ -2904,24 +2905,65 @@ export class MatchService implements OnModuleDestroy, OnModuleInit {
       return;
     }
     const challenge = match.currentChallenge;
+    const playableSeatIds: string[] = [];
     for (const resolution of challenge.resolutions ?? []) {
-      if (resolution.outcome !== 'success') {
-        continue;
-      }
       const seat = match.players.get(resolution.playerId);
       if (!seat || seat.isBot || !seat.persistentPlayerId) {
         continue;
       }
-      void this.leaderboard.applyPointEvent({
+      const playable =
+        resolution.outcome === 'success' ||
+        resolution.outcome === 'failure' ||
+        resolution.outcome === 'timeout';
+      if (!playable) {
+        continue;
+      }
+      playableSeatIds.push(resolution.playerId);
+      void this.leaderboard.applyStatEvent({
         playerId: seat.persistentPlayerId,
         displayName: seat.displayName ?? 'Player',
         avatarColor: seat.avatarColor ?? '#94A3B8',
         countryCode: seat.countryCode ?? 'SA',
         matchId: match.matchId,
-        reason: 'challenge_win',
+        reason: 'challenge_played',
         sourceId: challenge.challengeInstanceId,
-        points: 5,
       });
+      if (resolution.outcome === 'success') {
+        void this.leaderboard.applyPointEvent({
+          playerId: seat.persistentPlayerId,
+          displayName: seat.displayName ?? 'Player',
+          avatarColor: seat.avatarColor ?? '#94A3B8',
+          countryCode: seat.countryCode ?? 'SA',
+          matchId: match.matchId,
+          reason: 'challenge_win',
+          sourceId: challenge.challengeInstanceId,
+          points: 5,
+        });
+      }
+    }
+
+    const playlistLen = match.pinnedPlaylist.length;
+    if (playlistLen > 0 && match.roundNumber === playlistLen) {
+      for (const seatId of playableSeatIds) {
+        const seat = match.players.get(seatId);
+        if (
+          !seat ||
+          seat.isBot ||
+          !seat.persistentPlayerId ||
+          seat.status !== 'active'
+        ) {
+          continue;
+        }
+        void this.leaderboard.applyStatEvent({
+          playerId: seat.persistentPlayerId,
+          displayName: seat.displayName ?? 'Player',
+          avatarColor: seat.avatarColor ?? '#94A3B8',
+          countryCode: seat.countryCode ?? 'SA',
+          matchId: match.matchId,
+          reason: 'playlist_completed',
+          sourceId: match.matchId,
+        });
+      }
     }
   }
 

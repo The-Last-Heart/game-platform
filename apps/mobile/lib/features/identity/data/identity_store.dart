@@ -71,8 +71,7 @@ class IdentityStore {
           color == null ||
           country == null ||
           !isPlayerCountryCode(country) ||
-          !isValidDisplayNameFormat(name) ||
-          isProhibitedDisplayName(name)) {
+          !isValidDisplayNameFormat(name)) {
         return null;
       }
       return PlayerIdentity(

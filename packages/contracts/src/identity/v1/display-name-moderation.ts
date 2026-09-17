@@ -1,8 +1,9 @@
 /**
  * Display-name profanity / prohibited-content filter (EN + AR).
  *
- * Authoritative for server joins; keep Dart port in sync:
- * apps/mobile/lib/features/identity/data/display_name_moderation.dart
+ * Authoritative on the server only (match join / matchmaking). Mobile keeps
+ * format helpers locally and shows `errors.identity.name_prohibited` when the
+ * backend rejects a name — it does not mirror this denylist.
  *
  * Matching is intentional over-blocking for short casual names. Maintain
  * DISPLAY_NAME_ALLOWLIST for known false positives.
@@ -105,9 +106,14 @@ const DISPLAY_NAME_DENYLIST: readonly string[] = [
   'خراي',
   'شرموط',
   'شرموطة',
+  'شرمطه',
+  'شرمطة',
+  'شرمط',
   'شراميط',
+  'تشرميط',
   'قحبة',
   'قحبه',
+  'قحاب',
   'قواد',
   'منيك',
   'منيوك',
@@ -116,6 +122,7 @@ const DISPLAY_NAME_DENYLIST: readonly string[] = [
   'نيك',
   'نييك',
   'ينيك',
+  'تنايك',
   'زب',
   'زبي',
   'زبك',
@@ -177,7 +184,10 @@ const ARABIC_DIACRITIC_RE =
   /[\u0610-\u061A\u064B-\u065F\u0670\u06D6-\u06ED\u0640]/u;
 const ZERO_WIDTH_RE = /[\u200B-\u200D\uFEFF\u00AD]/u;
 const SEPARATORS_RE = /[\s._\-'"`,;:!?/\\|()[\]{}<>]+/gu;
-const ARABIC_VOWELS_RE = /[اأإآوىيئؤة]/gu;
+/** Long vowels + taa-marbuta forms (ة normalized to ه). */
+const ARABIC_VOWELS_RE = /[اأإآوىيئؤةه]/gu;
+/** Minimum consonant-root length for derivation matching (شرمط ← شرموط/شرمطة). */
+const ARABIC_ROOT_MATCH_MIN = 4;
 
 function mapLatinChar(ch: string): string {
   const lower = ch.toLowerCase();
@@ -220,7 +230,10 @@ function fullyCollapseRepeats(collapsed: string): string {
   return collapsed.replace(/(.)\1+/gu, '$1');
 }
 
-/** Arabic consonant skeleton — strips long vowels so كوسوماك → كسمك. */
+/**
+ * Arabic consonant skeleton — strips long vowels / taa-marbuta so
+ * كوسوماك → كسمك and شرمطة/شرموط → شرمط.
+ */
 export function arabicConsonantSkeleton(collapsed: string): string {
   return collapsed.replace(ARABIC_VOWELS_RE, '');
 }
@@ -252,6 +265,36 @@ function haystackHitsDenylist(haystack: string): boolean {
   return false;
 }
 
+/** Match derived Arabic forms via shared consonant roots (شرمطة ↔ شرموط). */
+function skeletonHitsDenylistRoot(haystackSkeleton: string): boolean {
+  if (haystackSkeleton.length < ARABIC_ROOT_MATCH_MIN) {
+    return false;
+  }
+  for (const term of DISPLAY_NAME_DENYLIST) {
+    const termSkeleton = arabicConsonantSkeleton(term);
+    if (termSkeleton.length < ARABIC_ROOT_MATCH_MIN) {
+      continue;
+    }
+    if (
+      haystackSkeleton.includes(termSkeleton) ||
+      termSkeleton.includes(haystackSkeleton)
+    ) {
+      return true;
+    }
+  }
+  return false;
+}
+
+function formsHitDenylist(...forms: string[]): boolean {
+  for (const form of forms) {
+    if (!form) continue;
+    if (haystackHitsDenylist(form)) return true;
+    const skeleton = arabicConsonantSkeleton(form);
+    if (skeleton && skeletonHitsDenylistRoot(skeleton)) return true;
+  }
+  return false;
+}
+
 /**
  * Returns true when the display name should be rejected.
  * Does not throw — callers map to protocol / UI errors.
@@ -268,17 +311,8 @@ export function isProhibitedDisplayName(raw: string): boolean {
     return false;
   }
 
-  const skeleton = arabicConsonantSkeleton(collapsed);
-  const skeletonFull = arabicConsonantSkeleton(fullCollapse);
   const spacedCollapsed = normalized.replace(/\s+/g, '');
-
-  if (
-    haystackHitsDenylist(collapsed) ||
-    haystackHitsDenylist(fullCollapse) ||
-    haystackHitsDenylist(spacedCollapsed) ||
-    (skeleton.length > 0 && haystackHitsDenylist(skeleton)) ||
-    (skeletonFull.length > 0 && haystackHitsDenylist(skeletonFull))
-  ) {
+  if (formsHitDenylist(collapsed, fullCollapse, spacedCollapsed)) {
     return true;
   }
 
@@ -286,12 +320,7 @@ export function isProhibitedDisplayName(raw: string): boolean {
   if (tokens.length > 1) {
     const joined = tokens.join('');
     const joinedFull = fullyCollapseRepeats(joined);
-    if (
-      haystackHitsDenylist(joined) ||
-      haystackHitsDenylist(joinedFull) ||
-      haystackHitsDenylist(arabicConsonantSkeleton(joined)) ||
-      haystackHitsDenylist(arabicConsonantSkeleton(joinedFull))
-    ) {
+    if (formsHitDenylist(joined, joinedFull)) {
       return true;
     }
   }

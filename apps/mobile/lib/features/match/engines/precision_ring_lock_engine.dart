@@ -51,6 +51,8 @@ class _RingLockWidget extends StatefulWidget {
 class _RingLockWidgetState extends State<_RingLockWidget>
     with TickerProviderStateMixin {
   static const Duration _pendingAckTimeout = Duration(milliseconds: 900);
+  /// Minimum lockout after each tap so spam-locking cannot farm alignment.
+  static const Duration _tapCooldown = Duration(milliseconds: 250);
   static final Set<String> _seenChallengeInstances = <String>{};
 
   late final AnimationController _entrance;
@@ -64,7 +66,11 @@ class _RingLockWidgetState extends State<_RingLockWidget>
 
   Duration _tickElapsed = Duration.zero;
   bool _pendingLock = false;
+  /// True while waiting for the server hit/miss outcome (or ack timeout).
+  bool _awaitingAck = false;
   Timer? _pendingTimer;
+  Timer? _cooldownTimer;
+  DateTime? _cooldownEndsAt;
   int _lastHandledSequence = 0;
   String? _lastHandledOutcomeKey;
   bool _entranceDone = false;
@@ -161,6 +167,7 @@ class _RingLockWidgetState extends State<_RingLockWidget>
   void dispose() {
     _disposed = true;
     _pendingTimer?.cancel();
+    _cooldownTimer?.cancel();
     _ticker.dispose();
     _entrance.dispose();
     _breathe.dispose();
@@ -191,9 +198,10 @@ class _RingLockWidgetState extends State<_RingLockWidget>
     _lastHandledSequence = math.max(_lastHandledSequence, seq);
     _lastHandledOutcomeKey = outcomeKey;
 
-    if (_pendingLock &&
+    if (_awaitingAck &&
         (outcome == 'hit' || outcome == 'miss' || result != 'active')) {
-      _clearPending();
+      _awaitingAck = false;
+      _scheduleReleaseAfterCooldown();
     }
 
     if (fromInit) {
@@ -236,11 +244,43 @@ class _RingLockWidgetState extends State<_RingLockWidget>
   void _clearPending() {
     _pendingTimer?.cancel();
     _pendingTimer = null;
+    _cooldownTimer?.cancel();
+    _cooldownTimer = null;
+    _awaitingAck = false;
+    _cooldownEndsAt = null;
     if (_pendingLock && mounted) {
       setState(() => _pendingLock = false);
     } else {
       _pendingLock = false;
     }
+  }
+
+  void _scheduleReleaseAfterCooldown() {
+    _pendingTimer?.cancel();
+    _pendingTimer = null;
+    final DateTime? endsAt = _cooldownEndsAt;
+    final Duration remaining = endsAt == null
+        ? Duration.zero
+        : endsAt.difference(DateTime.now());
+    if (remaining <= Duration.zero) {
+      _cooldownTimer?.cancel();
+      _cooldownTimer = null;
+      _cooldownEndsAt = null;
+      if (_pendingLock && mounted) {
+        setState(() => _pendingLock = false);
+      } else {
+        _pendingLock = false;
+      }
+      return;
+    }
+    _cooldownTimer?.cancel();
+    _cooldownTimer = Timer(remaining, () {
+      if (!mounted) return;
+      _cooldownEndsAt = null;
+      if (!_awaitingAck && _pendingLock) {
+        setState(() => _pendingLock = false);
+      }
+    });
   }
 
   Future<void> _onLockPressed() async {
@@ -257,6 +297,8 @@ class _RingLockWidgetState extends State<_RingLockWidget>
     final int active = _asInt(_cfg['activeRingIndex']) ?? 0;
     final int seq = _asInt(_cfg['stateSequence']) ?? 1;
 
+    _awaitingAck = true;
+    _cooldownEndsAt = DateTime.now().add(_tapCooldown);
     setState(() => _pendingLock = true);
     unawaited(_buttonPress.forward(from: 0).then((_) {
       if (mounted) _buttonPress.reverse();
@@ -272,9 +314,9 @@ class _RingLockWidgetState extends State<_RingLockWidget>
     _pendingTimer?.cancel();
     _pendingTimer = Timer(_pendingAckTimeout, () {
       if (!mounted) return;
-      if (_pendingLock) {
-        setState(() => _pendingLock = false);
-      }
+      if (!_awaitingAck) return;
+      _awaitingAck = false;
+      _scheduleReleaseAfterCooldown();
     });
   }
 
@@ -375,8 +417,12 @@ class _RingLockWidgetState extends State<_RingLockWidget>
 
     final String timeLabel = _formatMmSs(remainingMs);
 
+    // ChallengePlayView draws hearts/energy/round as a non-interactive overlay
+    // on a full-bleed engine. Keep the countdown bar below that chrome.
+    const double headerClearance = 52;
+
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+      padding: const EdgeInsets.fromLTRB(14, headerClearance, 14, 6),
       child: Column(
         children: <Widget>[
           _TimePanel(

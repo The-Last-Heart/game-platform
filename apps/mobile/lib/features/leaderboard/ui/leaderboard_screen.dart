@@ -145,6 +145,18 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
             'points': formatLocalizedCount(entry.totalPoints, locale),
           },
         );
+        final String challengesLabel = resolver.resolve(
+          TranslationKeys.leaderboardChallenges,
+          params: <String, String>{
+            'count': formatLocalizedCount(entry.challengesPlayed, locale),
+          },
+        );
+        final String playlistsLabel = resolver.resolve(
+          TranslationKeys.leaderboardPlaylists,
+          params: <String, String>{
+            'count': formatLocalizedCount(entry.playlistsCompleted, locale),
+          },
+        );
         return Container(
           padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
           decoration: BoxDecoration(
@@ -153,6 +165,7 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
             border: Border.all(color: LhColors.border),
           ),
           child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: <Widget>[
               SizedBox(
                 width: 36,
@@ -164,10 +177,23 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
               Text(flag, style: const TextStyle(fontSize: 22)),
               const SizedBox(width: 10),
               Expanded(
-                child: Text(
-                  entry.displayName,
-                  style: Theme.of(context).textTheme.titleMedium,
-                  overflow: TextOverflow.ellipsis,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: <Widget>[
+                    Text(
+                      entry.displayName,
+                      style: Theme.of(context).textTheme.titleMedium,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      '$challengesLabel · $playlistsLabel',
+                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                        color: LhColors.textMuted,
+                      ),
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ],
                 ),
               ),
               Text(

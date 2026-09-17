@@ -386,7 +386,8 @@ TranslationCatalog createBootstrapCatalog() {
         'challenge.pass_the_pulse.you': 'أنت',
         'challenge.pass_the_pulse.time_remaining': 'الوقت المتبقي',
         'challenge.pass_the_pulse.turn_announce': 'دور {name}',
-        'challenge.pass_the_pulse.a11y_tap_ready': 'اضغط الآن، النبضة عند دائرتك',
+        'challenge.pass_the_pulse.a11y_tap_ready':
+            'اضغط الآن، النبضة عند دائرتك',
         'challenge.pass_the_pulse.a11y_tap_wait': 'انتظر دورك',
         'challenge.pass_the_pulse.a11y_fallback':
             'اضغط الزر عندما تصل النبضة إلى دائرتك',
@@ -502,8 +503,6 @@ TranslationCatalog createBootstrapCatalog() {
         TranslationKeys.identityNameLabel: 'اسم العرض',
         TranslationKeys.identityNameInvalid:
             'الاسم: حروف فقط، جزء أو جزءان كحد أقصى (مثال: أحمد أو أحمد خالد)',
-        TranslationKeys.identityNameProhibited:
-            'اسم العرض يحتوي على كلمات غير مسموحة',
         TranslationKeys.identityCountryLabel: 'الدولة',
         TranslationKeys.identityCountryHint: 'اختر الدولة',
         TranslationKeys.identityCountryInvalid: 'اختر دولة من القائمة',
@@ -534,15 +533,21 @@ TranslationCatalog createBootstrapCatalog() {
         TranslationKeys.errorsServiceUnavailable: 'الخدمة غير متاحة الآن',
         TranslationKeys.splashTagline: 'اركض مع الوقت واحمِ آخر قلب',
         TranslationKeys.splashVersion: 'الإصدار {version}',
-        TranslationKeys.splashDownloadingAssets: 'جارٍ تحميل أصول التحدي…',
+        TranslationKeys.splashDownloadingAssets: 'جاري تحميل ملفات اللعبة',
         TranslationKeys.splashAssetsReady: 'الأصول جاهزة',
+        TranslationKeys.splashAssetsFailed:
+            'تعذر تحميل أصول التحدي. تحقق من الاتصال وحاول مرة أخرى.',
+        TranslationKeys.splashRetry: 'حاول مرة أخرى',
         TranslationKeys.homeHeroSubtitle: 'سرعة، تركيز، ونجاة',
         TranslationKeys.homeModesTitle: 'أنماط اللعب',
         TranslationKeys.homeGreeting: 'مرحبًا، {name}',
         TranslationKeys.leaderboardTitle: 'لوحة المتصدرين',
-        TranslationKeys.leaderboardEmpty: 'لا يوجد ترتيب بعد — العب نجاة سريعة لتظهر هنا',
+        TranslationKeys.leaderboardEmpty:
+            'لا يوجد ترتيب بعد — العب نجاة سريعة لتظهر هنا',
         TranslationKeys.leaderboardLoadError: 'تعذر تحميل لوحة المتصدرين',
         TranslationKeys.leaderboardPoints: '{points} نقطة',
+        TranslationKeys.leaderboardChallenges: '{count} تحديات',
+        TranslationKeys.leaderboardPlaylists: '{count} قوائم',
         TranslationKeys.onboardingStepOf: 'الخطوة {current} من {total}',
         TranslationKeys.onboardingHowToPlay: 'كيف تلعب',
         TranslationKeys.appPressBackAgainToExit: 'اضغط مرة أخرى للخروج',
@@ -685,7 +690,8 @@ TranslationCatalog createBootstrapCatalog() {
         'errors.room.code_invalid': 'Room code is invalid',
         'errors.room.code_expired': 'Room code has expired',
         'errors.room.full': 'Room is full',
-        'errors.identity.name_taken': 'That display name is already used in this match',
+        'errors.identity.name_taken':
+            'That display name is already used in this match',
         'errors.identity.name_prohibited':
             'That display name contains prohibited words',
         'errors.identity.name_invalid':
@@ -1088,11 +1094,10 @@ TranslationCatalog createBootstrapCatalog() {
         TranslationKeys.identityNameLabel: 'Display name',
         TranslationKeys.identityNameInvalid:
             'Letters only, one or two parts max (e.g. Ahmad or Ahmad Khaled)',
-        TranslationKeys.identityNameProhibited:
-            'Display name contains prohibited words',
         TranslationKeys.identityCountryLabel: 'Country',
         TranslationKeys.identityCountryHint: 'Select country',
-        TranslationKeys.identityCountryInvalid: 'Choose a country from the list',
+        TranslationKeys.identityCountryInvalid:
+            'Choose a country from the list',
         TranslationKeys.identityColorLabel: 'Color',
         TranslationKeys.identitySave: 'Save and continue',
         TranslationKeys.homeHelpOnboarding: 'How to play?',
@@ -1125,6 +1130,9 @@ TranslationCatalog createBootstrapCatalog() {
         TranslationKeys.splashDownloadingAssets:
             'Downloading challenge assets…',
         TranslationKeys.splashAssetsReady: 'Assets ready',
+        TranslationKeys.splashAssetsFailed:
+            'Could not download challenge assets. Check your connection and try again.',
+        TranslationKeys.splashRetry: 'Retry again',
         TranslationKeys.homeHeroSubtitle: 'Speed, focus, and survival',
         TranslationKeys.homeModesTitle: 'Game modes',
         TranslationKeys.homeGreeting: 'Hello, {name}',
@@ -1133,6 +1141,8 @@ TranslationCatalog createBootstrapCatalog() {
             'No rankings yet — play Quick Survival to appear here',
         TranslationKeys.leaderboardLoadError: 'Could not load the leaderboard',
         TranslationKeys.leaderboardPoints: '{points} pts',
+        TranslationKeys.leaderboardChallenges: '{count} challenges',
+        TranslationKeys.leaderboardPlaylists: '{count} playlists',
         TranslationKeys.onboardingStepOf: 'Step {current} of {total}',
         TranslationKeys.onboardingHowToPlay: 'How to play',
         TranslationKeys.appPressBackAgainToExit: 'Press back again to exit',

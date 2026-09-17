@@ -35,6 +35,8 @@ export type RingLockPlayerState = {
   activeRingIndex: RingLockRingIndex;
   rings: RingLockRingRuntime[];
   lastAcceptedCommandId: string | null;
+  /** Mono clock of last evaluated lock attempt (spam throttle). */
+  lastCommandMonoMs: number | null;
   progress: number;
   result: RingLockPlayerResult;
   stateSequence: number;
@@ -512,6 +514,7 @@ export function buildInitialRingLockPlayerState(input: {
     activeRingIndex: 0,
     rings: input.rings.map((r) => ({ ...r })),
     lastAcceptedCommandId: null,
+    lastCommandMonoMs: null,
     progress: 0,
     result: 'active',
     stateSequence: 1,
@@ -600,9 +603,13 @@ export type ApplyRingLockResult =
         | 'deadline'
         | 'stale_sequence'
         | 'not_active'
-        | 'malformed';
+        | 'malformed'
+        | 'cooldown';
       state: RingLockRoundState;
     };
+
+/** Minimum gap between evaluated lock attempts (matches mobile tap cooldown). */
+export const RING_LOCK_COMMAND_COOLDOWN_MS = 250;
 
 export function applyRingLockCommand(input: {
   state: RingLockRoundState;
@@ -638,6 +645,13 @@ export function applyRingLockCommand(input: {
   }
 
   if (
+    prior.lastCommandMonoMs != null &&
+    input.nowMonoMs - prior.lastCommandMonoMs < RING_LOCK_COMMAND_COOLDOWN_MS
+  ) {
+    return { ok: false, reason: 'cooldown', state: input.state };
+  }
+
+  if (
     input.expectedSequence != null &&
     input.expectedSequence !== prior.stateSequence
   ) {
@@ -661,8 +675,13 @@ export function applyRingLockCommand(input: {
     0,
     input.nowMonoMs - prior.puzzleStartsMonoMs,
   );
-  // Rings only spin after startDelay.
-  const spinElapsedMs = Math.max(0, elapsedMs - input.state.startDelayMs);
+  // Rings only spin after startDelay. Rewind a bounded amount so network
+  // arrival lag does not erase an on-screen alignment the player timed.
+  const latencyCompMs = 80;
+  const spinElapsedMs = Math.max(
+    0,
+    elapsedMs - input.state.startDelayMs - latencyCompMs,
+  );
   const angle = ringAngleAtElapsedMs(
     active,
     spinElapsedMs,
@@ -674,6 +693,7 @@ export function applyRingLockCommand(input: {
   const nextRound = cloneRingLockState(input.state);
   const nextPlayer = nextRound.players[input.playerId]!;
   nextPlayer.lastAcceptedCommandId = input.commandId;
+  nextPlayer.lastCommandMonoMs = input.nowMonoMs;
   nextPlayer.stateSequence += 1;
   nextPlayer.lastLockRingIndex = input.ringIndex;
 

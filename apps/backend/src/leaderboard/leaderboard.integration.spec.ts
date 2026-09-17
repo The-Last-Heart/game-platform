@@ -98,19 +98,70 @@ describeDb('LeaderboardService integration', () => {
       points: -5,
     });
 
+    const played = await service.applyStatEvent({
+      playerId: p1,
+      displayName: 'Alpha',
+      avatarColor: '#111111',
+      countryCode: 'SA',
+      matchId,
+      reason: 'challenge_played',
+      sourceId: 'c1',
+    });
+    const playedDup = await service.applyStatEvent({
+      playerId: p1,
+      displayName: 'Alpha',
+      avatarColor: '#111111',
+      countryCode: 'SA',
+      matchId,
+      reason: 'challenge_played',
+      sourceId: 'c1',
+    });
+    const playlist = await service.applyStatEvent({
+      playerId: p1,
+      displayName: 'Alpha',
+      avatarColor: '#111111',
+      countryCode: 'SA',
+      matchId,
+      reason: 'playlist_completed',
+      sourceId: matchId,
+    });
+    expect(played).toBe(true);
+    expect(playedDup).toBe(false);
+    expect(playlist).toBe(true);
+
     const totals = await pool.query<{
       player_id: string;
       total_points: string;
+      challenges_played: string;
+      playlists_completed: string;
     }>(
-      `SELECT player_id, total_points::text AS total_points
+      `SELECT player_id,
+              total_points::text AS total_points,
+              challenges_played::text AS challenges_played,
+              playlists_completed::text AS playlists_completed
        FROM players WHERE player_id = ANY($1::text[])`,
       [[p1, p2]],
     );
     const byId = Object.fromEntries(
-      totals.rows.map((r) => [r.player_id, r.total_points]),
+      totals.rows.map((r) => [
+        r.player_id,
+        {
+          points: r.total_points,
+          challenges: r.challenges_played,
+          playlists: r.playlists_completed,
+        },
+      ]),
     );
-    expect(byId[p1]).toBe('15');
-    expect(byId[p2]).toBe('0');
+    expect(byId[p1]).toEqual({
+      points: '15',
+      challenges: '1',
+      playlists: '1',
+    });
+    expect(byId[p2]).toEqual({
+      points: '0',
+      challenges: '0',
+      playlists: '0',
+    });
 
     const top = await service.getTop(100);
     const alpha = top.find(
@@ -118,6 +169,8 @@ describeDb('LeaderboardService integration', () => {
     );
     expect(alpha).toBeTruthy();
     expect(alpha!.countryCode).toBe('SA');
+    expect(alpha!.challengesPlayed).toBe(1);
+    expect(alpha!.playlistsCompleted).toBe(1);
     expect(alpha!.rank).toBeGreaterThanOrEqual(1);
   });
 });

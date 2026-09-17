@@ -12,6 +12,8 @@ class LeaderboardEntry {
     required this.countryCode,
     required this.avatarColor,
     required this.totalPoints,
+    required this.challengesPlayed,
+    required this.playlistsCompleted,
   });
 
   final int rank;
@@ -19,6 +21,8 @@ class LeaderboardEntry {
   final String countryCode;
   final String avatarColor;
   final int totalPoints;
+  final int challengesPlayed;
+  final int playlistsCompleted;
 
   factory LeaderboardEntry.fromJson(Map<String, dynamic> json) {
     return LeaderboardEntry(
@@ -27,6 +31,8 @@ class LeaderboardEntry {
       countryCode: json['countryCode'] as String,
       avatarColor: json['avatarColor'] as String,
       totalPoints: (json['totalPoints'] as num).toInt(),
+      challengesPlayed: (json['challengesPlayed'] as num?)?.toInt() ?? 0,
+      playlistsCompleted: (json['playlistsCompleted'] as num?)?.toInt() ?? 0,
     );
   }
 }

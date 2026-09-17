@@ -6,9 +6,14 @@ import type { LeaderboardService } from './leaderboard.service';
 
 describe('MatchService Quick Survival leaderboard awards', () => {
   function attachSpy(service: MatchService) {
-    const events: Array<{
+    const pointEvents: Array<{
       reason: string;
       points: number;
+      playerId: string;
+      sourceId: string;
+    }> = [];
+    const statEvents: Array<{
+      reason: string;
       playerId: string;
       sourceId: string;
     }> = [];
@@ -19,7 +24,7 @@ describe('MatchService Quick Survival leaderboard awards', () => {
         playerId: string;
         sourceId: string;
       }) => {
-        events.push({
+        pointEvents.push({
           reason: input.reason,
           points: input.points,
           playerId: input.playerId,
@@ -27,14 +32,26 @@ describe('MatchService Quick Survival leaderboard awards', () => {
         });
         return true;
       },
+      applyStatEvent: async (input: {
+        reason: string;
+        playerId: string;
+        sourceId: string;
+      }) => {
+        statEvents.push({
+          reason: input.reason,
+          playerId: input.playerId,
+          sourceId: input.sourceId,
+        });
+        return true;
+      },
     } as unknown as LeaderboardService;
-    return events;
+    return { pointEvents, statEvents };
   }
 
   it('awards +5 for QS human challenge success and skips bots/other modes', async () => {
     const clock = new FakeClock(5_000_000);
     const service = MatchService.forTests({ clock, nodeEnv: 'test' });
-    const events = attachSpy(service);
+    const { pointEvents, statEvents } = attachSpy(service);
 
     const created = await service.createQuickSurvivalMatch([
       {
@@ -60,6 +77,8 @@ describe('MatchService Quick Survival leaderboard awards', () => {
       durationMs: 3000,
       energyRewardOnSuccess: 0,
     });
+    match.roundNumber = 1;
+    match.pinnedPlaylist = [definition, definition];
     match.currentChallenge = {
       challengeInstanceId: 'chal-1',
       engineId: definition.engineId,
@@ -106,10 +125,17 @@ describe('MatchService Quick Survival leaderboard awards', () => {
       }
     ).awardChallengeWinLeaderboardPoints(match);
 
-    expect(events).toEqual([
+    expect(pointEvents).toEqual([
       {
         reason: 'challenge_win',
         points: 5,
+        playerId: 'install-human-01',
+        sourceId: 'chal-1',
+      },
+    ]);
+    expect(statEvents).toEqual([
+      {
+        reason: 'challenge_played',
         playerId: 'install-human-01',
         sourceId: 'chal-1',
       },
@@ -121,7 +147,118 @@ describe('MatchService Quick Survival leaderboard awards', () => {
         awardChallengeWinLeaderboardPoints: (m: MatchState) => void;
       }
     ).awardChallengeWinLeaderboardPoints(match);
-    expect(events).toHaveLength(1);
+    expect(pointEvents).toHaveLength(1);
+    expect(statEvents).toHaveLength(1);
+
+    service.onModuleDestroy();
+  });
+
+  it('records playlist_completed once on the last base-pack round', async () => {
+    const clock = new FakeClock(5_000_000);
+    const service = MatchService.forTests({ clock, nodeEnv: 'test' });
+    const { pointEvents, statEvents } = attachSpy(service);
+
+    const created = await service.createQuickSurvivalMatch([
+      {
+        displayName: 'Human',
+        avatarColor: '#111111',
+        countryCode: 'SA',
+        playerId: 'install-human-01',
+      },
+      {
+        displayName: 'Friend',
+        avatarColor: '#222222',
+        countryCode: 'SA',
+        playerId: 'install-friend-01',
+      },
+    ]);
+    const match = (await service
+      .getStoreForTests()
+      .get(created.matchId)) as MatchState;
+    const humanId = created.assignments[0]!.playerId;
+    const definition = createDevChallengeDefinition({
+      durationMs: 3000,
+      energyRewardOnSuccess: 0,
+    });
+    match.pinnedPlaylist = [definition, definition];
+    match.roundNumber = 2;
+    match.currentChallenge = {
+      challengeInstanceId: 'chal-last',
+      engineId: definition.engineId,
+      definitionId: definition.definitionId,
+      definitionVersion: definition.version,
+      definition,
+      participatingPlayerIds: [humanId],
+      startsAtMs: clock.nowMs(),
+      deadlineAtMs: clock.nowMs() + 3000,
+      deadlineMonoMs: clock.monoMs() + 3000,
+      status: 'resolved',
+      roundPhase: 'answer',
+      signalToken: null,
+      signaledAtMs: null,
+      signalAtMonoMs: null,
+      signalEndsAtMs: null,
+      signalEndsAtMonoMs: null,
+      submissions: new Map(),
+      resolutions: [
+        {
+          playerId: humanId,
+          outcome: 'failure',
+          heartsDelta: -1,
+          energyDelta: 0,
+          heartsAfter: 2,
+          energyAfter: 0,
+          statusAfter: 'active',
+        },
+      ],
+    };
+    match.players.get(humanId)!.status = 'active';
+
+    (
+      service as unknown as {
+        awardChallengeWinLeaderboardPoints: (m: MatchState) => void;
+      }
+    ).awardChallengeWinLeaderboardPoints(match);
+
+    expect(pointEvents).toEqual([]);
+    expect(statEvents).toEqual([
+      {
+        reason: 'challenge_played',
+        playerId: 'install-human-01',
+        sourceId: 'chal-last',
+      },
+      {
+        reason: 'playlist_completed',
+        playerId: 'install-human-01',
+        sourceId: match.matchId,
+      },
+    ]);
+
+    // Sudden-death round after base pack: no second playlist_completed.
+    match.roundNumber = 3;
+    match.currentChallenge = {
+      ...match.currentChallenge,
+      challengeInstanceId: 'chal-sd',
+      resolutions: [
+        {
+          playerId: humanId,
+          outcome: 'success',
+          heartsDelta: 0,
+          energyDelta: 0,
+          heartsAfter: 2,
+          energyAfter: 0,
+          statusAfter: 'active',
+        },
+      ],
+    };
+    (
+      service as unknown as {
+        awardChallengeWinLeaderboardPoints: (m: MatchState) => void;
+      }
+    ).awardChallengeWinLeaderboardPoints(match);
+    expect(
+      statEvents.filter((e) => e.reason === 'playlist_completed'),
+    ).toHaveLength(1);
 
     service.onModuleDestroy();
   });
@@ -129,7 +266,7 @@ describe('MatchService Quick Survival leaderboard awards', () => {
   it('awards +10 survive and −5 fail for strike outcomes; reflect uses original attack id', async () => {
     const clock = new FakeClock(5_000_000);
     const service = MatchService.forTests({ clock, nodeEnv: 'test' });
-    const events = attachSpy(service);
+    const { pointEvents } = attachSpy(service);
 
     const created = await service.createQuickSurvivalMatch([
       {
@@ -225,7 +362,7 @@ describe('MatchService Quick Survival leaderboard awards', () => {
       },
     );
 
-    expect(events).toEqual([
+    expect(pointEvents).toEqual([
       {
         reason: 'strike_survive',
         points: 10,

@@ -23,7 +23,7 @@ function baseConfig(overrides: Record<string, unknown> = {}) {
       allowClockwise: true,
       allowCounterClockwise: true,
       targetAngleDeg: 0,
-      alignmentToleranceDeg: 14,
+      alignmentToleranceDeg: 24,
       transitionDelayMs: 150,
       safetyMarginMs: 400,
       maxGenerationAttempts: 32,
@@ -216,7 +216,7 @@ describe('precision.ring_lock lock command', () => {
     return {
       challengeInstanceId: 'c1',
       targetAngleDeg: 0,
-      alignmentToleranceDeg: 14,
+      alignmentToleranceDeg: 24,
       startDelayMs: 0,
       transitionDelayMs: 150,
       difficulty: 'medium',
@@ -259,7 +259,7 @@ describe('precision.ring_lock lock command', () => {
     const state = makeRound();
     state.players['p1']!.rings[0] = {
       index: 0,
-      initialAngleDeg: 14,
+      initialAngleDeg: 24,
       direction: 1,
       angularVelocityDegPerSec: 1,
       locked: false,
@@ -340,6 +340,41 @@ describe('precision.ring_lock lock command', () => {
     expect(second.ok && second.duplicate).toBe(true);
   });
 
+  it('rejects spam within cooldown window', () => {
+    const state = makeRound();
+    const first = applyRingLockCommand({
+      state,
+      playerId: 'p1',
+      ringIndex: 0,
+      commandId: 'cmd-a',
+      nowMonoMs: 1_000_000,
+      nowWallMs: 1_000_000,
+    });
+    expect(first.ok).toBe(true);
+    if (!first.ok) return;
+    const spam = applyRingLockCommand({
+      state: first.state,
+      playerId: 'p1',
+      ringIndex: first.player.activeRingIndex,
+      commandId: 'cmd-b',
+      nowMonoMs: 1_000_100,
+      nowWallMs: 1_000_100,
+    });
+    expect(spam.ok).toBe(false);
+    if (spam.ok) return;
+    expect(spam.reason).toBe('cooldown');
+
+    const after = applyRingLockCommand({
+      state: first.state,
+      playerId: 'p1',
+      ringIndex: first.player.activeRingIndex,
+      commandId: 'cmd-c',
+      nowMonoMs: 1_000_250,
+      nowWallMs: 1_000_250,
+    });
+    expect(after.ok).toBe(true);
+  });
+
   it('rejects stale sequence', () => {
     const state = makeRound();
     const stale = applyRingLockCommand({
@@ -391,8 +426,8 @@ describe('precision.ring_lock lock command', () => {
         playerId: 'p1',
         ringIndex: i as 0 | 1 | 2,
         commandId: `cmd-${i}`,
-        nowMonoMs: 1_000_000 + i,
-        nowWallMs: 1_000_000 + i,
+        nowMonoMs: 1_000_000 + i * 300,
+        nowWallMs: 1_000_000 + i * 300,
       });
       expect(applied.ok && applied.hit).toBe(true);
       if (!applied.ok) return;

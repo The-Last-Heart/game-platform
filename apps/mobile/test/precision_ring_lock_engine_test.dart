@@ -97,7 +97,7 @@ PublicChallenge makeRingLockChallenge({
       'ringCount': 3,
       'startDelayMs': 0,
       'targetAngleDeg': 0,
-      'alignmentToleranceDeg': 14,
+      'alignmentToleranceDeg': 24,
       'transitionDelayMs': 180,
       'difficulty': 'medium',
       'seed': 42,
@@ -282,6 +282,55 @@ void main() {
     await tester.tap(find.text('ثبّت'));
     await tester.pump();
     expect(submits, 1);
+  });
+
+  testWidgets('tap cooldown keeps button locked after fast ack', (
+    WidgetTester tester,
+  ) async {
+    int submits = 0;
+    PublicChallenge challenge = makeRingLockChallenge(stateSequence: 1);
+    late void Function(void Function()) setParentState;
+
+    await tester.pumpWidget(
+      wrapWithL10n(
+        StatefulBuilder(
+          builder: (BuildContext context, void Function(void Function()) setState) {
+            setParentState = setState;
+            return PrecisionRingLockEngine().build(
+              context,
+              makeContext(
+                challenge,
+                onSubmit: (_) {
+                  submits += 1;
+                },
+              ),
+            );
+          },
+        ),
+        disableAnimations: true,
+      ),
+    );
+    await tester.pump();
+    await tester.tap(find.text('ثبّت'));
+    await tester.pump();
+    expect(submits, 1);
+
+    // Simulate a near-instant miss ack — button must stay locked for cooldown.
+    setParentState(() {
+      challenge = makeRingLockChallenge(
+        stateSequence: 2,
+        lastLockOutcome: 'miss',
+      );
+    });
+    await tester.pump();
+    await tester.tap(find.text('ثبّت'));
+    await tester.pump();
+    expect(submits, 1);
+
+    await tester.pump(const Duration(milliseconds: 260));
+    await tester.tap(find.text('ثبّت'));
+    await tester.pump();
+    expect(submits, 2);
   });
 
   testWidgets('reconnect / reduced-motion / compact layouts have no overflow', (

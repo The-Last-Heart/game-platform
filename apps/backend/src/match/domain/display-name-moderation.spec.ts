@@ -31,6 +31,8 @@ describe('isProhibitedDisplayName', () => {
     expect(isProhibitedDisplayName('كوس اوماك')).toBe(true);
     expect(isProhibitedDisplayName('خرة')).toBe(true);
     expect(isProhibitedDisplayName('شرموط')).toBe(true);
+    expect(isProhibitedDisplayName('شرمطة')).toBe(true);
+    expect(isProhibitedDisplayName('شرمطه')).toBe(true);
     expect(isProhibitedDisplayName('شراميط')).toBe(true);
     expect(isProhibitedDisplayName('منيك')).toBe(true);
   });

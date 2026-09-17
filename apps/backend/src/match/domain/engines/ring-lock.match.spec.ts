@@ -56,7 +56,7 @@ describe('precision.ring_lock match behavior', () => {
       allowClockwise: true,
       allowCounterClockwise: true,
       targetAngleDeg: 0,
-      alignmentToleranceDeg: 14,
+      alignmentToleranceDeg: 24,
       transitionDelayMs: 100,
       safetyMarginMs: 400,
       maxGenerationAttempts: 48,
@@ -106,6 +106,9 @@ describe('precision.ring_lock match behavior', () => {
     }
 
     for (let i = 0; i < 3; i += 1) {
+      if (i > 0) {
+        clock.advance(300);
+      }
       const result = eng.submitAnswer(match, {
         playerId: 'p0',
         challengeInstanceId: challenge.challengeInstanceId,

@@ -2253,12 +2253,13 @@ export type RingLockLastOutcome = z.infer<typeof ringLockLastOutcomeSchema>;
 export const RING_LOCK_DEFAULT_CONFIG = {
   ringCount: RING_LOCK_RING_COUNT,
   startDelayMs: 700,
-  minAngularVelocityDegPerSec: 55,
-  maxAngularVelocityDegPerSec: 110,
+  minAngularVelocityDegPerSec: 45,
+  maxAngularVelocityDegPerSec: 90,
   allowClockwise: true,
   allowCounterClockwise: true,
   targetAngleDeg: 0,
-  alignmentToleranceDeg: 14,
+  /** ± degrees from the gate — must stay playable with RTT + human reaction. */
+  alignmentToleranceDeg: 24,
   transitionDelayMs: 180,
   safetyMarginMs: 600,
   maxGenerationAttempts: 48,

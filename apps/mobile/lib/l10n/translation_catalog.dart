@@ -172,7 +172,6 @@ abstract final class TranslationKeys {
   static const String identitySubtitle = 'identity.subtitle';
   static const String identityNameLabel = 'identity.name_label';
   static const String identityNameInvalid = 'identity.name_invalid';
-  static const String identityNameProhibited = 'identity.name_prohibited';
   static const String identityCountryLabel = 'identity.country_label';
   static const String identityCountryHint = 'identity.country_hint';
   static const String identityCountryInvalid = 'identity.country_invalid';
@@ -204,11 +203,14 @@ abstract final class TranslationKeys {
   static const String errorsQueueTimeout = 'errors.queue_timeout';
   static const String errorsQueueFailed = 'errors.queue_failed';
   static const String errorsIdentityNameTaken = 'errors.identity.name_taken';
-  static const String errorsProtocolUnauthorized = 'errors.protocol.unauthorized';
+  static const String errorsProtocolUnauthorized =
+      'errors.protocol.unauthorized';
   static const String splashTagline = 'splash.tagline';
   static const String splashVersion = 'splash.version';
   static const String splashDownloadingAssets = 'splash.downloading_assets';
   static const String splashAssetsReady = 'splash.assets_ready';
+  static const String splashAssetsFailed = 'splash.assets_failed';
+  static const String splashRetry = 'splash.retry';
   static const String homeHeroSubtitle = 'home.hero_subtitle';
   static const String homeModesTitle = 'home.modes_title';
   static const String homeGreeting = 'home.greeting';
@@ -216,6 +218,8 @@ abstract final class TranslationKeys {
   static const String leaderboardEmpty = 'leaderboard.empty';
   static const String leaderboardLoadError = 'leaderboard.load_error';
   static const String leaderboardPoints = 'leaderboard.points';
+  static const String leaderboardChallenges = 'leaderboard.challenges';
+  static const String leaderboardPlaylists = 'leaderboard.playlists';
   static const String onboardingStepOf = 'onboarding.step_of';
   static const String onboardingHowToPlay = 'onboarding.how_to_play';
   static const String appPressBackAgainToExit = 'app.press_back_again_to_exit';

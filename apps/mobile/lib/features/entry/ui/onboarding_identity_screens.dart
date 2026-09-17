@@ -271,8 +271,6 @@ class _IdentityScreenState extends State<IdentityScreen> {
     String? countryError;
     if (!isValidDisplayNameFormat(name)) {
       nameError = resolver.resolve(TranslationKeys.identityNameInvalid);
-    } else if (isProhibitedDisplayName(name)) {
-      nameError = resolver.resolve(TranslationKeys.identityNameProhibited);
     }
     if (_countryCode == null || !isPlayerCountryCode(_countryCode!)) {
       countryError = resolver.resolve(TranslationKeys.identityCountryInvalid);
