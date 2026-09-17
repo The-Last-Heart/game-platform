@@ -390,7 +390,8 @@ const ar: Record<MessageKey, string> = {
   'studio.field.familyId': 'العائلة',
   'studio.field.categoryId': 'التصنيف',
   'studio.field.difficulty': 'الصعوبة',
-  'studio.field.difficultyHint': 'للمزج والتحليلات — ليس فلترة صارمة',
+  'studio.field.difficultyHint':
+    'تضبط ضغط اللعب الفعلي (الوقت والسرعة والنوافذ). تُحدَّث معلمات العائلة لتطابقها ويمكن ضبطها بعد ذلك.',
   'studio.field.difficulty.easy': 'سهل',
   'studio.field.difficulty.medium': 'متوسط',
   'studio.field.difficulty.hard': 'صعب',
@@ -823,6 +824,38 @@ const ar: Record<MessageKey, string> = {
   'studio.field.fp.footerKey': 'نص التذييل',
   'studio.field.fp.advancedExport': 'تصدير متقدم (للقراءة فقط)',
   'studio.field.fp.unknownEngine': 'محرك غير معروف — لا يتوفر نموذج معلمات.',
+  'studio.field.fp.snapLead':
+    'نصف قطر الالتقاط يحدد مدى القرب المطلوب. صعوبة التحدي تضبط هذا أيضاً.',
+  'studio.field.fp.snapRadiusNorm': 'نصف قطر الالتقاط',
+  'studio.field.fp.snapRadiusHint': 'أكبر = أسهل للربط',
+  'studio.field.fp.ringLead':
+    'سرعة الحلقات وحجم البوابة يتبعان صعوبة التحدي ما لم تخصصهما هنا.',
+  'studio.field.fp.ringMinSpeed': 'أبطأ سرعة حلقة',
+  'studio.field.fp.ringMaxSpeed': 'أسرع سرعة حلقة',
+  'studio.field.fp.ringSpeedHint': 'درجات في الثانية',
+  'studio.field.fp.ringTolerance': 'حجم البوابة',
+  'studio.field.fp.ringToleranceHint': 'أكبر = أسهل للقفل على البوابة',
+  'studio.field.fp.pulseLead':
+    'زمن انتقال النبضة ونوافذ اللمس تتبعان صعوبة التحدي ما لم تُخصصا.',
+  'studio.field.fp.segmentDurationMs': 'زمن انتقال النبضة',
+  'studio.field.fp.segmentDurationHint': 'كم يستغرق النبض للوصول إلى اللاعب التالي',
+  'studio.field.fp.hitWindowEarlyMs': 'نافذة اللمس المبكر',
+  'studio.field.fp.hitWindowLateMs': 'نافذة اللمس المتأخر',
+  'studio.field.fp.hitWindowHint': 'كم يمكن أن يسبق أو يتأخر اللمس ويُحتسب',
+  'studio.field.fp.oddLead': 'عرض الشبكة. ضغط الوقت يأتي من صعوبة التحدي.',
+  'studio.field.fp.columns': 'الأعمدة',
+  'studio.field.fp.columnsHint': 'كم رمزاً في كل صف',
+  'studio.field.fp.orderLead': 'اتجاه الترتيب. ضغط الوقت يأتي من صعوبة التحدي.',
+  'studio.field.fp.ascending': 'ترتيب الفرز',
+  'studio.field.fp.ascendingHint': 'يجب على اللاعبين ترتيب العناصر بهذا الشكل',
+  'studio.field.fp.ascending.asc': 'من الأصغر للأكبر',
+  'studio.field.fp.ascending.desc': 'من الأكبر للأصغر',
+  'studio.field.fp.searchLead':
+    'اعثر على كل خلية مطابقة. ضغط الوقت يأتي من صعوبة التحدي.',
+  'studio.field.fp.targetValue': 'الهدف المطلوب',
+  'studio.field.fp.targetValueHint': 'يختار اللاعبون كل خلية بهذه القيمة',
+  'studio.field.fp.layoutLead':
+    'التخطيط يبقى في التصدير المتقدم. صعوبة التحدي تضبط وقت اللعب.',
   'studio.field.fp.behaviorNote':
     'قواعد الإدخال تأتي من معلمات المحرك أعلاه — لا شيء إضافي هنا.',
 

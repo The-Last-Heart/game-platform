@@ -140,6 +140,8 @@ describe('MatchService Quick Survival leaderboard awards', () => {
         sourceId: 'chal-1',
       },
     ]);
+    expect(match.players.get(humanId)!.claimedPoints).toBe(5);
+    expect(match.players.get(friendId)!.claimedPoints).toBe(0);
 
     match.mode = 'private';
     (
@@ -149,6 +151,7 @@ describe('MatchService Quick Survival leaderboard awards', () => {
     ).awardChallengeWinLeaderboardPoints(match);
     expect(pointEvents).toHaveLength(1);
     expect(statEvents).toHaveLength(1);
+    expect(match.players.get(humanId)!.claimedPoints).toBe(5);
 
     service.onModuleDestroy();
   });
@@ -382,6 +385,27 @@ describe('MatchService Quick Survival leaderboard awards', () => {
         sourceId: 'atk-original',
       },
     ]);
+    // +10 shield, −5 hit, +10 reflect survive = 15
+    expect(match.players.get(targetId)!.claimedPoints).toBe(15);
+
+    // Match-local floor: another hit cannot push below 0.
+    match.players.get(targetId)!.claimedPoints = 3;
+    award(match, [
+      {
+        kind: 'power_resolved',
+        sequence: 5,
+        revision: 5,
+        serverTimestampMs: clock.nowMs(),
+        attackId: 'atk-floor',
+        attackerId,
+        targetId,
+        outcome: 'hit',
+        heartsDeltaTarget: -1,
+        heartsAfterTarget: 0,
+        statusAfterTarget: 'spectator',
+      },
+    ]);
+    expect(match.players.get(targetId)!.claimedPoints).toBe(0);
 
     service.onModuleDestroy();
   });

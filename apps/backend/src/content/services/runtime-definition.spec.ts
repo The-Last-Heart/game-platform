@@ -32,4 +32,65 @@ describe('toRuntimeChallengeDefinition', () => {
       resultHoldMs: 1500,
     });
   });
+
+  it('copies Studio difficulty onto ring-lock serverConfig for generation', () => {
+    const def = {
+      definitionId: 'precision.ring_lock.dev',
+      definitionVersion: 1,
+      engineId: 'precision.ring_lock',
+      durationMs: 15000,
+      heartPenaltyOnFailure: 1,
+      energyRewardOnSuccess: 1,
+      promptKey: 'challenge.ring_lock.intro',
+      clientConfig: {},
+      serverConfig: {
+        minAngularVelocityDegPerSec: 45,
+        maxAngularVelocityDegPerSec: 90,
+        alignmentToleranceDeg: 24,
+        difficulty: 'medium',
+      },
+      internalTitle: 'Unlock the Rings',
+      familyId: 'precision',
+      categoryId: 'precision.ring_lock',
+      difficulty: 'hard',
+      instructionAr: 'أوقف الحلقات',
+      eligibleModes: ['training'],
+      accessibilityFallbackKey: 'challenge.ring_lock.a11y_fallback',
+    } as ChallengeDefinitionContract;
+
+    expect(toRuntimeChallengeDefinition(def).serverConfig['difficulty']).toBe(
+      'hard',
+    );
+  });
+
+  it('fills tap speed from difficulty when Studio omitted it', () => {
+    const def = {
+      definitionId: 'tap.precision.dev',
+      definitionVersion: 1,
+      engineId: 'tap.precision',
+      durationMs: 5000,
+      heartPenaltyOnFailure: 1,
+      energyRewardOnSuccess: 1,
+      promptKey: 'challenge.precision.intro',
+      clientConfig: {
+        categoryKey: 'challenge.category.tap',
+        promptKey: 'challenge.precision.prompt',
+        targets: [{ id: 't1', x: 0.5, y: 0.5 }],
+        attemptCount: 1,
+      },
+      serverConfig: { targetIds: ['t1'], attemptCount: 1 },
+      internalTitle: 'Precision tap',
+      familyId: 'tap',
+      categoryId: 'tap.precision',
+      difficulty: 'hard',
+      instructionAr: 'اضغط',
+      eligibleModes: ['training'],
+      accessibilityFallbackKey: 'challenge.precision.a11y_fallback',
+    } as ChallengeDefinitionContract;
+
+    const runtime = toRuntimeChallengeDefinition(def);
+    expect(runtime.clientConfig['attemptCount']).toBe(1);
+    expect(runtime.clientConfig['speedMin']).toBeGreaterThan(0.2);
+    expect(runtime.durationMs).toBe(5000);
+  });
 });

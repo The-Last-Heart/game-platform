@@ -16,7 +16,7 @@ Includes hardening remaining LH-007 engines for real-device play and a mixed ele
 
 ## Side delivery (not a milestone close)
 
-**Quick Survival leaderboard** (migrations `035_player_leaderboard`, `037_player_leaderboard_stats`): after pull, run `pnpm --filter @thelastheart/backend db:migrate` and **rebuild/restart the baked backend container** before LAN/device APK tests so `GET /v1/leaderboard`, QS scoring, and challenge/playlist counters are live.
+**Quick Survival leaderboard** (migrations `035_player_leaderboard`, `037_player_leaderboard_stats`, `038_players_unique_display_name`): after pull, run `pnpm --filter @thelastheart/backend db:migrate` and **rebuild/restart the baked backend container** before LAN/device APK tests so leaderboard scoring, challenge/playlist counters, and global display-name claims (`POST /v1/players/claim`) are live.
 
 ## Deferred
 

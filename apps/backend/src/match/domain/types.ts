@@ -223,6 +223,11 @@ export type PlayerState = {
   playerId: string;
   hearts: number;
   energy: number;
+  /**
+   * Match-scoped Quick Survival claimed points (+5 win / +10 survive / −5 fail,
+   * floored at 0). Published on public snapshots for terminal standings.
+   */
+  claimedPoints: number;
   status: PlayerStatus;
   presence: Presence;
   submittedForCurrentChallenge: boolean;

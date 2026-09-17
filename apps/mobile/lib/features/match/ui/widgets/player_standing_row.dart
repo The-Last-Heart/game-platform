@@ -37,7 +37,7 @@ class PlayerStandingRow extends StatelessWidget {
       final bool bWin = b.playerId == winnerId;
       if (aWin != bWin) return aWin ? -1 : 1;
       if (a.hearts != b.hearts) return b.hearts.compareTo(a.hearts);
-      return b.energy.compareTo(a.energy);
+      return b.claimedPoints.compareTo(a.claimedPoints);
     });
     return players;
   }
@@ -94,7 +94,7 @@ class PlayerStandingRow extends StatelessWidget {
               const SizedBox(width: 12),
             ],
             Text(
-              '${resolver.resolve(TranslationKeys.winnerEnergyScore)} ${player.energy}',
+              '${resolver.resolve(TranslationKeys.winnerEnergyScore)} ${player.claimedPoints}',
               style: Theme.of(context).textTheme.bodySmall,
             ),
           ],

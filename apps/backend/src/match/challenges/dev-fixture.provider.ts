@@ -1,5 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { fillChallengeDifficultyDefaults } from '@thelastheart/contracts';
 import type { ChallengeDefinition } from '../domain/types';
 import type { ChallengeDefinitionProvider } from './challenge-definition.provider';
 
@@ -100,6 +101,20 @@ export class DevFixtureProvider implements ChallengeDefinitionProvider {
   private loadFixture(filename: string): void {
     const raw = readFileSync(join(__dirname, 'fixtures', filename), 'utf-8');
     const parsed = JSON.parse(raw) as ChallengeDefinition;
-    this.definitions.set(parsed.definitionId, parsed);
+    const difficulty = parsed.difficulty ?? 'medium';
+    const filled = fillChallengeDifficultyDefaults({
+      engineId: parsed.engineId,
+      difficulty,
+      durationMs: parsed.durationMs,
+      clientConfig: parsed.clientConfig,
+      serverConfig: parsed.serverConfig,
+    });
+    this.definitions.set(parsed.definitionId, {
+      ...parsed,
+      difficulty,
+      durationMs: filled.durationMs,
+      clientConfig: filled.clientConfig,
+      serverConfig: filled.serverConfig,
+    });
   }
 }

@@ -457,3 +457,47 @@ describe('precision.ring_lock lock command', () => {
     );
   });
 });
+
+describe('precision.ring_lock difficulty tuning', () => {
+  it('uses slower rings when Studio difficulty is easy but speeds are still canned medium', () => {
+    const easy = resolveRingLockGenerationConfig(
+      {
+        minAngularVelocityDegPerSec: 45,
+        maxAngularVelocityDegPerSec: 90,
+        alignmentToleranceDeg: 24,
+        difficulty: 'easy',
+      },
+      15_000,
+    );
+    const hard = resolveRingLockGenerationConfig(
+      {
+        minAngularVelocityDegPerSec: 45,
+        maxAngularVelocityDegPerSec: 90,
+        alignmentToleranceDeg: 24,
+        difficulty: 'hard',
+      },
+      15_000,
+    );
+    expect(easy.minAngularVelocityDegPerSec).toBeLessThan(
+      hard.minAngularVelocityDegPerSec,
+    );
+    expect(easy.alignmentToleranceDeg).toBeGreaterThan(
+      hard.alignmentToleranceDeg,
+    );
+  });
+
+  it('keeps custom speeds when they are not canned medium', () => {
+    const custom = resolveRingLockGenerationConfig(
+      {
+        minAngularVelocityDegPerSec: 70,
+        maxAngularVelocityDegPerSec: 110,
+        alignmentToleranceDeg: 20,
+        difficulty: 'hard',
+      },
+      15_000,
+    );
+    expect(custom.minAngularVelocityDegPerSec).toBe(70);
+    expect(custom.maxAngularVelocityDegPerSec).toBe(110);
+    expect(custom.alignmentToleranceDeg).toBe(20);
+  });
+});

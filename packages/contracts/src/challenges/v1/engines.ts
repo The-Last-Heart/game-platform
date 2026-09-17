@@ -257,6 +257,9 @@ export const tapPrecisionClientConfigSchema = z
     promptKey: translationKey,
     targets: z.array(tapPrecisionTargetSchema).min(1).max(12),
     attemptCount: z.number().int().positive().max(12),
+    /** Normalized playfield speed range. Flutter falls back to 0.18–0.40. */
+    speedMin: z.number().min(0.04).max(1).optional(),
+    speedMax: z.number().min(0.04).max(1.5).optional(),
   })
   .strict()
   .superRefine((value, ctx) => {
@@ -266,6 +269,17 @@ export const tapPrecisionClientConfigSchema = z
         code: z.ZodIssueCode.custom,
         message: "targets must have unique ids",
         path: ["targets"],
+      });
+    }
+    if (
+      value.speedMin != null &&
+      value.speedMax != null &&
+      value.speedMin > value.speedMax
+    ) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "speedMin must be <= speedMax",
+        path: ["speedMin"],
       });
     }
   });
@@ -575,6 +589,8 @@ export const audioCueClientConfigSchema = z
     promptKey: translationKey,
     visualFallbackKey: translationKey,
     hapticFallbackKey: translationKey,
+    /** Gap between audible/visual pulses. */
+    pulseIntervalMs: positiveMs.optional(),
   })
   .strict();
 export type AudioCueClientConfig = z.infer<typeof audioCueClientConfigSchema>;
@@ -2264,6 +2280,30 @@ export const RING_LOCK_DEFAULT_CONFIG = {
   safetyMarginMs: 600,
   maxGenerationAttempts: 48,
   difficulty: "medium" as const,
+} as const;
+
+/** Playable ring-lock generation keyed by challenge difficulty. */
+export const RING_LOCK_DIFFICULTY_TUNING = {
+  easy: {
+    minAngularVelocityDegPerSec: 28,
+    maxAngularVelocityDegPerSec: 50,
+    alignmentToleranceDeg: 32,
+    startDelayMs: 900,
+  },
+  medium: {
+    minAngularVelocityDegPerSec:
+      RING_LOCK_DEFAULT_CONFIG.minAngularVelocityDegPerSec,
+    maxAngularVelocityDegPerSec:
+      RING_LOCK_DEFAULT_CONFIG.maxAngularVelocityDegPerSec,
+    alignmentToleranceDeg: RING_LOCK_DEFAULT_CONFIG.alignmentToleranceDeg,
+    startDelayMs: RING_LOCK_DEFAULT_CONFIG.startDelayMs,
+  },
+  hard: {
+    minAngularVelocityDegPerSec: 72,
+    maxAngularVelocityDegPerSec: 125,
+    alignmentToleranceDeg: 16,
+    startDelayMs: 500,
+  },
 } as const;
 
 export const precisionRingLockClientConfigSchema = z

@@ -230,7 +230,8 @@ class IdentityScreen extends StatefulWidget {
   });
 
   final PlayerIdentity? initial;
-  final ValueChanged<PlayerIdentity> onSaved;
+  /// Returns `null` on success, or a translation key for a field/global error.
+  final Future<String?> Function(PlayerIdentity identity) onSaved;
   final bool allowSkip;
 
   @override
@@ -243,6 +244,7 @@ class _IdentityScreenState extends State<IdentityScreen> {
   String? _countryCode;
   String? _nameError;
   String? _countryError;
+  bool _saving = false;
 
   @override
   void initState() {
@@ -264,7 +266,8 @@ class _IdentityScreenState extends State<IdentityScreen> {
     super.dispose();
   }
 
-  void _submit() {
+  Future<void> _submit() async {
+    if (_saving) return;
     final TranslationResolver resolver = AppLocalization.of(context);
     final String name = normalizeDisplayNameFormat(_nameController.text);
     String? nameError;
@@ -282,13 +285,31 @@ class _IdentityScreenState extends State<IdentityScreen> {
       });
       return;
     }
-    widget.onSaved(
+    setState(() {
+      _saving = true;
+      _nameError = null;
+      _countryError = null;
+    });
+    final String? saveError = await widget.onSaved(
       PlayerIdentity(
         displayName: name,
         avatarColor: _color,
         countryCode: _countryCode!,
       ),
     );
+    if (!mounted) return;
+    if (saveError != null) {
+      setState(() {
+        _saving = false;
+        if (saveError == TranslationKeys.errorsIdentityNameTaken ||
+            saveError == 'errors.identity.name_taken') {
+          _nameError = resolver.resolve(TranslationKeys.errorsIdentityNameTaken);
+        } else {
+          _nameError = resolver.resolve(saveError);
+        }
+      });
+      return;
+    }
   }
 
   @override
@@ -410,7 +431,7 @@ class _IdentityScreenState extends State<IdentityScreen> {
               const Spacer(),
               LhPrimaryButton(
                 label: resolver.resolve(TranslationKeys.identitySave),
-                onPressed: _submit,
+                onPressed: _saving ? null : _submit,
               ),
             ],
           ),

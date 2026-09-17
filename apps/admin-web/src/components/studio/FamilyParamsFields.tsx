@@ -2476,6 +2476,321 @@ function GeographySelectOnMapFields(props: FamilyParamsFieldsProps) {
   );
 }
 
+function SnapRadiusFields(props: FamilyParamsFieldsProps) {
+  const {
+    locale,
+    clientConfig,
+    serverConfig,
+    onClientChange,
+    onServerChange,
+    disabled,
+  } = props;
+  const snapRadiusNorm = (clientConfig.snapRadiusNorm as number) ?? 0.09;
+  return (
+    <>
+      <p className="studio-section-lead">{lbl(locale, 'fp.snapLead')}</p>
+      <FractionPercentField
+        id="fp-snapRadiusNorm"
+        label={lbl(locale, 'fp.snapRadiusNorm')}
+        hint={lbl(locale, 'fp.snapRadiusHint')}
+        value={snapRadiusNorm}
+        onChange={(v) => {
+          onClientChange({ ...clientConfig, snapRadiusNorm: v });
+          onServerChange({ ...serverConfig, snapRadiusNorm: v });
+        }}
+        disabled={disabled}
+      />
+      <CopyKeysBlock
+        locale={locale}
+        clientConfig={clientConfig}
+        onClientChange={onClientChange}
+        disabled={disabled}
+        keys={[
+          { field: 'promptKey', labelKey: 'fp.promptKey' },
+          { field: 'footerKey', labelKey: 'fp.footerKey' },
+        ]}
+      />
+    </>
+  );
+}
+
+function PrecisionRingLockFields(props: FamilyParamsFieldsProps) {
+  const { locale, serverConfig, onServerChange, disabled } = props;
+  const minV = (serverConfig.minAngularVelocityDegPerSec as number) ?? 45;
+  const maxV = (serverConfig.maxAngularVelocityDegPerSec as number) ?? 90;
+  const tolerance = (serverConfig.alignmentToleranceDeg as number) ?? 24;
+  return (
+    <>
+      <p className="studio-section-lead">{lbl(locale, 'fp.ringLead')}</p>
+      <FieldGroup horizontal>
+        <FieldInput
+          id="fp-ring-minV"
+          label={lbl(locale, 'fp.ringMinSpeed')}
+          hint={lbl(locale, 'fp.ringSpeedHint')}
+          type="number"
+          value={String(minV)}
+          disabled={disabled}
+          onChange={(e) =>
+            onServerChange({
+              ...serverConfig,
+              minAngularVelocityDegPerSec: Number(e.currentTarget.value),
+            })
+          }
+        />
+        <FieldInput
+          id="fp-ring-maxV"
+          label={lbl(locale, 'fp.ringMaxSpeed')}
+          hint={lbl(locale, 'fp.ringSpeedHint')}
+          type="number"
+          value={String(maxV)}
+          disabled={disabled}
+          onChange={(e) =>
+            onServerChange({
+              ...serverConfig,
+              maxAngularVelocityDegPerSec: Number(e.currentTarget.value),
+            })
+          }
+        />
+      </FieldGroup>
+      <FieldInput
+        id="fp-ring-tolerance"
+        label={lbl(locale, 'fp.ringTolerance')}
+        hint={lbl(locale, 'fp.ringToleranceHint')}
+        type="number"
+        value={String(tolerance)}
+        disabled={disabled}
+        onChange={(e) =>
+          onServerChange({
+            ...serverConfig,
+            alignmentToleranceDeg: Number(e.currentTarget.value),
+          })
+        }
+      />
+    </>
+  );
+}
+
+function PassThePulseFields(props: FamilyParamsFieldsProps) {
+  const {
+    locale,
+    clientConfig,
+    serverConfig,
+    onClientChange,
+    onServerChange,
+    disabled,
+  } = props;
+  const segmentDurationMs = (serverConfig.segmentDurationMs as number) ?? 1800;
+  const hitEarly = (serverConfig.hitWindowEarlyMs as number) ?? 280;
+  const hitLate = (serverConfig.hitWindowLateMs as number) ?? 320;
+  return (
+    <>
+      <p className="studio-section-lead">{lbl(locale, 'fp.pulseLead')}</p>
+      <DurationSecondsField
+        id="fp-ptp-segment"
+        label={lbl(locale, 'fp.segmentDurationMs')}
+        hint={lbl(locale, 'fp.segmentDurationHint')}
+        valueMs={segmentDurationMs}
+        onChangeMs={(ms) =>
+          onServerChange({ ...serverConfig, segmentDurationMs: ms })
+        }
+        minSec={0.8}
+        maxSec={4}
+        disabled={disabled}
+      />
+      <FieldGroup horizontal>
+        <DurationSecondsField
+          id="fp-ptp-early"
+          label={lbl(locale, 'fp.hitWindowEarlyMs')}
+          hint={lbl(locale, 'fp.hitWindowHint')}
+          valueMs={hitEarly}
+          onChangeMs={(ms) =>
+            onServerChange({ ...serverConfig, hitWindowEarlyMs: ms })
+          }
+          minSec={0.1}
+          maxSec={1}
+          disabled={disabled}
+        />
+        <DurationSecondsField
+          id="fp-ptp-late"
+          label={lbl(locale, 'fp.hitWindowLateMs')}
+          hint={lbl(locale, 'fp.hitWindowHint')}
+          valueMs={hitLate}
+          onChangeMs={(ms) =>
+            onServerChange({ ...serverConfig, hitWindowLateMs: ms })
+          }
+          minSec={0.1}
+          maxSec={1}
+          disabled={disabled}
+        />
+      </FieldGroup>
+      <CopyKeysBlock
+        locale={locale}
+        clientConfig={clientConfig}
+        onClientChange={onClientChange}
+        disabled={disabled}
+        keys={[
+          { field: 'promptKey', labelKey: 'fp.promptKey' },
+          { field: 'actionKey', labelKey: 'fp.actionKey' },
+        ]}
+      />
+    </>
+  );
+}
+
+function OddOneOutFields(props: FamilyParamsFieldsProps) {
+  const {
+    locale,
+    clientConfig,
+    serverConfig,
+    onClientChange,
+    onServerChange,
+    disabled,
+  } = props;
+  const columns = (clientConfig.columns as number) ?? 4;
+  return (
+    <>
+      <p className="studio-section-lead">{lbl(locale, 'fp.oddLead')}</p>
+      <SegmentedChoice
+        label={lbl(locale, 'fp.columns')}
+        hint={lbl(locale, 'fp.columnsHint')}
+        value={String(columns)}
+        options={[3, 4, 5].map((n) => ({ value: String(n), label: String(n) }))}
+        onChange={(v) => {
+          const next = Number(v);
+          onClientChange({ ...clientConfig, columns: next });
+          onServerChange({ ...serverConfig, columns: next });
+        }}
+        disabled={disabled}
+      />
+      <CopyKeysBlock
+        locale={locale}
+        clientConfig={clientConfig}
+        onClientChange={onClientChange}
+        disabled={disabled}
+        keys={[
+          { field: 'promptKey', labelKey: 'fp.promptKey' },
+          { field: 'footerKey', labelKey: 'fp.footerKey' },
+        ]}
+      />
+    </>
+  );
+}
+
+function SequenceSortFields(props: FamilyParamsFieldsProps) {
+  const {
+    locale,
+    clientConfig,
+    serverConfig,
+    onClientChange,
+    onServerChange,
+    disabled,
+  } = props;
+  const ascending = clientConfig.ascending !== false;
+  return (
+    <>
+      <p className="studio-section-lead">{lbl(locale, 'fp.orderLead')}</p>
+      <SegmentedChoice
+        label={lbl(locale, 'fp.ascending')}
+        hint={lbl(locale, 'fp.ascendingHint')}
+        value={ascending ? 'asc' : 'desc'}
+        options={[
+          { value: 'asc', label: lbl(locale, 'fp.ascending.asc') },
+          { value: 'desc', label: lbl(locale, 'fp.ascending.desc') },
+        ]}
+        onChange={(v) => {
+          const next = v === 'asc';
+          onClientChange({ ...clientConfig, ascending: next });
+          onServerChange({ ...serverConfig, ascending: next });
+        }}
+        disabled={disabled}
+      />
+      <CopyKeysBlock
+        locale={locale}
+        clientConfig={clientConfig}
+        onClientChange={onClientChange}
+        disabled={disabled}
+        keys={[
+          { field: 'promptKey', labelKey: 'fp.promptKey' },
+          { field: 'footerKey', labelKey: 'fp.footerKey' },
+        ]}
+      />
+    </>
+  );
+}
+
+function SearchOccurrencesFields(props: FamilyParamsFieldsProps) {
+  const {
+    locale,
+    clientConfig,
+    serverConfig,
+    onClientChange,
+    onServerChange,
+    disabled,
+  } = props;
+  const targetValue = String(clientConfig.targetValue ?? '8');
+  const columns = (clientConfig.columns as number) ?? 4;
+  return (
+    <>
+      <p className="studio-section-lead">{lbl(locale, 'fp.searchLead')}</p>
+      <FieldGroup horizontal>
+        <FieldInput
+          id="fp-search-target"
+          label={lbl(locale, 'fp.targetValue')}
+          hint={lbl(locale, 'fp.targetValueHint')}
+          value={targetValue}
+          disabled={disabled}
+          onChange={(e) => {
+            const next = e.currentTarget.value;
+            onClientChange({ ...clientConfig, targetValue: next });
+            onServerChange({ ...serverConfig, targetValue: next });
+          }}
+        />
+        <FieldInput
+          id="fp-search-columns"
+          label={lbl(locale, 'fp.columns')}
+          type="number"
+          value={String(columns)}
+          disabled={disabled}
+          onChange={(e) => {
+            const next = Number(e.currentTarget.value);
+            onClientChange({ ...clientConfig, columns: next });
+            onServerChange({ ...serverConfig, columns: next });
+          }}
+        />
+      </FieldGroup>
+      <CopyKeysBlock
+        locale={locale}
+        clientConfig={clientConfig}
+        onClientChange={onClientChange}
+        disabled={disabled}
+        keys={[
+          { field: 'promptKey', labelKey: 'fp.promptKey' },
+          { field: 'footerKey', labelKey: 'fp.footerKey' },
+        ]}
+      />
+    </>
+  );
+}
+
+function LayoutNoteFields(props: FamilyParamsFieldsProps) {
+  const { locale, clientConfig, onClientChange, disabled } = props;
+  return (
+    <>
+      <p className="studio-section-lead">{lbl(locale, 'fp.layoutLead')}</p>
+      <CopyKeysBlock
+        locale={locale}
+        clientConfig={clientConfig}
+        onClientChange={onClientChange}
+        disabled={disabled}
+        keys={[
+          { field: 'promptKey', labelKey: 'fp.promptKey' },
+          { field: 'footerKey', labelKey: 'fp.footerKey' },
+        ]}
+      />
+    </>
+  );
+}
+
 export function FamilyParamsFields(props: FamilyParamsFieldsProps) {
   const { engineId, locale } = props;
   const [showAdvanced, setShowAdvanced] = useState(false);
@@ -2512,6 +2827,24 @@ export function FamilyParamsFields(props: FamilyParamsFieldsProps) {
         return <FocusStroopFields {...props} />;
       case 'geography.select_on_map':
         return <GeographySelectOnMapFields {...props} />;
+      case 'precision.ring_lock':
+        return <PrecisionRingLockFields {...props} />;
+      case 'social.pass_the_pulse':
+        return <PassThePulseFields {...props} />;
+      case 'focus.odd_one_out':
+        return <OddOneOutFields {...props} />;
+      case 'order.sequence_sort':
+        return <SequenceSortFields {...props} />;
+      case 'search.select_occurrences':
+        return <SearchOccurrencesFields {...props} />;
+      case 'precision.neon_cable':
+      case 'precision.cable_untangle':
+        return <SnapRadiusFields {...props} />;
+      case 'precision.maze_path':
+      case 'precision.circuit_rotation':
+      case 'logic.balance_scale':
+      case 'logic.complete_sum':
+        return <LayoutNoteFields {...props} />;
       default:
         return (
           <p style={{ color: 'var(--lh-text-muted)', fontSize: '0.85rem' }}>

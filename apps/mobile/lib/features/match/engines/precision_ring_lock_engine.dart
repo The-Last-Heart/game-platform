@@ -295,7 +295,6 @@ class _RingLockWidgetState extends State<_RingLockWidget>
     if (nowMs > _ctx.challenge.deadlineAtMs) return;
 
     final int active = _asInt(_cfg['activeRingIndex']) ?? 0;
-    final int seq = _asInt(_cfg['stateSequence']) ?? 1;
 
     _awaitingAck = true;
     _cooldownEndsAt = DateTime.now().add(_tapCooldown);
@@ -305,9 +304,10 @@ class _RingLockWidgetState extends State<_RingLockWidget>
     }));
     unawaited(HapticFeedback.selectionClick());
 
+    // Do not send expectedSequence: a lost live-update after a miss would soft-
+    // lock the seat on stale_sequence forever. ringIndex + cooldown is enough.
     _ctx.onSubmit(<String, dynamic>{
       'ringIndex': active,
-      'expectedSequence': seq,
       'final': false,
     });
 
@@ -1386,7 +1386,7 @@ class _RingLockPainter extends CustomPainter {
     for (int s = 0; s < _segments; s += 1) {
       final double a0 = base + s * segSweep + 0.012;
       final double a1 = base + (s + 1) * segSweep - 0.012;
-      final bool isMarker = s == 0;
+      final bool isMarker = s == 0 && (active || locked);
       final Path seg = _annularSegment(c, rOuter, rInner, a0, a1);
 
       Color fillLow = _kNavy;

@@ -45,6 +45,7 @@ import type {
   MatchMode,
   MatchReleasePinsState,
   MatchState,
+  PlayerState,
 } from '../domain/types';
 import {
   DISCONNECT_GRACE_MS,
@@ -2929,6 +2930,7 @@ export class MatchService implements OnModuleDestroy, OnModuleInit {
         sourceId: challenge.challengeInstanceId,
       });
       if (resolution.outcome === 'success') {
+        this.creditMatchClaimedPoints(seat, 5);
         void this.leaderboard.applyPointEvent({
           playerId: seat.persistentPlayerId,
           displayName: seat.displayName ?? 'Player',
@@ -2990,6 +2992,7 @@ export class MatchService implements OnModuleDestroy, OnModuleInit {
       if (flipped) {
         const seat = match.players.get(reflectContext.defenderSeatId);
         if (seat && !seat.isBot && seat.persistentPlayerId) {
+          this.creditMatchClaimedPoints(seat, 10);
           void this.leaderboard.applyPointEvent({
             playerId: seat.persistentPlayerId,
             displayName: seat.displayName ?? 'Player',
@@ -3016,6 +3019,7 @@ export class MatchService implements OnModuleDestroy, OnModuleInit {
         event.outcome === 'shielded' ||
         event.outcome === 'reflected_shielded'
       ) {
+        this.creditMatchClaimedPoints(seat, 10);
         void this.leaderboard.applyPointEvent({
           playerId: seat.persistentPlayerId,
           displayName: seat.displayName ?? 'Player',
@@ -3030,6 +3034,7 @@ export class MatchService implements OnModuleDestroy, OnModuleInit {
         event.outcome === 'hit' ||
         event.outcome === 'reflected_hit'
       ) {
+        this.creditMatchClaimedPoints(seat, -5);
         void this.leaderboard.applyPointEvent({
           playerId: seat.persistentPlayerId,
           displayName: seat.displayName ?? 'Player',
@@ -3042,6 +3047,11 @@ export class MatchService implements OnModuleDestroy, OnModuleInit {
         });
       }
     }
+  }
+
+  /** Match-local claimed points mirror of QS awards (floored at 0). */
+  private creditMatchClaimedPoints(seat: PlayerState, delta: number): void {
+    seat.claimedPoints = Math.max(0, (seat.claimedPoints ?? 0) + delta);
   }
 
   /**

@@ -171,6 +171,7 @@ EnvelopeValidation? _validatePlayerPublic(
     'playerId',
     'hearts',
     'energy',
+    'claimedPoints',
     'status',
     'presence',
     'submittedForCurrentChallenge',
@@ -194,6 +195,11 @@ EnvelopeValidation? _validatePlayerPublic(
   }
   if (!_isEnergy(json['energy'])) {
     return EnvelopeValidation.invalid('$label.energy invalid');
+  }
+  if (json.containsKey('claimedPoints') &&
+      json['claimedPoints'] != null &&
+      !_isNonNegInt(json['claimedPoints'])) {
+    return EnvelopeValidation.invalid('$label.claimedPoints invalid');
   }
   if (json['status'] is! String ||
       !_playerStatuses.contains(json['status'] as String)) {

@@ -43,6 +43,13 @@ class _AudioCueWidgetState extends State<_AudioCueWidget>
     return v?.toInt() ?? 3;
   }
 
+  int get _pulseIntervalMs {
+    final num? v =
+        widget.challengeContext.challenge.clientConfig['pulseIntervalMs']
+            as num?;
+    return v?.toInt().clamp(250, 2000) ?? 700;
+  }
+
   @override
   void initState() {
     super.initState();
@@ -61,7 +68,9 @@ class _AudioCueWidgetState extends State<_AudioCueWidget>
   }
 
   void _startPulses() {
-    _pulseTimer = Timer.periodic(const Duration(milliseconds: 700), (Timer t) {
+    _pulseTimer = Timer.periodic(Duration(milliseconds: _pulseIntervalMs), (
+      Timer t,
+    ) {
       if (!mounted) {
         t.cancel();
         return;

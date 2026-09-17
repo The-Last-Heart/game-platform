@@ -477,6 +477,17 @@ export function toPublicChallengeView(
       }
     }
   }
+  if (challenge.engineId === 'hold.multitouch') {
+    const holdMs = challenge.definition.serverConfig['holdMs'];
+    if (typeof holdMs === 'number') {
+      clientConfig['holdMs'] = holdMs;
+    }
+    const requiredContacts =
+      challenge.definition.serverConfig['requiredContacts'];
+    if (typeof requiredContacts === 'number') {
+      clientConfig['requiredContacts'] = requiredContacts;
+    }
+  }
   if (challenge.engineId === 'audio.cue') {
     const pulseCount = challenge.definition.serverConfig['pulseCount'];
     if (typeof pulseCount === 'number') {
@@ -709,6 +720,7 @@ export class MatchEngine {
       playerId: input.playerId,
       hearts,
       energy,
+      claimedPoints: 0,
       status: hearts > 0 ? 'active' : 'spectator',
       presence: 'connected',
       submittedForCurrentChallenge: false,
@@ -2071,7 +2083,19 @@ export class MatchEngine {
         const ack = { accepted: false, reason: applied.reason };
         next.commandAcks.set(input.commandId, ack);
         next.updatedAtMs = this.clock.nowMs();
-        return { match: next, events: [], duplicate: false, ack };
+        // Resync seat overlay so a lost prior live-update cannot soft-lock the
+        // client on a stale expectedSequence / activeRingIndex.
+        const resync =
+          applied.reason === 'stale_sequence' ||
+          applied.reason === 'wrong_ring' ||
+          applied.reason === 'cooldown';
+        return {
+          match: next,
+          events: [],
+          duplicate: false,
+          ack,
+          liveUpdate: resync,
+        };
       }
       nextChallenge.ringLockState = applied.state;
       syncRingLockSeatOverlays(nextChallenge);
@@ -2775,6 +2799,7 @@ export class MatchEngine {
       playerId: string;
       hearts: number;
       energy: number;
+      claimedPoints: number;
       status: PlayerState['status'];
       presence: PlayerState['presence'];
       submittedForCurrentChallenge: boolean;
@@ -2840,6 +2865,7 @@ export class MatchEngine {
         playerId: p.playerId,
         hearts: p.hearts,
         energy: Math.min(ENERGY_THRESHOLD, p.energy),
+        claimedPoints: Math.max(0, p.claimedPoints ?? 0),
         status: p.status,
         presence: p.presence,
         submittedForCurrentChallenge: p.submittedForCurrentChallenge,

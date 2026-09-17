@@ -111,7 +111,7 @@ TranslationCatalog createBootstrapCatalog() {
         'errors.room.code_invalid': 'رمز الغرفة غير صالح',
         'errors.room.code_expired': 'انتهت صلاحية رمز الغرفة',
         'errors.room.full': 'الغرفة ممتلئة',
-        'errors.identity.name_taken': 'اسم العرض مستخدم في هذه المباراة',
+        'errors.identity.name_taken': 'اسم العرض مستخدم بالفعل',
         'errors.identity.name_prohibited':
             'اسم العرض يحتوي على كلمات غير مسموحة',
         'errors.identity.name_invalid':
@@ -536,7 +536,7 @@ TranslationCatalog createBootstrapCatalog() {
         TranslationKeys.splashDownloadingAssets: 'جاري تحميل ملفات اللعبة',
         TranslationKeys.splashAssetsReady: 'الأصول جاهزة',
         TranslationKeys.splashAssetsFailed:
-            'تعذر تحميل أصول التحدي. تحقق من الاتصال وحاول مرة أخرى.',
+            'تعذر تحميل ملفات اللعبة. تحقق من الاتصال وحاول مرة أخرى.',
         TranslationKeys.splashRetry: 'حاول مرة أخرى',
         TranslationKeys.homeHeroSubtitle: 'سرعة، تركيز، ونجاة',
         TranslationKeys.homeModesTitle: 'أنماط اللعب',
@@ -690,8 +690,7 @@ TranslationCatalog createBootstrapCatalog() {
         'errors.room.code_invalid': 'Room code is invalid',
         'errors.room.code_expired': 'Room code has expired',
         'errors.room.full': 'Room is full',
-        'errors.identity.name_taken':
-            'That display name is already used in this match',
+        'errors.identity.name_taken': 'That display name is already taken',
         'errors.identity.name_prohibited':
             'That display name contains prohibited words',
         'errors.identity.name_invalid':

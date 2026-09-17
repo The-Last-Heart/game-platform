@@ -78,6 +78,9 @@ class _PrecisionTapWidgetState extends State<_PrecisionTapWidget>
     final List<_TargetShape> shapes = _TargetShape.values.toList()
       ..shuffle(rng);
     final _TargetShape roomShape = shapes.first;
+    final double speedMin = (cfg['speedMin'] as num?)?.toDouble() ?? 0.18;
+    final double speedMaxRaw = (cfg['speedMax'] as num?)?.toDouble() ?? 0.40;
+    final double speedMax = speedMaxRaw < speedMin ? speedMin : speedMaxRaw;
 
     _targets = <_MovingTarget>[];
     for (final dynamic raw in rawTargets) {
@@ -87,7 +90,7 @@ class _PrecisionTapWidgetState extends State<_PrecisionTapWidget>
       final double x = (raw['x'] as num?)?.toDouble() ?? 0.5;
       final double y = (raw['y'] as num?)?.toDouble() ?? 0.5;
       // Room-shared velocities from the same seed.
-      final double speed = 0.18 + rng.nextDouble() * 0.22;
+      final double speed = speedMin + rng.nextDouble() * (speedMax - speedMin);
       final double angle = rng.nextDouble() * math.pi * 2;
       _targets.add(
         _MovingTarget(

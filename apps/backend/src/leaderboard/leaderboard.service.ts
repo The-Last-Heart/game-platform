@@ -61,22 +61,149 @@ export class LeaderboardService {
     client: { query: DatabaseService['query'] },
     profile: LeaderboardProfile,
   ): Promise<void> {
+    // Prefer updating/inserting the requested name; if another install owns it,
+    // keep the existing name (update) or insert without stealing (new row uses a
+    // suffix only when this player_id is brand new — claim API is the strict path).
+    const taken = await client.query<{ player_id: string }>(
+      `SELECT player_id
+       FROM players
+       WHERE lower(regexp_replace(btrim(display_name), '\\s+', ' ', 'g'))
+           = lower(regexp_replace(btrim($1), '\\s+', ' ', 'g'))
+         AND player_id <> $2
+       LIMIT 1`,
+      [profile.displayName, profile.playerId],
+    );
+    const nameTaken = (taken.rowCount ?? 0) > 0;
+
+    if (!nameTaken) {
+      await client.query(
+        `INSERT INTO players (
+           player_id, display_name, avatar_color, country_code, total_points, updated_at
+         ) VALUES ($1, $2, $3, $4, 0, now())
+         ON CONFLICT (player_id) DO UPDATE SET
+           display_name = EXCLUDED.display_name,
+           avatar_color = EXCLUDED.avatar_color,
+           country_code = EXCLUDED.country_code,
+           updated_at = now()`,
+        [
+          profile.playerId,
+          profile.displayName,
+          profile.avatarColor,
+          profile.countryCode,
+        ],
+      );
+      return;
+    }
+
+    const existing = await client.query(
+      `SELECT 1 FROM players WHERE player_id = $1 LIMIT 1`,
+      [profile.playerId],
+    );
+    if ((existing.rowCount ?? 0) > 0) {
+      await client.query(
+        `UPDATE players
+         SET avatar_color = $2,
+             country_code = $3,
+             updated_at = now()
+         WHERE player_id = $1`,
+        [profile.playerId, profile.avatarColor, profile.countryCode],
+      );
+      return;
+    }
+
     await client.query(
       `INSERT INTO players (
          player_id, display_name, avatar_color, country_code, total_points, updated_at
-       ) VALUES ($1, $2, $3, $4, 0, now())
-       ON CONFLICT (player_id) DO UPDATE SET
-         display_name = EXCLUDED.display_name,
-         avatar_color = EXCLUDED.avatar_color,
-         country_code = EXCLUDED.country_code,
-         updated_at = now()`,
+       ) VALUES ($1, $2, $3, $4, 0, now())`,
       [
         profile.playerId,
-        profile.displayName,
+        await this.allocateUniqueDisplayName(client, profile.displayName),
         profile.avatarColor,
         profile.countryCode,
       ],
     );
+  }
+
+  private async allocateUniqueDisplayName(
+    client: { query: DatabaseService['query'] },
+    preferred: string,
+  ): Promise<string> {
+    const base = preferred.trim().replace(/\s+/g, ' ').slice(0, 22);
+    for (let i = 0; i < 26; i += 1) {
+      const candidate = `${base} ${String.fromCharCode(65 + i)}`;
+      const hit = await client.query(
+        `SELECT 1
+         FROM players
+         WHERE lower(regexp_replace(btrim(display_name), '\\s+', ' ', 'g'))
+             = lower(regexp_replace(btrim($1), '\\s+', ' ', 'g'))
+         LIMIT 1`,
+        [candidate],
+      );
+      if ((hit.rowCount ?? 0) === 0) {
+        return candidate.slice(0, 24);
+      }
+    }
+    return `${base} Z`.slice(0, 24);
+  }
+
+  /**
+   * Strict profile claim for identity create/edit. Rejects names owned by
+   * another install (case/whitespace-insensitive).
+   */
+  async claimProfile(
+    profile: LeaderboardProfile,
+  ): Promise<{ ok: true } | { ok: false; reason: 'DISPLAY_NAME_TAKEN' | 'INVALID' }> {
+    if (!this.isValidPlayerId(profile.playerId)) {
+      return { ok: false, reason: 'INVALID' };
+    }
+    try {
+      await this.db.tx(async (client) => {
+        const taken = await client.query(
+          `SELECT 1
+           FROM players
+           WHERE lower(regexp_replace(btrim(display_name), '\\s+', ' ', 'g'))
+               = lower(regexp_replace(btrim($1), '\\s+', ' ', 'g'))
+             AND player_id <> $2
+           LIMIT 1`,
+          [profile.displayName, profile.playerId],
+        );
+        if ((taken.rowCount ?? 0) > 0) {
+          throw Object.assign(new Error('DISPLAY_NAME_TAKEN'), {
+            code: 'DISPLAY_NAME_TAKEN',
+          });
+        }
+        await client.query(
+          `INSERT INTO players (
+             player_id, display_name, avatar_color, country_code, total_points, updated_at
+           ) VALUES ($1, $2, $3, $4, 0, now())
+           ON CONFLICT (player_id) DO UPDATE SET
+             display_name = EXCLUDED.display_name,
+             avatar_color = EXCLUDED.avatar_color,
+             country_code = EXCLUDED.country_code,
+             updated_at = now()`,
+          [
+            profile.playerId,
+            profile.displayName,
+            profile.avatarColor,
+            profile.countryCode,
+          ],
+        );
+      });
+      return { ok: true };
+    } catch (error) {
+      if (
+        error instanceof Error &&
+        ((error as { code?: string }).code === 'DISPLAY_NAME_TAKEN' ||
+          (error as { code?: string }).code === '23505')
+      ) {
+        return { ok: false, reason: 'DISPLAY_NAME_TAKEN' };
+      }
+      this.logger.warn({
+        event: 'player_claim_failed',
+        category: error instanceof Error ? error.name : 'UnknownError',
+      });
+      return { ok: false, reason: 'INVALID' };
+    }
   }
 
   /**

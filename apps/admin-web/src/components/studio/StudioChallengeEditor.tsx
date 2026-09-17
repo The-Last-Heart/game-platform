@@ -7,7 +7,12 @@ import type {
   ChallengeDefinitionContract,
   LaunchEngineId,
 } from '@thelastheart/contracts';
-import { STUDIO_ENGINE_REGISTRY } from '@thelastheart/contracts';
+import {
+  applyChallengeDifficulty,
+  oppositeSwipeDirection,
+  STUDIO_ENGINE_REGISTRY,
+} from '@thelastheart/contracts';
+import type { SwipeDirection } from '@thelastheart/contracts';
 import { useBreadcrumbLabel } from '@/components/shell/breadcrumb-labels';
 import {
   ErrorState,
@@ -147,8 +152,54 @@ type DraftDefinition = {
 // Default draft — produces a valid wait_for_signal definition
 // ---------------------------------------------------------------------------
 
+function withPlayDifficulty(
+  draft: Pick<
+    DraftDefinition,
+    'engineId' | 'durationMs' | 'clientConfig' | 'serverConfig'
+  >,
+  difficulty: DraftDefinition['difficulty'],
+): Pick<
+  DraftDefinition,
+  'difficulty' | 'durationMs' | 'clientConfig' | 'serverConfig'
+> {
+  const applied = applyChallengeDifficulty({
+    engineId: draft.engineId,
+    difficulty,
+    durationMs: draft.durationMs,
+    clientConfig: draft.clientConfig,
+    serverConfig: draft.serverConfig,
+  });
+  let serverConfig = applied.serverConfig;
+  if (draft.engineId === 'precision.ring_lock') {
+    serverConfig = { ...serverConfig, difficulty };
+  }
+  if (draft.engineId === 'gesture.reverse_swipe') {
+    const displayed =
+      (applied.clientConfig['displayedDirection'] as SwipeDirection) ?? 'up';
+    serverConfig = {
+      ...serverConfig,
+      requiredDirection: oppositeSwipeDirection(displayed),
+    };
+  }
+  return {
+    difficulty,
+    durationMs: applied.durationMs,
+    clientConfig: applied.clientConfig,
+    serverConfig,
+  };
+}
+
 function defaultDraft(): DraftDefinition {
   const engineId: LaunchEngineId = 'reaction.wait_for_signal';
+  const play = withPlayDifficulty(
+    {
+      engineId,
+      durationMs: 5000,
+      clientConfig: defaultClientConfig(engineId),
+      serverConfig: defaultServerConfig(engineId),
+    },
+    'medium',
+  );
   return {
     definitionId: '',
     definitionVersion: 1,
@@ -156,17 +207,17 @@ function defaultDraft(): DraftDefinition {
     internalTitle: '',
     familyId: 'reaction',
     categoryId: 'reaction.wait_for_signal',
-    difficulty: 'medium',
+    difficulty: play.difficulty,
     instructionAr: '',
     hintAr: '',
     promptKey: 'challenge.wait_for_signal.intro',
-    durationMs: 5000,
+    durationMs: play.durationMs,
     introDurationMs: 0,
     resultHoldMs: 2500,
     heartPenaltyOnFailure: 1,
     energyRewardOnSuccess: 1,
-    clientConfig: defaultClientConfig(engineId),
-    serverConfig: defaultServerConfig(engineId),
+    clientConfig: play.clientConfig,
+    serverConfig: play.serverConfig,
     eligibleModes: ['quick_survival', 'private', 'training', 'dev'],
     roundMin: '',
     roundMax: '',
@@ -199,6 +250,11 @@ function draftToDefinition(
     ),
   );
 
+  let serverConfig = { ...draft.serverConfig };
+  if (draft.engineId === 'precision.ring_lock') {
+    serverConfig = { ...serverConfig, difficulty: draft.difficulty };
+  }
+
   return {
     definitionId: draft.definitionId,
     definitionVersion: draft.definitionVersion,
@@ -216,7 +272,7 @@ function draftToDefinition(
     heartPenaltyOnFailure: draft.heartPenaltyOnFailure,
     energyRewardOnSuccess: draft.energyRewardOnSuccess,
     clientConfig: draft.clientConfig,
-    serverConfig: draft.serverConfig,
+    serverConfig,
     eligibleModes:
       draft.eligibleModes as ChallengeDefinitionContract['eligibleModes'],
     roundMin: draft.roundMin ? Number(draft.roundMin) : undefined,
@@ -645,51 +701,57 @@ export function StudioChallengeEditor({
   function handleEngineChange(newEngineId: string) {
     const entry = registryEntryForEngine(newEngineId);
     if (!entry) return;
-    const clientConfig = defaultClientConfig(entry.engineId);
-    const serverConfig = defaultServerConfig(entry.engineId);
-    const fogVariants =
-      entry.engineId === 'gesture.fog_wipe'
-        ? ((serverConfig.revealContentVariants as string[] | undefined) ?? [])
-        : [];
-    const revealContent =
-      entry.engineId === 'gesture.fog_wipe'
-        ? (clientConfig.assetIds as { revealContent?: string } | undefined)
-            ?.revealContent
-        : undefined;
-    setDraft((prev) => ({
-      ...prev,
-      engineId: entry.engineId,
-      familyId: entry.familyId,
-      categoryId: entry.categoryId,
-      clientConfig,
-      serverConfig,
-      durationMs:
-        entry.engineId === 'memory.sequence'
-          ? clampMemoryTimers(
-              readPositiveMs(clientConfig.previewMs, 2000),
-              4000,
-            ).durationMs
-          : prev.durationMs,
-      accessibilityFallbackKey: `${entry.engineId}.v1`,
-      promptKey:
-        entry.engineId === 'reaction.wait_for_signal'
-          ? 'challenge.wait_for_signal.intro'
-          : entry.engineId === 'gesture.fog_wipe'
-            ? 'challenge.fog_wipe.intro'
-            : entry.engineId === 'memory.sequence'
-              ? 'challenge.memory.intro'
-              : prev.promptKey,
-      requiredAssetIds:
+    setDraft((prev) => {
+      const play = withPlayDifficulty(
+        {
+          engineId: entry.engineId,
+          durationMs: prev.durationMs,
+          clientConfig: defaultClientConfig(entry.engineId),
+          serverConfig: defaultServerConfig(entry.engineId),
+        },
+        prev.difficulty,
+      );
+      const fogVariants =
         entry.engineId === 'gesture.fog_wipe'
-          ? mergeFogWipeRequiredAssets(
-              prev.requiredAssetIds,
-              fogVariants,
-              revealContent,
-            )
-          : entry.engineId === 'social.pass_the_pulse'
-            ? ensurePassThePulseRequiredAssets([])
-            : prev.requiredAssetIds,
-    }));
+          ? ((play.serverConfig.revealContentVariants as
+              | string[]
+              | undefined) ?? [])
+          : [];
+      const revealContent =
+        entry.engineId === 'gesture.fog_wipe'
+          ? (
+              play.clientConfig.assetIds as
+                | { revealContent?: string }
+                | undefined
+            )?.revealContent
+          : undefined;
+      return {
+        ...prev,
+        engineId: entry.engineId,
+        familyId: entry.familyId,
+        categoryId: entry.categoryId,
+        ...play,
+        accessibilityFallbackKey: `${entry.engineId}.v1`,
+        promptKey:
+          entry.engineId === 'reaction.wait_for_signal'
+            ? 'challenge.wait_for_signal.intro'
+            : entry.engineId === 'gesture.fog_wipe'
+              ? 'challenge.fog_wipe.intro'
+              : entry.engineId === 'memory.sequence'
+                ? 'challenge.memory.intro'
+                : prev.promptKey,
+        requiredAssetIds:
+          entry.engineId === 'gesture.fog_wipe'
+            ? mergeFogWipeRequiredAssets(
+                prev.requiredAssetIds,
+                fogVariants,
+                revealContent,
+              )
+            : entry.engineId === 'social.pass_the_pulse'
+              ? ensurePassThePulseRequiredAssets([])
+              : prev.requiredAssetIds,
+      };
+    });
   }
 
   // Localize mode/difficulty option labels
@@ -1023,7 +1085,13 @@ export function StudioChallengeEditor({
                 value={draft.difficulty}
                 options={localizedDifficultyOptions}
                 onChange={(v) =>
-                  updateField('difficulty', v as 'easy' | 'medium' | 'hard')
+                  setDraft((prev) => ({
+                    ...prev,
+                    ...withPlayDifficulty(
+                      prev,
+                      v as 'easy' | 'medium' | 'hard',
+                    ),
+                  }))
                 }
                 disabled={!canDraft}
               />

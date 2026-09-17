@@ -400,7 +400,7 @@ const en = {
   'studio.field.categoryId': 'Category',
   'studio.field.difficulty': 'Difficulty',
   'studio.field.difficultyHint':
-    'Used for catalog mix and analytics — not a hard filter',
+    'Sets real play pressure (time, speed, windows). Family parameters update to match; you can still fine-tune them.',
   'studio.field.difficulty.easy': 'Easy',
   'studio.field.difficulty.medium': 'Medium',
   'studio.field.difficulty.hard': 'Hard',
@@ -847,6 +847,39 @@ const en = {
   'studio.field.fp.advancedExport': 'Advanced export (read-only)',
   'studio.field.fp.unknownEngine':
     'Unknown engine — no parameter form available.',
+  'studio.field.fp.snapLead':
+    'Snap radius is how close the piece must be. Challenge difficulty also sets this.',
+  'studio.field.fp.snapRadiusNorm': 'Snap radius',
+  'studio.field.fp.snapRadiusHint': 'Larger = easier to connect',
+  'studio.field.fp.ringLead':
+    'Ring speed and gate size follow challenge difficulty unless you customize them here.',
+  'studio.field.fp.ringMinSpeed': 'Slowest ring speed',
+  'studio.field.fp.ringMaxSpeed': 'Fastest ring speed',
+  'studio.field.fp.ringSpeedHint': 'Degrees per second',
+  'studio.field.fp.ringTolerance': 'Gate size',
+  'studio.field.fp.ringToleranceHint': 'Larger = easier to lock on the gate',
+  'studio.field.fp.pulseLead':
+    'Pulse travel time and hit windows follow challenge difficulty unless customized.',
+  'studio.field.fp.segmentDurationMs': 'Pulse travel time',
+  'studio.field.fp.segmentDurationHint': 'How long the pulse takes to reach the next player',
+  'studio.field.fp.hitWindowEarlyMs': 'Early tap window',
+  'studio.field.fp.hitWindowLateMs': 'Late tap window',
+  'studio.field.fp.hitWindowHint': 'How early or late a tap still counts',
+  'studio.field.fp.oddLead': 'Grid width. Time pressure comes from challenge difficulty.',
+  'studio.field.fp.columns': 'Columns',
+  'studio.field.fp.columnsHint': 'How many glyphs per row',
+  'studio.field.fp.orderLead':
+    'Sort direction. Time pressure comes from challenge difficulty.',
+  'studio.field.fp.ascending': 'Sort order',
+  'studio.field.fp.ascendingHint': 'Players must arrange items this way',
+  'studio.field.fp.ascending.asc': 'Low to high',
+  'studio.field.fp.ascending.desc': 'High to low',
+  'studio.field.fp.searchLead':
+    'Find every matching cell. Time pressure comes from challenge difficulty.',
+  'studio.field.fp.targetValue': 'Target to find',
+  'studio.field.fp.targetValueHint': 'Players select every cell with this value',
+  'studio.field.fp.layoutLead':
+    'Layout stays in the advanced export. Challenge difficulty sets the play time.',
   'studio.field.fp.behaviorNote':
     'Input rules come from the engine parameters above — nothing extra to set here.',
 

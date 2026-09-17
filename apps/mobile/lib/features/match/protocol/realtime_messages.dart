@@ -453,6 +453,7 @@ class PlayerPublic {
     required this.status,
     required this.presence,
     required this.submittedForCurrentChallenge,
+    this.claimedPoints = 0,
     this.inventory,
     this.protectedThroughRound,
     this.lastDangerPulseTargetId,
@@ -467,6 +468,8 @@ class PlayerPublic {
   final String playerId;
   final int hearts;
   final int energy;
+  /// Match-scoped Quick Survival claimed points (floored at 0).
+  final int claimedPoints;
   final PlayerStatus status;
   final Presence presence;
   final bool submittedForCurrentChallenge;
@@ -486,6 +489,7 @@ class PlayerPublic {
       playerId: json['playerId'] as String,
       hearts: json['hearts'] as int,
       energy: json['energy'] as int,
+      claimedPoints: (json['claimedPoints'] as int?) ?? 0,
       status: PlayerStatus.fromString(json['status'] as String),
       presence: Presence.fromString(json['presence'] as String),
       submittedForCurrentChallenge:
@@ -509,6 +513,7 @@ class PlayerPublic {
   PlayerPublic copyWith({
     int? hearts,
     int? energy,
+    int? claimedPoints,
     PlayerStatus? status,
     Presence? presence,
     bool? submittedForCurrentChallenge,
@@ -526,6 +531,7 @@ class PlayerPublic {
       playerId: playerId,
       hearts: hearts ?? this.hearts,
       energy: energy ?? this.energy,
+      claimedPoints: claimedPoints ?? this.claimedPoints,
       status: status ?? this.status,
       presence: presence ?? this.presence,
       submittedForCurrentChallenge:

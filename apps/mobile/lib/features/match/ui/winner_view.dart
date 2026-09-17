@@ -16,7 +16,8 @@ import 'widgets/player_standing_row.dart';
 /// Match completion view showing the winner and full standings.
 ///
 /// Must not invent challenge counts, rewards, XP, or other progression values
-/// that the server has not supplied. Energy is the authoritative score field.
+/// that the server has not supplied. Claimed points are the authoritative
+/// standings score (match-scoped Quick Survival awards).
 class WinnerView extends StatefulWidget {
   const WinnerView({
     required this.state,

@@ -283,7 +283,7 @@ void main() {
       expect(find.textContaining('850'), findsNothing);
     });
 
-    testWidgets('shows standings with names hearts and energy score', (
+    testWidgets('shows standings with names hearts and claimed points', (
       WidgetTester tester,
     ) async {
       const MatchViewState state = MatchViewState(
@@ -295,6 +295,7 @@ void main() {
             playerId: 'p2',
             hearts: 1,
             energy: 4,
+            claimedPoints: 15,
             status: PlayerStatus.active,
             presence: Presence.connected,
             submittedForCurrentChallenge: false,
@@ -303,7 +304,8 @@ void main() {
           PlayerPublic(
             playerId: 'p1',
             hearts: 2,
-            energy: 10,
+            energy: 1,
+            claimedPoints: 30,
             status: PlayerStatus.active,
             presence: Presence.connected,
             submittedForCurrentChallenge: false,
@@ -329,6 +331,8 @@ void main() {
         ),
         findsWidgets,
       );
+      expect(find.textContaining('30'), findsOneWidget);
+      expect(find.textContaining('15'), findsOneWidget);
     });
 
     testWidgets('shows left badge for departed players in standings', (

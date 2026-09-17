@@ -364,6 +364,11 @@ export const playerPublicSchema = z
     hearts: z.number().int().min(0).max(3),
     /** Current meter segments (0..4). Stays at threshold while a granted power is unused. */
     energy: z.number().int().min(0).max(4),
+    /**
+     * Match-scoped Quick Survival claimed points (playlist/run total for this
+     * seat). Floored at 0. Zero in private/training or when no awards applied.
+     */
+    claimedPoints: z.number().int().nonnegative(),
     status: z.enum(['active', 'spectator', 'left']),
     presence: z.enum(['connected', 'disconnected']),
     submittedForCurrentChallenge: z.boolean(),

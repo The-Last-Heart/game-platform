@@ -11,6 +11,7 @@ import '../../../l10n/translation_resolver.dart';
 import '../../../theme/lh_tokens.dart';
 import '../../content/content_asset_cache.dart';
 import '../../identity/data/identity_store.dart';
+import '../../identity/data/player_claim_client.dart';
 import '../../leaderboard/ui/leaderboard_screen.dart';
 import '../../match/protocol/realtime_messages.dart';
 import '../../match/session/match_session_controller.dart';
@@ -416,13 +417,24 @@ class _AppEntryScreenState extends State<AppEntryScreen>
     });
   }
 
-  Future<void> _saveIdentity(PlayerIdentity identity) async {
+  Future<String?> _saveIdentity(PlayerIdentity identity) async {
+    final String? base = widget.backendBaseUrl;
+    if (base != null && base.isNotEmpty) {
+      final String? claimError = await PlayerClaimClient().claim(
+        backendBaseUrl: base,
+        identity: identity,
+      );
+      if (claimError != null) {
+        return claimError;
+      }
+    }
     await _identityStore.save(identity);
-    if (!mounted) return;
+    if (!mounted) return null;
     setState(() {
       _identity = identity;
       _phase = _EntryPhase.home;
     });
+    return null;
   }
 
   Future<void> _enqueueQuickSurvival() async {

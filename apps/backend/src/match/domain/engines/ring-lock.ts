@@ -1,5 +1,6 @@
 import {
   RING_LOCK_DEFAULT_CONFIG,
+  RING_LOCK_DIFFICULTY_TUNING,
   RING_LOCK_RING_COUNT,
   precisionRingLockAnswerSchema,
   type RingLockDirection,
@@ -209,33 +210,71 @@ export function maxWaitMsToTarget(input: {
   return periodMs;
 }
 
+function isCannedMediumRingLockTuning(
+  minAngularVelocityDegPerSec: number | undefined,
+  maxAngularVelocityDegPerSec: number | undefined,
+  alignmentToleranceDeg: number | undefined,
+): boolean {
+  const canned = RING_LOCK_DIFFICULTY_TUNING.medium;
+  return (
+    (minAngularVelocityDegPerSec == null ||
+      minAngularVelocityDegPerSec === canned.minAngularVelocityDegPerSec) &&
+    (maxAngularVelocityDegPerSec == null ||
+      maxAngularVelocityDegPerSec === canned.maxAngularVelocityDegPerSec) &&
+    (alignmentToleranceDeg == null ||
+      alignmentToleranceDeg === canned.alignmentToleranceDeg)
+  );
+}
+
 export function resolveRingLockGenerationConfig(
   serverConfig: Record<string, unknown>,
   challengeDurationMs: number,
 ): RingLockGenerationConfig {
   const defaults = RING_LOCK_DEFAULT_CONFIG;
-  const startDelayMs =
-    typeof serverConfig['startDelayMs'] === 'number'
-      ? Math.floor(serverConfig['startDelayMs'])
-      : defaults.startDelayMs;
-  const minAngularVelocityDegPerSec =
+  const difficultyRaw = serverConfig['difficulty'];
+  const difficulty: RingLockDifficulty =
+    difficultyRaw === 'easy' ||
+    difficultyRaw === 'medium' ||
+    difficultyRaw === 'hard'
+      ? difficultyRaw
+      : defaults.difficulty;
+  const tuning = RING_LOCK_DIFFICULTY_TUNING[difficulty];
+  const minRaw =
     typeof serverConfig['minAngularVelocityDegPerSec'] === 'number'
       ? serverConfig['minAngularVelocityDegPerSec']
-      : defaults.minAngularVelocityDegPerSec;
-  const maxAngularVelocityDegPerSec =
+      : undefined;
+  const maxRaw =
     typeof serverConfig['maxAngularVelocityDegPerSec'] === 'number'
       ? serverConfig['maxAngularVelocityDegPerSec']
-      : defaults.maxAngularVelocityDegPerSec;
+      : undefined;
+  const toleranceRaw =
+    typeof serverConfig['alignmentToleranceDeg'] === 'number'
+      ? serverConfig['alignmentToleranceDeg']
+      : undefined;
+  const useDifficultyTuning =
+    difficulty !== 'medium' &&
+    isCannedMediumRingLockTuning(minRaw, maxRaw, toleranceRaw);
+
+  const startDelayMs = useDifficultyTuning
+    ? tuning.startDelayMs
+    : typeof serverConfig['startDelayMs'] === 'number'
+      ? Math.floor(serverConfig['startDelayMs'])
+      : tuning.startDelayMs;
+  const minAngularVelocityDegPerSec = useDifficultyTuning
+    ? tuning.minAngularVelocityDegPerSec
+    : (minRaw ?? tuning.minAngularVelocityDegPerSec);
+  const maxAngularVelocityDegPerSec = useDifficultyTuning
+    ? tuning.maxAngularVelocityDegPerSec
+    : (maxRaw ?? tuning.maxAngularVelocityDegPerSec);
   const allowClockwise = serverConfig['allowClockwise'] !== false;
   const allowCounterClockwise = serverConfig['allowCounterClockwise'] !== false;
   const targetAngleDeg =
     typeof serverConfig['targetAngleDeg'] === 'number'
       ? normalizeAngleDeg(serverConfig['targetAngleDeg'])
       : defaults.targetAngleDeg;
-  const alignmentToleranceDeg =
-    typeof serverConfig['alignmentToleranceDeg'] === 'number'
-      ? serverConfig['alignmentToleranceDeg']
-      : defaults.alignmentToleranceDeg;
+  const alignmentToleranceDeg = useDifficultyTuning
+    ? tuning.alignmentToleranceDeg
+    : (toleranceRaw ?? tuning.alignmentToleranceDeg);
   const transitionDelayMs =
     typeof serverConfig['transitionDelayMs'] === 'number'
       ? Math.floor(serverConfig['transitionDelayMs'])
@@ -248,13 +287,6 @@ export function resolveRingLockGenerationConfig(
     typeof serverConfig['maxGenerationAttempts'] === 'number'
       ? Math.floor(serverConfig['maxGenerationAttempts'])
       : defaults.maxGenerationAttempts;
-  const difficultyRaw = serverConfig['difficulty'];
-  const difficulty: RingLockDifficulty =
-    difficultyRaw === 'easy' ||
-    difficultyRaw === 'medium' ||
-    difficultyRaw === 'hard'
-      ? difficultyRaw
-      : defaults.difficulty;
 
   if (minAngularVelocityDegPerSec > maxAngularVelocityDegPerSec) {
     throw new RingLockConfigError('invalid angular velocity range');
@@ -677,7 +709,13 @@ export function applyRingLockCommand(input: {
   );
   // Rings only spin after startDelay. Rewind a bounded amount so network
   // arrival lag does not erase an on-screen alignment the player timed.
-  const latencyCompMs = 80;
+  // Scale slightly with speed so the inner (often faster) ring stays fair.
+  const latencyBaseMs = 120;
+  const latencyCompMs = Math.min(
+    220,
+    latencyBaseMs +
+      Math.round(active.angularVelocityDegPerSec * 0.4),
+  );
   const spinElapsedMs = Math.max(
     0,
     elapsedMs - input.state.startDelayMs - latencyCompMs,
