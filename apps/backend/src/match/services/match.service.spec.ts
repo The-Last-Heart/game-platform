@@ -1,8 +1,21 @@
 import { matchSnapshotPayloadSchema } from '@thelastheart/contracts';
 import { createDevChallengeDefinition } from '../domain/dev-challenge.evaluator';
+import {
+  isDifficultySorted,
+  MAX_PLAYLIST_RECYCLES,
+} from '../domain/playlist-difficulty';
 import { DomainError, FakeClock } from '../domain/types';
 import { MatchService } from './match.service';
 import { MatchmakingService } from './matchmaking.service';
+
+function assertUniqueDifficultyOrder(
+  playlist: { definitionId: string; difficulty?: string }[],
+) {
+  expect(new Set(playlist.map((d) => d.definitionId)).size).toBe(
+    playlist.length,
+  );
+  expect(isDifficultySorted(playlist as never)).toBe(true);
+}
 
 describe('MatchService', () => {
   it('reschedules timeout when forceTimeout runs at inclusive deadline equality', async () => {
@@ -662,6 +675,86 @@ describe('MatchService', () => {
     service.onModuleDestroy();
   });
 
+  it('private two accepted+ready starts countdown without full table', async () => {
+    const clock = new FakeClock(5_000_000);
+    const service = MatchService.forTests({ clock, nodeEnv: 'development' });
+    const host = await service.createPrivateRoom({
+      displayName: 'Host',
+      avatarColor: '#111111',
+      countryCode: 'SA',
+      playerId: 'install-test-player-01',
+    });
+    await service.finalizeJoin(host.matchId, host.playerId);
+
+    const guest = await service.joinPrivateRoom({
+      roomCode: host.roomCode,
+      displayName: 'Guest',
+      avatarColor: '#222222',
+      countryCode: 'SA',
+      playerId: 'install-test-player-01',
+    });
+    expect(guest.lobbyFillWaitMs).toBe(60_000);
+    expect(guest.snapshot.lobbyFillDeadlineAtMs).toBe(clock.nowMs() + 60_000);
+    await service.finalizeJoin(host.matchId, guest.playerId);
+
+    const store = service.getStoreForTests();
+    let match = await store.get(host.matchId);
+    expect(match!.phase).toBe('lobby');
+
+    await service.setReady(host.matchId, host.playerId);
+    match = await store.get(host.matchId);
+    expect(match!.phase).toBe('lobby');
+
+    const ready = await service.setReady(host.matchId, guest.playerId);
+    expect(ready.countdownStarted).toBe(true);
+    match = await store.get(host.matchId);
+    expect(match!.phase).toBe('ready_countdown');
+    expect(match!.lobbyFillDeadlineAtMs).toBeNull();
+
+    service.onModuleDestroy();
+  });
+
+  it('private host can start now and extend fill wait', async () => {
+    const clock = new FakeClock(5_000_000);
+    const service = MatchService.forTests({ clock, nodeEnv: 'development' });
+    const host = await service.createPrivateRoom({
+      displayName: 'Host',
+      avatarColor: '#111111',
+      countryCode: 'SA',
+      playerId: 'install-test-player-01',
+    });
+    await service.finalizeJoin(host.matchId, host.playerId);
+
+    const guest = await service.joinPrivateRoom({
+      roomCode: host.roomCode,
+      displayName: 'Guest',
+      avatarColor: '#222222',
+      countryCode: 'SA',
+      playerId: 'install-test-player-01',
+    });
+    await service.finalizeJoin(host.matchId, guest.playerId);
+
+    await expect(
+      service.extendLobbyFill(host.matchId, guest.playerId),
+    ).rejects.toMatchObject({ code: 'NOT_HOST' });
+
+    clock.advance(40_000);
+    const extended = await service.extendLobbyFill(
+      host.matchId,
+      host.playerId,
+    );
+    expect(extended.lobbyFillWaitMs).toBe(50_000);
+
+    await expect(
+      service.startLobbyNow(host.matchId, guest.playerId),
+    ).rejects.toMatchObject({ code: 'NOT_HOST' });
+
+    const started = await service.startLobbyNow(host.matchId, host.playerId);
+    expect(started.snapshot.phase).toBe('ready_countdown');
+
+    service.onModuleDestroy();
+  });
+
   it('training starts with capacity 1', async () => {
     const clock = new FakeClock(5_000_000);
     const service = MatchService.forTests({ clock, nodeEnv: 'development' });
@@ -781,7 +874,8 @@ describe('MatchService', () => {
 
     await service.finalizeJoin(restarted.matchId, restarted.playerId);
     match = await store.get(restarted.matchId);
-    expect(match!.pinnedPlaylist.length).toBe(15);
+    assertUniqueDifficultyOrder(match!.pinnedPlaylist);
+    expect(match!.pinnedPlaylist.length).toBeGreaterThan(10);
 
     service.onModuleDestroy();
   });
@@ -1029,7 +1123,7 @@ describe('MatchService', () => {
     service.onModuleDestroy();
   });
 
-  it('after the last playlist round, equal hearts continues sudden-death', async () => {
+  it('after the last playlist round, equal hearts starts a fresh recycle', async () => {
     const clock = new FakeClock(5_000_000);
     const service = MatchService.forTests({ clock, nodeEnv: 'test' });
     const created = await service.createQuickSurvivalMatch([
@@ -1045,11 +1139,8 @@ describe('MatchService', () => {
     const store = service.getStoreForTests();
     const match = await store.get(created.matchId);
     expect(match).toBeTruthy();
-    expect(match!.pinnedPlaylist).toHaveLength(15);
-    expect(match!.hardLoopPlaylist.length).toBeGreaterThan(0);
-    expect(
-      match!.hardLoopPlaylist.every((d) => d.difficulty === 'hard'),
-    ).toBe(true);
+    assertUniqueDifficultyOrder(match!.pinnedPlaylist);
+    expect(match!.pinnedPlaylist[0]?.difficulty).toBe('easy');
     // Exhausted base playlist with 2+ hearts still alive → recycle, do not draw yet.
     match!.phase = 'round_result';
     match!.status = 'waiting';
@@ -1068,9 +1159,39 @@ describe('MatchService', () => {
       true,
     );
     expect(after!.roundNumber).toBeGreaterThan(match!.roundNumber);
-    if (after?.status === 'challenge_active') {
-      expect(after.currentChallenge?.definition.difficulty).toBe('hard');
+
+    service.onModuleDestroy();
+  });
+
+  it('stops after two fresh playlist recycles and crowns by standings', async () => {
+    const clock = new FakeClock(5_000_000);
+    const service = MatchService.forTests({ clock, nodeEnv: 'test' });
+    const created = await service.createQuickSurvivalMatch([
+      { displayName: 'Host', avatarColor: '#111111', countryCode: 'SA' , playerId: 'install-test-player-01' },
+      { displayName: 'Guest', avatarColor: '#222222', countryCode: 'SA' , playerId: 'install-test-player-01' },
+    ]);
+    const hostId = created.assignments[0]!.playerId;
+    const guestId = created.assignments[1]!.playerId;
+    for (const a of created.assignments) {
+      await service.finalizeJoin(created.matchId, a.playerId);
     }
+
+    const store = service.getStoreForTests();
+    const match = await store.get(created.matchId);
+    match!.phase = 'round_result';
+    match!.status = 'waiting';
+    match!.roundNumber =
+      match!.pinnedPlaylist.length * (MAX_PLAYLIST_RECYCLES + 1);
+    match!.phaseDeadlineAtMs = clock.nowMs();
+    match!.phaseDeadlineMonoMs = clock.monoMs();
+    match!.players.get(hostId)!.hearts = 2;
+    match!.players.get(guestId)!.hearts = 1;
+    await store.save(match!);
+
+    await service.tickDue(created.matchId);
+    const after = await store.get(created.matchId);
+    expect(after?.status).toBe('completed');
+    expect(after?.winnerId).toBe(hostId);
 
     service.onModuleDestroy();
   });
@@ -1088,19 +1209,15 @@ describe('MatchService', () => {
     const store = service.getStoreForTests();
 
     const match = await store.get(started.matchId);
-    expect(match!.pinnedPlaylist.length).toBe(15);
+    assertUniqueDifficultyOrder(match!.pinnedPlaylist);
+    expect(match!.pinnedPlaylist.length).toBeGreaterThan(10);
     expect(
       match!.pinnedPlaylist.some((d) => d.engineId === 'social.pair_sync'),
     ).toBe(false);
+    expect(match!.pinnedPlaylist[0]?.difficulty).toBe('easy');
     expect(
-      match!.pinnedPlaylist.slice(0, 5).map((d) => d.difficulty),
-    ).toEqual(['easy', 'easy', 'easy', 'easy', 'easy']);
-    expect(
-      match!.pinnedPlaylist.slice(5, 10).map((d) => d.difficulty),
-    ).toEqual(['medium', 'medium', 'medium', 'medium', 'medium']);
-    expect(
-      match!.pinnedPlaylist.slice(10, 15).map((d) => d.difficulty),
-    ).toEqual(['hard', 'hard', 'hard', 'hard', 'hard']);
+      match!.pinnedPlaylist[match!.pinnedPlaylist.length - 1]?.difficulty,
+    ).toBe('hard');
     expect(
       match!.pinnedPlaylist.map((d) => d.engineId),
     ).toEqual(

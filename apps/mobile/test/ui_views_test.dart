@@ -96,6 +96,68 @@ void main() {
       expect(find.text('Host'), findsOneWidget);
     });
 
+    testWidgets('private host sees fill timer start and extend', (
+      WidgetTester tester,
+    ) async {
+      final int deadline = DateTime.now().millisecondsSinceEpoch + 45_000;
+      final MatchViewState state = MatchViewState(
+        matchId: 'match-private-fill',
+        mode: MatchMode.privateRoom,
+        roomCode: 'XY99ZZ',
+        playerId: 'p1',
+        hostPlayerId: 'p1',
+        phase: MatchPhase.lobby,
+        lobbyFillDeadlineAtMs: deadline,
+        players: const <PlayerPublic>[
+          PlayerPublic(
+            playerId: 'p1',
+            hearts: 3,
+            energy: 0,
+            status: PlayerStatus.active,
+            presence: Presence.connected,
+            submittedForCurrentChallenge: false,
+            displayName: 'Host',
+            ready: true,
+            isHost: true,
+          ),
+          PlayerPublic(
+            playerId: 'p2',
+            hearts: 3,
+            energy: 0,
+            status: PlayerStatus.active,
+            presence: Presence.connected,
+            submittedForCurrentChallenge: false,
+            displayName: 'Guest',
+            ready: true,
+          ),
+        ],
+      );
+
+      await tester.pumpWidget(
+        wrapWithL10n(
+          LobbyView(
+            state: state,
+            onReady: () {},
+            onLeave: () {},
+            onExtendLobbyFill: () {},
+            onStartLobby: () {},
+            estimateServerNowMs: () =>
+                DateTime.now().millisecondsSinceEpoch,
+          ),
+        ),
+      );
+      await tester.pump();
+
+      expect(
+        find.text(resolver.resolve(TranslationKeys.lobbyStartNow)),
+        findsOneWidget,
+      );
+      expect(
+        find.text(resolver.resolve(TranslationKeys.lobbyExtendWait)),
+        findsOneWidget,
+      );
+    });
+
     testWidgets('training lobby hides player roster', (
       WidgetTester tester,
     ) async {

@@ -198,6 +198,33 @@ void main() {
       expect(result.state.currentChallenge, isNull);
     });
 
+    test('unsequenced challenge.started merges seat overlay after room start', () {
+      final MatchViewState bound = initialState(
+        sequence: 3,
+        matchId: 'match-abc',
+      );
+      final Map<String, dynamic> roomStart = clone(
+        fixtures['challenge_started'] as Map<String, dynamic>,
+      );
+      roomStart['serverSequence'] = 4;
+      (roomStart['payload'] as Map<String, dynamic>)['engineId'] =
+          'motion.tilt_balance';
+      (roomStart['payload'] as Map<String, dynamic>)['clientConfig'] =
+          <String, dynamic>{'targetX': 0.0, 'targetY': 0.0};
+      final MatchViewState afterRoom = reducer.reduce(bound, roomStart).state;
+
+      final Map<String, dynamic> overlay = clone(roomStart);
+      overlay.remove('serverSequence');
+      overlay['messageId'] = 'msg-overlay';
+      (overlay['payload'] as Map<String, dynamic>)['clientConfig'] =
+          <String, dynamic>{'targetX': 0.5, 'targetY': 0.0, 'targetShape': 'square'};
+      final ReducerResult result = reducer.reduce(afterRoom, overlay);
+      expect(result.disposition, ReducerDisposition.applied);
+      expect(result.state.serverSequence, 4);
+      expect(result.state.currentChallenge?.clientConfig['targetX'], 0.5);
+      expect(result.state.currentChallenge?.clientConfig['targetShape'], 'square');
+    });
+
     test('snapshot does NOT trigger gap request even with sequence jump', () {
       final MatchViewState stateAtSeq3 = initialState(sequence: 3);
       final Map<String, dynamic> raw = clone(

@@ -16,14 +16,25 @@ export function toRuntimeChallengeDefinition(
     serverConfig: def.serverConfig,
   });
   const serverConfig: Record<string, unknown> = { ...filled.serverConfig };
-  if (def.engineId === 'precision.ring_lock') {
+  if (def.engineId === 'precision.ring_lock' || def.engineId === 'laser.routing') {
     serverConfig['difficulty'] = def.difficulty;
+  }
+  let durationMs = filled.durationMs;
+  if (def.engineId === 'social.pair_sync') {
+    const togetherRaw = serverConfig['togetherMs'];
+    const togetherMs =
+      typeof togetherRaw === 'number' && Number.isFinite(togetherRaw)
+        ? togetherRaw
+        : 0;
+    if (togetherMs > 0 && durationMs < togetherMs + 3000) {
+      durationMs = Math.min(15_000, togetherMs + 3000);
+    }
   }
   return {
     definitionId: def.definitionId,
     definitionVersion: def.definitionVersion,
     engineId: def.engineId,
-    durationMs: filled.durationMs,
+    durationMs,
     introDurationMs: def.introDurationMs,
     resultHoldMs: def.resultHoldMs,
     heartPenaltyOnFailure: def.heartPenaltyOnFailure,

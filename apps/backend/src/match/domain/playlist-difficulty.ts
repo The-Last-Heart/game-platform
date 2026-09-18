@@ -3,11 +3,18 @@ import type { ChallengeDefinition } from './types';
 
 export type ChallengeDifficulty = 'easy' | 'medium' | 'hard';
 
-export const CHALLENGES_PER_DIFFICULTY = 5;
+/** Additional full playlist passes after the first (cycles 1 and 2). */
+export const MAX_PLAYLIST_RECYCLES = 2;
+
+const DIFFICULTY_RANK: Record<ChallengeDifficulty, number> = {
+  easy: 0,
+  medium: 1,
+  hard: 2,
+};
 
 /**
  * Preferred engine order within each tier (progressive feel + stable picks).
- * Extra hard engines stay in the hard-loop pool only.
+ * Extra engines in a tier still play — they are not truncated or padded.
  */
 export const DIFFICULTY_ENGINE_PRIORITY: Record<
   ChallengeDifficulty,
@@ -30,6 +37,7 @@ export const DIFFICULTY_ENGINE_PRIORITY: Record<
     'search.select_occurrences',
     'order.sequence_sort',
     'audio.multiple_choice',
+    'laser.routing',
   ],
   hard: [
     'memory.sequence',
@@ -52,12 +60,9 @@ export function difficultyOf(
 }
 
 /**
- * Build a room playlist: 5 easy → 5 medium → 5 hard (shuffled within each tier).
- * `hardLoopPlaylist` is every hard-tagged definition from the pool for sudden-death.
- *
- * When the live catalog is sparse (ops pauses / early seeds), padding an early
- * tier to 5 slots with the same challenge would hide later-tier engines for an
- * entire match. In that case, interleave across non-empty tiers instead.
+ * Build a room playlist: every unique playable definition, easy → medium →
+ * hard, shuffled within each tier. Never pads or repeats inside the first
+ * pass — later cycles reshuffle within tiers (see selectDifficultyCycledDefinition).
  */
 export function buildDifficultyOrderedPlaylist(
   pool: readonly ChallengeDefinition[],
@@ -66,34 +71,22 @@ export function buildDifficultyOrderedPlaylist(
   structured: ChallengeDefinition[];
   hardLoop: ChallengeDefinition[];
 } {
+  const unique = uniqueByDefinitionId(pool);
   const byDifficulty: Record<ChallengeDifficulty, ChallengeDefinition[]> = {
     easy: [],
     medium: [],
     hard: [],
   };
-  for (const def of pool) {
+  for (const def of unique) {
     byDifficulty[difficultyOf(def)].push(def);
   }
 
-  const tiers = ['easy', 'medium', 'hard'] as const;
-  const orderedByTier = tiers.map((tier) =>
-    orderTierAvailable(byDifficulty[tier], tier),
+  const structured = (['easy', 'medium', 'hard'] as const).flatMap((tier) =>
+    seededShuffle(
+      orderTierAvailable(byDifficulty[tier], tier),
+      `${matchId}:tier:${tier}`,
+    ),
   );
-  const nonEmptyTier = orderedByTier.filter((tier) => tier.length > 0);
-  const sparseAcrossTiers =
-    nonEmptyTier.length >= 2 &&
-    nonEmptyTier.some((tier) => tier.length < CHALLENGES_PER_DIFFICULTY);
-
-  const structured: ChallengeDefinition[] = sparseAcrossTiers
-    ? interleaveSparseTiers(orderedByTier, matchId, CHALLENGES_PER_DIFFICULTY * 3)
-    : tiers.flatMap((tier, index) =>
-        pickTierSlice(
-          orderedByTier[index]!,
-          tier,
-          matchId,
-          CHALLENGES_PER_DIFFICULTY,
-        ),
-      );
 
   const hardLoop =
     byDifficulty.hard.length > 0
@@ -101,6 +94,104 @@ export function buildDifficultyOrderedPlaylist(
       : structured.filter((d) => difficultyOf(d) === 'hard');
 
   return { structured, hardLoop };
+}
+
+/**
+ * Next definition for `roundNumber` (0-based index of challenges already
+ * introduced). Cycle 0 uses the pinned easy→medium→hard order. Cycles 1..N
+ * reshuffle within each tier. Returns null after `maxRecycles` extra passes.
+ */
+export function selectDifficultyCycledDefinition(options: {
+  playlist: readonly ChallengeDefinition[];
+  matchId: string;
+  roundNumber: number;
+  maxRecycles?: number;
+}): ChallengeDefinition | null {
+  const { playlist, matchId, roundNumber } = options;
+  const maxRecycles = options.maxRecycles ?? MAX_PLAYLIST_RECYCLES;
+  if (playlist.length === 0 || roundNumber < 0) {
+    return null;
+  }
+  const cycleIndex = Math.floor(roundNumber / playlist.length);
+  if (cycleIndex > maxRecycles) {
+    return null;
+  }
+  const ordered =
+    cycleIndex <= 0
+      ? playlist
+      : orderPlaylistForCycle(playlist, matchId, cycleIndex);
+  return ordered[roundNumber % playlist.length] ?? null;
+}
+
+/**
+ * Reshuffle within each difficulty tier for a later playlist pass.
+ * Guarantees the intra-tier order differs from the previous cycle when
+ * the tier has more than one challenge — repeats should not feel identical.
+ */
+export function orderPlaylistForCycle(
+  playlist: readonly ChallengeDefinition[],
+  matchId: string,
+  cycleIndex: number,
+): ChallengeDefinition[] {
+  if (cycleIndex <= 0) {
+    return [...playlist];
+  }
+  const previous = orderPlaylistForCycle(playlist, matchId, cycleIndex - 1);
+  const byDifficulty: Record<ChallengeDifficulty, ChallengeDefinition[]> = {
+    easy: [],
+    medium: [],
+    hard: [],
+  };
+  const previousByDifficulty: Record<
+    ChallengeDifficulty,
+    ChallengeDefinition[]
+  > = {
+    easy: [],
+    medium: [],
+    hard: [],
+  };
+  for (const def of playlist) {
+    byDifficulty[difficultyOf(def)].push(def);
+  }
+  for (const def of previous) {
+    previousByDifficulty[difficultyOf(def)].push(def);
+  }
+  return (['easy', 'medium', 'hard'] as const).flatMap((tier) =>
+    shuffleDistinctFromPrevious(
+      byDifficulty[tier],
+      `${matchId}:playlist-cycle:${cycleIndex}:${tier}`,
+      previousByDifficulty[tier],
+    ),
+  );
+}
+
+export function isDifficultySorted(
+  playlist: readonly ChallengeDefinition[],
+): boolean {
+  let previous = -1;
+  for (const def of playlist) {
+    const rank = DIFFICULTY_RANK[difficultyOf(def)];
+    if (rank < previous) {
+      return false;
+    }
+    previous = rank;
+  }
+  return true;
+}
+
+function uniqueByDefinitionId(
+  pool: readonly ChallengeDefinition[],
+): ChallengeDefinition[] {
+  const seen = new Set<string>();
+  const unique: ChallengeDefinition[] = [];
+  for (const def of pool) {
+    if (seen.has(def.definitionId)) {
+      continue;
+    }
+    seen.add(def.definitionId);
+    unique.push(def);
+  }
+  return unique;
 }
 
 function orderTierAvailable(
@@ -120,78 +211,10 @@ function orderTierAvailable(
       byEngine.delete(engineId);
     }
   }
-  // Any remaining in this tier (admin-published extras) after priority list.
   const leftovers = [...byEngine.values()].sort((a, b) =>
     a.definitionId.localeCompare(b.definitionId),
   );
   return [...prioritized, ...leftovers];
-}
-
-function pickTierSlice(
-  ordered: readonly ChallengeDefinition[],
-  tier: ChallengeDifficulty,
-  matchId: string,
-  count: number,
-): ChallengeDefinition[] {
-  if (ordered.length === 0 || count <= 0) {
-    return [];
-  }
-
-  const take = ordered.slice(0, Math.min(count, ordered.length));
-  // If catalog is short, cycle the tier so the pack still has `count` slots.
-  while (take.length < count && ordered.length > 0) {
-    take.push(ordered[take.length % ordered.length]!);
-  }
-
-  return seededShuffle(take, `${matchId}:tier:${tier}`);
-}
-
-/**
- * Round-robin unique picks across tiers, then cycle to fill the pack.
- * Shuffled per room so neon/fog (etc.) are not stuck in a fixed order.
- */
-function interleaveSparseTiers(
-  orderedByTier: readonly (readonly ChallengeDefinition[])[],
-  matchId: string,
-  totalCount: number,
-): ChallengeDefinition[] {
-  const queues = orderedByTier
-    .map((tier, index) =>
-      seededShuffle(tier, `${matchId}:sparse-tier:${index}`),
-    )
-    .filter((tier) => tier.length > 0);
-  if (queues.length === 0 || totalCount <= 0) {
-    return [];
-  }
-
-  const unique: ChallengeDefinition[] = [];
-  const seen = new Set<string>();
-  let progress = true;
-  while (progress) {
-    progress = false;
-    for (const queue of queues) {
-      while (queue.length > 0) {
-        const next = queue.shift()!;
-        if (seen.has(next.definitionId)) {
-          continue;
-        }
-        seen.add(next.definitionId);
-        unique.push(next);
-        progress = true;
-        break;
-      }
-    }
-  }
-
-  if (unique.length === 0) {
-    return [];
-  }
-
-  const out: ChallengeDefinition[] = [];
-  while (out.length < totalCount) {
-    out.push(unique[out.length % unique.length]!);
-  }
-  return out;
 }
 
 function seededShuffle<T>(items: readonly T[], seedMaterial: string): T[] {
@@ -207,6 +230,22 @@ function seededShuffle<T>(items: readonly T[], seedMaterial: string): T[] {
     out[j] = tmp;
   }
   return out;
+}
+
+function shuffleDistinctFromPrevious<T extends { definitionId: string }>(
+  items: readonly T[],
+  seedMaterial: string,
+  previous: readonly T[],
+): T[] {
+  const shuffled = seededShuffle(items, seedMaterial);
+  if (shuffled.length <= 1) {
+    return shuffled;
+  }
+  const prevIds = previous.map((d) => d.definitionId).join(',');
+  if (shuffled.map((d) => d.definitionId).join(',') !== prevIds) {
+    return shuffled;
+  }
+  return [...shuffled.slice(1), shuffled[0]!];
 }
 
 function seedU32(material: string): number {

@@ -61,7 +61,8 @@ class LobbyView extends StatelessWidget {
     }();
     final bool isLocalHost =
         state.playerId != null && state.playerId == hostId;
-    final bool showFillTimer = isQuick &&
+    final bool isPrivate = state.mode == MatchMode.privateRoom;
+    final bool showFillTimer = (isQuick || isPrivate) &&
         state.phase == MatchPhase.lobby &&
         playerCount >= 2 &&
         playerCount < capacity &&

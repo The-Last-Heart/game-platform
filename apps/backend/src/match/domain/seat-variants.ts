@@ -209,6 +209,55 @@ function signalDelayRangeMs(
  * Freeze server-driven per-seat play params at challenge start.
  * Reconnects must reuse these values — never re-roll.
  */
+function pinSharedTiltVariant(
+  definition: ChallengeDefinition,
+): {
+  targetX: number;
+  targetY: number;
+  targetShape: TiltTargetShape;
+  holdMs: number;
+  varianceTolerance: number;
+} {
+  const existingX = num(definition.serverConfig['targetX'], Number.NaN);
+  const existingY = num(definition.serverConfig['targetY'], Number.NaN);
+  const existingShapeRaw = definition.serverConfig['targetShape'];
+  const holdMs = num(definition.serverConfig['holdMs'], 1500);
+  const varianceTolerance = num(
+    definition.serverConfig['varianceTolerance'],
+    0.22,
+  );
+  const alreadyPinned =
+    Number.isFinite(existingX) &&
+    Number.isFinite(existingY) &&
+    definition.serverConfig['tiltVariantPinned'] === true;
+  const pick = alreadyPinned
+    ? {
+        targetX: clamp(existingX, -1, 1),
+        targetY: clamp(existingY, -1, 1),
+        targetShape:
+          typeof existingShapeRaw === 'string' &&
+          (DEFAULT_TILT_SHAPES as string[]).includes(existingShapeRaw)
+            ? (existingShapeRaw as TiltTargetShape)
+            : 'circle',
+      }
+    : (() => {
+        const variants = readTiltVariants(definition.serverConfig);
+        return variants[randomInt(0, variants.length)]!;
+      })();
+  definition.serverConfig['targetX'] = pick.targetX;
+  definition.serverConfig['targetY'] = pick.targetY;
+  definition.serverConfig['targetShape'] = pick.targetShape;
+  definition.serverConfig['holdMs'] = holdMs;
+  definition.serverConfig['varianceTolerance'] = varianceTolerance;
+  definition.serverConfig['tiltVariantPinned'] = true;
+  definition.clientConfig['targetX'] = pick.targetX;
+  definition.clientConfig['targetY'] = pick.targetY;
+  definition.clientConfig['targetShape'] = pick.targetShape;
+  definition.clientConfig['holdMs'] = holdMs;
+  definition.clientConfig['varianceTolerance'] = varianceTolerance;
+  return { ...pick, holdMs, varianceTolerance };
+}
+
 export function assignSeatVariants(
   challenge: ChallengeRound,
   nowMonoMs: number,
@@ -244,39 +293,26 @@ export function assignSeatVariants(
   }
 
   if (challenge.engineId === 'motion.tilt_balance') {
-    const variants = readTiltVariants(challenge.definition.serverConfig);
-    const holdMs = num(challenge.definition.serverConfig['holdMs'], 1500);
-    const tolerance = num(
-      challenge.definition.serverConfig['varianceTolerance'],
-      0.22,
-    );
-    // Shuffle a copy so adjacent seats rarely share the same first pick.
-    const deck = [...variants];
-    for (let i = deck.length - 1; i > 0; i -= 1) {
-      const j = randomInt(0, i + 1);
-      const tmp = deck[i]!;
-      deck[i] = deck[j]!;
-      deck[j] = tmp;
-    }
-    ids.forEach((playerId, index) => {
-      const pick = deck[index % deck.length]!;
+    const pinned = pinSharedTiltVariant(challenge.definition);
+    // Same target for every seat so room-broadcast and evaluation stay aligned.
+    for (const playerId of ids) {
       seats.set(playerId, {
         clientOverlay: {
-          targetX: pick.targetX,
-          targetY: pick.targetY,
-          targetShape: pick.targetShape,
-          holdMs,
-          varianceTolerance: tolerance,
+          targetX: pinned.targetX,
+          targetY: pinned.targetY,
+          targetShape: pinned.targetShape,
+          holdMs: pinned.holdMs,
+          varianceTolerance: pinned.varianceTolerance,
         },
         serverOverlay: {
-          targetX: pick.targetX,
-          targetY: pick.targetY,
-          targetShape: pick.targetShape,
-          holdMs,
-          varianceTolerance: tolerance,
+          targetX: pinned.targetX,
+          targetY: pinned.targetY,
+          targetShape: pinned.targetShape,
+          holdMs: pinned.holdMs,
+          varianceTolerance: pinned.varianceTolerance,
         },
       });
-    });
+    }
     return seats;
   }
 

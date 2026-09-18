@@ -31,6 +31,7 @@ export const LAUNCH_ENGINE_IDS = [
   "search.select_occurrences",
   "social.pass_the_pulse",
   "precision.ring_lock",
+  "laser.routing",
 ] as const;
 
 export const launchEngineIdSchema = z.enum(LAUNCH_ENGINE_IDS);
@@ -2594,6 +2595,220 @@ export type PrecisionRingLockAnswer = z.infer<
 >;
 
 // ---------------------------------------------------------------------------
+// 23. laser.routing — individual mirror / gate / fusion laser puzzles
+// ---------------------------------------------------------------------------
+
+export const laserRoutingVariantSchema = z.enum([
+  "classic",
+  "zigzag",
+  "dual_fusion",
+  "pulse_gates",
+]);
+export type LaserRoutingVariantId = z.infer<typeof laserRoutingVariantSchema>;
+
+export const laserRoutingDirectionSchema = z.enum([
+  "north",
+  "east",
+  "south",
+  "west",
+]);
+export const laserRoutingMirrorOrientationSchema = z.enum([
+  "slash",
+  "backslash",
+]);
+export const laserRoutingGateAxisSchema = z.enum(["horizontal", "vertical"]);
+export const laserRoutingColorSchema = z.enum(["cyan", "amber", "fused"]);
+export const laserRoutingCellKindSchema = z.enum([
+  "empty",
+  "source",
+  "mirror",
+  "gate",
+  "combiner",
+  "heart",
+]);
+export const laserRoutingPlayerResultSchema = z.enum([
+  "active",
+  "success",
+  "timeout",
+]);
+
+export const laserRoutingAssetIdsSchema = z
+  .object({
+    laserLoopSfx: z.string().min(1).max(128),
+    reflectionSfx: z.string().min(1).max(128),
+    heartPowerOnSfx: z.string().min(1).max(128),
+  })
+  .strict();
+export type LaserRoutingAssetIds = z.infer<typeof laserRoutingAssetIdsSchema>;
+
+export const laserRoutingThemeSchema = z
+  .object({
+    boardFill: hexColor.optional(),
+    gridLine: hexColor.optional(),
+    frame: hexColor.optional(),
+    cyan: hexColor.optional(),
+    amber: hexColor.optional(),
+    fused: hexColor.optional(),
+    heart: hexColor.optional(),
+  })
+  .strict();
+export type LaserRoutingTheme = z.infer<typeof laserRoutingThemeSchema>;
+
+const laserRoutingCoordSchema = z
+  .object({
+    row: z.number().int().nonnegative().max(15),
+    col: z.number().int().nonnegative().max(15),
+  })
+  .strict();
+
+const laserRoutingPublicComponentSchema = z
+  .object({
+    id: z.string().min(1).max(64),
+    kind: laserRoutingCellKindSchema,
+    row: z.number().int().nonnegative().max(15),
+    col: z.number().int().nonnegative().max(15),
+    orientation: laserRoutingMirrorOrientationSchema.optional(),
+    axis: laserRoutingGateAxisSchema.optional(),
+    direction: laserRoutingDirectionSchema.optional(),
+    color: laserRoutingColorSchema.optional(),
+    cyanInput: laserRoutingDirectionSchema.optional(),
+    amberInput: laserRoutingDirectionSchema.optional(),
+    outputDirection: laserRoutingDirectionSchema.optional(),
+    interactive: z.boolean(),
+  })
+  .strict();
+
+const laserRoutingPublicBoardSchema = z
+  .object({
+    width: z.number().int().min(3).max(8),
+    height: z.number().int().min(3).max(8),
+    variant: laserRoutingVariantSchema,
+    components: z.array(laserRoutingPublicComponentSchema).max(32),
+  })
+  .strict();
+
+const laserRoutingPublicTraceSchema = z
+  .object({
+    sourceId: z.string().min(1).max(64),
+    color: laserRoutingColorSchema,
+    cells: z.array(laserRoutingCoordSchema).max(128),
+    hitComponentIds: z.array(z.string().min(1).max(64)).max(32),
+    termination: z.enum([
+      "heart",
+      "boundary",
+      "closed_gate",
+      "loop",
+      "combiner",
+      "invalid",
+      "max_steps",
+    ]),
+    blockedComponentId: z.string().min(1).max(64).nullable(),
+  })
+  .strict();
+
+export const laserRoutingClientConfigSchema = z
+  .object({
+    categoryKey: translationKey,
+    titleKey: translationKey,
+    promptKey: translationKey,
+    footerKey: translationKey.optional(),
+    timeRemainingKey: translationKey.optional(),
+    progressMirrorsKey: translationKey.optional(),
+    progressGatesKey: translationKey.optional(),
+    progressFusionKey: translationKey.optional(),
+    progressFusionPartialKey: translationKey.optional(),
+    a11yFallbackKey: translationKey.optional(),
+    assetIds: laserRoutingAssetIdsSchema,
+    variant: laserRoutingVariantSchema,
+    startDelayMs: z.number().int().nonnegative().max(8_000),
+    theme: laserRoutingThemeSchema.optional(),
+    seed: z.number().int().nonnegative().optional(),
+    puzzleStartsAtMs: z.number().int().nonnegative().optional(),
+    board: laserRoutingPublicBoardSchema.optional(),
+    traces: z.array(laserRoutingPublicTraceSchema).max(8).optional(),
+    combinerCharged: z.boolean().optional(),
+    heartLit: z.boolean().optional(),
+    mirrorsHit: z.number().int().nonnegative().optional(),
+    mirrorsTotal: z.number().int().nonnegative().optional(),
+    gatesOpen: z.number().int().nonnegative().optional(),
+    gatesTotal: z.number().int().nonnegative().optional(),
+    connectedPaths: z.number().int().nonnegative().optional(),
+    totalPaths: z.number().int().nonnegative().optional(),
+    progress: z.number().min(0).max(1).optional(),
+    result: laserRoutingPlayerResultSchema.optional(),
+    stateSequence: z.number().int().nonnegative().optional(),
+    lastAcceptedCommandId: z.string().min(1).max(128).nullable().optional(),
+    lastRotatedComponentId: z.string().min(1).max(64).nullable().optional(),
+    reflectionOccurred: z.boolean().optional(),
+    reconnect: z.boolean().optional(),
+    isParticipant: z.boolean().optional(),
+  })
+  .strict();
+export type LaserRoutingClientConfig = z.infer<
+  typeof laserRoutingClientConfigSchema
+>;
+
+export const laserRoutingServerConfigSchema = z
+  .object({
+    variant: laserRoutingVariantSchema,
+    variantWeights: z
+      .object({
+        classic: z.number().nonnegative().max(1000).optional(),
+        zigzag: z.number().nonnegative().max(1000).optional(),
+        dual_fusion: z.number().nonnegative().max(1000).optional(),
+        pulse_gates: z.number().nonnegative().max(1000).optional(),
+      })
+      .strict()
+      .optional(),
+    gridWidth: z.number().int().min(3).max(8).optional(),
+    gridHeight: z.number().int().min(3).max(8).optional(),
+    startDelayMs: z.number().int().nonnegative().max(8_000),
+    moveBudgetMs: z.number().int().positive().max(8_000).optional(),
+    safetyMarginMs: z.number().int().nonnegative().max(8_000).optional(),
+    maxGenerationAttempts: z.number().int().positive().max(48).optional(),
+    minRequiredMoves: z.number().int().min(1).max(8).optional(),
+    maxRequiredMoves: z.number().int().min(1).max(8).optional(),
+    requireUniqueSolution: z.boolean().optional(),
+    avoidSingleMoveStart: z.boolean().optional(),
+    mirrorCount: z.number().int().min(3).max(5).optional(),
+    difficulty: z.enum(["easy", "medium", "hard"]).optional(),
+    seed: z.number().int().nonnegative().optional(),
+    assetIds: laserRoutingAssetIdsSchema,
+    theme: laserRoutingThemeSchema.optional(),
+  })
+  .strict()
+  .superRefine((value, ctx) => {
+    const minMoves = value.minRequiredMoves ?? 2;
+    const maxMoves = value.maxRequiredMoves ?? 5;
+    if (maxMoves < minMoves) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "maxRequiredMoves must be >= minRequiredMoves",
+        path: ["maxRequiredMoves"],
+      });
+    }
+    if (value.variant !== "classic" && value.mirrorCount != null && value.mirrorCount !== 4) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: `${value.variant} requires exactly 4 mirrors`,
+        path: ["mirrorCount"],
+      });
+    }
+  });
+export type LaserRoutingServerConfig = z.infer<
+  typeof laserRoutingServerConfigSchema
+>;
+
+export const laserRoutingAnswerSchema = z
+  .object({
+    componentId: z.string().min(1).max(64),
+    expectedSequence: z.number().int().nonnegative().optional(),
+    final: z.boolean().optional(),
+  })
+  .strict();
+export type LaserRoutingAnswer = z.infer<typeof laserRoutingAnswerSchema>;
+
+// ---------------------------------------------------------------------------
 // Cross-engine validators
 // ---------------------------------------------------------------------------
 
@@ -2629,6 +2844,7 @@ export const ENGINE_RUNTIME_READINESS: Record<
   "search.select_occurrences": "live",
   "social.pass_the_pulse": "live",
   "precision.ring_lock": "live",
+  "laser.routing": "live",
 };
 
 type EngineSchemaPair = {
@@ -2773,6 +2989,11 @@ const ENGINE_SCHEMAS: Record<LaunchEngineId, EngineSchemaPair> = {
     server: precisionRingLockServerConfigSchema,
     answer: precisionRingLockAnswerSchema,
   },
+  "laser.routing": {
+    client: laserRoutingClientConfigSchema,
+    server: laserRoutingServerConfigSchema,
+    answer: laserRoutingAnswerSchema,
+  },
 };
 
 export type ValidatedEngineConfigs =
@@ -2910,6 +3131,11 @@ export type ValidatedEngineConfigs =
       engineId: "precision.ring_lock";
       clientConfig: PrecisionRingLockClientConfig;
       serverConfig: PrecisionRingLockServerConfig;
+    }
+  | {
+      engineId: "laser.routing";
+      clientConfig: LaserRoutingClientConfig;
+      serverConfig: LaserRoutingServerConfig;
     };
 
 export type ValidatedEngineAnswer =
@@ -2954,7 +3180,8 @@ export type ValidatedEngineAnswer =
       answer: SearchSelectOccurrencesAnswer;
     }
   | { engineId: "social.pass_the_pulse"; answer: SocialPassThePulseAnswer }
-  | { engineId: "precision.ring_lock"; answer: PrecisionRingLockAnswer };
+  | { engineId: "precision.ring_lock"; answer: PrecisionRingLockAnswer }
+  | { engineId: "laser.routing"; answer: LaserRoutingAnswer };
 
 function assertKnownEngineId(engineId: string): LaunchEngineId {
   return launchEngineIdSchema.parse(engineId);
@@ -3217,6 +3444,38 @@ export function validateEngineConfigs(
           code: z.ZodIssueCode.custom,
           message: "client and server mirrorHorizontally must match",
           path: ["serverConfig", "mirrorHorizontally"],
+        },
+      ]);
+    }
+  }
+
+  if (id === "laser.routing") {
+    const c = client as LaserRoutingClientConfig;
+    const s = server as LaserRoutingServerConfig;
+    if (c.variant !== s.variant) {
+      throw new z.ZodError([
+        {
+          code: z.ZodIssueCode.custom,
+          message: "client and server variant must match",
+          path: ["serverConfig", "variant"],
+        },
+      ]);
+    }
+    if (c.startDelayMs !== s.startDelayMs) {
+      throw new z.ZodError([
+        {
+          code: z.ZodIssueCode.custom,
+          message: "client and server startDelayMs must match",
+          path: ["serverConfig", "startDelayMs"],
+        },
+      ]);
+    }
+    if (JSON.stringify(c.assetIds) !== JSON.stringify(s.assetIds)) {
+      throw new z.ZodError([
+        {
+          code: z.ZodIssueCode.custom,
+          message: "client and server assetIds must match",
+          path: ["serverConfig", "assetIds"],
         },
       ]);
     }

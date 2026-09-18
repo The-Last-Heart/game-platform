@@ -9,7 +9,9 @@ import type {
 } from '@thelastheart/contracts';
 import {
   applyChallengeDifficulty,
+  LaserRoutingConfigError,
   oppositeSwipeDirection,
+  previewLaserRoutingPuzzle,
   STUDIO_ENGINE_REGISTRY,
 } from '@thelastheart/contracts';
 import type { SwipeDirection } from '@thelastheart/contracts';
@@ -31,6 +33,7 @@ import {
   FamilyParamsFields,
   defaultClientConfig,
   defaultServerConfig,
+  ensureLaserRoutingRequiredAssets,
   ensurePassThePulseRequiredAssets,
   mergeFogWipeRequiredAssets,
 } from './FamilyParamsFields';
@@ -205,7 +208,10 @@ function withPlayDifficulty(
     serverConfig: draft.serverConfig,
   });
   let serverConfig = applied.serverConfig;
-  if (draft.engineId === 'precision.ring_lock') {
+  if (
+    draft.engineId === 'precision.ring_lock' ||
+    draft.engineId === 'laser.routing'
+  ) {
     serverConfig = { ...serverConfig, difficulty };
   }
   if (draft.engineId === 'gesture.reverse_swipe') {
@@ -286,7 +292,10 @@ function draftToDefinition(
   );
 
   let serverConfig = { ...draft.serverConfig };
-  if (draft.engineId === 'precision.ring_lock') {
+  if (
+    draft.engineId === 'precision.ring_lock' ||
+    draft.engineId === 'laser.routing'
+  ) {
     serverConfig = { ...serverConfig, difficulty: draft.difficulty };
   }
 
@@ -487,6 +496,57 @@ function validateDraft(
       });
     }
   }
+  if (draft.engineId === 'laser.routing') {
+    const required = ensureLaserRoutingRequiredAssets([]);
+    const missing = required.filter(
+      (id) => !draft.requiredAssetIds.includes(id),
+    );
+    if (missing.length > 0) {
+      errors.push({
+        path: 'requiredAssetIds',
+        message: t(locale, 'studio.validation.laserAssets'),
+      });
+    }
+    try {
+      const preview = previewLaserRoutingPuzzle({
+        seed:
+          typeof draft.serverConfig.seed === 'number'
+            ? draft.serverConfig.seed
+            : 4242,
+        serverConfig: draft.serverConfig,
+        challengeDurationMs: draft.durationMs,
+      });
+      if (!preview.solvable) {
+        errors.push({
+          path: 'serverConfig',
+          message: t(locale, 'studio.validation.laserUnsolvable'),
+        });
+      }
+      if (preview.startSolved) {
+        errors.push({
+          path: 'serverConfig',
+          message: t(locale, 'studio.validation.laserStartSolved'),
+        });
+      }
+      if (
+        draft.serverConfig.requireUniqueSolution !== false &&
+        !preview.unique
+      ) {
+        errors.push({
+          path: 'serverConfig.requireUniqueSolution',
+          message: t(locale, 'studio.validation.laserNotUnique'),
+        });
+      }
+    } catch (error) {
+      errors.push({
+        path: 'durationMs',
+        message:
+          error instanceof LaserRoutingConfigError
+            ? t(locale, 'studio.validation.laserTiming')
+            : t(locale, 'studio.validation.laserGenerate'),
+      });
+    }
+  }
   if (!draft.promptKey.trim())
     errors.push({
       path: 'promptKey',
@@ -578,6 +638,9 @@ function definitionToDraft(def: ChallengeDefinitionContract): DraftDefinition {
   }
   if (def.engineId === 'social.pass_the_pulse') {
     requiredAssetIds = ensurePassThePulseRequiredAssets(requiredAssetIds);
+  }
+  if (def.engineId === 'laser.routing') {
+    requiredAssetIds = ensureLaserRoutingRequiredAssets(requiredAssetIds);
   }
   const durationMs = def.durationMs;
   if (def.engineId === 'memory.sequence') {
@@ -803,7 +866,9 @@ export function StudioChallengeEditor({
                 ? 'challenge.memory.intro'
                 : entry.engineId === 'audio.multiple_choice'
                   ? 'challenge.audio_mc.intro'
-                  : prev.promptKey,
+                  : entry.engineId === 'laser.routing'
+                    ? 'challenge.laser.classic.prompt'
+                    : prev.promptKey,
         requiredAssetIds:
           entry.engineId === 'gesture.fog_wipe'
             ? mergeFogWipeRequiredAssets(
@@ -813,7 +878,9 @@ export function StudioChallengeEditor({
               )
             : entry.engineId === 'social.pass_the_pulse'
               ? ensurePassThePulseRequiredAssets([])
-              : entry.engineId === 'audio.multiple_choice'
+              : entry.engineId === 'laser.routing'
+                ? ensureLaserRoutingRequiredAssets([])
+                : entry.engineId === 'audio.multiple_choice'
                 ? collectAudioRequiredAssetIds(
                     parseAudioQuestions(play.serverConfig),
                   )

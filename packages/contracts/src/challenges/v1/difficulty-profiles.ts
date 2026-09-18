@@ -1,5 +1,10 @@
 import type { LaunchEngineId } from './engines';
 import { RING_LOCK_DIFFICULTY_TUNING } from './engines';
+import {
+  LASER_ROUTING_DIFFICULTY_TUNING,
+  LASER_ROUTING_PROMPT_KEYS,
+  LASER_ROUTING_TITLE_KEYS,
+} from './laser-routing-logic';
 
 export type ChallengePlayDifficulty = 'easy' | 'medium' | 'hard';
 
@@ -204,14 +209,14 @@ export function difficultyPlayPatch(
           serverConfig: { togetherMs: 6000, syncWindowMs: 2500 },
         },
         medium: {
-          durationMs: 8000,
+          durationMs: 10000,
           clientConfig: {},
           serverConfig: { togetherMs: 5000, syncWindowMs: 2000 },
         },
         hard: {
-          durationMs: 7000,
+          durationMs: 10000,
           clientConfig: {},
-          serverConfig: { togetherMs: 4000, syncWindowMs: 1200 },
+          serverConfig: { togetherMs: 5000, syncWindowMs: 1200 },
         },
       }[difficulty];
     case 'tactical.risk_choice':
@@ -357,6 +362,26 @@ export function difficultyPlayPatch(
         },
       };
     }
+    case 'laser.routing': {
+      const tuning = LASER_ROUTING_DIFFICULTY_TUNING[difficulty];
+      return {
+        durationMs: tuning.durationMs,
+        clientConfig: {
+          startDelayMs: tuning.startDelayMs,
+          titleKey: LASER_ROUTING_TITLE_KEYS.classic,
+          promptKey: LASER_ROUTING_PROMPT_KEYS.classic,
+        },
+        serverConfig: {
+          difficulty,
+          startDelayMs: tuning.startDelayMs,
+          minRequiredMoves: tuning.minRequiredMoves,
+          maxRequiredMoves: tuning.maxRequiredMoves,
+          mirrorCount: tuning.mirrorCount,
+          moveBudgetMs: tuning.moveBudgetMs,
+          avoidSingleMoveStart: tuning.avoidSingleMoveStart,
+        },
+      };
+    }
     default:
       return { clientConfig: {}, serverConfig: {} };
   }
@@ -427,6 +452,10 @@ export function applyChallengeDifficulty(input: {
     serverConfig = { ...serverConfig, holdMs, requiredContacts: 2 };
   }
 
+  if (input.engineId === 'social.pair_sync') {
+    durationMs = pairSyncPlayDurationMs(durationMs, serverConfig);
+  }
+
   if (input.engineId === 'gesture.reverse_swipe') {
     const minDistancePx = readPositiveMs(
       clientConfig['minDistancePx'] ?? serverConfig['minDistancePx'],
@@ -439,7 +468,8 @@ export function applyChallengeDifficulty(input: {
   return { durationMs, clientConfig, serverConfig };
 }
 
-/** Fill missing play knobs from difficulty without overriding Studio values. */
+/** Fill missing play knobs from difficulty without overriding Studio values.
+ * Pair-sync duration is widened when it cannot outlast togetherMs. */
 export function fillChallengeDifficultyDefaults(input: {
   engineId: string;
   difficulty: ChallengePlayDifficulty;
@@ -452,9 +482,29 @@ export function fillChallengeDifficultyDefaults(input: {
   serverConfig: Record<string, unknown>;
 } {
   const patch = difficultyPlayPatch(input.engineId, input.difficulty);
-  return {
-    durationMs: input.durationMs,
-    clientConfig: { ...patch.clientConfig, ...input.clientConfig },
-    serverConfig: { ...patch.serverConfig, ...input.serverConfig },
+  const serverConfig: Record<string, unknown> = {
+    ...patch.serverConfig,
+    ...input.serverConfig,
   };
+  return {
+    durationMs:
+      input.engineId === 'social.pair_sync'
+        ? pairSyncPlayDurationMs(input.durationMs, serverConfig)
+        : input.durationMs,
+    clientConfig: { ...patch.clientConfig, ...input.clientConfig },
+    serverConfig,
+  };
+}
+
+/** Hold-together time needs slack after both seats start pressing. */
+function pairSyncPlayDurationMs(
+  durationMs: number,
+  serverConfig: Record<string, unknown>,
+): number {
+  const togetherMs = readPositiveMs(serverConfig['togetherMs'], 0);
+  if (togetherMs <= 0) {
+    return durationMs;
+  }
+  const minDuration = clampDurationMs(togetherMs + 3000);
+  return durationMs < minDuration ? minDuration : durationMs;
 }

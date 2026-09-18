@@ -1,6 +1,6 @@
 {
   "packId": "lh.local.content.v1",
-  "packVersion": 15,
+  "packVersion": 16,
   "assets": [
     {
       "assetId": "sfx.pulse",
@@ -330,6 +330,20 @@
       "durationMs": 2000,
       "analysisSchemaVersion": 1,
       "kind": "visualization"
+    },
+    {
+      "assetId": "laser_routing.laser_loop",
+      "relativePath": "assets/laser_routing.laser_loop.mp3",
+      "contentType": "audio/mpeg",
+      "bytes": 295680,
+      "sha256": "823c2f13ed48474bf60c3ca0fba38a650f0597c43bd5d6d1b303ba338395d707"
+    },
+    {
+      "assetId": "laser_routing.reflection",
+      "relativePath": "assets/laser_routing.reflection.mp3",
+      "contentType": "audio/mpeg",
+      "bytes": 56051,
+      "sha256": "fef602732d5d5feb2401d3c94edb8d1a07b8d88d672c76d28f9cb571303af5f8"
     }
   ]
 }

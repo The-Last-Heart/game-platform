@@ -48,6 +48,18 @@ export const KNOWN_ASSET_OPTIONS: CatalogOption[] = [
     value: 'circuit_rotation.heart_power_on',
     labelKey: 'studio.asset.circuitHeartPowerOnSfx',
   },
+  {
+    value: 'laser_routing.laser_loop',
+    labelKey: 'studio.asset.laserLoopSfx',
+  },
+  {
+    value: 'laser_routing.reflection',
+    labelKey: 'studio.asset.laserReflectionSfx',
+  },
+  {
+    value: 'laser_routing.heart_power_on',
+    labelKey: 'studio.asset.laserHeartSfx',
+  },
 
   {
     value: 'fog_wipe.reveal_content',
@@ -301,6 +313,22 @@ export const PROMPT_KEY_OPTIONS: CatalogOption[] = [
     value: 'challenge.risk_choice.prompt',
     labelKey: 'studio.catalog.prompt.riskPrompt',
   },
+  {
+    value: 'challenge.laser.classic.prompt',
+    labelKey: 'studio.catalog.prompt.laserClassic',
+  },
+  {
+    value: 'challenge.laser.zigzag.prompt',
+    labelKey: 'studio.catalog.prompt.laserZigzag',
+  },
+  {
+    value: 'challenge.laser.dual_fusion.prompt',
+    labelKey: 'studio.catalog.prompt.laserFusion',
+  },
+  {
+    value: 'challenge.laser.pulse_gates.prompt',
+    labelKey: 'studio.catalog.prompt.laserGates',
+  },
 ];
 
 export const FALLBACK_KEY_OPTIONS: CatalogOption[] = [
@@ -327,6 +355,10 @@ export const FALLBACK_KEY_OPTIONS: CatalogOption[] = [
   {
     value: 'tactical.risk_choice.v1',
     labelKey: 'studio.catalog.fallback.risk',
+  },
+  {
+    value: 'challenge.laser.a11y_fallback',
+    labelKey: 'studio.catalog.fallback.laser',
   },
 ];
 

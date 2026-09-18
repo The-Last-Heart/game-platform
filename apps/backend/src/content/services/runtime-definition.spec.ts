@@ -93,4 +93,33 @@ describe('toRuntimeChallengeDefinition', () => {
     expect(runtime.clientConfig['speedMin']).toBeGreaterThan(0.2);
     expect(runtime.durationMs).toBe(5000);
   });
+
+  it('widens pair-sync duration so togetherMs can finish after both start', () => {
+    const def = {
+      definitionId: 'social.pair_sync.dev',
+      definitionVersion: 1,
+      engineId: 'social.pair_sync',
+      durationMs: 5000,
+      heartPenaltyOnFailure: 1,
+      energyRewardOnSuccess: 1,
+      promptKey: 'challenge.pair_sync.intro',
+      clientConfig: {},
+      serverConfig: {
+        partnerRoleKeys: ['role.leader', 'role.follower'],
+        togetherMs: 5000,
+        syncWindowMs: 500,
+      },
+      internalTitle: 'Pair sync',
+      familyId: 'social',
+      categoryId: 'social.pair_sync',
+      difficulty: 'hard',
+      instructionAr: 'زامن',
+      eligibleModes: ['quick_survival'],
+      accessibilityFallbackKey: 'challenge.pair_sync.a11y_fallback',
+    } as ChallengeDefinitionContract;
+
+    const runtime = toRuntimeChallengeDefinition(def);
+    expect(runtime.durationMs).toBeGreaterThanOrEqual(8000);
+    expect(runtime.serverConfig['togetherMs']).toBe(5000);
+  });
 });

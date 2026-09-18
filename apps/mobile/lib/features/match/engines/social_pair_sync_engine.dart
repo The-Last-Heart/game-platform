@@ -34,13 +34,14 @@ class _PairSyncWidgetState extends State<_PairSyncWidget>
     with TickerProviderStateMixin {
   static const double _avatarSize = 64;
 
+  /// Stable identity so snapshot rebuilds do not cancel an in-flight press.
+  final GlobalKey _holdListenerKey = GlobalKey();
+
   bool _submitted = false;
   bool _holding = false;
   Stopwatch? _holdWatch;
   Timer? _holdTimer;
   DateTime _lastProgressEmit = DateTime.fromMillisecondsSinceEpoch(0);
-  int _overlapMs = 0;
-  Stopwatch? _overlapWatch;
 
   late final AnimationController _glowPulse;
   late final AnimationController _wave;
@@ -105,9 +106,6 @@ class _PairSyncWidgetState extends State<_PairSyncWidget>
 
   int get _heldMs => _holdWatch?.elapsedMilliseconds ?? 0;
 
-  int get _totalOverlapMs =>
-      _overlapMs + (_overlapWatch?.elapsedMilliseconds ?? 0);
-
   /// The connector current is a remote cue: it follows the partner's press,
   /// never the local seat's own tap.
   bool get _waveActive => _partnerHolding;
@@ -147,15 +145,18 @@ class _PairSyncWidgetState extends State<_PairSyncWidget>
   @override
   void didUpdateWidget(covariant _PairSyncWidget oldWidget) {
     super.didUpdateWidget(oldWidget);
+    final String oldId =
+        oldWidget.challengeContext.challenge.challengeInstanceId;
+    final String newId = widget.challengeContext.challenge.challengeInstanceId;
+    if (oldId != newId) {
+      _resetHoldForNewRound();
+    }
     _syncWaveAnimation();
-    _syncOverlapClock();
-    _submitIfOverlapComplete();
   }
 
   @override
   void dispose() {
     _holdTimer?.cancel();
-    _overlapWatch?.stop();
     _glowPulse.dispose();
     _wave.dispose();
     super.dispose();
@@ -174,27 +175,23 @@ class _PairSyncWidgetState extends State<_PairSyncWidget>
     }
   }
 
-  void _syncOverlapClock() {
-    final bool bothPressing = _holding && _partnerHolding;
-    if (bothPressing) {
-      _overlapWatch ??= Stopwatch()..start();
-      return;
-    }
-    if (_overlapWatch != null) {
-      _overlapMs += _overlapWatch!.elapsedMilliseconds;
-      _overlapWatch!.stop();
-      _overlapWatch = null;
-    }
-  }
+  bool get _roundOpen => widget.challengeContext.inputEnabled;
 
-  void _submitIfOverlapComplete() {
-    if (_submitted || _togetherMs <= 0) return;
-    if (_totalOverlapMs < _togetherMs) return;
-    _submitPress(heldMs: _heldMs);
+  void _resetHoldForNewRound() {
+    _holdTimer?.cancel();
+    _holdTimer = null;
+    _holdWatch?.stop();
+    _holdWatch = null;
+    _submitted = false;
+    _holding = false;
+    _glowPulse.stop();
+    _glowPulse.reset();
   }
 
   void _onPointerDown(PointerDownEvent event) {
-    if (widget.challengeContext.isInteractionLocked || _submitted || _holding) {
+    // Keep accepting a new press after an accidental cancel; only the server
+    // round close (`inputEnabled`) ends the challenge.
+    if (!_roundOpen || _holding) {
       return;
     }
     setState(() => _holding = true);
@@ -204,24 +201,21 @@ class _PairSyncWidgetState extends State<_PairSyncWidget>
     _holdTimer = Timer.periodic(const Duration(milliseconds: 50), (_) {
       _onHoldTick();
     });
-    _syncOverlapClock();
     // Stamp press-start immediately so the server can compare arrivals.
     _emitProgress(heldMs: 0, holding: true, force: true);
-    _submitIfOverlapComplete();
   }
 
   void _onPointerUp() {
-    if (!_holding || _submitted) return;
+    if (!_holding) return;
     final int heldMs = _heldMs;
     _endHoldAnimation();
-    _syncOverlapClock();
     if (_partnerPlayerId == null) {
       _submitPress(heldMs: heldMs);
       return;
     }
-    // Accidental lift is progress, not a round-ending submit.
+    // Accidental lift pauses overlap; keep the finger-down contract honest
+    // but never auto-complete the round. The server resolves togetherMs.
     _emitProgress(heldMs: heldMs, holding: false, force: true);
-    _submitIfOverlapComplete();
     if (mounted) setState(() {});
   }
 
@@ -235,19 +229,15 @@ class _PairSyncWidgetState extends State<_PairSyncWidget>
   }
 
   void _onHoldTick() {
-    if (!_holding || _submitted) return;
-
-    final int heldMs = _heldMs;
-    _syncOverlapClock();
-    _submitIfOverlapComplete();
-    if (_submitted) return;
-
-    if (widget.challengeContext.isInteractionLocked) {
+    if (!_holding) return;
+    if (!_roundOpen) {
       return;
     }
 
-    _emitProgress(heldMs: heldMs, holding: true);
-    if (mounted) setState(() {});
+    // Keep sending holding:true for the whole press. Local overlap must not
+    // drop the hold or lock the button — that made both seats show waiting
+    // while fingers were still down.
+    _emitProgress(heldMs: _heldMs, holding: true);
   }
 
   void _emitProgress({
@@ -308,8 +298,6 @@ class _PairSyncWidgetState extends State<_PairSyncWidget>
     // Live press only — a finished submit must not freeze "جاهز" after untap.
     final bool partnerReady = _partnerHolding;
     final bool youReady = _holding;
-    final bool interactionLocked =
-        widget.challengeContext.isInteractionLocked || _submitted;
 
     return Center(
       child: Padding(
@@ -435,12 +423,11 @@ class _PairSyncWidgetState extends State<_PairSyncWidget>
                 );
               },
               child: Listener(
+                key: _holdListenerKey,
                 behavior: HitTestBehavior.opaque,
-                onPointerDown: interactionLocked ? null : _onPointerDown,
-                onPointerUp: interactionLocked ? null : (_) => _onPointerUp(),
-                onPointerCancel: interactionLocked
-                    ? null
-                    : (_) => _onPointerUp(),
+                onPointerDown: _onPointerDown,
+                onPointerUp: (_) => _onPointerUp(),
+                onPointerCancel: (_) => _onPointerUp(),
                 child: Center(
                   child: Text(
                     resolver.resolve('challenge.pair_sync.action'),

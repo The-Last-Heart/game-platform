@@ -2,7 +2,7 @@
   "definitionId": "social.pair_sync.dev",
   "definitionVersion": 1,
   "engineId": "social.pair_sync",
-  "durationMs": 8000,
+  "durationMs": 10000,
   "heartPenaltyOnFailure": 1,
   "energyRewardOnSuccess": 1,
   "promptKey": "challenge.pair_sync.intro",

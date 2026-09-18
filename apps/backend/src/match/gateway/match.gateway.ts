@@ -897,6 +897,12 @@ export class MatchGateway
       return;
     }
     const joined = await this.matches.joinPrivateRoom(payload);
+    if (joined.lobbyFillWaitMs != null) {
+      this.matchmaking.onLobbyCompositionChanged(joined.matchId, {
+        emptied: false,
+        lobbyFillWaitMs: joined.lobbyFillWaitMs,
+      });
+    }
     await this.finalizeSeatBind(
       client,
       commandId,
@@ -927,6 +933,10 @@ export class MatchGateway
       return;
     }
     const result = await this.matches.setReady(matchId, state.playerId);
+    if (result.countdownStarted) {
+      // Clear fill timer; countdown owns the match now.
+      this.matchmaking.onLobbyCompositionChanged(matchId, { emptied: false });
+    }
     this.emitToClient(client, MessageTypes.MatchSnapshot, result.snapshot, {
       commandId,
       correlationId,
@@ -1712,7 +1722,8 @@ export class MatchGateway
         type: MessageTypes.ChallengeStarted,
         messageId: randomUUID(),
         matchId,
-        serverSequence: event.sequence,
+        // Unsequenced so the client applies the seat overlay after the
+        // room-wide start (equal sequence would otherwise be ignored).
         serverTimestampMs: event.serverTimestampMs,
         payload: toPublicChallengeView(
           event.challenge,

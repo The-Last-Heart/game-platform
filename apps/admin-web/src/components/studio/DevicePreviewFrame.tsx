@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { t } from '@/i18n/get-dictionary';
 import type { Locale } from '@/i18n/locale';
 import type { MessageKey } from '@/i18n/messages/en';
+import { previewLaserRoutingPuzzle } from '@thelastheart/contracts';
 import { AssetThumb, collectImageAssetIds } from './AssetThumb';
 import {
   inferAudioAnswerTarget,
@@ -135,6 +136,165 @@ function AudioDevicePreview({
   );
 }
 
+function LaserDevicePreview({
+  locale,
+  durationMs,
+  clientConfig,
+  serverConfig,
+  showSolution,
+}: {
+  locale: Locale;
+  durationMs?: number;
+  clientConfig?: Record<string, unknown>;
+  serverConfig?: Record<string, unknown>;
+  showSolution: boolean;
+}) {
+  const preview = useMemo(() => {
+    try {
+      return previewLaserRoutingPuzzle({
+        seed:
+          typeof serverConfig?.seed === 'number' ? serverConfig.seed : 4242,
+        serverConfig: serverConfig ?? {},
+        challengeDurationMs: durationMs ?? 15_000,
+      });
+    } catch {
+      return null;
+    }
+  }, [serverConfig, durationMs]);
+
+  if (!preview) {
+    return (
+      <span style={{ fontSize: '0.8rem', opacity: 0.7 }}>
+        {t(locale, 'studio.preview.laserInvalid')}
+      </span>
+    );
+  }
+
+  const board = showSolution ? preview.solvedBoard : preview.board;
+  const traces = showSolution ? preview.solvedTraces : preview.traces;
+  const titleKey =
+    (clientConfig?.titleKey as string | undefined) ??
+    `challenge.laser.${preview.variant}.title`;
+  const cellSize = Math.max(18, Math.min(36, 180 / Math.max(board.width, board.height)));
+
+  return (
+    <div dir="rtl" style={{ width: '100%', display: 'flex', flexDirection: 'column', gap: 8, alignItems: 'center' }}>
+      <span style={{ fontSize: '0.95rem', fontWeight: 700 }}>{titleKey}</span>
+      <div
+        style={{
+          position: 'relative',
+          width: board.width * cellSize,
+          height: board.height * cellSize,
+          background: '#04111f',
+          border: '1px solid #3ce7ff88',
+          borderRadius: 12,
+        }}
+      >
+        {Array.from({ length: board.height * board.width }, (_, i) => {
+          const row = Math.floor(i / board.width);
+          const col = i % board.width;
+          return (
+            <span
+              key={`${row}:${col}`}
+              style={{
+                position: 'absolute',
+                left: col * cellSize,
+                top: row * cellSize,
+                width: cellSize,
+                height: cellSize,
+                boxShadow: 'inset 0 0 0 1px #1c6c8a44',
+              }}
+            />
+          );
+        })}
+        {traces.flatMap((trace, ti) =>
+          trace.cells.slice(0, -1).map((cell, i) => {
+            const next = trace.cells[i + 1]!;
+            const x1 = (cell.col + 0.5) * cellSize;
+            const y1 = (cell.row + 0.5) * cellSize;
+            const x2 = (next.col + 0.5) * cellSize;
+            const y2 = (next.row + 0.5) * cellSize;
+            const color =
+              trace.color === 'amber'
+                ? '#ffb14a'
+                : trace.color === 'fused'
+                  ? '#e8fbff'
+                  : '#3ce7ff';
+            return (
+              <span
+                key={`${ti}-${i}`}
+                style={{
+                  position: 'absolute',
+                  left: Math.min(x1, x2) - 1,
+                  top: Math.min(y1, y2) - 1,
+                  width: Math.max(2, Math.abs(x2 - x1) + 2),
+                  height: Math.max(2, Math.abs(y2 - y1) + 2),
+                  background: color,
+                  boxShadow: `0 0 6px ${color}`,
+                }}
+              />
+            );
+          }),
+        )}
+        {board.components.map((component) => {
+          const glyph =
+            component.kind === 'heart'
+              ? '♥'
+              : component.kind === 'mirror'
+                ? component.orientation === 'backslash'
+                  ? '\\'
+                  : '/'
+                : component.kind === 'gate'
+                  ? component.axis === 'vertical'
+                    ? '▮'
+                    : '▬'
+                  : component.kind === 'combiner'
+                    ? '◆'
+                    : component.kind === 'source'
+                      ? '◎'
+                      : '·';
+          return (
+            <span
+              key={component.id}
+              style={{
+                position: 'absolute',
+                left: component.col * cellSize,
+                top: component.row * cellSize,
+                width: cellSize,
+                height: cellSize,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                color:
+                  component.kind === 'heart'
+                    ? '#ff4e8c'
+                    : component.color === 'amber'
+                      ? '#ffb14a'
+                      : '#9ed4e6',
+                fontSize: cellSize * 0.55,
+                fontWeight: 700,
+              }}
+            >
+              {glyph}
+            </span>
+          );
+        })}
+      </div>
+      <span style={{ fontSize: '0.72rem', opacity: 0.75 }}>
+        {t(locale, 'studio.preview.laserStats')
+          .replace('{moves}', String(preview.minimumMoves))
+          .replace('{solvable}', preview.solvable ? '✓' : '✗')
+          .replace('{unique}', preview.unique ? '✓' : '✗')}
+      </span>
+      {showSolution ? (
+        <span style={{ fontSize: '0.7rem', color: '#3ce7ff' }}>
+          {t(locale, 'studio.preview.laserSolution')}
+        </span>
+      ) : null}
+    </div>
+  );
+}
+
 export function DevicePreviewFrame({
   locale,
   challengeTitle,
@@ -152,7 +312,12 @@ export function DevicePreviewFrame({
     [clientConfig, serverConfig, requiredAssetIds],
   );
 
-  const hasChallenge = Boolean(challengeTitle || instructionAr || imageIds.length > 0);
+  const hasChallenge = Boolean(
+    challengeTitle ||
+      instructionAr ||
+      imageIds.length > 0 ||
+      engineId === 'laser.routing',
+  );
 
   return (
     <div className="device-preview-frame">
@@ -205,6 +370,19 @@ export function DevicePreviewFrame({
                     <AssetThumb key={id} assetId={id} size={imageIds.length === 1 ? 160 : 96} />
                   ))}
                 </div>
+              ) : null}
+
+              {engineId === 'laser.routing' &&
+              (activeState === 'intro' ||
+                activeState === 'active' ||
+                activeState === 'success') ? (
+                <LaserDevicePreview
+                  locale={locale}
+                  durationMs={durationMs}
+                  clientConfig={clientConfig}
+                  serverConfig={serverConfig}
+                  showSolution={activeState === 'success'}
+                />
               ) : null}
 
               {engineId === 'audio.multiple_choice' &&

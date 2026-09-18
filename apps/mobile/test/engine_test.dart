@@ -931,7 +931,7 @@ void main() {
       );
     });
 
-    testWidgets('auto-submits after overlapping taps reach togetherMs', (
+    testWidgets('keeps holding after overlap reaches togetherMs', (
       WidgetTester tester,
     ) async {
       final List<Map<String, dynamic>> answers = <Map<String, dynamic>>[];
@@ -968,10 +968,23 @@ void main() {
       );
       await tester.pump();
       expect(answers.first['final'], isFalse);
+      expect(answers.first['holding'], isTrue);
 
       await tester.pump(const Duration(milliseconds: 160));
-      expect(answers.last['final'], isTrue);
+      expect(answers, isNotEmpty);
+      expect(
+        answers.every((Map<String, dynamic> a) => a['final'] == false),
+        isTrue,
+      );
+      expect(answers.last['holding'], isTrue);
+      expect(
+        find.text(resolver.resolve('challenge.pair_sync.status_ready')),
+        findsWidgets,
+      );
       await gesture.up();
+      await tester.pump();
+      expect(answers.last['holding'], isFalse);
+      expect(answers.last['final'], isFalse);
     });
   });
 }

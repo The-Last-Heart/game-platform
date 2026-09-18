@@ -14,6 +14,8 @@ class ChallengeSfx {
   static final ChallengeSfx instance = ChallengeSfx._();
 
   AudioPlayer? _player;
+  AudioPlayer? _loopPlayer;
+  String? _loopAssetId;
   final Set<String> _missingLogged = <String>{};
 
   /// Bumped on [stop] / new [play] so an in-flight [play] cannot restart audio
@@ -45,6 +47,17 @@ class ChallengeSfx {
   /// Circuit rotation: power reached the heart.
   static const String defaultCircuitHeartPowerOnAssetId =
       'circuit_rotation.heart_power_on';
+
+  /// Laser routing: looping beam bed.
+  static const String defaultLaserLoopAssetId = 'laser_routing.laser_loop';
+
+  /// Laser routing: accepted mirror reflection.
+  static const String defaultLaserReflectionAssetId =
+      'laser_routing.reflection';
+
+  /// Laser routing: heart illumination. File may be absent until supplied.
+  static const String defaultLaserHeartAssetId =
+      'laser_routing.heart_power_on';
 
   Future<void> pulse({String assetId = defaultPulseAssetId}) async {
     try {
@@ -109,6 +122,54 @@ class ChallengeSfx {
     } catch (error) {
       debugPrint('ChallengeSfx stop failed: $error');
     }
+  }
+
+  /// Loop a content-pack bed. Restarts only when the asset id changes.
+  /// Returns false when the cached file is missing so callers can retry.
+  Future<bool> playLoop(String assetId) async {
+    if (_loopAssetId == assetId && _loopPlayer != null) {
+      return true;
+    }
+    await stopLoop();
+    try {
+      final file = await ContentAssetCache.instance.localFile(assetId);
+      if (file == null) {
+        if (_missingLogged.add(assetId)) {
+          debugPrint('ChallengeSfx: missing cached asset $assetId');
+        }
+        return false;
+      }
+      final AudioPlayer player = AudioPlayer();
+      _loopPlayer = player;
+      _loopAssetId = assetId;
+      await player.setReleaseMode(ReleaseMode.loop);
+      await player.play(DeviceFileSource(file.path));
+      return true;
+    } catch (error) {
+      debugPrint('ChallengeSfx loop failed ($assetId): $error');
+      await stopLoop();
+      return false;
+    }
+  }
+
+  Future<void> stopLoop() async {
+    final AudioPlayer? player = _loopPlayer;
+    _loopPlayer = null;
+    _loopAssetId = null;
+    if (player == null) return;
+    try {
+      await player.stop();
+    } catch (error) {
+      debugPrint('ChallengeSfx loop stop failed: $error');
+    }
+    try {
+      await player.dispose();
+    } catch (_) {}
+  }
+
+  Future<void> stopAll() async {
+    await stop();
+    await stopLoop();
   }
 
   Future<void> _playCached(String assetId) async {

@@ -41,12 +41,12 @@ function fillTwo(engine: MatchEngine) {
   match = engine.joinPlayer(match, {
     playerId: 'p0',
     resumeTokenHash: 'h0',
-    displayName: 'A',
+    displayName: 'Host',
   }).match;
   match = engine.joinPlayer(match, {
     playerId: 'p1',
     resumeTokenHash: 'h1',
-    displayName: 'B',
+    displayName: 'Guest',
   }).match;
   match = engine.acceptJoin(match, 'p0').match;
   match = engine.acceptJoin(match, 'p1').match;
@@ -170,6 +170,7 @@ describe('LH-008 energy and powers', () => {
   it('danger pulse hit removes a heart and grants protection', () => {
     const { engine } = setup();
     let match = fillTwo(engine);
+    match.players.get('p0')!.energy = 4;
     match.players.get('p0')!.inventory.danger_pulse = 1;
     match = engine.beginRoundResult(match, [], 'x', 100).match;
     match = engine.beginPowerAction(match).match;
@@ -194,6 +195,7 @@ describe('LH-008 energy and powers', () => {
   it('power.used and power.defense_required use consecutive sequences', () => {
     const { engine } = setup();
     let match = fillTwo(engine);
+    match.players.get('p0')!.energy = 4;
     match.players.get('p0')!.inventory.danger_pulse = 1;
     match = engine.beginRoundResult(match, [], 'x', 100).match;
     match = engine.beginPowerAction(match).match;
@@ -213,6 +215,7 @@ describe('LH-008 energy and powers', () => {
   it('action window defaults to 5 seconds', () => {
     const { engine } = setup();
     let match = fillTwo(engine);
+    match.players.get('p0')!.energy = 4;
     match.players.get('p0')!.inventory.danger_pulse = 1;
     match = engine.beginRoundResult(match, [], 'x', 100).match;
     const offered = engine.beginPowerAction(match);
@@ -234,6 +237,7 @@ describe('LH-008 energy and powers', () => {
   it('reflection cannot loop; reflected sender may shield', () => {
     const { engine } = setup();
     let match = fillTwo(engine);
+    match.players.get('p0')!.energy = 4;
     match.players.get('p0')!.inventory.danger_pulse = 1;
     match.players.get('p1')!.inventory.reflection = 1;
     match.players.get('p0')!.inventory.shield = 1;
@@ -267,12 +271,26 @@ describe('LH-008 energy and powers', () => {
   it('rejects illegal targets (self / consecutive)', () => {
     const { engine } = setup();
     let match = fillTwo(engine);
+    match.players.get('p0')!.energy = 4;
     match.players.get('p0')!.inventory.danger_pulse = 1;
     match.players.get('p0')!.lastDangerPulseTargetId = 'p1';
     match = engine.beginRoundResult(match, [], 'x', 100).match;
     const offered = engine.beginPowerAction(match);
     // No eligible targets → no power_action window
     expect(offered.events.length).toBe(0);
+  });
+
+  it('allowOffer false skips the strike window even with a charge', () => {
+    const { engine } = setup();
+    let match = fillTwo(engine);
+    match.players.get('p0')!.energy = 4;
+    match.players.get('p0')!.inventory.danger_pulse = 1;
+    match = engine.beginRoundResult(match, [], 'x', 100).match;
+    const skipped = engine.beginPowerAction(match, undefined, {
+      allowOffer: false,
+    });
+    expect(skipped.events).toHaveLength(0);
+    expect(skipped.match.phase).toBe('round_result');
   });
 
   it('empty inventory helper starts empty', () => {

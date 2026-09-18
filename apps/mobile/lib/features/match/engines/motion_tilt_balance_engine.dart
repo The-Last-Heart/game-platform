@@ -38,18 +38,26 @@ class _MotionTiltWidgetState extends State<_MotionTiltWidget>
   double _x = 0;
   double _y = 0;
 
-  /// Filtered sensor target.
+  /// Filtered sensor target, relative to rest pose.
   double _sensorX = 0;
   double _sensorY = 0;
+
+  double _restX = 0;
+  double _restY = 0;
+  int _restSamples = 0;
+  bool _restReady = false;
 
   DateTime? _inTargetSince;
   bool _submitted = false;
   int _holdProgressMs = 0;
 
+  static const int _restSampleTarget = 12;
+  static const double _tiltScale = 2.6;
+
   double get _targetX {
     final num? v =
         widget.challengeContext.challenge.clientConfig['targetX'] as num?;
-    return v?.toDouble() ?? 0.35;
+    return v?.toDouble() ?? 0;
   }
 
   double get _targetY {
@@ -81,26 +89,41 @@ class _MotionTiltWidgetState extends State<_MotionTiltWidget>
   @override
   void initState() {
     super.initState();
-    // Default target offset so the goal is not under the resting ball.
     _ticker = createTicker(_onTick)..start();
+    _listenAccelerometer();
+  }
+
+  void _listenAccelerometer() {
+    void onSample(double gx, double gy) {
+      if (_submitted || widget.challengeContext.isInteractionLocked) return;
+      final double rawX = (-gx / 9.8).clamp(-1.0, 1.0);
+      final double rawY = (gy / 9.8).clamp(-1.0, 1.0);
+      if (!_restReady) {
+        _restSamples += 1;
+        _restX += rawX;
+        _restY += rawY;
+        if (_restSamples >= _restSampleTarget) {
+          _restX /= _restSamples;
+          _restY /= _restSamples;
+          _restReady = true;
+        }
+        return;
+      }
+      const double alpha = 0.18;
+      final double tiltX = ((rawX - _restX) * _tiltScale).clamp(-1.0, 1.0);
+      final double tiltY = ((rawY - _restY) * _tiltScale).clamp(-1.0, 1.0);
+      _sensorX = _sensorX + (tiltX - _sensorX) * alpha;
+      _sensorY = _sensorY + (tiltY - _sensorY) * alpha;
+    }
+
     _sub = accelerometerEventStream(
       samplingPeriod: SensorInterval.gameInterval,
-    ).listen((AccelerometerEvent e) {
-      if (_submitted || widget.challengeContext.isInteractionLocked) return;
-      // Gravity → plane; invert X for natural "tilt left moves ball left".
-      final double rawX = (-e.x / 9.8).clamp(-1.0, 1.0);
-      final double rawY = (e.y / 9.8).clamp(-1.0, 1.0);
-      // Heavy low-pass to kill jitter.
-      const double alpha = 0.12;
-      _sensorX = _sensorX + (rawX - _sensorX) * alpha;
-      _sensorY = _sensorY + (rawY - _sensorY) * alpha;
-    });
+    ).listen((AccelerometerEvent e) => onSample(e.x, e.y));
   }
 
   void _onTick(Duration elapsed) {
     if (!mounted || _submitted) return;
-    // Ease display toward filtered sensor (extra smoothing).
-    const double follow = 0.18;
+    const double follow = 0.22;
     final double nextX = _x + (_sensorX - _x) * follow;
     final double nextY = _y + (_sensorY - _y) * follow;
     final double dist = sqrt(
@@ -108,7 +131,7 @@ class _MotionTiltWidgetState extends State<_MotionTiltWidget>
           (nextY - _targetY) * (nextY - _targetY),
     );
     int held = 0;
-    if (dist <= _tolerance) {
+    if (_restReady && dist <= _tolerance) {
       _inTargetSince ??= DateTime.now();
       held = DateTime.now().difference(_inTargetSince!).inMilliseconds;
       if (held >= _holdMs) {
@@ -161,19 +184,18 @@ class _MotionTiltWidgetState extends State<_MotionTiltWidget>
               final double width = min(c.maxWidth * 0.92, 360);
               final double height = min(c.maxHeight * 0.7, 220);
               const double ball = 28;
-              final double goal = max(56.0, width * _tolerance);
-              final double ballLeft =
-                  (width / 2) + _x * ((width - ball) / 2) - ball / 2;
-              final double ballTop =
-                  (height / 2) + _y * ((height - ball) / 2) - ball / 2;
+              final double rangeX = (width - ball) / 2;
+              final double rangeY = (height - ball) / 2;
+              final double goal = max(
+                ball + 8,
+                min(width, height) * _tolerance,
+              );
+              final double ballLeft = (width / 2) + _x * rangeX - ball / 2;
+              final double ballTop = (height / 2) + _y * rangeY - ball / 2;
               final double goalLeft =
-                  (width / 2) +
-                  _targetX * ((width - goal) / 2) -
-                  goal / 2;
+                  (width / 2) + _targetX * rangeX - goal / 2;
               final double goalTop =
-                  (height / 2) +
-                  _targetY * ((height - goal) / 2) -
-                  goal / 2;
+                  (height / 2) + _targetY * rangeY - goal / 2;
               return Center(
                 child: SizedBox(
                   width: width,

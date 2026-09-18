@@ -524,6 +524,9 @@ const en = {
   'studio.asset.circuitGridPlate': 'Circuit rotation grid plate',
   'studio.asset.circuitCableConnectSfx': 'Circuit cable connect sound',
   'studio.asset.circuitHeartPowerOnSfx': 'Circuit heart power-on sound',
+  'studio.asset.laserLoopSfx': 'Laser beam loop',
+  'studio.asset.laserReflectionSfx': 'Laser reflection',
+  'studio.asset.laserHeartSfx': 'Laser heart power-on',
 
   'studio.asset.hapticLight': 'Light haptic',
   'studio.asset.hapticMedium': 'Medium haptic',
@@ -610,6 +613,10 @@ const en = {
   'studio.catalog.prompt.audioHaptic': 'Audio — haptic fallback',
   'studio.catalog.prompt.pairPrompt': 'Pair sync — prompt',
   'studio.catalog.prompt.riskPrompt': 'Risk choice — prompt',
+  'studio.catalog.prompt.laserClassic': 'Guide the beam',
+  'studio.catalog.prompt.laserZigzag': 'The zigzag path',
+  'studio.catalog.prompt.laserFusion': 'Fuse the energy',
+  'studio.catalog.prompt.laserGates': 'Pulse gates',
   'studio.catalog.fallback.wait': 'Fallback: Wait for Signal',
   'studio.catalog.fallback.noTouch': 'Fallback: No Touch',
   'studio.catalog.fallback.swipe': 'Fallback: Reverse Swipe',
@@ -621,6 +628,7 @@ const en = {
   'studio.catalog.fallback.audio': 'Fallback: Audio',
   'studio.catalog.fallback.pair': 'Fallback: Pair Sync',
   'studio.catalog.fallback.risk': 'Fallback: Risk Choice',
+  'studio.catalog.fallback.laser': 'Fallback: Laser routing',
   'studio.catalog.memory.optA': 'Option A',
   'studio.catalog.memory.optB': 'Option B',
   'studio.catalog.memory.optC': 'Option C',
@@ -669,6 +677,7 @@ const en = {
   'studio.engine.select_occurrences': 'Select Occurrences',
   'studio.engine.pass_the_pulse': 'Pass the Pulse',
   'studio.engine.ring_lock': 'Ring Lock',
+  'studio.engine.routing': 'Laser routing',
   'studio.catalog.prompt.audioMcIntro': 'Guess the Audio title',
   'studio.catalog.prompt.audioMcArtist': 'Who owns this voice?',
   'studio.catalog.prompt.audioMcTrack': 'What is the song name?',
@@ -907,6 +916,24 @@ const en = {
   'studio.field.fp.ringSpeedHint': 'Degrees per second',
   'studio.field.fp.ringTolerance': 'Gate size',
   'studio.field.fp.ringToleranceHint': 'Larger = easier to lock on the gate',
+  'studio.field.fp.laserLead':
+    'Choose a laser variant. The server generates a solvable personalized board from these limits.',
+  'studio.field.fp.laserVariant': 'Laser variant',
+  'studio.field.fp.laserClassic': 'Classic — guide the beam',
+  'studio.field.fp.laserZigzag': 'Zigzag path',
+  'studio.field.fp.laserFusion': 'Dual fusion',
+  'studio.field.fp.laserGates': 'Pulse gates',
+  'studio.field.fp.laserStartDelay': 'Start delay (ms)',
+  'studio.field.fp.laserMirrorCount': 'Mirrors (classic)',
+  'studio.field.fp.laserGridWidth': 'Grid width',
+  'studio.field.fp.laserGridHeight': 'Grid height',
+  'studio.field.fp.laserMinMoves': 'Minimum moves',
+  'studio.field.fp.laserMaxMoves': 'Maximum moves',
+  'studio.field.fp.laserUnique': 'Require a unique solution',
+  'studio.field.fp.laserAudioLead': 'Preview the three laser sound effects.',
+  'studio.field.fp.laserLoopSfx': 'Laser loop',
+  'studio.field.fp.laserReflectionSfx': 'Reflection',
+  'studio.field.fp.laserHeartSfx': 'Heart power-on',
   'studio.field.fp.pulseLead':
     'Pulse travel time and hit windows follow challenge difficulty unless customized.',
   'studio.field.fp.segmentDurationMs': 'Pulse travel time',
@@ -983,6 +1010,10 @@ const en = {
   'studio.preview.failure': 'Failure',
   'studio.preview.timeout': 'Timeout',
   'studio.preview.unsupported': 'Unsupported',
+  'studio.preview.laserInvalid': 'Laser preview could not be generated.',
+  'studio.preview.laserStats':
+    'Moves {moves} · solvable {solvable} · unique {unique}',
+  'studio.preview.laserSolution': 'Admin solution path',
   'studio.preview.testData': 'Test data',
   'studio.preview.rtlDefault': 'RTL default',
   'studio.preview.noChallenge':
@@ -1122,6 +1153,16 @@ const en = {
     'Each question needs a valid MP3 or WAV clip no longer than the allowed clip length before publishing.',
   'studio.validation.stroopVariants':
     'Add at least one valid Stroop card (word, ink color, and 2+ answers)',
+  'studio.validation.laserAssets':
+    'Laser routing requires the loop, reflection, and heart sound assets.',
+  'studio.validation.laserUnsolvable': 'Generated puzzle is not solvable.',
+  'studio.validation.laserStartSolved':
+    'Starting layout is already solved. Adjust generation limits.',
+  'studio.validation.laserNotUnique':
+    'Unique solution is required but more than one solution exists.',
+  'studio.validation.laserTiming':
+    'Duration is too short for the required move count.',
+  'studio.validation.laserGenerate': 'Puzzle generation failed. Check the laser parameters.',
 
   // Permissions
   'studio.permissions.cannotDraft':

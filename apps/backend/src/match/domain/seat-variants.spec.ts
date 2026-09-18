@@ -70,7 +70,7 @@ describe('per-seat challenge variants', () => {
     expect(viewA.signalToken).toBeUndefined();
   });
 
-  it('assigns distinct tilt targets/shapes per seat and evaluates against seat overlay', () => {
+  it('assigns the same tilt target to every seat and evaluates against it', () => {
     const clock = new FakeClock(1_000_000);
     const eng = engine(clock);
     let match = fillTwo(eng);
@@ -102,16 +102,14 @@ describe('per-seat challenge variants', () => {
     const challenge = match.currentChallenge!;
     const [idA, seatA] = [...challenge.seatVariants!.entries()][0]!;
     const [idB, seatB] = [...challenge.seatVariants!.entries()][1]!;
-    expect(seatA.clientOverlay['targetX']).not.toBe(
-      seatB.clientOverlay['targetX'],
-    );
+    expect(seatA.clientOverlay['targetX']).toBe(seatB.clientOverlay['targetX']);
+    expect(seatA.clientOverlay['targetY']).toBe(seatB.clientOverlay['targetY']);
     const pubA = toPublicChallengeView(challenge, clock.nowMs(), idA);
     const pubB = toPublicChallengeView(challenge, clock.nowMs(), idB);
+    const pubRoom = toPublicChallengeView(challenge, clock.nowMs());
     expect(pubA.clientConfig['targetX']).toBe(seatA.clientOverlay['targetX']);
-    expect(pubB.clientConfig['targetShape']).toBe(
-      seatB.clientOverlay['targetShape'],
-    );
-    expect(pubA.clientConfig['targetX']).not.toBe(pubB.clientConfig['targetX']);
+    expect(pubB.clientConfig['targetX']).toBe(pubA.clientConfig['targetX']);
+    expect(pubRoom.clientConfig['targetX']).toBe(pubA.clientConfig['targetX']);
 
     match = eng.submitAnswer(match, {
       playerId: idA,
@@ -152,7 +150,7 @@ describe('per-seat challenge variants', () => {
       match = eng.joinPlayer(match, {
         playerId: `p${i}`,
         resumeTokenHash: `h${i}`,
-        displayName: `Player${i}`,
+        displayName: ['Host', 'Guest', 'Nour', 'Lina'][i],
       }).match;
       match = eng.acceptJoin(match, `p${i}`).match;
     }
@@ -244,7 +242,7 @@ describe('per-seat challenge variants', () => {
       match = eng.joinPlayer(match, {
         playerId: id,
         resumeTokenHash: `h-${id}`,
-        displayName: id,
+        displayName: id === 'p0' ? 'Host' : 'Guest',
       }).match;
       match = eng.acceptJoin(match, id).match;
     }
@@ -301,6 +299,80 @@ describe('per-seat challenge variants', () => {
     expect(match.players.get(b!)!.hearts).toBe(3);
   });
 
+  it('pair_sync ignores a legacy client auto-complete so overlap can finish', () => {
+    const clock = new FakeClock(1_000_000);
+    const eng = engine(clock);
+    let match = eng.createMatch('m-pair-legacy-final', {
+      mode: 'quick_survival',
+      playerCapacity: 2,
+    });
+    for (const id of ['p0', 'p1']) {
+      match = eng.joinPlayer(match, {
+        playerId: id,
+        resumeTokenHash: `h-${id}`,
+        displayName: id === 'p0' ? 'Host' : 'Guest',
+      }).match;
+      match = eng.acceptJoin(match, id).match;
+    }
+    const def = {
+      definitionId: 'social.pair_sync.dev',
+      definitionVersion: 1,
+      engineId: 'social.pair_sync',
+      durationMs: 8000,
+      heartPenaltyOnFailure: 1,
+      energyRewardOnSuccess: 1,
+      promptKey: 'challenge.pair_sync.intro',
+      choiceKeys: [] as string[],
+      clientConfig: {
+        categoryKey: 'challenge.category.social',
+        promptKey: 'challenge.pair_sync.prompt',
+      },
+      serverConfig: { togetherMs: 3000, syncWindowMs: 500 },
+    };
+    match = eng.startChallenge(match, def).match;
+    const challenge = match.currentChallenge!;
+    const [a, b] = challenge.participatingPlayerIds;
+    const t0 = clock.monoMs();
+
+    match = eng.submitAnswer(match, {
+      playerId: a!,
+      challengeInstanceId: challenge.challengeInstanceId,
+      commandId: 'cmd-a-down',
+      answer: { synced: true, heldMs: 0, holding: true, final: false },
+      receivedMonoMs: t0,
+    }).match;
+    match = eng.submitAnswer(match, {
+      playerId: b!,
+      challengeInstanceId: challenge.challengeInstanceId,
+      commandId: 'cmd-b-down',
+      answer: { synced: true, heldMs: 0, holding: true, final: false },
+      receivedMonoMs: t0,
+    }).match;
+    clock.advance(2800);
+    match = eng.submitAnswer(match, {
+      playerId: a!,
+      challengeInstanceId: challenge.challengeInstanceId,
+      commandId: 'cmd-a-legacy-final',
+      answer: { synced: true, heldMs: 2800, holding: false, final: true },
+      receivedMonoMs: clock.monoMs(),
+    }).match;
+    expect(match.currentChallenge?.status).toBe('active');
+    clock.advance(400);
+    match = eng.submitAnswer(match, {
+      playerId: b!,
+      challengeInstanceId: challenge.challengeInstanceId,
+      commandId: 'cmd-b-hold',
+      answer: { synced: true, heldMs: 3200, holding: true, final: false },
+      receivedMonoMs: clock.monoMs(),
+    }).match;
+
+    const resolutions =
+      match.lastRoundResult?.resolutions ??
+      match.currentChallenge?.resolutions ??
+      [];
+    expect(resolutions.map((r) => r.outcome)).toEqual(['success', 'success']);
+  });
+
   it('pair_sync does not resolve on a brief tap; overlap must reach togetherMs', () => {
     const clock = new FakeClock(1_000_000);
     const eng = engine(clock);
@@ -312,7 +384,7 @@ describe('per-seat challenge variants', () => {
       match = eng.joinPlayer(match, {
         playerId: id,
         resumeTokenHash: `h-${id}`,
-        displayName: id,
+        displayName: id === 'p0' ? 'Host' : 'Guest',
       }).match;
       match = eng.acceptJoin(match, id).match;
     }
@@ -366,7 +438,7 @@ describe('per-seat challenge variants', () => {
       match = eng.joinPlayer(match, {
         playerId: id,
         resumeTokenHash: `h-${id}`,
-        displayName: id,
+        displayName: id === 'p0' ? 'Host' : 'Guest',
       }).match;
       match = eng.acceptJoin(match, id).match;
     }
@@ -445,7 +517,7 @@ describe('per-seat challenge variants', () => {
       match = eng.joinPlayer(match, {
         playerId: id,
         resumeTokenHash: `h-${id}`,
-        displayName: id,
+        displayName: id === 'p0' ? 'Host' : 'Guest',
       }).match;
       match = eng.acceptJoin(match, id).match;
     }
@@ -500,7 +572,7 @@ describe('per-seat challenge variants', () => {
       match = eng.joinPlayer(match, {
         playerId: id,
         resumeTokenHash: `h-${id}`,
-        displayName: id,
+        displayName: id === 'p0' ? 'Host' : 'Guest',
       }).match;
       match = eng.acceptJoin(match, id).match;
     }
@@ -554,7 +626,7 @@ describe('per-seat challenge variants', () => {
       playerId: a!,
       challengeInstanceId: challenge.challengeInstanceId,
       commandId: 'cmd-a-up',
-      answer: { synced: true, heldMs: 1900, holding: false, final: true },
+      answer: { synced: true, heldMs: 1900, holding: false, final: false },
       receivedMonoMs: clock.monoMs() + 2100,
     }).match;
     expect(match.currentChallenge!.submissions.get(a!)!.receivedMonoMs).toBe(

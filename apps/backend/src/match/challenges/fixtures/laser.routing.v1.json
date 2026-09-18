@@ -1,0 +1,60 @@
+{
+  "definitionId": "laser.routing.dev",
+  "definitionVersion": 1,
+  "engineId": "laser.routing",
+  "durationMs": 15000,
+  "heartPenaltyOnFailure": 1,
+  "energyRewardOnSuccess": 1,
+  "promptKey": "challenge.laser.classic.title",
+  "choiceKeys": [],
+  "clientConfig": {
+    "categoryKey": "challenge.category.precision",
+    "titleKey": "challenge.laser.classic.title",
+    "promptKey": "challenge.laser.classic.prompt",
+    "footerKey": "challenge.laser.footer",
+    "timeRemainingKey": "challenge.laser.time_remaining",
+    "progressMirrorsKey": "challenge.laser.progress_mirrors",
+    "progressGatesKey": "challenge.laser.progress_gates",
+    "progressFusionKey": "challenge.laser.progress_fusion",
+    "progressFusionPartialKey": "challenge.laser.progress_fusion_partial",
+    "a11yFallbackKey": "challenge.laser.a11y_fallback",
+    "assetIds": {
+      "laserLoopSfx": "laser_routing.laser_loop",
+      "reflectionSfx": "laser_routing.reflection",
+      "heartPowerOnSfx": "laser_routing.heart_power_on"
+    },
+    "variant": "classic",
+    "startDelayMs": 800
+  },
+  "serverConfig": {
+    "variant": "classic",
+    "variantWeights": {
+      "classic": 25,
+      "zigzag": 25,
+      "dual_fusion": 25,
+      "pulse_gates": 25
+    },
+    "startDelayMs": 800,
+    "moveBudgetMs": 1800,
+    "safetyMarginMs": 2000,
+    "maxGenerationAttempts": 24,
+    "minRequiredMoves": 2,
+    "maxRequiredMoves": 5,
+    "requireUniqueSolution": true,
+    "avoidSingleMoveStart": true,
+    "mirrorCount": 4,
+    "difficulty": "medium",
+    "seed": 4242,
+    "assetIds": {
+      "laserLoopSfx": "laser_routing.laser_loop",
+      "reflectionSfx": "laser_routing.reflection",
+      "heartPowerOnSfx": "laser_routing.heart_power_on"
+    }
+  },
+  "requiredAssetIds": [
+    "laser_routing.laser_loop",
+    "laser_routing.reflection",
+    "laser_routing.heart_power_on"
+  ],
+  "difficulty": "medium"
+}

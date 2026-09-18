@@ -8,8 +8,8 @@ export interface ChallengeDefinitionProvider {
   getById(id: string): ChallengeDefinition | undefined;
   getDefaultDev(): ChallengeDefinition;
   /**
-   * Ordered live-match playlist (first cycle). After exhaustion, sudden-death
-   * recycles while 2+ hearts remain — each recycle is a fresh shuffle of this set.
+   * Unique live-match pool. Runtime orders easy → medium → hard, then
+   * reshuffles within each tier for at most two extra full passes.
    */
   getPlaylist(): readonly ChallengeDefinition[];
 }

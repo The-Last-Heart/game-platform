@@ -126,13 +126,13 @@ export type CreateMatchOptions = {
   /** Playlist resolved from the pinned catalog (never re-reads "current"). */
   pinnedPlaylist?: readonly ChallengeDefinition[];
   /**
-   * When true with an explicit `pinnedPlaylist`, skip 5+5+5 restructuring
-   * (training.retry re-seats a single last-played definition).
+   * When true with an explicit `pinnedPlaylist`, skip easy→medium→hard
+   * restructuring (training.retry re-seats a single last-played definition).
    */
   preservePinnedPlaylist?: boolean;
   /**
-   * Hard-only pool for sudden-death after the structured 5+5+5 pack.
-   * Defaults to hard-tagged entries from the mode-filtered catalog pool.
+   * Hard-tagged definitions from the catalog pool (legacy field; live
+   * recycle now reshuffles the full unique playlist, not hard-only).
    */
   hardLoopPlaylist?: readonly ChallengeDefinition[];
   /** Power configuration frozen at match create. */
@@ -323,6 +323,11 @@ export type ChallengeRound = {
    * in seat overlays only — never in the shared public snapshot.
    */
   ringLockState?: import('./engines/ring-lock').RingLockRoundState;
+  /**
+   * Individual laser-routing puzzles keyed by player. Private solution
+   * orientations live here only — never in the shared public snapshot.
+   */
+  laserRoutingState?: import('./engines/laser-routing').LaserRoutingRoundState;
   /** Pair sync: accumulated ms both seats were pressing at the same time. */
   pairSyncOverlapMs?: number;
   /** Pair sync: mono time the current overlapping press started, if any. */
@@ -364,10 +369,12 @@ export type MatchState = {
   commandAcks: Map<string, unknown>;
   /** Frozen at create; active matches never re-resolve current releases. */
   releasePins: MatchReleasePinsState | null;
-  /** Ordered definitions: 5 easy → 5 medium → 5 hard (shuffled within tier). */
+  /** Unique playable definitions, easy → medium → hard (shuffled within tier). */
   pinnedPlaylist: ChallengeDefinition[];
-  /** Hard-only recycle pool while ≥2 players still have hearts. */
+  /** Hard-tagged catalog pool kept for resume compatibility. */
   hardLoopPlaylist: ChallengeDefinition[];
+  /** Round number of the last Danger Pulse offer (0 = never). */
+  lastStrikeOfferedRound?: number;
   /** Frozen power rules for this match (LH-008). */
   powerConfig: PowerConfigurationRuntime | null;
   pendingAttack: PendingPowerAttack | null;

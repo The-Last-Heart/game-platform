@@ -4,6 +4,8 @@ import { useMemo, useState } from 'react';
 import type { LaunchEngineId } from '@thelastheart/contracts';
 import {
   AUDIO_CLIP_DEFAULT_MAX_DURATION_MS,
+  LASER_ROUTING_PROMPT_KEYS,
+  LASER_ROUTING_TITLE_KEYS,
   oppositeSwipeDirection,
 } from '@thelastheart/contracts';
 import type { SwipeDirection } from '@thelastheart/contracts';
@@ -46,6 +48,7 @@ import {
   ZONE_PRESETS,
 } from './studio-catalog-options';
 import { AudioMultipleChoiceFields } from './AudioMultipleChoiceFields';
+import { StudioAudioClipPreview } from './AudioVisualizationPreview';
 import {
   audioClientPreview,
   defaultAudioQuestions,
@@ -92,6 +95,18 @@ function defaultFogWipeAssetIds(revealContent: string): Record<string, string> {
 export function ensurePassThePulseRequiredAssets(current: string[]): string[] {
   if (current.includes('sfx.pulse')) return current;
   return ['sfx.pulse', ...current];
+}
+
+export const LASER_ROUTING_REQUIRED_ASSETS = [
+  'laser_routing.laser_loop',
+  'laser_routing.reflection',
+  'laser_routing.heart_power_on',
+] as const;
+
+export function ensureLaserRoutingRequiredAssets(current: string[]): string[] {
+  const next = new Set(current);
+  for (const id of LASER_ROUTING_REQUIRED_ASSETS) next.add(id);
+  return [...next];
 }
 
 /** Merge fog layers + reveal variants into requiredAssetIds (preserve extras). */
@@ -537,6 +552,26 @@ export function defaultClientConfig(
         statusFailedKey: 'challenge.ring_lock.failed',
         a11yLockButtonKey: 'challenge.ring_lock.a11y_lock',
       };
+    case 'laser.routing':
+      return {
+        categoryKey: 'challenge.category.precision',
+        titleKey: 'challenge.laser.classic.title',
+        promptKey: 'challenge.laser.classic.prompt',
+        footerKey: 'challenge.laser.footer',
+        timeRemainingKey: 'challenge.laser.time_remaining',
+        progressMirrorsKey: 'challenge.laser.progress_mirrors',
+        progressGatesKey: 'challenge.laser.progress_gates',
+        progressFusionKey: 'challenge.laser.progress_fusion',
+        progressFusionPartialKey: 'challenge.laser.progress_fusion_partial',
+        a11yFallbackKey: 'challenge.laser.a11y_fallback',
+        variant: 'classic',
+        startDelayMs: 800,
+        assetIds: {
+          laserLoopSfx: 'laser_routing.laser_loop',
+          reflectionSfx: 'laser_routing.reflection',
+          heartPowerOnSfx: 'laser_routing.heart_power_on',
+        },
+      };
     default:
       return {};
   }
@@ -793,6 +828,33 @@ export function defaultServerConfig(
         safetyMarginMs: 600,
         maxGenerationAttempts: 48,
         difficulty: 'medium',
+      };
+    case 'laser.routing':
+      return {
+        variant: 'classic',
+        variantWeights: {
+          classic: 25,
+          zigzag: 25,
+          dual_fusion: 25,
+          pulse_gates: 25,
+        },
+        startDelayMs: 800,
+        gridWidth: 4,
+        gridHeight: 4,
+        moveBudgetMs: 1800,
+        safetyMarginMs: 2000,
+        maxGenerationAttempts: 24,
+        minRequiredMoves: 2,
+        maxRequiredMoves: 5,
+        requireUniqueSolution: true,
+        avoidSingleMoveStart: true,
+        mirrorCount: 4,
+        difficulty: 'medium',
+        assetIds: {
+          laserLoopSfx: 'laser_routing.laser_loop',
+          reflectionSfx: 'laser_routing.reflection',
+          heartPowerOnSfx: 'laser_routing.heart_power_on',
+        },
       };
     default:
       return {};
@@ -2601,6 +2663,194 @@ function PrecisionRingLockFields(props: FamilyParamsFieldsProps) {
   );
 }
 
+function laserVariantId(
+  raw: unknown,
+): keyof typeof LASER_ROUTING_TITLE_KEYS {
+  return raw === 'zigzag' || raw === 'dual_fusion' || raw === 'pulse_gates'
+    ? raw
+    : 'classic';
+}
+
+function LaserRoutingFields(props: FamilyParamsFieldsProps) {
+  const {
+    locale,
+    clientConfig,
+    serverConfig,
+    onClientChange,
+    onServerChange,
+    requiredAssetIds,
+    onRequiredAssetIdsChange,
+    disabled,
+  } = props;
+  const variant = laserVariantId(serverConfig.variant);
+  const startDelayMs = (serverConfig.startDelayMs as number) ?? 800;
+  const minMoves = (serverConfig.minRequiredMoves as number) ?? 2;
+  const maxMoves = (serverConfig.maxRequiredMoves as number) ?? 5;
+  const mirrorCount = (serverConfig.mirrorCount as number) ?? 4;
+  const gridWidth = (serverConfig.gridWidth as number) ?? 4;
+  const gridHeight = (serverConfig.gridHeight as number) ?? 4;
+  const unique = serverConfig.requireUniqueSolution !== false;
+  const assets =
+    (clientConfig.assetIds as Record<string, string> | undefined) ?? {};
+  const loopId = assets.laserLoopSfx ?? 'laser_routing.laser_loop';
+  const reflectionId = assets.reflectionSfx ?? 'laser_routing.reflection';
+  const heartId = assets.heartPowerOnSfx ?? 'laser_routing.heart_power_on';
+  return (
+    <>
+      <p className="studio-section-lead">{lbl(locale, 'fp.laserLead')}</p>
+      <label className="studio-field">
+        <span>{lbl(locale, 'fp.laserVariant')}</span>
+        <select
+          value={variant}
+          disabled={disabled}
+          onChange={(e) => {
+            const next = laserVariantId(e.currentTarget.value);
+            onServerChange({ ...serverConfig, variant: next });
+            onClientChange({
+              ...clientConfig,
+              variant: next,
+              titleKey: LASER_ROUTING_TITLE_KEYS[next],
+              promptKey: LASER_ROUTING_PROMPT_KEYS[next],
+            });
+            onRequiredAssetIdsChange?.(
+              ensureLaserRoutingRequiredAssets(requiredAssetIds ?? []),
+            );
+          }}
+        >
+          <option value="classic">{lbl(locale, 'fp.laserClassic')}</option>
+          <option value="zigzag">{lbl(locale, 'fp.laserZigzag')}</option>
+          <option value="dual_fusion">{lbl(locale, 'fp.laserFusion')}</option>
+          <option value="pulse_gates">{lbl(locale, 'fp.laserGates')}</option>
+        </select>
+      </label>
+      <FieldGroup horizontal>
+        <FieldInput
+          id="fp-laser-delay"
+          label={lbl(locale, 'fp.laserStartDelay')}
+          type="number"
+          value={String(startDelayMs)}
+          disabled={disabled}
+          onChange={(e) => {
+            const value = Number(e.currentTarget.value);
+            onServerChange({ ...serverConfig, startDelayMs: value });
+            onClientChange({ ...clientConfig, startDelayMs: value });
+          }}
+        />
+        <FieldInput
+          id="fp-laser-mirrors"
+          label={lbl(locale, 'fp.laserMirrorCount')}
+          type="number"
+          value={String(mirrorCount)}
+          disabled={disabled || variant !== 'classic'}
+          onChange={(e) =>
+            onServerChange({
+              ...serverConfig,
+              mirrorCount: Number(e.currentTarget.value),
+            })
+          }
+        />
+      </FieldGroup>
+      <FieldGroup horizontal>
+        <FieldInput
+          id="fp-laser-width"
+          label={lbl(locale, 'fp.laserGridWidth')}
+          type="number"
+          value={String(gridWidth)}
+          disabled={disabled}
+          onChange={(e) =>
+            onServerChange({
+              ...serverConfig,
+              gridWidth: Number(e.currentTarget.value),
+            })
+          }
+        />
+        <FieldInput
+          id="fp-laser-height"
+          label={lbl(locale, 'fp.laserGridHeight')}
+          type="number"
+          value={String(gridHeight)}
+          disabled={disabled}
+          onChange={(e) =>
+            onServerChange({
+              ...serverConfig,
+              gridHeight: Number(e.currentTarget.value),
+            })
+          }
+        />
+      </FieldGroup>
+      <FieldGroup horizontal>
+        <FieldInput
+          id="fp-laser-min"
+          label={lbl(locale, 'fp.laserMinMoves')}
+          type="number"
+          value={String(minMoves)}
+          disabled={disabled}
+          onChange={(e) =>
+            onServerChange({
+              ...serverConfig,
+              minRequiredMoves: Number(e.currentTarget.value),
+            })
+          }
+        />
+        <FieldInput
+          id="fp-laser-max"
+          label={lbl(locale, 'fp.laserMaxMoves')}
+          type="number"
+          value={String(maxMoves)}
+          disabled={disabled}
+          onChange={(e) =>
+            onServerChange({
+              ...serverConfig,
+              maxRequiredMoves: Number(e.currentTarget.value),
+            })
+          }
+        />
+      </FieldGroup>
+      <label className="studio-field studio-check">
+        <input
+          type="checkbox"
+          checked={unique}
+          disabled={disabled}
+          onChange={(e) =>
+            onServerChange({
+              ...serverConfig,
+              requireUniqueSolution: e.currentTarget.checked,
+            })
+          }
+        />
+        <span>{lbl(locale, 'fp.laserUnique')}</span>
+      </label>
+      <p className="studio-section-lead">{lbl(locale, 'fp.laserAudioLead')}</p>
+      <div className="studio-audio-device-options">
+        <span>{lbl(locale, 'fp.laserLoopSfx')}</span>
+        <StudioAudioClipPreview
+          assetId={loopId}
+          durationMs={4000}
+          visualization={null}
+          waveformHeight={36}
+          equalizerHeight={0}
+        />
+        <span>{lbl(locale, 'fp.laserReflectionSfx')}</span>
+        <StudioAudioClipPreview
+          assetId={reflectionId}
+          durationMs={1200}
+          visualization={null}
+          waveformHeight={36}
+          equalizerHeight={0}
+        />
+        <span>{lbl(locale, 'fp.laserHeartSfx')}</span>
+        <StudioAudioClipPreview
+          assetId={heartId}
+          durationMs={1800}
+          visualization={null}
+          waveformHeight={36}
+          equalizerHeight={0}
+        />
+      </div>
+    </>
+  );
+}
+
 function PassThePulseFields(props: FamilyParamsFieldsProps) {
   const {
     locale,
@@ -2862,6 +3112,8 @@ export function FamilyParamsFields(props: FamilyParamsFieldsProps) {
         return <GeographySelectOnMapFields {...props} />;
       case 'precision.ring_lock':
         return <PrecisionRingLockFields {...props} />;
+      case 'laser.routing':
+        return <LaserRoutingFields {...props} />;
       case 'social.pass_the_pulse':
         return <PassThePulseFields {...props} />;
       case 'focus.odd_one_out':

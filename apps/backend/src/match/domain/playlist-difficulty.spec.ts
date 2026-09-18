@@ -1,7 +1,8 @@
 import {
   buildDifficultyOrderedPlaylist,
-  CHALLENGES_PER_DIFFICULTY,
-  difficultyOf,
+  isDifficultySorted,
+  MAX_PLAYLIST_RECYCLES,
+  selectDifficultyCycledDefinition,
 } from './playlist-difficulty';
 import type { ChallengeDefinition } from './types';
 
@@ -45,23 +46,36 @@ describe('playlist-difficulty', () => {
     def('social.pair_sync', 'hard'),
   ];
 
-  it('builds 5 easy then 5 medium then 5 hard', () => {
+  it('plays every unique challenge once, easy then medium then hard', () => {
     const { structured, hardLoop } = buildDifficultyOrderedPlaylist(
       pool,
       'match-a',
     );
-    expect(structured).toHaveLength(CHALLENGES_PER_DIFFICULTY * 3);
-    expect(structured.slice(0, 5).every((d) => difficultyOf(d) === 'easy')).toBe(
-      true,
+    expect(structured).toHaveLength(pool.length);
+    expect(new Set(structured.map((d) => d.definitionId)).size).toBe(
+      pool.length,
     );
-    expect(
-      structured.slice(5, 10).every((d) => difficultyOf(d) === 'medium'),
-    ).toBe(true);
-    expect(
-      structured.slice(10, 15).every((d) => difficultyOf(d) === 'hard'),
-    ).toBe(true);
-    expect(hardLoop.every((d) => difficultyOf(d) === 'hard')).toBe(true);
-    expect(hardLoop.length).toBeGreaterThanOrEqual(5);
+    expect(isDifficultySorted(structured)).toBe(true);
+    expect(structured.filter((d) => d.difficulty === 'easy')).toHaveLength(5);
+    expect(structured.filter((d) => d.difficulty === 'medium')).toHaveLength(5);
+    expect(structured.filter((d) => d.difficulty === 'hard')).toHaveLength(8);
+    expect(hardLoop.every((d) => d.difficulty === 'hard')).toBe(true);
+    expect(hardLoop.length).toBe(8);
+  });
+
+  it('does not pad a short catalog by repeating challenges', () => {
+    const sparse = [
+      def('precision.neon_cable', 'easy'),
+      def('gesture.fog_wipe', 'medium'),
+      def('memory.sequence', 'hard'),
+    ];
+    const { structured } = buildDifficultyOrderedPlaylist(sparse, 'sparse-room');
+    expect(structured).toHaveLength(3);
+    expect(structured.map((d) => d.engineId)).toEqual([
+      'precision.neon_cable',
+      'gesture.fog_wipe',
+      'memory.sequence',
+    ]);
   });
 
   it('is deterministic for the same matchId', () => {
@@ -79,24 +93,66 @@ describe('playlist-difficulty', () => {
         pool,
         `room-${i}`,
       );
-      orders.add(structured.slice(0, 5).map((d) => d.engineId).join(','));
+      orders.add(
+        structured
+          .filter((d) => d.difficulty === 'easy')
+          .map((d) => d.engineId)
+          .join(','),
+      );
     }
     expect(orders.size).toBeGreaterThan(1);
   });
 
-  it('interleaves sparse neon+fog pool so fog is not buried behind five neon pads', () => {
-    const sparse = [
-      def('precision.neon_cable', 'easy'),
-      def('gesture.fog_wipe', 'medium'),
-    ];
-    const { structured } = buildDifficultyOrderedPlaylist(sparse, 'sparse-room');
-    expect(structured).toHaveLength(CHALLENGES_PER_DIFFICULTY * 3);
-    expect(structured.some((d) => d.engineId === 'gesture.fog_wipe')).toBe(
-      true,
-    );
-    expect(structured.slice(0, 2).map((d) => d.engineId).sort()).toEqual([
-      'gesture.fog_wipe',
-      'precision.neon_cable',
-    ]);
+  it('recycles a fresh within-tier shuffle up to max 2 extra passes', () => {
+    const { structured } = buildDifficultyOrderedPlaylist(pool, 'cycle-room');
+    const first = structured.map((d) => d.definitionId);
+    const second = Array.from({ length: structured.length }, (_, i) =>
+      selectDifficultyCycledDefinition({
+        playlist: structured,
+        matchId: 'cycle-room',
+        roundNumber: structured.length + i,
+      }),
+    ).map((d) => d?.definitionId);
+    const third = Array.from({ length: structured.length }, (_, i) =>
+      selectDifficultyCycledDefinition({
+        playlist: structured,
+        matchId: 'cycle-room',
+        roundNumber: structured.length * 2 + i,
+      }),
+    ).map((d) => d?.definitionId);
+
+    expect(second.every((id) => id != null)).toBe(true);
+    expect(third.every((id) => id != null)).toBe(true);
+    expect(new Set(second).size).toBe(structured.length);
+    expect(isDifficultySorted(
+      second.map((id) => structured.find((d) => d.definitionId === id)!),
+    )).toBe(true);
+    expect(selectDifficultyCycledDefinition({
+      playlist: structured,
+      matchId: 'cycle-room',
+      roundNumber: structured.length * (MAX_PLAYLIST_RECYCLES + 1),
+    })).toBeNull();
+    expect(first.join(',')).not.toBe(second.join(','));
+    expect(second.join(',')).not.toBe(third.join(','));
+  });
+
+  it('training (maxRecycles 0) stops after the first pass', () => {
+    const { structured } = buildDifficultyOrderedPlaylist(pool, 'train');
+    expect(
+      selectDifficultyCycledDefinition({
+        playlist: structured,
+        matchId: 'train',
+        roundNumber: 0,
+        maxRecycles: 0,
+      })?.definitionId,
+    ).toBe(structured[0]!.definitionId);
+    expect(
+      selectDifficultyCycledDefinition({
+        playlist: structured,
+        matchId: 'train',
+        roundNumber: structured.length,
+        maxRecycles: 0,
+      }),
+    ).toBeNull();
   });
 });

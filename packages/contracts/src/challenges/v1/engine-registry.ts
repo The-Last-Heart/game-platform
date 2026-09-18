@@ -199,4 +199,11 @@ export const STUDIO_ENGINE_REGISTRY: readonly StudioEngineRegistryEntry[] = [
     runtimeReadiness: ENGINE_RUNTIME_READINESS['precision.ring_lock'],
     labelKey: 'engine.precision.ring_lock',
   },
+  {
+    engineId: 'laser.routing',
+    familyId: 'laser',
+    categoryId: 'laser.routing',
+    runtimeReadiness: ENGINE_RUNTIME_READINESS['laser.routing'],
+    labelKey: 'engine.laser.routing',
+  },
 ] as const;

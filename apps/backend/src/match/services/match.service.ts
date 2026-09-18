@@ -29,8 +29,12 @@ import { createLaunchEvaluators } from '../domain/engines/launch-evaluators';
 import { createAdvancedEvaluators } from '../domain/engines/advanced-evaluators';
 import { createPack31Evaluators } from '../domain/engines/pack-31-evaluators';
 import { nextSeatSignalDelayMs } from '../domain/seat-variants';
-import { selectPlaylistDefinition } from '../domain/playlist-cycle';
-import { buildDifficultyOrderedPlaylist } from '../domain/playlist-difficulty';
+import {
+  buildDifficultyOrderedPlaylist,
+  MAX_PLAYLIST_RECYCLES,
+  selectDifficultyCycledDefinition,
+} from '../domain/playlist-difficulty';
+import { shouldOfferStrikeWindow } from '../domain/strike-offer';
 import { filterPlaylistForMode } from '../domain/training-eligibility';
 import {
   challengeIntroDurationMs,
@@ -367,7 +371,7 @@ export class MatchService implements OnModuleDestroy, OnModuleInit {
   /**
    * Finalize a reserved join after the gateway has bound a live socket and
    * delivered credentials. Marks only this player accepted; starts ready
-   * countdown only when all six seated players are individually finalized.
+   * countdown only when canStartReadyCountdown is satisfied.
    */
   async finalizeJoin(
     matchId: string,
@@ -476,7 +480,7 @@ export class MatchService implements OnModuleDestroy, OnModuleInit {
         const replayResult = {
           playerId: existingAck.playerId,
           resumeToken: existingAck.resumeToken,
-          snapshot: this.engine.toPublicSnapshot(next),
+          snapshot: this.engine.toPublicSnapshot(next, existingAck.playerId),
         };
         if (this.identityBarrierHooks.afterResumeMutated) {
           await this.identityBarrierHooks.afterResumeMutated();
@@ -525,7 +529,7 @@ export class MatchService implements OnModuleDestroy, OnModuleInit {
       const resumeResult = {
         playerId: player.playerId,
         resumeToken: issued.token,
-        snapshot: this.engine.toPublicSnapshot(next),
+        snapshot: this.engine.toPublicSnapshot(next, player.playerId),
       };
       if (this.identityBarrierHooks.afterResumeMutated) {
         await this.identityBarrierHooks.afterResumeMutated();
@@ -747,6 +751,18 @@ export class MatchService implements OnModuleDestroy, OnModuleInit {
           this.scheduleCompleteSumSuccessResolve(
             input.matchId,
             Math.max(1, holdAt - this.clock.monoMs()),
+          );
+        }
+        const laserHoldAt =
+          result.match.currentChallenge?.laserRoutingState
+            ?.successResolveAtMonoMs;
+        if (
+          result.match.currentChallenge?.engineId === 'laser.routing' &&
+          typeof laserHoldAt === 'number'
+        ) {
+          this.scheduleLaserRoutingSuccessResolve(
+            input.matchId,
+            Math.max(1, laserHoldAt - this.clock.monoMs()),
           );
         }
         if (
@@ -1205,16 +1221,24 @@ export class MatchService implements OnModuleDestroy, OnModuleInit {
 
       if (departed.removedFromLobby) {
         this.clearTimer(matchId);
-        // Vacating a seat before start re-opens the quick lobby for joins and
+        // Vacating a seat before start re-opens the open lobby for joins and
         // refreshes the fill wait so remaining players are not sealed forever.
         if (
-          next.mode === 'quick_survival' &&
+          (next.mode === 'quick_survival' || next.mode === 'private') &&
           next.phase === 'lobby' &&
-          next.players.size > 0 &&
+          next.players.size >= MIN_LIVE_MATCH_PLAYERS &&
           next.players.size < next.playerCapacity
         ) {
           this.armLobbyFillWait(next, QUICK_LOBBY_FILL_WAIT_MS);
           lobbyFillWaitMs = QUICK_LOBBY_FILL_WAIT_MS;
+        } else if (
+          next.mode === 'private' &&
+          next.phase === 'lobby' &&
+          next.players.size < MIN_LIVE_MATCH_PLAYERS
+        ) {
+          // Solo private rooms stay open for friends — no fill countdown.
+          next.lobbyFillDeadlineAtMs = null;
+          next.lobbyFillDeadlineMonoMs = null;
         }
         if (next.players.size > 0) {
           this.ensureQuickHost(next, playerId);
@@ -1374,12 +1398,16 @@ export class MatchService implements OnModuleDestroy, OnModuleInit {
         countryCode: input.countryCode,
         playerId: input.playerId,
       });
+      // Arm open-lobby fill once a live table (≥2) can start / show Start now.
+      const lobbyFillWaitMs = await this.ensureOpenLobbyFillWait(matchId);
+      const snap = await this.requestSnapshot(matchId);
       return {
         matchId,
         roomCode: match.roomCode ?? this.roomCodes.normalize(input.roomCode),
         playerId: seated.playerId,
         resumeToken: seated.resumeToken,
-        snapshot: seated.snapshot,
+        snapshot: snap.snapshot,
+        lobbyFillWaitMs,
       };
     } catch (error) {
       if (error instanceof DomainError && error.code === 'MATCH_FULL') {
@@ -1599,7 +1627,7 @@ export class MatchService implements OnModuleDestroy, OnModuleInit {
           resumeToken: seated.resumeToken,
         });
         // Arm open-lobby fill only once a live table (≥2) can actually start.
-        const lobbyFillWaitMs = await this.ensureRematchLobbyFillWait(
+        const lobbyFillWaitMs = await this.ensureOpenLobbyFillWait(
           existing.newMatchId,
         );
         const snap = await this.requestSnapshot(existing.newMatchId);
@@ -1665,17 +1693,17 @@ export class MatchService implements OnModuleDestroy, OnModuleInit {
   }
 
   /**
-   * Once a rematch quick lobby has ≥2 seats, arm (or report) the open-lobby
-   * fill wait so partial-start / Start now behave like matchmaking.
-   * Emits a bumped snapshot so seats already bound (first rematcher / host)
-   * refresh lobbyFillDeadlineAtMs — without that, Start now stays hidden.
+   * Once a quick/private open lobby has ≥2 seats, arm (or report) the fill
+   * wait so partial-start / Start now / extend behave consistently.
+   * Emits a bumped snapshot so seats already bound (host) refresh
+   * lobbyFillDeadlineAtMs — without that, Start now stays hidden.
    */
-  private async ensureRematchLobbyFillWait(
+  private async ensureOpenLobbyFillWait(
     matchId: string,
   ): Promise<number | undefined> {
     return this.enqueue(matchId, async () => {
       const current = await this.requireMatch(matchId);
-      if (current.mode !== 'quick_survival') {
+      if (current.mode !== 'quick_survival' && current.mode !== 'private') {
         return undefined;
       }
       if (
@@ -1769,7 +1797,7 @@ export class MatchService implements OnModuleDestroy, OnModuleInit {
 
   /**
    * Host extends the open-lobby fill wait (+30s, capped at 120s remaining).
-   * Allowed only for quick_survival lobby with 2–5 seated players.
+   * Allowed for quick_survival / private lobby with 2–5 seated players.
    */
   async extendLobbyFill(
     matchId: string,
@@ -1780,8 +1808,8 @@ export class MatchService implements OnModuleDestroy, OnModuleInit {
   }> {
     return this.enqueue(matchId, async () => {
       const match = await this.requireMatch(matchId);
-      if (match.mode !== 'quick_survival') {
-        throw new DomainError('NOT_LOBBY', 'extend only for quick survival');
+      if (match.mode !== 'quick_survival' && match.mode !== 'private') {
+        throw new DomainError('NOT_LOBBY', 'extend only for open lobbies');
       }
       if (match.status !== 'waiting' || match.phase !== 'lobby') {
         throw new DomainError('NOT_LOBBY', 'extend only while lobby is open');
@@ -1823,8 +1851,9 @@ export class MatchService implements OnModuleDestroy, OnModuleInit {
   }
 
   /**
-   * Host starts the quick lobby immediately (≥ MIN_LIVE_MATCH_PLAYERS).
+   * Host starts the open lobby immediately (≥ MIN_LIVE_MATCH_PLAYERS).
    * Skips remaining fill wait and enters ready countdown with a partial table.
+   * Allowed for quick_survival and private.
    */
   async startLobbyNow(
     matchId: string,
@@ -1834,8 +1863,8 @@ export class MatchService implements OnModuleDestroy, OnModuleInit {
   }> {
     return this.enqueue(matchId, async () => {
       const match = await this.requireMatch(matchId);
-      if (match.mode !== 'quick_survival') {
-        throw new DomainError('NOT_LOBBY', 'start only for quick survival');
+      if (match.mode !== 'quick_survival' && match.mode !== 'private') {
+        throw new DomainError('NOT_LOBBY', 'start only for open lobbies');
       }
       if (match.status !== 'waiting' || match.phase !== 'lobby') {
         throw new DomainError('NOT_LOBBY', 'start only while lobby is open');
@@ -1919,9 +1948,10 @@ export class MatchService implements OnModuleDestroy, OnModuleInit {
   }
 
   /**
-   * When a quick_survival lobby fill wait elapses:
+   * When an open-lobby fill wait elapses (quick_survival or private):
    * - ≥ MIN_LIVE_MATCH_PLAYERS → begin ready countdown (partial table OK)
-   * - 1 player → abort (cannot play live alone)
+   * - private solo → clear deadline, keep room (friends may still join)
+   * - quick solo → abort (cannot play live alone), unless rematch party
    * - 0 → delete empty match
    */
   async resolveQuickLobbyFill(matchId: string): Promise<{
@@ -1934,7 +1964,7 @@ export class MatchService implements OnModuleDestroy, OnModuleInit {
         return { outcome: 'gone' as const, playerIds: [] };
       }
       if (
-        match.mode !== 'quick_survival' ||
+        (match.mode !== 'quick_survival' && match.mode !== 'private') ||
         match.status !== 'waiting' ||
         match.phase !== 'lobby'
       ) {
@@ -1973,6 +2003,19 @@ export class MatchService implements OnModuleDestroy, OnModuleInit {
           allowPartialFill: true,
         });
         return { outcome: 'started' as const, playerIds };
+      }
+
+      // Private solo rooms stay open for friends — clear the fill deadline only.
+      if (match.mode === 'private') {
+        if (
+          match.lobbyFillDeadlineAtMs != null ||
+          match.lobbyFillDeadlineMonoMs != null
+        ) {
+          match.lobbyFillDeadlineAtMs = null;
+          match.lobbyFillDeadlineMonoMs = null;
+          await this.store.save(match);
+        }
+        return { outcome: 'noop' as const, playerIds };
       }
 
       // Rematch party lobbies stay open for late "إعادة التحدي" clicks. Solo
@@ -2029,6 +2072,21 @@ export class MatchService implements OnModuleDestroy, OnModuleInit {
       // monoMs > deadline. If the timer fired at/before equality, reschedule so
       // the timeout cannot vanish.
       const challenge = result.match.currentChallenge;
+      const laserHoldAt = challenge?.laserRoutingState?.successResolveAtMonoMs;
+      if (
+        result.match.status === 'challenge_active' &&
+        challenge &&
+        challenge.status === 'active' &&
+        challenge.engineId === 'laser.routing' &&
+        typeof laserHoldAt === 'number' &&
+        this.clock.monoMs() < laserHoldAt
+      ) {
+        this.scheduleLaserRoutingSuccessResolve(
+          matchId,
+          Math.max(1, laserHoldAt - this.clock.monoMs()),
+        );
+        return;
+      }
       if (
         result.match.status === 'challenge_active' &&
         challenge &&
@@ -2116,6 +2174,23 @@ export class MatchService implements OnModuleDestroy, OnModuleInit {
           match,
           successResult.events,
         );
+        match = await this.requireMatch(matchId);
+      }
+    }
+
+    // laser.routing: keep the solved board visible, then resolve.
+    if (
+      match.status === 'challenge_active' &&
+      match.currentChallenge &&
+      match.currentChallenge.status === 'active' &&
+      match.currentChallenge.engineId === 'laser.routing'
+    ) {
+      const laserResult = this.engine.resolveDueLaserRoutingSuccess(match);
+      if (laserResult.events.length > 0) {
+        match = laserResult.match;
+        await this.store.save(match);
+        this.clearTimer(matchId);
+        await this.publishResolveAndMaybeRoundResult(match, laserResult.events);
         match = await this.requireMatch(matchId);
       }
     }
@@ -2535,6 +2610,64 @@ export class MatchService implements OnModuleDestroy, OnModuleInit {
     this.timers.set(key, timer);
   }
 
+  private scheduleLaserRoutingSuccessResolve(
+    matchId: string,
+    delayMs: number,
+  ): void {
+    if (this.nodeEnv === 'test') return;
+    const key = `${matchId}:laser_routing_success`;
+    const existing = this.timers.get(key);
+    if (existing) {
+      clearTimeout(existing);
+      this.timers.delete(key);
+    }
+    const timer = setTimeout(
+      () => {
+        void this.enqueue(matchId, async () => {
+          const match = await this.requireMatch(matchId);
+          const result = this.engine.resolveDueLaserRoutingSuccess(match);
+          if (result.events.length === 0) {
+            const holdAt =
+              match.currentChallenge?.laserRoutingState?.successResolveAtMonoMs;
+            if (
+              match.status === 'challenge_active' &&
+              match.currentChallenge?.status === 'active' &&
+              typeof holdAt === 'number' &&
+              this.clock.monoMs() < holdAt
+            ) {
+              this.scheduleLaserRoutingSuccessResolve(
+                matchId,
+                Math.max(1, holdAt - this.clock.monoMs()),
+              );
+            }
+            return;
+          }
+          await this.store.save(result.match);
+          this.clearTimer(matchId);
+          const keyed = this.timers.get(key);
+          if (keyed) {
+            clearTimeout(keyed);
+            this.timers.delete(key);
+          }
+          await this.publishResolveAndMaybeRoundResult(
+            result.match,
+            result.events,
+          );
+          await this.maybeContinue(await this.requireMatch(matchId));
+        }).catch((error: unknown) => {
+          this.logger.error({
+            event: 'laser_routing_success_resolve_failed',
+            matchId,
+            category: error instanceof Error ? error.name : 'UnknownError',
+          });
+        });
+      },
+      Math.max(1, delayMs),
+    );
+    timer.unref?.();
+    this.timers.set(key, timer);
+  }
+
   private scheduleCompleteSumSuccessResolve(
     matchId: string,
     delayMs: number,
@@ -2622,7 +2755,7 @@ export class MatchService implements OnModuleDestroy, OnModuleInit {
     }
 
     // Live / private: The Last Heart ends the match. With 2+ hearts remaining,
-    // keep advancing (and recycle after the base playlist).
+    // keep advancing (and reshuffle the unique playlist up to two extra passes).
     if (withHearts.length < MIN_LIVE_MATCH_PLAYERS) {
       const finished = this.engine.completeByStandings(match);
       if (finished.events.length > 0) {
@@ -2641,9 +2774,16 @@ export class MatchService implements OnModuleDestroy, OnModuleInit {
       return;
     }
 
-    // Between-round tactical window when anyone can fire Danger Pulse.
-    const offered = this.engine.beginPowerAction(match);
+    // Between-round strike window: random + cooldown, full-meter attackers only.
+    const offered = this.engine.beginPowerAction(match, undefined, {
+      allowOffer: shouldOfferStrikeWindow({
+        matchId: match.matchId,
+        roundNumber: match.roundNumber,
+        lastOfferedRound: match.lastStrikeOfferedRound ?? 0,
+      }),
+    });
     if (offered.events.length > 0) {
+      offered.match.lastStrikeOfferedRound = match.roundNumber;
       await this.store.save(offered.match);
       this.emit(offered.match, offered.events);
       const windowMs =
@@ -2758,10 +2898,9 @@ export class MatchService implements OnModuleDestroy, OnModuleInit {
    * Next playlist entry for this match. `roundNumber` is how many challenges
    * have already been introduced.
    *
-   * Structured pack: 5 easy → 5 medium → 5 hard. After that, live/private
-   * sudden-death recycles hard-only challenges while ≥2 players still have
-   * hearts (Danger Pulse still runs between rounds). Training walks the pack
-   * once and stops.
+   * Unique pack, easy → medium → hard. Live/private reshuffles within each
+   * tier for at most two extra full passes while ≥2 players still have hearts.
+   * Training walks the pack once and stops.
    */
   private definitionForNextRound(
     match: MatchState,
@@ -2773,25 +2912,17 @@ export class MatchService implements OnModuleDestroy, OnModuleInit {
     if (playlist.length === 0) {
       return null;
     }
-    if (match.roundNumber < playlist.length) {
-      return playlist[match.roundNumber] ?? null;
-    }
     const withHearts = [...match.players.values()].filter(
       (p) => p.status === 'active' && p.hearts > 0,
     ).length;
-    if (match.mode !== 'training' && withHearts >= 2) {
-      const hardLoop =
-        match.hardLoopPlaylist.length > 0
-          ? match.hardLoopPlaylist
-          : playlist.filter((d) => (d.difficulty ?? 'medium') === 'hard');
-      const loopPool = hardLoop.length > 0 ? hardLoop : playlist;
-      return selectPlaylistDefinition({
-        playlist: loopPool,
-        matchId: match.matchId,
-        roundNumber: match.roundNumber - playlist.length,
-      });
-    }
-    return null;
+    const maxRecycles =
+      match.mode !== 'training' && withHearts >= 2 ? MAX_PLAYLIST_RECYCLES : 0;
+    return selectDifficultyCycledDefinition({
+      playlist,
+      matchId: match.matchId,
+      roundNumber: match.roundNumber,
+      maxRecycles,
+    });
   }
 
   private async startDevRoundLocked(
@@ -3501,11 +3632,11 @@ export class MatchService implements OnModuleDestroy, OnModuleInit {
   }
 
   /**
-   * Ensure quick_survival has a host. If `leftPlayerId` was the host (or host
-   * is unset), assign an arbitrary remaining seat.
+   * Ensure quick_survival / private has a host. If `leftPlayerId` was the host
+   * (or host is unset), assign an arbitrary remaining seat.
    */
   private ensureQuickHost(match: MatchState, leftPlayerId?: string): void {
-    if (match.mode !== 'quick_survival') {
+    if (match.mode !== 'quick_survival' && match.mode !== 'private') {
       return;
     }
     if (match.players.size === 0) {

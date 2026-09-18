@@ -504,6 +504,9 @@ const ar: Record<MessageKey, string> = {
   'studio.asset.circuitGridPlate': 'صفيحة شبكة الدائرة',
   'studio.asset.circuitCableConnectSfx': 'صوت توصيل كابل الدائرة',
   'studio.asset.circuitHeartPowerOnSfx': 'صوت إضاءة القلب',
+  'studio.asset.laserLoopSfx': 'حلقة شعاع الليزر',
+  'studio.asset.laserReflectionSfx': 'انعكاس الليزر',
+  'studio.asset.laserHeartSfx': 'إضاءة قلب الليزر',
 
   'studio.asset.fogRevealContent': 'كشف الضباب الافتراضي',
   'studio.asset.fogDensity': 'طبقة كثافة الضباب',
@@ -606,6 +609,10 @@ const ar: Record<MessageKey, string> = {
   'studio.catalog.prompt.audioHaptic': 'صوت — بديل لمسي',
   'studio.catalog.prompt.pairPrompt': 'المزامنة الثنائية — عرض',
   'studio.catalog.prompt.riskPrompt': 'اختيار المخاطرة — عرض',
+  'studio.catalog.prompt.laserClassic': 'وجّه الشعاع',
+  'studio.catalog.prompt.laserZigzag': 'المسار المتعرّج',
+  'studio.catalog.prompt.laserFusion': 'ادمج الطاقة',
+  'studio.catalog.prompt.laserGates': 'بوابات النبض',
   'studio.catalog.fallback.wait': 'بديل: انتظار الإشارة',
   'studio.catalog.fallback.noTouch': 'بديل: عدم اللمس',
   'studio.catalog.fallback.swipe': 'بديل: السحب العكسي',
@@ -617,6 +624,7 @@ const ar: Record<MessageKey, string> = {
   'studio.catalog.fallback.audio': 'بديل: الصوت',
   'studio.catalog.fallback.pair': 'بديل: المزامنة الثنائية',
   'studio.catalog.fallback.risk': 'بديل: اختيار المخاطرة',
+  'studio.catalog.fallback.laser': 'بديل: توجيه الليزر',
   'studio.catalog.memory.optA': 'خيار أ',
   'studio.catalog.memory.optB': 'خيار ب',
   'studio.catalog.memory.optC': 'خيار ج',
@@ -664,6 +672,7 @@ const ar: Record<MessageKey, string> = {
   'studio.engine.select_occurrences': 'اختيار التطابقات',
   'studio.engine.pass_the_pulse': 'مرّر النبض',
   'studio.engine.ring_lock': 'قفل الحلقة',
+  'studio.engine.routing': 'توجيه الليزر',
   'studio.catalog.prompt.audioMcIntro': 'عنوان خمّن الصوت',
   'studio.catalog.prompt.audioMcArtist': 'من صاحب هذا الصوت؟',
   'studio.catalog.prompt.audioMcTrack': 'ما اسم الأغنية؟',
@@ -879,6 +888,24 @@ const ar: Record<MessageKey, string> = {
   'studio.field.fp.ringSpeedHint': 'درجات في الثانية',
   'studio.field.fp.ringTolerance': 'حجم البوابة',
   'studio.field.fp.ringToleranceHint': 'أكبر = أسهل للقفل على البوابة',
+  'studio.field.fp.laserLead':
+    'اختر نوع الليزر. يولّد الخادم لوحة قابلة للحل لكل لاعب ضمن هذه الحدود.',
+  'studio.field.fp.laserVariant': 'نوع الليزر',
+  'studio.field.fp.laserClassic': 'كلاسيكي — وجّه الشعاع',
+  'studio.field.fp.laserZigzag': 'المسار المتعرّج',
+  'studio.field.fp.laserFusion': 'ادمج الطاقة',
+  'studio.field.fp.laserGates': 'بوابات النبض',
+  'studio.field.fp.laserStartDelay': 'تأخير البدء (ملث)',
+  'studio.field.fp.laserMirrorCount': 'عدد المرايا (الكلاسيكي)',
+  'studio.field.fp.laserGridWidth': 'عرض الشبكة',
+  'studio.field.fp.laserGridHeight': 'ارتفاع الشبكة',
+  'studio.field.fp.laserMinMoves': 'أدنى عدد حركات',
+  'studio.field.fp.laserMaxMoves': 'أقصى عدد حركات',
+  'studio.field.fp.laserUnique': 'يتطلب حلاً وحيداً',
+  'studio.field.fp.laserAudioLead': 'معاينة الأصوات الثلاثة لليزر.',
+  'studio.field.fp.laserLoopSfx': 'حلقة الشعاع',
+  'studio.field.fp.laserReflectionSfx': 'الانعكاس',
+  'studio.field.fp.laserHeartSfx': 'إضاءة القلب',
   'studio.field.fp.pulseLead':
     'زمن انتقال النبضة ونوافذ اللمس تتبعان صعوبة التحدي ما لم تُخصصا.',
   'studio.field.fp.segmentDurationMs': 'زمن انتقال النبضة',
@@ -936,6 +963,10 @@ const ar: Record<MessageKey, string> = {
   'studio.preview.failure': 'فشل',
   'studio.preview.timeout': 'انتهاء الوقت',
   'studio.preview.unsupported': 'غير مدعوم',
+  'studio.preview.laserInvalid': 'تعذّر توليد معاينة الليزر.',
+  'studio.preview.laserStats':
+    'الحركات {moves} · قابل للحل {solvable} · وحيد {unique}',
+  'studio.preview.laserSolution': 'مسار الحل للمشرف',
   'studio.preview.testData': 'بيانات اختبار',
   'studio.preview.rtlDefault': 'RTL افتراضي',
   'studio.preview.noChallenge': 'لم يتم تحميل تحدٍّ. افتح المحرر للمعاينة.',
@@ -1074,6 +1105,16 @@ const ar: Record<MessageKey, string> = {
     'كل سؤال يحتاج مقطعاً صالحاً بصيغة MP3 أو WAV لا يتجاوز الطول المسموح قبل النشر.',
   'studio.validation.stroopVariants':
     'أضف بطاقة ستروب واحدة على الأقل (كلمة ولون حبر وخياران فأكثر)',
+  'studio.validation.laserAssets':
+    'توجيه الليزر يتطلب أصوات الحلقة والانعكاس وإضاءة القلب.',
+  'studio.validation.laserUnsolvable': 'اللغز المولَّد غير قابل للحل.',
+  'studio.validation.laserStartSolved':
+    'التخطيط الابتدائي محلول مسبقاً. عدّل حدود التوليد.',
+  'studio.validation.laserNotUnique':
+    'مطلوب حل وحيد لكن يوجد أكثر من حل.',
+  'studio.validation.laserTiming':
+    'المدة أقصر من أن تتسع لعدد الحركات المطلوبة.',
+  'studio.validation.laserGenerate': 'فشل توليد اللغز. راجع معلمات الليزر.',
 
   // Permissions
   'studio.permissions.cannotDraft': 'ليست لديك صلاحية لإنشاء المسودات',

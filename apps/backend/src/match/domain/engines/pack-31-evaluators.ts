@@ -21,6 +21,7 @@ import {
 } from './complete-sum-runtime';
 import { SocialPassThePulseEvaluator } from './pass-the-pulse-runtime';
 import { PrecisionRingLockEvaluator } from './ring-lock-runtime';
+import { LaserRoutingEvaluator } from './laser-routing-runtime';
 
 export {
   LogicCompleteSumEvaluator,
@@ -29,6 +30,7 @@ export {
 };
 export { SocialPassThePulseEvaluator };
 export { PrecisionRingLockEvaluator };
+export { LaserRoutingEvaluator };
 
 function num(value: unknown, fallback = 0): number {
   return typeof value === 'number' && Number.isFinite(value) ? value : fallback;
@@ -499,6 +501,7 @@ export function createPack31Evaluators(): ChallengeEvaluator[] {
     new LogicCompleteSumEvaluator(),
     new SocialPassThePulseEvaluator(),
     new PrecisionRingLockEvaluator(),
+    new LaserRoutingEvaluator(),
   ];
 }
 

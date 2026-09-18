@@ -31,6 +31,7 @@ const FIXTURE_FILES = [
   'focus.stroop.v1.json',
   'search.select_occurrences.v1.json',
   'social.pass_the_pulse.v1.json',
+  'laser.routing.v1.json',
 ] as const;
 
 /** Mixed launch playlist — live engines except paused risk choice / pair-sync (training filters pair). */
@@ -60,6 +61,7 @@ const PLAYLIST_DEFINITION_IDS = [
   'focus.stroop.dev',
   'search.select_occurrences.dev',
   'social.pass_the_pulse.dev',
+  'laser.routing.dev',
 ] as const;
 
 /**
@@ -95,7 +97,7 @@ export class DevFixtureProvider implements ChallengeDefinitionProvider {
     return def;
   }
 
-  /** Finite pool — MatchService structures into 5 easy + 5 medium + 5 hard. */
+  /** Unique playable pool — MatchService orders easy → medium → hard. */
   getPlaylist(): readonly ChallengeDefinition[] {
     return this.playlist;
   }

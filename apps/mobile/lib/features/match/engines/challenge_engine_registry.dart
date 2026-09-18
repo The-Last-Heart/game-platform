@@ -8,6 +8,7 @@ import 'gesture_reverse_swipe_engine.dart';
 import 'hold_multitouch_engine.dart';
 import 'logic_balance_scale_engine.dart';
 import 'logic_complete_sum_engine.dart';
+import 'laser_routing_engine.dart';
 import 'memory_sequence_engine.dart';
 import 'motion_shake_engine.dart';
 import 'motion_tilt_balance_engine.dart';
@@ -56,6 +57,7 @@ class ChallengeEngineRegistry {
     register(PrecisionCableUntangleEngine());
     register(GestureFogWipeEngine());
     register(PrecisionRingLockEngine());
+    register(LaserRoutingEngine());
     register(LogicBalanceScaleEngine());
     register(LogicCompleteSumEngine());
     register(FocusStroopEngine());

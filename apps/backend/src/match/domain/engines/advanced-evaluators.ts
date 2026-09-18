@@ -63,7 +63,7 @@ export class MotionTiltBalanceEvaluator implements ChallengeEvaluator {
     const holdMs = num(input.definition.serverConfig['holdMs'], 1500);
     const tolerance = num(
       input.definition.serverConfig['varianceTolerance'],
-      0.15,
+      0.22,
     );
     const finalX = num(input.answer['finalX']);
     const finalY = num(input.answer['finalY']);

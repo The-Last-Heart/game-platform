@@ -60,6 +60,17 @@ import {
   validateRingLockAnswer,
 } from './engines/ring-lock-runtime';
 import {
+  applyLaserRoutingCommand,
+  cloneLaserRoutingState,
+  LASER_ROUTING_ENGINE_ID,
+  LASER_ROUTING_SUCCESS_HOLD_MS,
+  markLaserRoutingTimeouts,
+  materializeLaserRoutingRound,
+  mergeLaserRoutingIntoClientConfig,
+  syncLaserRoutingSeatOverlays,
+  validateLaserRoutingAnswer,
+} from './engines/laser-routing-runtime';
+import {
   cloneInventory,
   convertEnergyForPlayer,
   defaultPowerConfig,
@@ -470,9 +481,10 @@ export function toPublicChallengeView(
       'targetY',
       'holdMs',
       'varianceTolerance',
+      'targetShape',
     ] as const) {
       const value = challenge.definition.serverConfig[key];
-      if (typeof value === 'number') {
+      if (typeof value === 'number' || typeof value === 'string') {
         clientConfig[key] = value;
       }
     }
@@ -585,6 +597,17 @@ export function toPublicChallengeView(
     );
   }
 
+  if (
+    challenge.engineId === LASER_ROUTING_ENGINE_ID &&
+    challenge.laserRoutingState
+  ) {
+    mergeLaserRoutingIntoClientConfig(
+      clientConfig,
+      challenge.laserRoutingState,
+      viewerPlayerId,
+    );
+  }
+
   // Seat-private overlays (tilt targets/shapes, pair partner, etc.) — viewer only.
   if (seat) {
     Object.assign(clientConfig, seat.clientOverlay);
@@ -681,6 +704,7 @@ export class MatchEngine {
       lastPowerGrant: null,
       powerActionActorIds: [],
       lastAudioAnswerTarget: null,
+      lastStrikeOfferedRound: 0,
     };
   }
 
@@ -827,7 +851,8 @@ export class MatchEngine {
 
   /**
    * Whether the lobby may begin ready countdown.
-   * - private: full table + every seat ready
+   * - private: ≥ MIN_LIVE_MATCH_PLAYERS accepted + every seat ready; host/timer
+   *   may start a partial table via allowPartialFill (ready not required)
    * - training: capacity seats accepted (1)
    * - quick_survival: ≥ MIN_LIVE_MATCH_PLAYERS accepted; full table may start
    *   immediately; partial fill only when allowPartialFill is set (fill wait elapsed)
@@ -849,8 +874,11 @@ export class MatchEngine {
     }
 
     if (match.mode === 'private') {
-      if (size !== match.playerCapacity) {
+      if (size < MIN_LIVE_MATCH_PLAYERS) {
         return false;
+      }
+      if (options?.allowPartialFill === true) {
+        return true;
       }
       return [...match.players.values()].every((p) => p.ready);
     }
@@ -1107,8 +1135,8 @@ export class MatchEngine {
     if (!this.canStartReadyCountdown(match, options)) {
       throw new DomainError(
         'NOT_ENOUGH_PLAYERS',
-        match.mode === 'quick_survival'
-          ? `quick survival needs ${MIN_LIVE_MATCH_PLAYERS}-${match.playerCapacity} accepted players`
+        match.mode === 'quick_survival' || match.mode === 'private'
+          ? `${match.mode} needs ${MIN_LIVE_MATCH_PLAYERS}-${match.playerCapacity} accepted players`
           : `match requires ${match.playerCapacity} ready accepted players`,
       );
     }
@@ -1327,6 +1355,20 @@ export class MatchEngine {
         deadlineAtMs: challenge.deadlineAtMs,
         deadlineMonoMs: challenge.deadlineMonoMs,
       });
+    } else if (challenge.engineId === LASER_ROUTING_ENGINE_ID) {
+      challenge.roundPhase = 'answer';
+      challenge.previewEndsAtMonoMs = null;
+      challenge.signalToken = null;
+      challenge.signalAtMonoMs = null;
+      challenge.signaledAtMs = null;
+      challenge.signalEndsAtMs = null;
+      challenge.signalEndsAtMonoMs = null;
+      materializeLaserRoutingRound(challenge, {
+        startsAtMs: challenge.startsAtMs,
+        startsMonoMs: nowMono,
+        deadlineAtMs: challenge.deadlineAtMs,
+        deadlineMonoMs: challenge.deadlineMonoMs,
+      });
     } else {
       challenge.roundPhase = 'answer';
       challenge.previewEndsAtMonoMs = null;
@@ -1529,6 +1571,15 @@ export class MatchEngine {
       round.roundPhase = 'answer';
       round.previewEndsAtMonoMs = null;
       materializeRingLockRound(round, {
+        startsAtMs: round.startsAtMs,
+        startsMonoMs: nowMono,
+        deadlineAtMs: round.deadlineAtMs,
+        deadlineMonoMs: round.deadlineMonoMs,
+      });
+    } else if (pinned.engineId === LASER_ROUTING_ENGINE_ID) {
+      round.roundPhase = 'answer';
+      round.previewEndsAtMonoMs = null;
+      materializeLaserRoutingRound(round, {
         startsAtMs: round.startsAtMs,
         startsMonoMs: nowMono,
         deadlineAtMs: round.deadlineAtMs,
@@ -2022,6 +2073,7 @@ export class MatchEngine {
     const isPassThePulse =
       challenge.engineId === SOCIAL_PASS_THE_PULSE_ENGINE_ID;
     const isRingLock = challenge.engineId === PRECISION_RING_LOCK_ENGINE_ID;
+    const isLaserRouting = challenge.engineId === LASER_ROUTING_ENGINE_ID;
     const isPairSync = challenge.engineId === 'social.pair_sync';
     const pairHasPartner = isPairSync
       ? challenge.pairAssignments?.get(input.playerId) != null
@@ -2029,7 +2081,7 @@ export class MatchEngine {
     // Pair sync with a partner only completes when overlapping taps reach
     // togetherMs — a release is progress, not a final answer.
     let isFinal =
-      isCompleteSum || isPassThePulse || isRingLock
+      isCompleteSum || isPassThePulse || isRingLock || isLaserRouting
         ? false
         : isPairSync && pairHasPartner
           ? false
@@ -2038,6 +2090,7 @@ export class MatchEngine {
       !isCompleteSum &&
       !isPassThePulse &&
       !isRingLock &&
+      !isLaserRouting &&
       existing &&
       existing.final !== false
     ) {
@@ -2050,6 +2103,7 @@ export class MatchEngine {
       !isCompleteSum &&
       !isPassThePulse &&
       !isRingLock &&
+      !isLaserRouting &&
       player.submittedForCurrentChallenge
     ) {
       const ack = { accepted: true, reason: 'already_submitted' };
@@ -2223,6 +2277,131 @@ export class MatchEngine {
       };
     }
 
+    if (isLaserRouting) {
+      const parsed = validateLaserRoutingAnswer(input.answer);
+      if (!parsed.ok) {
+        const ack = { accepted: false, reason: parsed.reason };
+        next.commandAcks.set(input.commandId, ack);
+        next.updatedAtMs = this.clock.nowMs();
+        return { match: next, events: [], duplicate: false, ack };
+      }
+      const priorState = nextChallenge.laserRoutingState;
+      if (!priorState) {
+        const ack = { accepted: false, reason: 'malformed' };
+        next.commandAcks.set(input.commandId, ack);
+        next.updatedAtMs = this.clock.nowMs();
+        return { match: next, events: [], duplicate: false, ack };
+      }
+      const applied = applyLaserRoutingCommand({
+        state: priorState,
+        playerId: input.playerId,
+        componentId: parsed.componentId,
+        commandId: input.commandId,
+        expectedSequence: parsed.expectedSequence,
+        nowMonoMs: receivedMonoMs,
+      });
+      if (!applied.ok) {
+        const ack = { accepted: false, reason: applied.reason };
+        next.commandAcks.set(input.commandId, ack);
+        next.updatedAtMs = this.clock.nowMs();
+        const resync =
+          applied.reason === 'stale_sequence' ||
+          applied.reason === 'cooldown' ||
+          applied.reason === 'unknown_component';
+        return {
+          match: next,
+          events: [],
+          duplicate: false,
+          ack,
+          liveUpdate: resync,
+        };
+      }
+      nextChallenge.laserRoutingState = applied.state;
+      syncLaserRoutingSeatOverlays(nextChallenge);
+
+      if (applied.completed) {
+        nextChallenge.submissions.set(input.playerId, {
+          commandId: input.commandId,
+          answer: {
+            componentId: parsed.componentId,
+            final: true,
+            _laserRoutingSucceeded: true,
+          },
+          receivedMonoMs,
+          final: true,
+        });
+        next.players.get(input.playerId)!.submittedForCurrentChallenge = true;
+        isFinal = true;
+        const ack = { accepted: true };
+        next.commandAcks.set(input.commandId, ack);
+        next.updatedAtMs = this.clock.nowMs();
+
+        const allSubmitted = nextChallenge.participatingPlayerIds.every((id) => {
+          const seat = next.players.get(id);
+          if (!seat || seat.status === 'spectator' || seat.status === 'left') {
+            return true;
+          }
+          const sub = nextChallenge.submissions.get(id);
+          return sub != null && sub.final !== false;
+        });
+        if (allSubmitted) {
+          if (nextChallenge.laserRoutingState) {
+            nextChallenge.laserRoutingState.successResolveAtMonoMs ??=
+              receivedMonoMs + LASER_ROUTING_SUCCESS_HOLD_MS;
+            if (
+              this.clock.monoMs() >=
+              nextChallenge.laserRoutingState.successResolveAtMonoMs
+            ) {
+              const resolved = this.resolveChallenge(next);
+              return {
+                match: resolved.match,
+                events: resolved.events,
+                duplicate: applied.duplicate,
+                ack,
+              };
+            }
+          }
+          return {
+            match: next,
+            events: [],
+            duplicate: applied.duplicate,
+            ack,
+            liveUpdate: true,
+          };
+        }
+        return {
+          match: next,
+          events: [],
+          duplicate: applied.duplicate,
+          ack,
+          liveUpdate: true,
+        };
+      }
+
+      nextChallenge.submissions.set(input.playerId, {
+        commandId: input.commandId,
+        answer: {
+          componentId: parsed.componentId,
+          final: false,
+        },
+        receivedMonoMs,
+        final: false,
+      });
+      const ack = {
+        accepted: true,
+        reason: 'progress',
+      };
+      next.commandAcks.set(input.commandId, ack);
+      next.updatedAtMs = this.clock.nowMs();
+      return {
+        match: next,
+        events: [],
+        duplicate: applied.duplicate,
+        ack,
+        liveUpdate: true,
+      };
+    }
+
     if (isCompleteSum) {
       const parsed = validateCompleteSumSelectionAnswer(input.answer);
       if (!parsed.ok) {
@@ -2282,16 +2461,28 @@ export class MatchEngine {
       existing != null && isPairSync ? existing.receivedMonoMs : receivedMonoMs;
 
     // Store only the client-provided answer — never persist evaluator secrets.
+    // Old pair-sync clients auto-completed with final:true/holding:false while
+    // the finger was still down; treat that as still holding so overlap does
+    // not pause just short of togetherMs.
+    const keepPairHold =
+      isPairSync &&
+      pairHasPartner &&
+      input.answer['holding'] !== true &&
+      input.answer['final'] === true &&
+      pairSeatHolding(nextChallenge, input.playerId);
+    const storedAnswer = keepPairHold
+      ? { ...input.answer, holding: true, final: false }
+      : { ...input.answer };
     nextChallenge.submissions.set(input.playerId, {
       commandId: input.commandId,
-      answer: { ...input.answer },
+      answer: storedAnswer,
       receivedMonoMs: receivedToStore,
       final: isFinal,
     });
     if (isFinal) {
       next.players.get(input.playerId)!.submittedForCurrentChallenge = true;
     }
-    const holding = isPairSync && input.answer['holding'] === true;
+    const holding = isPairSync && storedAnswer['holding'] === true;
     const liveUpdate = isPairSync
       ? setPairSyncPartnerHolding(nextChallenge, input.playerId, holding)
       : false;
@@ -2366,7 +2557,15 @@ export class MatchEngine {
       return { match, events: [] };
     }
     // Inclusive deadline boundary: timeout due only when strictly after
-    // deadline (not at equality).
+    // deadline (not at equality). Keep a pending laser success hold on screen
+    // even if the round clock has already expired.
+    const laserHoldAt =
+      match.currentChallenge.engineId === LASER_ROUTING_ENGINE_ID
+        ? match.currentChallenge.laserRoutingState?.successResolveAtMonoMs
+        : null;
+    if (typeof laserHoldAt === 'number' && this.clock.monoMs() < laserHoldAt) {
+      return { match, events: [] };
+    }
     if (this.clock.monoMs() <= match.currentChallenge.deadlineMonoMs) {
       return { match, events: [] };
     }
@@ -2387,6 +2586,14 @@ export class MatchEngine {
     ) {
       next.currentChallenge.ringLockState = markRingLockTimeouts(
         next.currentChallenge.ringLockState,
+      );
+    }
+    if (
+      next.currentChallenge?.engineId === LASER_ROUTING_ENGINE_ID &&
+      next.currentChallenge.laserRoutingState
+    ) {
+      next.currentChallenge.laserRoutingState = markLaserRoutingTimeouts(
+        next.currentChallenge.laserRoutingState,
       );
     }
     return this.resolveChallenge(next);
@@ -2416,6 +2623,29 @@ export class MatchEngine {
       sumState.currentTotal !== sumState.target ||
       this.clock.monoMs() < dueAt
     ) {
+      return { match, events: [] };
+    }
+    return this.resolveChallenge(this.cloneMatch(match));
+  }
+
+  /**
+   * Resolve laser.routing after the short solved-board hold (lit heart / traces).
+   * Safe to call when the hold is not due — returns no events.
+   */
+  resolveDueLaserRoutingSuccess(match: MatchState): {
+    match: MatchState;
+    events: DomainEvent[];
+  } {
+    if (
+      match.status !== 'challenge_active' ||
+      !match.currentChallenge ||
+      match.currentChallenge.status !== 'active' ||
+      match.currentChallenge.engineId !== LASER_ROUTING_ENGINE_ID
+    ) {
+      return { match, events: [] };
+    }
+    const dueAt = match.currentChallenge.laserRoutingState?.successResolveAtMonoMs;
+    if (dueAt == null || this.clock.monoMs() < dueAt) {
       return { match, events: [] };
     }
     return this.resolveChallenge(this.cloneMatch(match));
@@ -2548,6 +2778,16 @@ export class MatchEngine {
             outcome = 'timeout';
             reasonKey = 'result.timeout';
           }
+        } else if (challenge.engineId === LASER_ROUTING_ENGINE_ID) {
+          const laserResult =
+            challenge.laserRoutingState?.players[playerId]?.result;
+          if (laserResult === 'success') {
+            outcome = 'success';
+            reasonKey = 'result.success';
+          } else {
+            outcome = 'timeout';
+            reasonKey = 'result.timeout';
+          }
         } else if (evaluator.absenceOutcome === 'success') {
           outcome = 'success';
           reasonKey = 'result.success';
@@ -2621,6 +2861,14 @@ export class MatchEngine {
           answerForEval['_ringLockSucceeded'] = ringState?.result === 'success';
           if (ringState?.result === 'timeout') {
             answerForEval['_ringLockTimedOut'] = true;
+          }
+        }
+        if (challenge.engineId === LASER_ROUTING_ENGINE_ID) {
+          const laserState = challenge.laserRoutingState?.players[playerId];
+          answerForEval['_laserRoutingSucceeded'] =
+            laserState?.result === 'success';
+          if (laserState?.result === 'timeout') {
+            answerForEval['_laserRoutingTimedOut'] = true;
           }
         }
         const definitionForEval =
@@ -2968,13 +3216,22 @@ export class MatchEngine {
   beginPowerAction(
     match: MatchState,
     holdMs?: number,
+    options?: { allowOffer?: boolean },
   ): { match: MatchState; events: DomainEvent[] } {
     const next = this.cloneMatch(match);
     const config = next.powerConfig ?? defaultPowerConfig();
+    const threshold = config.energyThreshold ?? ENERGY_THRESHOLD;
     for (const p of next.players.values()) {
       p.powerActionResolved = false;
     }
+    if (options?.allowOffer === false) {
+      return { match: next, events: [] };
+    }
     const actors = playersWithOffensiveCharge(next).filter((id) => {
+      const player = next.players.get(id);
+      if (!player || player.energy < threshold) {
+        return false;
+      }
       return eligibleDangerPulseTargets(next, id).length > 0;
     });
     if (actors.length === 0) {
@@ -3359,6 +3616,9 @@ export class MatchEngine {
               : undefined,
             ringLockState: match.currentChallenge.ringLockState
               ? cloneRingLockState(match.currentChallenge.ringLockState)
+              : undefined,
+            laserRoutingState: match.currentChallenge.laserRoutingState
+              ? cloneLaserRoutingState(match.currentChallenge.laserRoutingState)
               : undefined,
             definition: pinDefinition(match.currentChallenge.definition),
           }
