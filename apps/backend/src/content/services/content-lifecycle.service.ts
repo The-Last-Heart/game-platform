@@ -8,6 +8,10 @@ import {
   challengeDefinitionSchema,
   validateEngineConfigs,
   ENGINE_RUNTIME_READINESS,
+  compareStableSemVer,
+  effectiveChallengeMinAppVersion,
+  getEngineCompatibility,
+  parseStableSemVer,
   type ChallengeDefinitionContract,
   type ContentLifecycleStatus,
   type AdminStudioHomeSummary,
@@ -241,6 +245,71 @@ export class ContentLifecycleService {
               path: 'accessibilityFallbackKey',
               message: 'required',
               code: 'missing_fallback',
+            },
+          ],
+        },
+      });
+    }
+
+    const engineFloor = getEngineCompatibility(def.engineId);
+    if (!engineFloor) {
+      throw new BadRequestException({
+        ok: false,
+        error: {
+          code: 'CONTENT_VALIDATION_FAILED',
+          message: 'Unknown challenge engine for compatibility registry',
+          details: [
+            {
+              path: 'engineId',
+              message: 'engine not registered in compatibility matrix',
+              code: 'unknown_engine',
+            },
+          ],
+        },
+      });
+    }
+    const effectiveMin = effectiveChallengeMinAppVersion({
+      configuredMinAppVersion: def.minAppVersion,
+      engineId: def.engineId,
+      requiredCapabilities: def.requiredCapabilities,
+    });
+    if (effectiveMin == null) {
+      throw new BadRequestException({
+        ok: false,
+        error: {
+          code: 'CONTENT_VALIDATION_FAILED',
+          message:
+            'Challenge requires unknown capabilities or cannot be executed by any registered app release',
+          details: [
+            {
+              path: 'requiredCapabilities',
+              message: 'no compatible app release',
+              code: 'incompatible_capabilities',
+            },
+          ],
+        },
+      });
+    }
+    // `0.0.0` is the Studio "any version" sentinel — effectiveChallengeMinAppVersion
+    // already lifts it to the engine introduction floor.
+    if (
+      def.minAppVersion !== '0.0.0' &&
+      parseStableSemVer(def.minAppVersion) != null &&
+      compareStableSemVer(
+        def.minAppVersion,
+        engineFloor.introducedInAppVersion,
+      ) < 0
+    ) {
+      throw new BadRequestException({
+        ok: false,
+        error: {
+          code: 'CONTENT_VALIDATION_FAILED',
+          message: `This challenge requires an engine introduced in app version ${engineFloor.introducedInAppVersion}. The minimum app version cannot be lower.`,
+          details: [
+            {
+              path: 'minAppVersion',
+              message: `cannot be lower than engine floor ${engineFloor.introducedInAppVersion}`,
+              code: 'below_engine_floor',
             },
           ],
         },

@@ -122,4 +122,31 @@ describe('toRuntimeChallengeDefinition', () => {
     expect(runtime.durationMs).toBeGreaterThanOrEqual(8000);
     expect(runtime.serverConfig['togetherMs']).toBe(5000);
   });
+
+  it('preserves minAppVersion and requiredCapabilities', () => {
+    const def = {
+      definitionId: 'reaction.wait_for_signal.dev',
+      definitionVersion: 1,
+      engineId: 'reaction.wait_for_signal',
+      durationMs: 5000,
+      heartPenaltyOnFailure: 1,
+      energyRewardOnSuccess: 1,
+      promptKey: 'challenge.wait_for_signal.intro',
+      clientConfig: {},
+      serverConfig: {},
+      internalTitle: 'Wait',
+      familyId: 'reaction',
+      categoryId: 'reaction.wait_for_signal',
+      difficulty: 'easy',
+      instructionAr: 'انتظر',
+      eligibleModes: ['training'],
+      accessibilityFallbackKey: 'challenge.wait_for_signal.a11y_fallback',
+      minAppVersion: '0.0.1',
+      requiredCapabilities: ['touch'],
+    } as ChallengeDefinitionContract;
+
+    const runtime = toRuntimeChallengeDefinition(def);
+    expect(runtime.minAppVersion).toBe('0.0.1');
+    expect(runtime.requiredCapabilities).toEqual(['touch']);
+  });
 });

@@ -1,4 +1,9 @@
 import {
+  compareStableSemVer,
+  isStableSemVerEq,
+  FIRST_GAMEPLAY_APP_VERSION,
+} from '@thelastheart/contracts';
+import {
   Inject,
   Injectable,
   Logger,
@@ -14,6 +19,7 @@ import {
   ReleaseResolverService,
 } from '../../content/services/release-resolver.service';
 import { EmergencyControlsService } from '../../content/services/emergency-controls.service';
+import { filterPlaylistForAppVersion } from '../../content/services/app-version-compat';
 import { MatchEngine } from '../domain/match.engine';
 import {
   ChallengeEvaluatorRegistryImpl,
@@ -79,6 +85,8 @@ export type PlayerIdentityInput = {
   countryCode: string;
   /** Durable per-install id for Quick Survival leaderboard scoring. */
   playerId: string;
+  /** Normalized session application version (exact-version rooms). */
+  appVersion?: string;
 };
 
 export type SeatCredentials = {
@@ -334,6 +342,19 @@ export class MatchService implements OnModuleDestroy, OnModuleInit {
   }> {
     const joinedResult = await this.enqueue(matchId, async () => {
       const match = await this.requireMatch(matchId);
+      if (match.gameplayVersion != null && identity?.appVersion != null) {
+        if (!isStableSemVerEq(identity.appVersion, match.gameplayVersion)) {
+          const error = new DomainError(
+            'CLIENT_VERSION_INVALID',
+            'session version does not match match gameplay version',
+          );
+          error.details = {
+            matchVersion: match.gameplayVersion,
+            clientVersion: identity.appVersion,
+          };
+          throw error;
+        }
+      }
       const playerId = this.tokens.newPlayerId();
       const issued = this.tokens.issue();
       const result = this.engine.joinPlayer(match, {
@@ -343,6 +364,7 @@ export class MatchService implements OnModuleDestroy, OnModuleInit {
         avatarColor: identity?.avatarColor,
         countryCode: identity?.countryCode,
         persistentPlayerId: identity?.playerId,
+        joinAppVersion: identity?.appVersion,
         hearts: progress?.hearts,
         energy: progress?.energy,
       });
@@ -431,6 +453,8 @@ export class MatchService implements OnModuleDestroy, OnModuleInit {
     commandId: string;
     /** When set, token/receipt must belong to this player (bound-socket guard). */
     expectedPlayerId?: string;
+    /** Current session application version (exact match required). */
+    appVersion?: string;
   }): Promise<{
     playerId: string;
     resumeToken: string;
@@ -443,6 +467,22 @@ export class MatchService implements OnModuleDestroy, OnModuleInit {
       }
       // Allow resume for any status (including completed / halted) when the token
       // validates — terminal clients need a final snapshot for convergence.
+
+      const pinnedVersion = match.gameplayVersion;
+      if (pinnedVersion != null) {
+        const sessionVersion = input.appVersion ?? FIRST_GAMEPLAY_APP_VERSION;
+        if (!isStableSemVerEq(sessionVersion, pinnedVersion)) {
+          const error = new DomainError(
+            'MATCH_RESUME_VERSION_MISMATCH',
+            'app version changed after this match started',
+          );
+          error.details = {
+            matchVersion: pinnedVersion,
+            clientVersion: sessionVersion,
+          };
+          throw error;
+        }
+      }
 
       const requestTokenHash = this.tokens.hash(input.resumeToken);
       const ackKey = resumeAckKey(input.commandId);
@@ -1027,6 +1067,28 @@ export class MatchService implements OnModuleDestroy, OnModuleInit {
       options.mode ?? 'quick_survival',
     );
 
+    const gameplayVersion =
+      options.gameplayVersion ??
+      (options.mode === 'dev' || options.mode === 'training'
+        ? FIRST_GAMEPLAY_APP_VERSION
+        : null);
+
+    if (gameplayVersion != null) {
+      pinnedPlaylist = filterPlaylistForAppVersion(
+        pinnedPlaylist,
+        gameplayVersion,
+      );
+      if (
+        pinnedPlaylist.length === 0 &&
+        (options.mode === 'quick_survival' || options.mode === 'private')
+      ) {
+        throw new DomainError(
+          'NO_COMPATIBLE_CHALLENGES_FOR_APP_VERSION',
+          'no challenges compatible with match app version',
+        );
+      }
+    }
+
     const matchId = randomUUID();
     let hardLoopPlaylist: ChallengeDefinition[];
     if (options.preservePinnedPlaylist && options.pinnedPlaylist != null) {
@@ -1091,6 +1153,7 @@ export class MatchService implements OnModuleDestroy, OnModuleInit {
 
     const match = this.engine.createMatch(matchId, {
       ...options,
+      gameplayVersion,
       releasePins,
       pinnedPlaylist,
       hardLoopPlaylist,
@@ -1345,16 +1408,21 @@ export class MatchService implements OnModuleDestroy, OnModuleInit {
   async createPrivateRoom(
     identity: PlayerIdentityInput,
   ): Promise<SeatCredentials & { roomCode: string }> {
+    const gameplayVersion = identity.appVersion ?? FIRST_GAMEPLAY_APP_VERSION;
     const now = this.clock.nowMs();
     const roomCode = this.roomCodes.generate(now);
     const match = await this.createPinnedMatch({
       mode: 'private',
       roomCode,
       playerCapacity: MATCH_PLAYER_CAPACITY,
+      gameplayVersion,
     });
     this.roomCodes.register(roomCode, match.matchId, now);
 
-    const seated = await this.joinMatch(match.matchId, identity);
+    const seated = await this.joinMatch(match.matchId, {
+      ...identity,
+      appVersion: gameplayVersion,
+    });
     // Host is the first seated player.
     await this.enqueue(match.matchId, async () => {
       const current = await this.requireMatch(match.matchId);
@@ -1364,6 +1432,11 @@ export class MatchService implements OnModuleDestroy, OnModuleInit {
       }
     });
     const snap = await this.requestSnapshot(match.matchId);
+    this.logger.log({
+      event: 'private_room_created',
+      gameplayVersion,
+      matchId: match.matchId,
+    });
     return {
       matchId: match.matchId,
       roomCode,
@@ -1391,12 +1464,41 @@ export class MatchService implements OnModuleDestroy, OnModuleInit {
     if (match.players.size >= match.playerCapacity) {
       throw new DomainError('ROOM_FULL', 'room is full');
     }
+
+    const roomVersion = match.gameplayVersion ?? FIRST_GAMEPLAY_APP_VERSION;
+    const joiningVersion = input.appVersion ?? FIRST_GAMEPLAY_APP_VERSION;
+    if (!isStableSemVerEq(joiningVersion, roomVersion)) {
+      const cmp = compareStableSemVer(joiningVersion, roomVersion);
+      const error = new DomainError(
+        cmp < 0
+          ? 'PRIVATE_ROOM_VERSION_CLIENT_OLDER'
+          : 'PRIVATE_ROOM_VERSION_CLIENT_NEWER',
+        cmp < 0
+          ? 'joining app version is older than the room'
+          : 'joining app version is newer than the room',
+      );
+      error.details = {
+        roomVersion,
+        clientVersion: joiningVersion,
+      };
+      this.logger.log({
+        event:
+          cmp < 0
+            ? 'private_room_version_client_older'
+            : 'private_room_version_client_newer',
+        roomVersion,
+        clientVersion: joiningVersion,
+      });
+      throw error;
+    }
+
     try {
       const seated = await this.joinMatch(matchId, {
         displayName: input.displayName,
         avatarColor: input.avatarColor,
         countryCode: input.countryCode,
         playerId: input.playerId,
+        appVersion: joiningVersion,
       });
       // Arm open-lobby fill once a live table (≥2) can start / show Start now.
       const lobbyFillWaitMs = await this.ensureOpenLobbyFillWait(matchId);
@@ -1476,10 +1578,7 @@ export class MatchService implements OnModuleDestroy, OnModuleInit {
     }
     const lastDefinition = this.lastPlayedTrainingDefinition(match);
     if (!lastDefinition) {
-      throw new DomainError(
-        'TRAINING_UNAVAILABLE',
-        'no challenge to retry',
-      );
+      throw new DomainError('TRAINING_UNAVAILABLE', 'no challenge to retry');
     }
     const identity: PlayerIdentityInput = {
       displayName: player.displayName ?? 'Trainee',
@@ -1654,6 +1753,10 @@ export class MatchService implements OnModuleDestroy, OnModuleInit {
       playerCapacity: source.playerCapacity,
       roomCode,
       hostPlayerId: null,
+      gameplayVersion:
+        source.gameplayVersion ??
+        identity.appVersion ??
+        FIRST_GAMEPLAY_APP_VERSION,
     });
     if (roomCode) {
       this.roomCodes.register(roomCode, next.matchId, now);
@@ -1741,9 +1844,7 @@ export class MatchService implements OnModuleDestroy, OnModuleInit {
    * Create a quick_survival match and seat the given identities (matchmaking).
    * Returns per-player credentials in input order.
    */
-  async createQuickSurvivalMatch(
-    seats: PlayerIdentityInput[],
-  ): Promise<{
+  async createQuickSurvivalMatch(seats: PlayerIdentityInput[]): Promise<{
     matchId: string;
     assignments: Array<{
       playerId: string;
@@ -1756,9 +1857,20 @@ export class MatchService implements OnModuleDestroy, OnModuleInit {
     if (seats.length === 0 || seats.length > MATCH_PLAYER_CAPACITY) {
       throw new DomainError('NOT_ENOUGH_PLAYERS', 'invalid seat count');
     }
+    const gameplayVersion = seats[0]?.appVersion ?? FIRST_GAMEPLAY_APP_VERSION;
+    for (const seat of seats) {
+      const seatVersion = seat.appVersion ?? FIRST_GAMEPLAY_APP_VERSION;
+      if (!isStableSemVerEq(seatVersion, gameplayVersion)) {
+        throw new DomainError(
+          'CLIENT_VERSION_INVALID',
+          'mixed versions cannot share a quick survival lobby',
+        );
+      }
+    }
     const match = await this.createPinnedMatch({
       mode: 'quick_survival',
       playerCapacity: MATCH_PLAYER_CAPACITY,
+      gameplayVersion,
     });
     const assignments: Array<{
       playerId: string;
@@ -1771,6 +1883,7 @@ export class MatchService implements OnModuleDestroy, OnModuleInit {
         avatarColor: seat.avatarColor,
         countryCode: seat.countryCode,
         playerId: seat.playerId,
+        appVersion: gameplayVersion,
       });
       assignments.push({
         playerId: joined.playerId,
@@ -1911,17 +2024,15 @@ export class MatchService implements OnModuleDestroy, OnModuleInit {
   /**
    * Open quick_survival lobby with free seats (waiting + lobby, not full).
    * Prefers the fullest room so tables pack before opening another.
-   *
-   * Past fill deadline does NOT hide incomplete lobbies: resolveQuickLobbyFill
-   * still starts (≥2) or aborts (solo) under the match lock, and concurrent
-   * joins serialize on that same lock. Sealing here created a window where a
-   * host still sitting in lobby was invisible, so the next enqueue opened a
-   * second room.
+   * Exact-version isolation: only lobbies with matching gameplayVersion.
    */
-  async findOpenQuickSurvivalLobby(): Promise<string | null> {
+  async findOpenQuickSurvivalLobby(
+    gameplayVersion?: string | null,
+  ): Promise<string | null> {
     const ids = await this.store.listIds();
     let bestId: string | null = null;
     let bestSize = -1;
+    const requiredVersion = gameplayVersion ?? null;
     for (const id of ids) {
       const match = await this.store.get(id);
       if (!match) continue;
@@ -1929,12 +2040,72 @@ export class MatchService implements OnModuleDestroy, OnModuleInit {
       if (match.status !== 'waiting' || match.phase !== 'lobby') continue;
       const size = match.players.size;
       if (size <= 0 || size >= match.playerCapacity) continue;
+      if (requiredVersion != null) {
+        const roomVersion = match.gameplayVersion ?? FIRST_GAMEPLAY_APP_VERSION;
+        if (!isStableSemVerEq(roomVersion, requiredVersion)) {
+          continue;
+        }
+      }
       if (size > bestSize) {
         bestSize = size;
         bestId = id;
       }
     }
     return bestId;
+  }
+
+  /**
+   * Create a Quick Survival lobby pinned to an exact application version.
+   */
+  async createQuickSurvivalLobby(gameplayVersion: string): Promise<MatchState> {
+    return this.createPinnedMatch({
+      mode: 'quick_survival',
+      playerCapacity: MATCH_PLAYER_CAPACITY,
+      gameplayVersion,
+    });
+  }
+
+  /**
+   * Cancel waiting lobbies whose pinned version is below a new minimum.
+   * Does not eject running matches. Neutral — no heart penalties.
+   */
+  async closeWaitingRoomsBelowVersion(
+    minimumSupportedVersion: string,
+  ): Promise<number> {
+    const ids = await this.store.listIds();
+    let closed = 0;
+    for (const id of ids) {
+      const match = await this.store.get(id);
+      if (!match) continue;
+      if (match.status !== 'waiting' || match.phase !== 'lobby') continue;
+      const version = match.gameplayVersion ?? FIRST_GAMEPLAY_APP_VERSION;
+      if (compareStableSemVer(version, minimumSupportedVersion) >= 0) {
+        continue;
+      }
+      try {
+        await this.enqueue(id, async () => {
+          const current = await this.store.get(id);
+          if (
+            !current ||
+            current.status !== 'waiting' ||
+            current.phase !== 'lobby'
+          ) {
+            return;
+          }
+          await this.store.delete(id);
+        });
+        closed += 1;
+        this.logger.log({
+          event: 'waiting_room_closed_for_version_policy',
+          matchId: id,
+          gameplayVersion: version,
+          minimumSupportedVersion,
+        });
+      } catch {
+        // best-effort
+      }
+    }
+    return closed;
   }
 
   async getMatchPhase(
@@ -2976,7 +3147,10 @@ export class MatchService implements OnModuleDestroy, OnModuleInit {
         await this.enterRoundResult(match);
         return;
       }
-      if (match.mode !== 'training' && survivors.length < MIN_LIVE_MATCH_PLAYERS) {
+      if (
+        match.mode !== 'training' &&
+        survivors.length < MIN_LIVE_MATCH_PLAYERS
+      ) {
         const finished = this.engine.completeByStandings(match);
         if (finished.events.length > 0) {
           await this.store.save(finished.match);
@@ -3161,10 +3335,7 @@ export class MatchService implements OnModuleDestroy, OnModuleInit {
           sourceId: event.attackId,
           points: 10,
         });
-      } else if (
-        event.outcome === 'hit' ||
-        event.outcome === 'reflected_hit'
-      ) {
+      } else if (event.outcome === 'hit' || event.outcome === 'reflected_hit') {
         this.creditMatchClaimedPoints(seat, -5);
         void this.leaderboard.applyPointEvent({
           playerId: seat.persistentPlayerId,

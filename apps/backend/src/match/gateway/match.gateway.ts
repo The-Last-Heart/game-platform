@@ -16,6 +16,7 @@ import {
   ProtocolValidationError,
   parseClientCommand,
   REALTIME_SCHEMA_VERSION,
+  type ClientPlatform,
 } from '@thelastheart/contracts';
 import { DomainError } from '../domain/types';
 import { toPublicChallengeView } from '../domain/match.engine';
@@ -24,6 +25,7 @@ import {
   MatchmakingService,
   type MatchmakingStatusEvent,
 } from '../services/matchmaking.service';
+import { AppVersionPolicyService } from '../../content/services/app-version-policy.service';
 
 type SocketState = {
   playerId?: string;
@@ -31,6 +33,10 @@ type SocketState = {
   ticketId?: string;
   /** Set synchronously on disconnect so pending binds cannot race. */
   disconnected?: boolean;
+  /** Immutable for the life of this socket binding. */
+  appVersion?: string;
+  buildNumber?: string;
+  platform?: ClientPlatform;
 };
 
 /** Incoming command cap (DoS). Outgoing snapshots can be larger (maps). */
@@ -74,6 +80,7 @@ export class MatchGateway
   constructor(
     private readonly matches: MatchService,
     private readonly matchmaking: MatchmakingService,
+    private readonly appVersions: AppVersionPolicyService,
   ) {}
 
   afterInit(): void {
@@ -98,6 +105,9 @@ export class MatchGateway
     // Mark before any await so in-flight identity handlers cannot bind afterward.
     state.disconnected = true;
     this.disconnectHookForTests?.(client.id);
+    if (state.appVersion) {
+      this.appVersions.unregisterSessionVersion(state.appVersion);
+    }
 
     const matchId = state.matchId;
     const playerId = state.playerId;
@@ -113,10 +123,7 @@ export class MatchGateway
         // and open-lobby packing can reuse the same room. Mid-challenge marks
         // disconnected and arms resume grace; expiry treats the seat as left.
         const canLeaveLobby = await this.matches.canLeaveLobbySeat(matchId);
-        if (
-          canLeaveLobby &&
-          this.connectionLeases.get(key) === client.id
-        ) {
+        if (canLeaveLobby && this.connectionLeases.get(key) === client.id) {
           try {
             const left = await this.matches.leaveMatch(matchId, playerId);
             this.matchmaking.releaseTicketForPlayer(playerId);
@@ -562,7 +569,13 @@ export class MatchGateway
     client: Socket,
     commandId: string,
     correlationId: string,
-    payload: { matchId: string; resumeToken: string },
+    payload: {
+      matchId: string;
+      resumeToken: string;
+      appVersion?: string;
+      buildNumber?: string;
+      platform?: ClientPlatform;
+    },
   ): Promise<void> {
     if (this.isSocketGone(client)) {
       return;
@@ -583,11 +596,17 @@ export class MatchGateway
       return;
     }
 
+    const admitted = await this.bindSocketRuntime(client, payload, commandId);
+    if (!admitted) {
+      return;
+    }
+
     const resumed = await this.matches.resumeMatch({
       matchId: payload.matchId,
       resumeToken: payload.resumeToken,
       commandId,
       expectedPlayerId: state.playerId,
+      appVersion: (client.data as SocketState).appVersion,
     });
     if (this.isSocketGone(client)) {
       await this.matches.markDisconnected(payload.matchId, resumed.playerId);
@@ -764,7 +783,15 @@ export class MatchGateway
     client: Socket,
     commandId: string,
     correlationId: string,
-    payload: { displayName: string; avatarColor: string; countryCode: string; playerId: string },
+    payload: {
+      displayName: string;
+      avatarColor: string;
+      countryCode: string;
+      playerId: string;
+      appVersion?: string;
+      buildNumber?: string;
+      platform?: ClientPlatform;
+    },
   ): Promise<void> {
     if (this.isSocketGone(client)) {
       return;
@@ -785,7 +812,18 @@ export class MatchGateway
       });
       return;
     }
-    const status = await this.matchmaking.enqueue(payload);
+    const admitted = await this.bindSocketRuntime(client, payload, commandId);
+    if (!admitted) {
+      return;
+    }
+    const state = client.data as SocketState;
+    const status = await this.matchmaking.enqueue({
+      displayName: payload.displayName,
+      avatarColor: payload.avatarColor,
+      countryCode: payload.countryCode,
+      playerId: payload.playerId,
+      appVersion: state.appVersion,
+    });
     if (this.isSocketGone(client)) {
       if (status.state === 'queued') {
         try {
@@ -796,7 +834,6 @@ export class MatchGateway
       }
       return;
     }
-    const state = client.data as SocketState;
     state.ticketId = status.ticketId;
     this.queueSockets.set(status.ticketId, client.id);
     this.emitMatchmakingStatus(client, status, { commandId, correlationId });
@@ -853,7 +890,15 @@ export class MatchGateway
     client: Socket,
     commandId: string,
     correlationId: string,
-    payload: { displayName: string; avatarColor: string; countryCode: string; playerId: string },
+    payload: {
+      displayName: string;
+      avatarColor: string;
+      countryCode: string;
+      playerId: string;
+      appVersion?: string;
+      buildNumber?: string;
+      platform?: ClientPlatform;
+    },
   ): Promise<void> {
     if (this.isSocketGone(client)) {
       return;
@@ -864,7 +909,18 @@ export class MatchGateway
       });
       return;
     }
-    const created = await this.matches.createPrivateRoom(payload);
+    const admitted = await this.bindSocketRuntime(client, payload, commandId);
+    if (!admitted) {
+      return;
+    }
+    const state = client.data as SocketState;
+    const created = await this.matches.createPrivateRoom({
+      displayName: payload.displayName,
+      avatarColor: payload.avatarColor,
+      countryCode: payload.countryCode,
+      playerId: payload.playerId,
+      appVersion: state.appVersion,
+    });
     await this.finalizeSeatBind(
       client,
       commandId,
@@ -885,6 +941,9 @@ export class MatchGateway
       countryCode: string;
       playerId: string;
       roomCode: string;
+      appVersion?: string;
+      buildNumber?: string;
+      platform?: ClientPlatform;
     },
   ): Promise<void> {
     if (this.isSocketGone(client)) {
@@ -896,13 +955,19 @@ export class MatchGateway
       });
       return;
     }
-    const joined = await this.matches.joinPrivateRoom(payload);
-    if (joined.lobbyFillWaitMs != null) {
-      this.matchmaking.onLobbyCompositionChanged(joined.matchId, {
-        emptied: false,
-        lobbyFillWaitMs: joined.lobbyFillWaitMs,
-      });
+    const admitted = await this.bindSocketRuntime(client, payload, commandId);
+    if (!admitted) {
+      return;
     }
+    const state = client.data as SocketState;
+    const joined = await this.matches.joinPrivateRoom({
+      displayName: payload.displayName,
+      avatarColor: payload.avatarColor,
+      countryCode: payload.countryCode,
+      playerId: payload.playerId,
+      roomCode: payload.roomCode,
+      appVersion: state.appVersion,
+    });
     await this.finalizeSeatBind(
       client,
       commandId,
@@ -911,6 +976,12 @@ export class MatchGateway
       joined.playerId,
       joined.resumeToken,
     );
+    if (joined.lobbyFillWaitMs != null) {
+      this.matchmaking.onLobbyCompositionChanged(joined.matchId, {
+        emptied: false,
+        lobbyFillWaitMs: joined.lobbyFillWaitMs,
+      });
+    }
   }
 
   private async handleReady(
@@ -1050,7 +1121,12 @@ export class MatchGateway
     client: Socket,
     commandId: string,
     correlationId: string,
-    payload: { displayName: string; avatarColor: string; countryCode: string; playerId: string },
+    payload: {
+      displayName: string;
+      avatarColor: string;
+      countryCode: string;
+      playerId: string;
+    },
   ): Promise<void> {
     if (this.isSocketGone(client)) {
       return;
@@ -1247,7 +1323,11 @@ export class MatchGateway
     payload: { matchId: string },
   ): Promise<void> {
     const state = client.data as SocketState;
-    if (!state.matchId || !state.playerId || state.matchId !== payload.matchId) {
+    if (
+      !state.matchId ||
+      !state.playerId ||
+      state.matchId !== payload.matchId
+    ) {
       this.emitError(client, 'UNAUTHORIZED', 'errors.protocol.unauthorized', {
         commandId,
       });
@@ -1757,7 +1837,9 @@ export class MatchGateway
     playerId: string,
     envelope: Record<string, unknown>,
   ): void {
-    const socketId = this.connectionLeases.get(this.leaseKey(matchId, playerId));
+    const socketId = this.connectionLeases.get(
+      this.leaseKey(matchId, playerId),
+    );
     if (!socketId) return;
     this.emitSocketEvent(socketId, envelope);
   }
@@ -1915,19 +1997,57 @@ export class MatchGateway
         code: 'DISPLAY_NAME_INVALID',
         key: 'errors.identity.name_invalid',
       },
+      APP_UPDATE_REQUIRED: {
+        code: 'APP_UPDATE_REQUIRED',
+        key: 'errors.app.update_required',
+      },
+      CLIENT_VERSION_MISSING: {
+        code: 'CLIENT_VERSION_MISSING',
+        key: 'errors.app.version_missing',
+      },
+      CLIENT_VERSION_INVALID: {
+        code: 'CLIENT_VERSION_INVALID',
+        key: 'errors.app.version_invalid',
+      },
+      PRIVATE_ROOM_VERSION_CLIENT_OLDER: {
+        code: 'PRIVATE_ROOM_VERSION_CLIENT_OLDER',
+        key: 'errors.room.version_client_older',
+      },
+      PRIVATE_ROOM_VERSION_CLIENT_NEWER: {
+        code: 'PRIVATE_ROOM_VERSION_CLIENT_NEWER',
+        key: 'errors.room.version_client_newer',
+      },
+      MATCH_RESUME_VERSION_MISMATCH: {
+        code: 'MATCH_RESUME_VERSION_MISMATCH',
+        key: 'errors.match.resume_version_mismatch',
+      },
+      NO_COMPATIBLE_CHALLENGES_FOR_APP_VERSION: {
+        code: 'NO_COMPATIBLE_CHALLENGES_FOR_APP_VERSION',
+        key: 'errors.match.no_compatible_challenges',
+      },
+      STALE_VERSION_POLICY: {
+        code: 'INTERNAL_ERROR',
+        key: 'errors.protocol.internal',
+      },
     };
     const mapped = map[error.code] ?? {
       code: 'INTERNAL_ERROR',
       key: 'errors.protocol.internal',
     };
-    this.emitError(client, mapped.code, mapped.key, { commandId });
+    this.emitError(client, mapped.code, mapped.key, {
+      commandId,
+      details: error.details,
+    });
   }
 
   private emitError(
     client: Socket,
     code: string,
     messageKey: string,
-    options?: { commandId?: string },
+    options?: {
+      commandId?: string;
+      details?: DomainError['details'];
+    },
   ): void {
     client.emit('event', {
       schemaVersion: REALTIME_SCHEMA_VERSION,
@@ -1938,8 +2058,63 @@ export class MatchGateway
         code,
         messageKey,
         ...(options?.commandId ? { commandId: options.commandId } : {}),
+        ...(options?.details ? { details: options.details } : {}),
       },
     });
+  }
+
+  /**
+   * Register immutable socket runtime metadata. Rejects mutation of an already
+   * bound version and applies mandatory-update policy.
+   */
+  private async bindSocketRuntime(
+    client: Socket,
+    payload: {
+      appVersion?: string;
+      buildNumber?: string;
+      platform?: ClientPlatform;
+      playerId?: string;
+    },
+    commandId: string,
+  ): Promise<boolean> {
+    const state = client.data as SocketState;
+    if (
+      state.appVersion != null &&
+      payload.appVersion != null &&
+      state.appVersion !== payload.appVersion
+    ) {
+      this.emitError(
+        client,
+        'CLIENT_VERSION_INVALID',
+        'errors.app.version_invalid',
+        {
+          commandId,
+        },
+      );
+      return false;
+    }
+    const admission = await this.appVersions.admitRuntimeMetadata({
+      appVersion: payload.appVersion ?? state.appVersion,
+      buildNumber: payload.buildNumber ?? state.buildNumber,
+      platform: payload.platform ?? state.platform,
+    });
+    if (!admission.ok) {
+      this.emitDomainError(client, admission.error, commandId);
+      return false;
+    }
+    if (state.appVersion == null) {
+      this.appVersions.registerSessionVersion(admission.metadata.appVersion);
+    }
+    state.appVersion = admission.metadata.appVersion;
+    state.buildNumber = admission.metadata.buildNumber;
+    state.platform = admission.metadata.platform;
+    if (payload.playerId) {
+      void this.appVersions.recordPlayerLastSeen(
+        payload.playerId,
+        admission.metadata,
+      );
+    }
+    return true;
   }
 
   /**
@@ -2000,10 +2175,7 @@ export class MatchGateway
         // Re-check after barrier: resume may have taken the lease.
         if (this.connectionLeases.get(key) === client.id) {
           const canLeaveLobby = await this.matches.canLeaveLobbySeat(matchId);
-          if (
-            canLeaveLobby &&
-            this.connectionLeases.get(key) === client.id
-          ) {
+          if (canLeaveLobby && this.connectionLeases.get(key) === client.id) {
             try {
               const left = await this.matches.leaveMatch(matchId, playerId);
               this.matchmaking.releaseTicketForPlayer(playerId);

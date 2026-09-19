@@ -17,6 +17,8 @@ export const LAUNCH_ENGINE_IDS = [
   // Challenges 31–38
   "trivia.multiple_choice",
   "audio.multiple_choice",
+  /** Common Word — الكلمة المشتركة (engine id is dotted; product type is common_word). */
+  "trivia.common_word",
   "geography.select_on_map",
   "focus.odd_one_out",
   "order.sequence_sort",
@@ -946,6 +948,184 @@ export type AudioMultipleChoiceServerConfig = z.infer<
 export const audioMultipleChoiceAnswerSchema =
   triviaMultipleChoiceAnswerSchema;
 export type AudioMultipleChoiceAnswer = TriviaMultipleChoiceAnswer;
+
+// ---------------------------------------------------------------------------
+// 12c. trivia.common_word (Common Word — الكلمة المشتركة)
+// One Studio challenge with a question bank (like trivia.multiple_choice).
+// Round materialization picks one question; relationships stay server-only.
+// ---------------------------------------------------------------------------
+
+/** Approved programmatic clue motifs. Never encode the correct answer. */
+export const COMMON_WORD_VISUAL_HINTS = [
+  "needle",
+  "storm",
+  "water",
+  "thread",
+  "cloud",
+  "drop",
+  "neutral",
+] as const;
+export const commonWordVisualHintSchema = z.enum(COMMON_WORD_VISUAL_HINTS);
+export type CommonWordVisualHint = z.infer<typeof commonWordVisualHintSchema>;
+
+const opaqueClueId = z
+  .string()
+  .min(1)
+  .max(64)
+  .regex(/^[a-z0-9][a-z0-9._-]{0,62}$/i);
+
+export const commonWordClueSchema = z
+  .object({
+    clueId: opaqueClueId,
+    textCopy: triviaLocaleCopySchema,
+    /** Private authoring metadata — never mirrored into clientConfig. */
+    relationshipCopy: triviaLocaleCopySchema,
+    visualHint: commonWordVisualHintSchema.optional(),
+  })
+  .strict();
+export type CommonWordClue = z.infer<typeof commonWordClueSchema>;
+
+const commonWordCluesTupleSchema = z
+  .tuple([
+    commonWordClueSchema,
+    commonWordClueSchema,
+    commonWordClueSchema,
+  ])
+  .superRefine((clues, ctx) => {
+    const ids = clues.map((c) => c.clueId);
+    if (new Set(ids).size !== ids.length) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "clueId values must be unique",
+        path: ["clueId"],
+      });
+    }
+    const normalized = clues.map((c) =>
+      c.textCopy.ar.trim().replace(/\s+/g, " "),
+    );
+    if (normalized.some((t) => t.length === 0)) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "each clue requires non-empty Arabic text",
+        path: ["textCopy", "ar"],
+      });
+    }
+    if (new Set(normalized).size !== normalized.length) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "clue texts must be distinct after trim/normalization",
+        path: ["textCopy", "ar"],
+      });
+    }
+    for (const [index, clue] of clues.entries()) {
+      if (!clue.relationshipCopy.ar.trim()) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: "relationship explanation (Arabic) is required",
+          path: [index, "relationshipCopy", "ar"],
+        });
+      }
+    }
+  });
+
+export const commonWordQuestionSchema = z
+  .object({
+    questionKey: translationKey,
+    clues: commonWordCluesTupleSchema,
+    optionKeys: z.array(optionKey).min(2).max(6),
+    correctOptionKey: optionKey,
+    optionCopy: z.record(triviaLocaleCopySchema).optional(),
+  })
+  .strict()
+  .superRefine((value, ctx) => {
+    if (new Set(value.optionKeys).size !== value.optionKeys.length) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "optionKeys must be unique",
+        path: ["optionKeys"],
+      });
+    }
+    const normalizedOptions = value.optionKeys.map((key) => {
+      const copy = value.optionCopy?.[key];
+      const ar = copy?.ar?.trim().replace(/\s+/g, " ") ?? "";
+      return ar || key;
+    });
+    if (new Set(normalizedOptions).size !== normalizedOptions.length) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "option texts must be distinct after trim/normalization",
+        path: ["optionCopy"],
+      });
+    }
+    if (!value.optionKeys.includes(value.correctOptionKey)) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "correctOptionKey must be one of optionKeys",
+        path: ["correctOptionKey"],
+      });
+    }
+    if (value.optionCopy) {
+      for (const key of Object.keys(value.optionCopy)) {
+        if (!value.optionKeys.includes(key)) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: `optionCopy.${key} is not in optionKeys`,
+            path: ["optionCopy", key],
+          });
+        }
+      }
+    }
+  });
+export type CommonWordQuestion = z.infer<typeof commonWordQuestionSchema>;
+
+export const commonWordClientClueSchema = z
+  .object({
+    id: opaqueClueId,
+    text: z.string().min(1).max(200),
+    visualHint: commonWordVisualHintSchema.optional(),
+  })
+  .strict();
+export type CommonWordClientClue = z.infer<typeof commonWordClientClueSchema>;
+
+export const commonWordClientConfigSchema = z
+  .object({
+    categoryKey: translationKey,
+    promptKey: translationKey,
+    titleKey: translationKey.optional(),
+    titleText: z.string().min(1).max(200).optional(),
+    instructionText: z.string().min(1).max(500).optional(),
+    questionKey: translationKey.optional(),
+    clues: z.array(commonWordClientClueSchema).length(3),
+    optionKeys: z.array(optionKey).min(2).max(6),
+    optionTexts: z.record(z.string().min(1).max(500)).optional(),
+    footerKey: translationKey.optional(),
+    /** Looping bed from the content pack (never bundled in the APK). */
+    backgroundSfxAssetId: z.string().min(1).max(128).optional(),
+  })
+  .strict();
+export type CommonWordClientConfig = z.infer<
+  typeof commonWordClientConfigSchema
+>;
+
+export const commonWordServerConfigSchema = z
+  .object({
+    /** Shared challenge chrome shown for every question in the bank. */
+    titleCopy: triviaLocaleCopySchema.optional(),
+    instructionCopy: triviaLocaleCopySchema.optional(),
+    questions: z.array(commonWordQuestionSchema).min(1).max(64),
+    /** Pinned fields after materialize (optional until round start). */
+    questionKey: translationKey.optional(),
+    optionKeys: z.array(optionKey).min(2).max(6).optional(),
+    correctOptionKey: optionKey.optional(),
+  })
+  .strict();
+export type CommonWordServerConfig = z.infer<
+  typeof commonWordServerConfigSchema
+>;
+
+/** Same command body as trivia — reused, not a parallel answer system. */
+export const commonWordAnswerSchema = triviaMultipleChoiceAnswerSchema;
+export type CommonWordAnswer = TriviaMultipleChoiceAnswer;
 
 // ---------------------------------------------------------------------------
 // 13. geography.select_on_map
@@ -2830,6 +3010,7 @@ export const ENGINE_RUNTIME_READINESS: Record<
   "tactical.risk_choice": "live",
   "trivia.multiple_choice": "live",
   "audio.multiple_choice": "live",
+  "trivia.common_word": "live",
   "geography.select_on_map": "live",
   "focus.odd_one_out": "live",
   "order.sequence_sort": "live",
@@ -2918,6 +3099,11 @@ const ENGINE_SCHEMAS: Record<LaunchEngineId, EngineSchemaPair> = {
     client: audioMultipleChoiceClientConfigSchema,
     server: audioMultipleChoiceServerConfigSchema,
     answer: audioMultipleChoiceAnswerSchema,
+  },
+  "trivia.common_word": {
+    client: commonWordClientConfigSchema,
+    server: commonWordServerConfigSchema,
+    answer: commonWordAnswerSchema,
   },
   "geography.select_on_map": {
     client: geographySelectOnMapClientConfigSchema,
@@ -3063,6 +3249,11 @@ export type ValidatedEngineConfigs =
       serverConfig: AudioMultipleChoiceServerConfig;
     }
   | {
+      engineId: "trivia.common_word";
+      clientConfig: CommonWordClientConfig;
+      serverConfig: CommonWordServerConfig;
+    }
+  | {
       engineId: "geography.select_on_map";
       clientConfig: GeographySelectOnMapClientConfig;
       serverConfig: GeographySelectOnMapServerConfig;
@@ -3158,6 +3349,7 @@ export type ValidatedEngineAnswer =
   | { engineId: "tactical.risk_choice"; answer: TacticalRiskChoiceAnswer }
   | { engineId: "trivia.multiple_choice"; answer: TriviaMultipleChoiceAnswer }
   | { engineId: "audio.multiple_choice"; answer: AudioMultipleChoiceAnswer }
+  | { engineId: "trivia.common_word"; answer: CommonWordAnswer }
   | { engineId: "geography.select_on_map"; answer: GeographySelectOnMapAnswer }
   | { engineId: "focus.odd_one_out"; answer: FocusOddOneOutAnswer }
   | { engineId: "order.sequence_sort"; answer: OrderSequenceSortAnswer }

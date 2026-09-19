@@ -32,11 +32,12 @@ ENV NODE_ENV=production \
 WORKDIR /app
 RUN useradd --create-home --uid 10001 lh
 COPY --from=build --chown=lh:lh /deploy/backend/ ./
-COPY --from=build --chown=lh:lh /app/apps/backend/content-pack ./content-pack
+COPY --from=build --chown=lh:lh /app/apps/backend/content-pack ./content-pack-seed
 COPY --chmod=755 infra/local/docker-entrypoint-backend.sh /entrypoint.sh
-USER lh
+USER root
 EXPOSE 3000
 HEALTHCHECK --interval=10s --timeout=5s --start-period=25s --retries=10 \
   CMD node -e "fetch('http://127.0.0.1:'+(process.env.PORT||3000)+'/health/live').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
 ENTRYPOINT ["/entrypoint.sh"]
 CMD ["node", "dist/main.js"]
+

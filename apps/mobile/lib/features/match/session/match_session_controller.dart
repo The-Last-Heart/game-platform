@@ -10,6 +10,7 @@ import '../state/match_snapshot.dart';
 import '../time/server_time_clock.dart';
 import '../transport/realtime_transport.dart';
 import '../../identity/data/identity_store.dart';
+import '../../identity/data/app_package_info.dart';
 import '../../presence/presence_client_id_store.dart';
 import 'session_store.dart';
 
@@ -63,6 +64,8 @@ class _PendingHandshake {
 const Set<String> _resumeCredentialRejectCodes = <String>{
   'UNAUTHORIZED',
   'MATCH_NOT_FOUND',
+  'MATCH_RESUME_VERSION_MISMATCH',
+  'APP_UPDATE_REQUIRED',
 };
 
 /// Contract codes that indicate snapshot request auth/binding failure.
@@ -84,17 +87,20 @@ class MatchSessionController {
     required this.sessionStore,
     ServerTimeClock? serverTimeClock,
     PresenceClientIdStore? presenceClientIdStore,
+    AppPackageInfo? packageInfo,
     this._snapshotRetryDelay = const Duration(seconds: 2),
     this._snapshotRetryDelayForAttempt,
     this._snapshotRetryDelayCap = const Duration(seconds: 30),
   }) : serverClock = serverTimeClock ?? ServerTimeClock(),
        _presenceClientIdStore =
-           presenceClientIdStore ?? PresenceClientIdStore();
+           presenceClientIdStore ?? PresenceClientIdStore(),
+       _packageInfo = packageInfo ?? PackageInfoAppPackageInfo();
 
   final RealtimeTransport transport;
   final SessionStore sessionStore;
   final ServerTimeClock serverClock;
   final PresenceClientIdStore _presenceClientIdStore;
+  final AppPackageInfo _packageInfo;
   final Duration _snapshotRetryDelay;
   final Duration Function(int attempt)? _snapshotRetryDelayForAttempt;
   final Duration _snapshotRetryDelayCap;
@@ -257,7 +263,9 @@ class MatchSessionController {
 
   Future<Map<String, dynamic>> _identityPayload(PlayerIdentity identity) async {
     final String playerId = await _presenceClientIdStore.loadOrCreate();
-    return identity.toCommandPayload(playerId: playerId);
+    final ClientRuntimeMetadata runtime =
+        await _packageInfo.readRuntimeMetadata();
+    return identity.toCommandPayload(playerId: playerId, runtime: runtime);
   }
 
   /// Enqueue Quick Survival. Returns ticketId when status arrives, else null.
@@ -807,9 +815,12 @@ class MatchSessionController {
       expectedMatchId: data.matchId,
       expectedPlayerId: data.playerId,
     );
+    final ClientRuntimeMetadata runtime =
+        await _packageInfo.readRuntimeMetadata();
     _sendCommandWithId(commandId, MessageTypes.matchResume, <String, dynamic>{
       'matchId': data.matchId,
       'resumeToken': data.resumeToken,
+      ...runtime.toJson(),
     });
   }
 

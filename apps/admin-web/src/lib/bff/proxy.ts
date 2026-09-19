@@ -173,7 +173,7 @@ export async function proxyAdminRequest(
     if (sha) {
       response.headers.set('x-content-sha256', sha);
     }
-    response.headers.set('cache-control', 'private, max-age=300');
+    response.headers.set('cache-control', 'private, no-store');
     response.headers.set('accept-ranges', 'bytes');
     return response;
   }

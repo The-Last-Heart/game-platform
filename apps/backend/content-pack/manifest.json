@@ -1,6 +1,6 @@
 {
   "packId": "lh.local.content.v1",
-  "packVersion": 16,
+  "packVersion": 17,
   "assets": [
     {
       "assetId": "sfx.pulse",
@@ -344,6 +344,13 @@
       "contentType": "audio/mpeg",
       "bytes": 56051,
       "sha256": "fef602732d5d5feb2401d3c94edb8d1a07b8d88d672c76d28f9cb571303af5f8"
+    },
+    {
+      "assetId": "common_word.background",
+      "relativePath": "assets/common_word.background.mp3",
+      "contentType": "audio/mpeg",
+      "bytes": 599040,
+      "sha256": "9b9b9fdef5eedc3adca31211307b5fef0a00eebe84dafab729f705b05a0becaa"
     }
   ]
 }

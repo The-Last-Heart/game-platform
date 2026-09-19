@@ -1,6 +1,7 @@
 import {
   BadRequestException,
   Body,
+  ConflictException,
   Controller,
   Get,
   Header,
@@ -35,10 +36,13 @@ import {
   adminDailyGoalsUpsertRequestSchema,
   adminEmergencyControlsPatchRequestSchema,
   adminEmergencyControlsSchema,
+  adminAppVersionPolicySchema,
+  adminAppVersionPolicyPatchRequestSchema,
   adminGameModeRulesUpsertRequestSchema,
   adminLocalizationUpsertRequestSchema,
   adminPowerConfigUpsertRequestSchema,
   adminSuccessEnvelopeSchema,
+  compareStableSemVer,
 } from '@thelastheart/contracts';
 import { CurrentAdmin } from '../decorators/current-admin.decorator';
 import { RequirePermissions } from '../decorators/permissions.decorator';
@@ -49,9 +53,11 @@ import { ContentLifecycleService } from '../../content/services/content-lifecycl
 import { ContentPackService } from '../../content/services/content-pack.service';
 import { AudioIngestError } from '../../content/audio';
 import { EmergencyControlsService } from '../../content/services/emergency-controls.service';
+import { AppVersionPolicyService } from '../../content/services/app-version-policy.service';
 import { ReleaseResolverService } from '../../content/services/release-resolver.service';
 import { MatchService } from '../../match/services/match.service';
 import { MatchmakingService } from '../../match/services/matchmaking.service';
+import { DomainError } from '../../match/domain/types';
 
 function ok<T>(data: T): { ok: true; data: T } {
   return { ok: true, data };
@@ -148,7 +154,7 @@ export class AdminContentController {
 
   @Get('pack/assets/:assetId')
   @RequirePermissions('content:read')
-  @Header('Cache-Control', 'private, max-age=300')
+  @Header('Cache-Control', 'private, no-store')
   getPackAsset(@Param('assetId') assetId: string, @Res() res: Response): void {
     const { meta, body } = this.contentPack.getAsset(assetId);
     res.setHeader('Content-Type', meta.contentType);
@@ -704,5 +710,78 @@ export class AdminEmergencyController {
     return adminSuccessEnvelopeSchema(adminEmergencyControlsSchema).parse(
       ok(data),
     );
+  }
+}
+
+@Controller('api/admin/v1/system')
+@UseGuards(AdminAuthGuard, PermissionsGuard)
+export class AdminAppVersionPolicyController {
+  constructor(
+    private readonly policy: AppVersionPolicyService,
+    private readonly matches: MatchService,
+    private readonly matchmaking: MatchmakingService,
+  ) {}
+
+  @Get('app-version-policy')
+  @RequirePermissions('system:read')
+  async getPolicy() {
+    const data = await this.policy.getPolicy();
+    return adminSuccessEnvelopeSchema(adminAppVersionPolicySchema).parse(
+      ok(data),
+    );
+  }
+
+  @Patch('app-version-policy')
+  @RequirePermissions('emergency:write')
+  async patchPolicy(
+    @CurrentAdmin() admin: AdminAuthContext,
+    @Body() body: unknown,
+  ) {
+    const parsed = adminAppVersionPolicyPatchRequestSchema.safeParse(body);
+    if (!parsed.success) {
+      throw new BadRequestException({
+        ok: false,
+        error: {
+          code: 'VALIDATION_ERROR',
+          message: 'Invalid app version policy payload',
+          details: parsed.error.flatten(),
+        },
+      });
+    }
+    try {
+      const before = await this.policy.getPolicy();
+      const data = await this.policy.patchPolicy(admin.user.id, parsed.data);
+      // Raising the minimum: cancel waiting tickets/rooms neutrally.
+      if (
+        compareStableSemVer(
+          data.minimumSupportedVersion,
+          before.minimumSupportedVersion,
+        ) > 0
+      ) {
+        await this.matchmaking.cancelTicketsBelowVersion(
+          data.minimumSupportedVersion,
+        );
+        await this.matches.closeWaitingRoomsBelowVersion(
+          data.minimumSupportedVersion,
+        );
+      }
+      return adminSuccessEnvelopeSchema(adminAppVersionPolicySchema).parse(
+        ok(data),
+      );
+    } catch (error) {
+      if (
+        error instanceof DomainError &&
+        error.code === 'STALE_VERSION_POLICY'
+      ) {
+        throw new ConflictException({
+          ok: false,
+          error: {
+            code: 'CONFLICT',
+            message: 'Version policy was updated by another administrator',
+          },
+        });
+      }
+      throw error;
+    }
   }
 }

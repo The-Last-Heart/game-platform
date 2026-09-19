@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, type CSSProperties } from 'react';
 import { t } from '@/i18n/get-dictionary';
 import type { Locale } from '@/i18n/locale';
 import type { MessageKey } from '@/i18n/messages/en';
@@ -13,6 +13,7 @@ import {
   type AudioVisualizationPreview,
 } from './audio-question-bank';
 import { StudioAudioClipPreview } from './AudioVisualizationPreview';
+import { parseCommonWordBank } from './common-word-question';
 
 export type PreviewState = 'intro' | 'active' | 'success' | 'failure' | 'timeout' | 'unsupported';
 
@@ -63,7 +64,7 @@ function AudioDevicePreview({
       `/api/admin/v1/content/pack/assets/${encodeURIComponent(visualizationAssetId)}`,
       {
         credentials: 'same-origin',
-        cache: 'force-cache',
+        cache: 'no-store',
       },
     )
       .then((res) => (res.ok ? res.json() : null))
@@ -295,6 +296,177 @@ function LaserDevicePreview({
   );
 }
 
+function CommonWordDevicePreview({
+  locale,
+  durationMs,
+  serverConfig,
+  activeState,
+}: {
+  locale: Locale;
+  durationMs?: number;
+  serverConfig?: Record<string, unknown>;
+  activeState: PreviewState;
+}) {
+  const bank = parseCommonWordBank(serverConfig ?? {});
+  const question = bank.questions[0]!;
+  const correctLabel =
+    question.options.find((o) => o.key === question.correctOptionKey)?.ar ??
+    question.correctOptionKey;
+  const seconds = durationMs ? (durationMs / 1000).toFixed(0) : '—';
+
+  return (
+    <div
+      dir="rtl"
+      style={{
+        width: '100%',
+        display: 'flex',
+        flexDirection: 'column',
+        gap: 10,
+        alignItems: 'center',
+        background:
+          'radial-gradient(ellipse at 50% 20%, #0a1a2e 0%, #050c18 70%)',
+        borderRadius: 12,
+        padding: '12px 10px',
+        border: '1px solid rgba(80, 227, 254, 0.25)',
+      }}
+    >
+      <span style={{ fontSize: '0.7rem', color: '#50e3fe' }}>
+        {seconds}s · {t(locale, 'studio.preview.active')}
+      </span>
+      <span
+        style={{
+          fontSize: '1.15rem',
+          fontWeight: 700,
+          color: '#d4af37',
+          textAlign: 'center',
+        }}
+      >
+        {bank.titleAr}
+      </span>
+      <span
+        style={{
+          fontSize: '0.78rem',
+          color: '#e8f4ff',
+          textAlign: 'center',
+          opacity: 0.9,
+        }}
+      >
+        {bank.instructionAr}
+      </span>
+
+      <div
+        style={{
+          display: 'grid',
+          gridTemplateColumns: '1fr auto 1fr',
+          gridTemplateRows: 'auto auto',
+          gap: 6,
+          width: '100%',
+          alignItems: 'center',
+          justifyItems: 'center',
+        }}
+      >
+        <div style={{ gridColumn: '2', ...cwCardStyle }}>{question.clues[0].textAr || '—'}</div>
+        <div style={{ gridColumn: '1', gridRow: '2', ...cwCardStyle }}>
+          {question.clues[1].textAr || '—'}
+        </div>
+        <div
+          style={{
+            gridColumn: '2',
+            gridRow: '2',
+            width: 36,
+            height: 36,
+            borderRadius: '50%',
+            border: '1.5px solid #d4af37',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            color: '#d4af37',
+            fontWeight: 700,
+            boxShadow: '0 0 12px rgba(80,227,254,0.35)',
+            background: '#071018',
+          }}
+        >
+          {activeState === 'success' ? correctLabel.slice(0, 4) : '?'}
+        </div>
+        <div style={{ gridColumn: '3', gridRow: '2', ...cwCardStyle }}>
+          {question.clues[2].textAr || '—'}
+        </div>
+      </div>
+
+      <div
+        style={{
+          display: 'grid',
+          gridTemplateColumns: '1fr 1fr',
+          gap: 6,
+          width: '100%',
+        }}
+      >
+        {question.options.map((opt) => {
+          const isCorrect = opt.key === question.correctOptionKey;
+          const showCorrect =
+            (activeState === 'success' || activeState === 'failure') && isCorrect;
+          const showWrong =
+            activeState === 'failure' && !isCorrect && opt === question.options[0];
+          return (
+            <div
+              key={opt.key}
+              style={{
+                ...cwCardStyle,
+                borderColor: showCorrect
+                  ? '#22e7f2'
+                  : showWrong
+                    ? '#ff5365'
+                    : 'rgba(80,227,254,0.45)',
+                color: '#f7fafc',
+              }}
+            >
+              {opt.ar || '—'}
+              {showCorrect ? (
+                <span style={{ fontSize: '0.65rem', color: '#22e7f2' }}> ✓</span>
+              ) : null}
+            </div>
+          );
+        })}
+      </div>
+
+      <div
+        style={{
+          width: '100%',
+          marginTop: 4,
+          padding: 8,
+          borderRadius: 8,
+          background: 'rgba(0,0,0,0.35)',
+          border: '1px dashed rgba(212,175,55,0.4)',
+        }}
+      >
+        <div style={{ fontSize: '0.65rem', color: '#d4af37', marginBottom: 4 }}>
+          {t(locale, 'studio.field.fp.commonWordRelationshipHint' as MessageKey)}
+        </div>
+        {question.clues.map((clue) => (
+          <div
+            key={clue.clueId}
+            style={{ fontSize: '0.7rem', color: '#c5d4e2', marginBottom: 2 }}
+          >
+            {clue.textAr || '—'} → {clue.relationshipAr || '—'}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+const cwCardStyle: CSSProperties = {
+  width: '100%',
+  minHeight: 28,
+  padding: '6px 8px',
+  borderRadius: 8,
+  border: '1px solid rgba(212,175,55,0.55)',
+  background: 'linear-gradient(180deg, rgba(12,28,48,0.95), rgba(5,12,24,0.98))',
+  textAlign: 'center',
+  fontSize: '0.78rem',
+  color: '#f7fafc',
+};
+
 export function DevicePreviewFrame({
   locale,
   challengeTitle,
@@ -316,7 +488,8 @@ export function DevicePreviewFrame({
     challengeTitle ||
       instructionAr ||
       imageIds.length > 0 ||
-      engineId === 'laser.routing',
+      engineId === 'laser.routing' ||
+      engineId === 'trivia.common_word',
   );
 
   return (
@@ -394,7 +567,17 @@ export function DevicePreviewFrame({
                 />
               ) : null}
 
-              {activeState === 'intro' || activeState === 'active' ? (
+              {engineId === 'trivia.common_word' ? (
+                <CommonWordDevicePreview
+                  locale={locale}
+                  durationMs={durationMs}
+                  serverConfig={serverConfig}
+                  activeState={activeState}
+                />
+              ) : null}
+
+              {engineId !== 'trivia.common_word' &&
+              (activeState === 'intro' || activeState === 'active') ? (
                 <>
                   <span style={{ fontSize: '1.05rem', fontWeight: 700, textAlign: 'center' }}>
                     {instructionAr || challengeTitle}

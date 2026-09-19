@@ -11,6 +11,11 @@ import {
   isValidDisplayNameFormat,
   normalizeDisplayNameFormat,
 } from '../../identity/v1/display-name-moderation';
+import {
+  optionalAppVersionField,
+  optionalBuildNumberField,
+  optionalPlatformField,
+} from './runtime-metadata';
 
 export const REALTIME_SCHEMA_VERSION = '1' as const;
 
@@ -155,21 +160,60 @@ export const playerCountryCodeSchema = z.enum(PLAYER_COUNTRY_CODES);
 
 export type { PlayerCountryCode };
 
+const durablePlayerIdSchema = z
+  .string()
+  .min(8)
+  .max(128)
+  .regex(/^[A-Za-z0-9._:-]+$/, 'playerId contains unsupported characters');
+
 export const playerIdentityPayloadSchema = z
   .object({
     displayName: displayNameSchema,
     avatarColor: avatarColorSchema,
     countryCode: playerCountryCodeSchema,
     /** Durable per-install id (same charset/length as presence clientId). */
-    playerId: z
-      .string()
-      .min(8)
-      .max(128)
-      .regex(/^[A-Za-z0-9._:-]+$/, 'playerId contains unsupported characters'),
+    playerId: durablePlayerIdSchema,
   })
   .strict();
 
-export const matchmakingEnqueuePayloadSchema = playerIdentityPayloadSchema;
+/**
+ * Identity + additive optional runtime metadata (Stage 1 migration-safe).
+ * Runtime version fields are not an alternate identity channel.
+ */
+export const playerIdentityWithRuntimePayloadSchema = z
+  .object({
+    displayName: displayNameSchema,
+    avatarColor: avatarColorSchema,
+    countryCode: playerCountryCodeSchema,
+    playerId: durablePlayerIdSchema,
+    appVersion: optionalAppVersionField,
+    buildNumber: optionalBuildNumberField,
+    platform: optionalPlatformField,
+  })
+  .strict()
+  .superRefine((value, ctx) => {
+    const present =
+      value.appVersion != null ||
+      value.buildNumber != null ||
+      value.platform != null;
+    if (!present) {
+      return;
+    }
+    if (
+      value.appVersion == null ||
+      value.buildNumber == null ||
+      value.platform == null
+    ) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message:
+          'appVersion, buildNumber, and platform must be provided together',
+      });
+    }
+  });
+
+export const matchmakingEnqueuePayloadSchema =
+  playerIdentityWithRuntimePayloadSchema;
 
 export const matchmakingCancelPayloadSchema = z
   .object({
@@ -177,18 +221,76 @@ export const matchmakingCancelPayloadSchema = z
   })
   .strict();
 
-export const privateRoomCreatePayloadSchema = playerIdentityPayloadSchema;
+export const privateRoomCreatePayloadSchema =
+  playerIdentityWithRuntimePayloadSchema;
 
-export const privateRoomJoinPayloadSchema = playerIdentityPayloadSchema
-  .extend({
+export const privateRoomJoinPayloadSchema = z
+  .object({
+    displayName: displayNameSchema,
+    avatarColor: avatarColorSchema,
+    countryCode: playerCountryCodeSchema,
+    playerId: durablePlayerIdSchema,
     roomCode: z
       .string()
       .trim()
       .min(4)
       .max(8)
       .regex(/^[A-Za-z0-9]+$/, 'roomCode must be alphanumeric'),
+    appVersion: optionalAppVersionField,
+    buildNumber: optionalBuildNumberField,
+    platform: optionalPlatformField,
   })
-  .strict();
+  .strict()
+  .superRefine((value, ctx) => {
+    const present =
+      value.appVersion != null ||
+      value.buildNumber != null ||
+      value.platform != null;
+    if (!present) {
+      return;
+    }
+    if (
+      value.appVersion == null ||
+      value.buildNumber == null ||
+      value.platform == null
+    ) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message:
+          'appVersion, buildNumber, and platform must be provided together',
+      });
+    }
+  });
+
+export const resumeMatchWithRuntimePayloadSchema = z
+  .object({
+    matchId: uuidLike,
+    resumeToken: nonEmpty,
+    appVersion: optionalAppVersionField,
+    buildNumber: optionalBuildNumberField,
+    platform: optionalPlatformField,
+  })
+  .strict()
+  .superRefine((value, ctx) => {
+    const present =
+      value.appVersion != null ||
+      value.buildNumber != null ||
+      value.platform != null;
+    if (!present) {
+      return;
+    }
+    if (
+      value.appVersion == null ||
+      value.buildNumber == null ||
+      value.platform == null
+    ) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message:
+          'appVersion, buildNumber, and platform must be provided together',
+      });
+    }
+  });
 
 export const matchReadyPayloadSchema = z
   .object({
@@ -214,7 +316,8 @@ export const matchStartLobbyPayloadSchema = z
   })
   .strict();
 
-export const trainingStartPayloadSchema = playerIdentityPayloadSchema;
+export const trainingStartPayloadSchema =
+  playerIdentityWithRuntimePayloadSchema;
 
 export const trainingRetryPayloadSchema = z
   .object({
@@ -287,7 +390,7 @@ export const clientCommandSchema = envelopeBaseSchema
     const map = {
       [MessageTypes.MatchCreateDev]: createDevMatchPayloadSchema,
       [MessageTypes.MatchJoin]: joinMatchPayloadSchema,
-      [MessageTypes.MatchResume]: resumeMatchPayloadSchema,
+      [MessageTypes.MatchResume]: resumeMatchWithRuntimePayloadSchema,
       [MessageTypes.MatchSubmitAnswer]: submitAnswerPayloadSchema,
       [MessageTypes.MatchRequestSnapshot]: requestSnapshotPayloadSchema,
       [MessageTypes.MatchFillDevBots]: fillDevBotsPayloadSchema,
@@ -695,6 +798,16 @@ export const powerResolvedPayloadSchema = z
   })
   .strict();
 
+export const protocolErrorDetailsSchema = z
+  .object({
+    minimumSupportedVersion: z.string().min(1).max(32).optional(),
+    storeUrl: z.string().url().max(2048).optional(),
+    clientVersion: z.string().min(1).max(32).optional(),
+    roomVersion: z.string().min(1).max(32).optional(),
+    matchVersion: z.string().min(1).max(32).optional(),
+  })
+  .strict();
+
 export const protocolErrorPayloadSchema = z
   .object({
     code: z.enum([
@@ -732,11 +845,21 @@ export const protocolErrorPayloadSchema = z
       'DISPLAY_NAME_TAKEN',
       'DISPLAY_NAME_PROHIBITED',
       'DISPLAY_NAME_INVALID',
+      // Application-version compatibility (exact-version rooms + mandatory update)
+      'APP_UPDATE_REQUIRED',
+      'CLIENT_VERSION_MISSING',
+      'CLIENT_VERSION_INVALID',
+      'PRIVATE_ROOM_VERSION_CLIENT_OLDER',
+      'PRIVATE_ROOM_VERSION_CLIENT_NEWER',
+      'MATCH_RESUME_VERSION_MISMATCH',
+      'NO_COMPATIBLE_CHALLENGES_FOR_APP_VERSION',
     ]),
     // Translation key for client display — never a product sentence.
     messageKey: nonEmpty,
     // Echo the client's commandId when the error is in response to a specific command.
     commandId: uuidLike.optional(),
+    /** Minimal structured compatibility details — never audit/private room secrets. */
+    details: protocolErrorDetailsSchema.optional(),
   })
   .strict();
 

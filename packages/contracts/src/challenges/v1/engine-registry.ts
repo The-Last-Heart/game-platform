@@ -102,6 +102,13 @@ export const STUDIO_ENGINE_REGISTRY: readonly StudioEngineRegistryEntry[] = [
     labelKey: 'engine.audio.multiple_choice',
   },
   {
+    engineId: 'trivia.common_word',
+    familyId: 'trivia',
+    categoryId: 'trivia.common_word',
+    runtimeReadiness: ENGINE_RUNTIME_READINESS['trivia.common_word'],
+    labelKey: 'engine.trivia.common_word',
+  },
+  {
     engineId: 'geography.select_on_map',
     familyId: 'geography',
     categoryId: 'geography.select_on_map',

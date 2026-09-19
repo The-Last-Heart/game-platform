@@ -161,6 +161,11 @@ const envSchema = z
       .min(0)
       .max(600_000)
       .default(15_000),
+    /**
+     * When true, missing client runtime metadata is rejected and version
+     * isolation is strictly enforced. Keep false during Stage 1–2 rollout.
+     */
+    APP_VERSION_STRICT_ENFORCEMENT: booleanFromEnv.default(false),
   })
   .superRefine((data, ctx) => {
     if (

@@ -92,7 +92,33 @@ TranslationCatalog createBootstrapCatalog() {
         TranslationKeys.errorsProtocolUnauthorized:
             'انتهت الجلسة السابقة. أعد المحاولة.',
 
+        TranslationKeys.appUpdateTitle: 'يجب تحديث التطبيق',
+        TranslationKeys.appUpdateBody:
+            'هذا الإصدار لم يعد مدعومًا للعب عبر الإنترنت.\nحدّث التطبيق إلى الإصدار {minimumVersion} أو أحدث للمتابعة.',
+        TranslationKeys.appUpdateNow: 'تحديث الآن',
+        TranslationKeys.appUpdateRetry: 'إعادة المحاولة',
+        TranslationKeys.roomVersionOlderTitle: 'لا يمكن الانضمام إلى الغرفة',
+        TranslationKeys.roomVersionOlderBody:
+            'نسخة تطبيقك أقدم من نسخة منشئ الغرفة.\nحدّث التطبيق ثم حاول مرة أخرى.',
+        TranslationKeys.roomVersionNewerTitle: 'لا يمكن الانضمام إلى الغرفة',
+        TranslationKeys.roomVersionNewerBody:
+            'نسخة تطبيقك أحدث من نسخة منشئ الغرفة.\nاطلب من منشئ الغرفة تحديث التطبيق أو أنشئ غرفة جديدة.',
+        TranslationKeys.roomVersionUpdateNow: 'تحديث الآن',
+        TranslationKeys.roomVersionCreateRoom: 'إنشاء غرفة',
+        TranslationKeys.roomVersionCancel: 'إلغاء',
+
         // ── Domain / protocol error keys (server messageKey + client aliases) ──
+        'errors.app.update_required': 'يجب تحديث التطبيق للمتابعة',
+        'errors.app.version_missing': 'إصدار التطبيق مطلوب',
+        'errors.app.version_invalid': 'إصدار التطبيق غير صالح',
+        'errors.room.version_client_older':
+            'نسخة تطبيقك أقدم من نسخة منشئ الغرفة. حدّث التطبيق ثم حاول مرة أخرى.',
+        'errors.room.version_client_newer':
+            'نسخة تطبيقك أحدث من نسخة منشئ الغرفة. اطلب من منشئ الغرفة تحديث التطبيق أو أنشئ غرفة جديدة.',
+        'errors.match.resume_version_mismatch':
+            'تم تغيير إصدار التطبيق منذ بدء المباراة، لذلك لا يمكن استئناف هذه المباراة.',
+        'errors.match.no_compatible_challenges':
+            'لا تتوفر تحديات متوافقة مع إصدار التطبيق الحالي',
         'errors.match.not_found': 'التحدي غير موجود',
         'errors.match.full': 'التحدي ممتلئ',
         'errors.match.not_joinable': 'لا يمكن الانضمام لهذا التحدي',
@@ -353,6 +379,11 @@ TranslationCatalog createBootstrapCatalog() {
         'challenge.trivia.intro': 'اختر الإجابة',
         'challenge.trivia.prompt': 'ما الإجابة الصحيحة؟',
         'challenge.trivia.footer': 'اختيار واحد فقط',
+        'challenge.common_word.title': 'الكلمة المشتركة',
+        'challenge.common_word.intro': 'الكلمة المشتركة',
+        'challenge.common_word.prompt': 'اختر كلمة ترتبط بالعبارات الثلاث',
+        'challenge.common_word.footer': 'اختيار واحد فقط',
+        'challenge.common_word.time_remaining': 'الوقت المتبقي',
         'challenge.map.intro': 'اختر على الخريطة',
         'challenge.map.prompt': 'حدد دولة {country} على الخريطة',
         'challenge.map.footer': 'اضغط على موقع الدولة على الخريطة',
@@ -721,7 +752,33 @@ TranslationCatalog createBootstrapCatalog() {
         TranslationKeys.errorsProtocolUnauthorized:
             'Previous session expired. Try again.',
 
+        TranslationKeys.appUpdateTitle: 'Update required',
+        TranslationKeys.appUpdateBody:
+            'This version is no longer supported for online play.\nUpdate to version {minimumVersion} or later to continue.',
+        TranslationKeys.appUpdateNow: 'Update now',
+        TranslationKeys.appUpdateRetry: 'Try again',
+        TranslationKeys.roomVersionOlderTitle: 'Cannot join room',
+        TranslationKeys.roomVersionOlderBody:
+            'Your app version is older than the room creator’s version.\nUpdate the app and try again.',
+        TranslationKeys.roomVersionNewerTitle: 'Cannot join room',
+        TranslationKeys.roomVersionNewerBody:
+            'Your app version is newer than the room creator’s version.\nAsk the creator to update or create a new room.',
+        TranslationKeys.roomVersionUpdateNow: 'Update now',
+        TranslationKeys.roomVersionCreateRoom: 'Create room',
+        TranslationKeys.roomVersionCancel: 'Cancel',
+
         // ── Domain / protocol error keys (server messageKey + client aliases) ──
+        'errors.app.update_required': 'Update the app to continue',
+        'errors.app.version_missing': 'App version is required',
+        'errors.app.version_invalid': 'App version is invalid',
+        'errors.room.version_client_older':
+            'Your app version is older than the room creator’s version. Update the app and try again.',
+        'errors.room.version_client_newer':
+            'Your app version is newer than the room creator’s version. Ask the creator to update or create a new room.',
+        'errors.match.resume_version_mismatch':
+            'The app version changed after this match started, so the match cannot be resumed.',
+        'errors.match.no_compatible_challenges':
+            'No challenges are compatible with this app version',
         'errors.match.not_found': 'Match not found',
         'errors.match.full': 'Challenge is full',
         'errors.match.not_joinable': 'This match cannot be joined',
@@ -992,6 +1049,12 @@ TranslationCatalog createBootstrapCatalog() {
         'challenge.trivia.intro': 'Pick the answer',
         'challenge.trivia.prompt': 'What is the correct answer?',
         'challenge.trivia.footer': 'One choice only',
+        'challenge.common_word.title': 'The Common Word',
+        'challenge.common_word.intro': 'The Common Word',
+        'challenge.common_word.prompt':
+            'Choose a word related to the three phrases',
+        'challenge.common_word.footer': 'One choice only',
+        'challenge.common_word.time_remaining': 'Time remaining',
         'challenge.map.intro': 'Find on the map',
         'challenge.map.prompt': 'Select {country} on the map',
         'challenge.map.footer': 'Tap the country\'s location on the map',

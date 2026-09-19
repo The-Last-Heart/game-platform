@@ -21,6 +21,7 @@ export const contractsPackageMeta: ContractsPackageMeta = {
 };
 
 export * from './realtime/v1/protocol';
+export * from './realtime/v1/runtime-metadata';
 export * from './presence/v1/protocol';
 export * from './identity/v1/countries';
 export * from './identity/v1/display-name-moderation';

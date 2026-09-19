@@ -9,6 +9,7 @@ import { AdminAuthController } from './controllers/admin-auth.controller';
 import {
   AdminContentController,
   AdminEmergencyController,
+  AdminAppVersionPolicyController,
 } from './controllers/admin-content.controller';
 import { AdminDashboardController } from './controllers/admin-dashboard.controller';
 import { AdminMatchmakingController } from './controllers/admin-matchmaking.controller';
@@ -37,6 +38,7 @@ import { AdminDashboardService } from './services/admin-dashboard.service';
     AdminAuditLogsController,
     AdminContentController,
     AdminEmergencyController,
+    AdminAppVersionPolicyController,
   ],
   providers: [
     AdminAuthService,

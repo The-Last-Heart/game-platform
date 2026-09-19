@@ -137,6 +137,11 @@ export type CreateMatchOptions = {
   hardLoopPlaylist?: readonly ChallengeDefinition[];
   /** Power configuration frozen at match create. */
   powerConfig?: PowerConfigurationRuntime | null;
+  /**
+   * Immutable exact application version for this room. Exact-version rooms:
+   * only sessions with this normalized version may join or resume.
+   */
+  gameplayVersion?: string | null;
 };
 
 export type Clock = {
@@ -217,6 +222,13 @@ export type ChallengeDefinition = {
   clientConfig: Record<string, unknown>;
   /** Private authoritative parameters — never sent to clients. */
   serverConfig: Record<string, unknown>;
+  /**
+   * First application version that may execute this definition (lower bound).
+   * Preserved from Studio / catalog for playlist filtering.
+   */
+  minAppVersion?: string;
+  /** Capability tokens required by this definition (engine + device). */
+  requiredCapabilities?: string[];
 };
 
 export type PlayerState = {
@@ -238,6 +250,8 @@ export type PlayerState = {
   countryCode?: string;
   /** Durable install id for leaderboard scoring; never published in snapshots. */
   persistentPlayerId?: string;
+  /** Immutable application version reported when this seat joined. */
+  joinAppVersion?: string;
   /** Explicit ready for private lobbies; other modes may auto-ready on accept. */
   ready: boolean;
   /**
@@ -369,6 +383,11 @@ export type MatchState = {
   commandAcks: Map<string, unknown>;
   /** Frozen at create; active matches never re-resolve current releases. */
   releasePins: MatchReleasePinsState | null;
+  /**
+   * Immutable exact application version pinned when the room was created.
+   * Null only for legacy in-memory matches created before version isolation.
+   */
+  gameplayVersion: string | null;
   /** Unique playable definitions, easy → medium → hard (shuffled within tier). */
   pinnedPlaylist: ChallengeDefinition[];
   /** Hard-tagged catalog pool kept for resume compatibility. */
@@ -535,6 +554,14 @@ export type DomainEvent =
     };
 
 export class DomainError extends Error {
+  details?: {
+    minimumSupportedVersion?: string;
+    storeUrl?: string;
+    clientVersion?: string;
+    roomVersion?: string;
+    matchVersion?: string;
+  };
+
   constructor(
     readonly code:
       | 'MATCH_FULL'
@@ -574,7 +601,15 @@ export class DomainError extends Error {
       | 'OFFENSIVE_POWERS_DISABLED'
       | 'DISPLAY_NAME_TAKEN'
       | 'DISPLAY_NAME_PROHIBITED'
-      | 'DISPLAY_NAME_INVALID',
+      | 'DISPLAY_NAME_INVALID'
+      | 'APP_UPDATE_REQUIRED'
+      | 'CLIENT_VERSION_MISSING'
+      | 'CLIENT_VERSION_INVALID'
+      | 'PRIVATE_ROOM_VERSION_CLIENT_OLDER'
+      | 'PRIVATE_ROOM_VERSION_CLIENT_NEWER'
+      | 'MATCH_RESUME_VERSION_MISMATCH'
+      | 'NO_COMPATIBLE_CHALLENGES_FOR_APP_VERSION'
+      | 'STALE_VERSION_POLICY',
     message: string,
   ) {
     super(message);

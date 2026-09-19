@@ -29,7 +29,7 @@ import {
   type AudioStudioQuestion,
   type AudioVisualizationPreview,
 } from './audio-question-bank';
-import { StudioAudioClipPreview } from './AudioVisualizationPreview';
+import { StudioAudioClipPreview, invalidateStudioAudioObjectUrl } from './AudioVisualizationPreview';
 import { FieldGroup, FieldInput, readFieldInputValue } from './Field';
 import { DurationSecondsField, SegmentedChoice } from './OperatorControls';
 
@@ -139,6 +139,7 @@ export function AudioMultipleChoiceFields(
   >({});
   const [uploadError, setUploadError] = useState<string | null>(null);
   const [uploadingIndex, setUploadingIndex] = useState<number | null>(null);
+  const [previewEpoch, setPreviewEpoch] = useState(0);
 
   function commit(next: AudioStudioQuestion[]) {
     setQuestions(next);
@@ -165,7 +166,7 @@ export function AudioMultipleChoiceFields(
         try {
           const res = await fetch(
             `/api/admin/v1/content/pack/assets/${encodeURIComponent(id)}`,
-            { credentials: 'same-origin', cache: 'force-cache' },
+            { credentials: 'same-origin', cache: 'no-store' },
           );
           if (!res.ok) return;
           const json: unknown = await res.json();
@@ -217,6 +218,7 @@ export function AudioMultipleChoiceFields(
     }
     const vis = parseAudioVisualization(result.data.visualization);
     if (vis) visCache.set(result.data.visualizationAssetId, vis);
+    invalidateStudioAudioObjectUrl(result.data.audioAssetId);
     const next = [...questions];
     next[index] = {
       ...questions[index]!,
@@ -232,6 +234,8 @@ export function AudioMultipleChoiceFields(
         [result.data.visualizationAssetId]: vis,
       }));
     }
+    // Remount preview even when content-hash reuses the same asset id.
+    setPreviewEpoch((epoch) => epoch + 1);
     commit(next);
   }
 
@@ -427,6 +431,7 @@ export function AudioMultipleChoiceFields(
                       : formatLabel(locale, 'studio.audio.badgeArtist')}
                   </p>
                   <StudioAudioClipPreview
+                    key={`${question.audioAssetId}:${previewEpoch}`}
                     assetId={question.audioAssetId}
                     durationMs={question.audioDurationMs}
                     visualization={vis}

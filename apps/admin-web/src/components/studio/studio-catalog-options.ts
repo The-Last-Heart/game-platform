@@ -8,10 +8,9 @@ export type CatalogOption = { value: string; labelKey: string };
 export const DEVICE_CAPABILITY_OPTIONS: CatalogOption[] = [
   { value: 'touch', labelKey: 'studio.capability.touch' },
   { value: 'multitouch', labelKey: 'studio.capability.multitouch' },
-  { value: 'accelerometer', labelKey: 'studio.capability.accelerometer' },
-  { value: 'gyroscope', labelKey: 'studio.capability.gyroscope' },
-  { value: 'audio_output', labelKey: 'studio.capability.audio_output' },
-  { value: 'haptics', labelKey: 'studio.capability.haptics' },
+  { value: 'motion', labelKey: 'studio.capability.motion' },
+  { value: 'microphone', labelKey: 'studio.capability.microphone' },
+  { value: 'audio_playback', labelKey: 'studio.capability.audio_playback' },
 ];
 
 export const KNOWN_ASSET_OPTIONS: CatalogOption[] = [
@@ -59,6 +58,10 @@ export const KNOWN_ASSET_OPTIONS: CatalogOption[] = [
   {
     value: 'laser_routing.heart_power_on',
     labelKey: 'studio.asset.laserHeartSfx',
+  },
+  {
+    value: 'common_word.background',
+    labelKey: 'studio.asset.commonWordBackgroundSfx',
   },
 
   {
@@ -505,6 +508,7 @@ export const SHAKE_SENSITIVITY_PRESETS = [
 
 export const APP_VERSION_PRESETS = [
   { value: '0.0.0', labelKey: 'studio.preset.app.any' },
+  { value: '0.0.1', labelKey: 'studio.preset.app.v001' },
   { value: '0.1.0', labelKey: 'studio.preset.app.v010' },
   { value: '1.0.0', labelKey: 'studio.preset.app.v100' },
 ] as const;

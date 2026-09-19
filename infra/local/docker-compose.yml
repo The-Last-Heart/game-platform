@@ -65,6 +65,10 @@ services:
         condition: service_healthy
     ports:
       - "${BIND_HOST:-127.0.0.1}:${BACKEND_PORT:-3000}:3000"
+    volumes:
+      # Persist Studio-uploaded challenge audio across image rebuilds.
+      # Seeded from the image on first boot (see docker-entrypoint-backend.sh).
+      - lh_local_content_pack:/app/content-pack
     environment:
       NODE_ENV: development
       PORT: 3000
@@ -134,3 +138,5 @@ volumes:
     name: lh_local_postgres_data
   lh_local_redis_data:
     name: lh_local_redis_data
+  lh_local_content_pack:
+    name: lh_local_content_pack

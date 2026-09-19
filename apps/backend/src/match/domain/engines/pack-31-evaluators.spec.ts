@@ -16,6 +16,7 @@ import {
   AudioMultipleChoiceEvaluator,
   loadGeographyMaps,
   materializePack31Round,
+  resetContentPackAssetIdCache,
 } from './pack-31-evaluators';
 
 function def(
@@ -885,6 +886,33 @@ describe('pack-31 materialize + geography seats', () => {
         'ca_44384e12ad9a80f1',
       );
       expect(definition.clientConfig['answerTarget']).toBe('artist');
+    });
+
+    it('skips question clips whose assets are missing from the content pack', () => {
+      resetContentPackAssetIdCache();
+      const missing = {
+        ...artistQuestion,
+        questionKey: 'audio_mc.q.missing',
+        audioAssetId: 'ca_does_not_exist_zzzzzzzz',
+        visualizationAssetId: 'cv_does_not_exist_zzzzzzzz',
+      };
+      const seen = new Set<string>();
+      for (let i = 0; i < 12; i += 1) {
+        const definition = def(
+          'audio.multiple_choice',
+          { questions: [missing, trackQuestion] },
+          {
+            categoryKey: 'challenge.category.audio',
+            promptKey: 'challenge.audio_mc.prompt_artist',
+            questionKey: 'audio_mc.q.artist_1',
+            optionKeys: ['a', 'b', 'c', 'd'],
+          },
+        );
+        materializePack31Round(definition);
+        seen.add(String(definition.clientConfig['audioAssetId']));
+      }
+      expect(seen.has('ca_76fc12197f19bd1b')).toBe(true);
+      expect(seen.has('ca_does_not_exist_zzzzzzzz')).toBe(false);
     });
 
     it('avoids repeating the same answer target when an alternative exists', () => {

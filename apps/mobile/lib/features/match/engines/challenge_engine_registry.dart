@@ -27,6 +27,7 @@ import 'tap_precision_engine.dart';
 import 'tactical_risk_choice_engine.dart';
 import 'trap_no_touch_engine.dart';
 import 'trivia_multiple_choice_engine.dart';
+import 'common_word_engine.dart';
 import 'unknown_engine.dart';
 
 /// Registry mapping engineId → [ChallengeEngine].
@@ -48,6 +49,7 @@ class ChallengeEngineRegistry {
     register(SocialPassThePulseEngine());
     register(TacticalRiskChoiceEngine());
     register(TriviaMultipleChoiceEngine());
+    register(CommonWordEngine());
     register(GeographySelectOnMapEngine());
     register(FocusOddOneOutEngine());
     register(OrderSequenceSortEngine());

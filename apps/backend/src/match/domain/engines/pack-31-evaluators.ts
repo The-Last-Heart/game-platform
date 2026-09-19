@@ -69,6 +69,7 @@ function pickVariant<T extends Record<string, unknown>>(
 
 export const TRIVIA_MULTIPLE_CHOICE_ENGINE_ID = 'trivia.multiple_choice';
 export const AUDIO_MULTIPLE_CHOICE_ENGINE_ID = 'audio.multiple_choice';
+export const TRIVIA_COMMON_WORD_ENGINE_ID = 'trivia.common_word';
 export const GEOGRAPHY_SELECT_ON_MAP_ENGINE_ID = 'geography.select_on_map';
 export const FOCUS_ODD_ONE_OUT_ENGINE_ID = 'focus.odd_one_out';
 export const ORDER_SEQUENCE_SORT_ENGINE_ID = 'order.sequence_sort';
@@ -105,6 +106,19 @@ export class AudioMultipleChoiceEvaluator implements ChallengeEvaluator {
     deadlineMonoMs: number;
   }): ChallengeEvaluation {
     return evaluateSharedMultipleChoice(input, 'result.audio_mc.wrong');
+  }
+}
+
+export class CommonWordEvaluator implements ChallengeEvaluator {
+  readonly engineId = TRIVIA_COMMON_WORD_ENGINE_ID;
+
+  evaluate(input: {
+    definition: ChallengeDefinition;
+    answer: Record<string, unknown>;
+    receivedMonoMs: number;
+    deadlineMonoMs: number;
+  }): ChallengeEvaluation {
+    return evaluateSharedMultipleChoice(input, 'result.common_word.wrong');
   }
 }
 
@@ -487,6 +501,7 @@ export function createPack31Evaluators(): ChallengeEvaluator[] {
   return [
     new TriviaMultipleChoiceEvaluator(),
     new AudioMultipleChoiceEvaluator(),
+    new CommonWordEvaluator(),
     new GeographySelectOnMapEvaluator(),
     new FocusOddOneOutEvaluator(),
     new OrderSequenceSortEvaluator(),
@@ -565,6 +580,67 @@ export function readGeographyQuestionBank(
 }
 
 let cachedMaps: GeoMap[] | null = null;
+let cachedPackAssetIds: Set<string> | null = null;
+
+function contentPackRootCandidates(): string[] {
+  return [
+    resolve(process.cwd(), 'content-pack'),
+    resolve(process.cwd(), 'apps/backend/content-pack'),
+    resolve(__dirname, '..', '..', '..', 'content-pack'),
+  ];
+}
+
+/** Asset ids present in the on-disk content-pack manifest (and file exists). */
+export function loadContentPackAssetIds(): Set<string> {
+  if (cachedPackAssetIds) return cachedPackAssetIds;
+  const ids = new Set<string>();
+  for (const root of contentPackRootCandidates()) {
+    const manifestPath = resolve(root, 'manifest.json');
+    if (!existsSync(manifestPath)) continue;
+    try {
+      const parsed = JSON.parse(readFileSync(manifestPath, 'utf8')) as {
+        assets?: Array<{ assetId?: string; relativePath?: string }>;
+      };
+      if (!Array.isArray(parsed.assets)) continue;
+      for (const asset of parsed.assets) {
+        const assetId = asset.assetId?.trim();
+        const relativePath = asset.relativePath?.trim();
+        if (!assetId || !relativePath) continue;
+        const absolute = resolve(root, relativePath);
+        if (!absolute.startsWith(root)) continue;
+        if (!existsSync(absolute)) continue;
+        ids.add(assetId);
+      }
+      if (ids.size > 0) {
+        cachedPackAssetIds = ids;
+        return ids;
+      }
+    } catch {
+      // try next candidate
+    }
+  }
+  cachedPackAssetIds = ids;
+  return ids;
+}
+
+/** Test helper — drop the cached pack id set after mutating fixtures. */
+export function resetContentPackAssetIdCache(): void {
+  cachedPackAssetIds = null;
+}
+
+function audioQuestionAssetsAvailable(q: Record<string, unknown>): boolean {
+  const audioAssetId = str(q['audioAssetId']);
+  if (!audioAssetId) return false;
+  const packIds = loadContentPackAssetIds();
+  // Unit tests / empty pack: do not block materialization.
+  if (packIds.size === 0) return true;
+  if (!packIds.has(audioAssetId)) return false;
+  const visualizationAssetId = str(q['visualizationAssetId']);
+  if (visualizationAssetId && !packIds.has(visualizationAssetId)) {
+    return false;
+  }
+  return true;
+}
 
 export function loadGeographyMaps(): GeoMap[] {
   if (cachedMaps) return cachedMaps;
@@ -653,9 +729,14 @@ function pickAudioQuestion(
       optionCopy: server['optionCopy'],
     };
   }
-  const artist = questions.filter((q) => q['answerTarget'] === 'artist');
-  const track = questions.filter((q) => q['answerTarget'] === 'track');
-  let pool = questions;
+  // Prefer clips that still exist in the content pack. Studio uploads written
+  // into an ephemeral container pack disappear after rebuild — phones may keep
+  // a partial cache, which looks like "some audio plays, some don't".
+  const playable = questions.filter(audioQuestionAssetsAvailable);
+  const source = playable.length > 0 ? playable : questions;
+  const artist = source.filter((q) => q['answerTarget'] === 'artist');
+  const track = source.filter((q) => q['answerTarget'] === 'track');
+  let pool = source;
   if (lastTarget === 'artist' && track.length > 0) {
     pool = track;
   } else if (lastTarget === 'track' && artist.length > 0) {
@@ -701,6 +782,107 @@ function pinMultipleChoiceQuestion(
   } else {
     delete client['optionTexts'];
   }
+}
+
+function pinCommonWordQuestion(
+  definition: ChallengeDefinition,
+  q: Record<string, unknown>,
+): void {
+  const server = definition.serverConfig;
+  const client = definition.clientConfig;
+  const optionKeys = Array.isArray(q['optionKeys'])
+    ? (q['optionKeys'] as string[])
+    : [];
+  const shuffled = shuffleCopy(optionKeys);
+  server['questionKey'] = q['questionKey'];
+  server['optionKeys'] = shuffled;
+  server['correctOptionKey'] = q['correctOptionKey'];
+  // Keep the bank intact; pinned fields overlay for evaluation.
+  client['questionKey'] = q['questionKey'];
+  client['optionKeys'] = shuffled;
+
+  const titleText =
+    triviaCopyText(server['titleCopy']) ?? triviaCopyText(q['titleCopy']);
+  if (titleText) {
+    client['titleText'] = titleText;
+  } else {
+    delete client['titleText'];
+  }
+  const instructionText =
+    triviaCopyText(server['instructionCopy']) ??
+    triviaCopyText(q['instructionCopy']);
+  if (instructionText) {
+    client['instructionText'] = instructionText;
+  } else {
+    delete client['instructionText'];
+  }
+
+  const rawClues = Array.isArray(q['clues'])
+    ? (q['clues'] as Array<Record<string, unknown>>)
+    : [];
+  const publicClues: Array<Record<string, unknown>> = [];
+  for (const clue of rawClues.slice(0, 3)) {
+    const text = triviaCopyText(clue['textCopy']);
+    const id = typeof clue['clueId'] === 'string' ? clue['clueId'] : '';
+    if (!id || !text) continue;
+    const entry: Record<string, unknown> = { id, text };
+    const hint = clue['visualHint'];
+    if (typeof hint === 'string' && hint.length > 0) {
+      entry['visualHint'] = hint;
+    }
+    publicClues.push(entry);
+  }
+  client['clues'] = publicClues;
+
+  const optionCopy =
+    q['optionCopy'] &&
+    typeof q['optionCopy'] === 'object' &&
+    !Array.isArray(q['optionCopy'])
+      ? (q['optionCopy'] as Record<string, unknown>)
+      : {};
+  const optionTexts: Record<string, string> = {};
+  for (const key of shuffled) {
+    const text = triviaCopyText(optionCopy[key]);
+    if (text) optionTexts[key] = text;
+  }
+  if (Object.keys(optionTexts).length > 0) {
+    client['optionTexts'] = optionTexts;
+  } else {
+    delete client['optionTexts'];
+  }
+
+  delete client['correctOptionKey'];
+  delete client['relationshipCopy'];
+  delete client['titleCopy'];
+  delete client['instructionCopy'];
+  delete client['optionCopy'];
+  delete client['questions'];
+
+  if (
+    typeof client['backgroundSfxAssetId'] !== 'string' ||
+    (client['backgroundSfxAssetId'] as string).length === 0
+  ) {
+    client['backgroundSfxAssetId'] = 'common_word.background';
+  }
+}
+
+function pickCommonWordQuestion(
+  server: Record<string, unknown>,
+): Record<string, unknown> {
+  const questions = readQuestionBank(server);
+  if (questions.length > 0) {
+    return questions[randomInt(0, questions.length)]!;
+  }
+  // Legacy single-question shape from migration 044.
+  return {
+    questionKey: server['questionKey'],
+    clues: server['clues'],
+    optionKeys: server['optionKeys'],
+    correctOptionKey: server['correctOptionKey'],
+    optionCopy: server['optionCopy'],
+    titleCopy: server['titleCopy'],
+    instructionCopy: server['instructionCopy'],
+  };
 }
 
 const AUDIO_TARGET_BADGE: Record<string, string> = {
@@ -809,6 +991,11 @@ export function materializePack31Round(
 
   if (definition.engineId === TRIVIA_MULTIPLE_CHOICE_ENGINE_ID) {
     pinMultipleChoiceQuestion(definition, pickTriviaQuestion(server));
+    return;
+  }
+
+  if (definition.engineId === TRIVIA_COMMON_WORD_ENGINE_ID) {
+    pinCommonWordQuestion(definition, pickCommonWordQuestion(server));
     return;
   }
 

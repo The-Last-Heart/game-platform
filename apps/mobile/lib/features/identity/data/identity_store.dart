@@ -5,6 +5,7 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
 import 'countries.dart';
 import 'display_name_moderation.dart';
+import 'app_package_info.dart';
 
 /// Lightweight local player identity for RC1 (no consumer auth).
 @immutable
@@ -19,12 +20,16 @@ class PlayerIdentity {
   final String avatarColor;
   final String countryCode;
 
-  Map<String, dynamic> toCommandPayload({required String playerId}) =>
+  Map<String, dynamic> toCommandPayload({
+    required String playerId,
+    ClientRuntimeMetadata? runtime,
+  }) =>
       <String, dynamic>{
         'displayName': displayName,
         'avatarColor': avatarColor,
         'countryCode': countryCode,
         'playerId': playerId,
+        if (runtime != null) ...runtime.toJson(),
       };
 
   PlayerIdentity copyWith({

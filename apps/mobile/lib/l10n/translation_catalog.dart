@@ -12,6 +12,18 @@ abstract final class TranslationKeys {
   static const String errorsMandatoryUpdate = 'errors.mandatory_update';
   static const String errorsContentUnavailable = 'errors.content_unavailable';
 
+  static const String appUpdateTitle = 'app.update.title';
+  static const String appUpdateBody = 'app.update.body';
+  static const String appUpdateNow = 'app.update.now';
+  static const String appUpdateRetry = 'app.update.retry';
+  static const String roomVersionOlderTitle = 'room.version.older_title';
+  static const String roomVersionOlderBody = 'room.version.older_body';
+  static const String roomVersionNewerTitle = 'room.version.newer_title';
+  static const String roomVersionNewerBody = 'room.version.newer_body';
+  static const String roomVersionUpdateNow = 'room.version.update_now';
+  static const String roomVersionCreateRoom = 'room.version.create_room';
+  static const String roomVersionCancel = 'room.version.cancel';
+
   // ── LH-003 Home / Dev ──
   static const String homeDevPlay = 'home.dev_play';
   static const String homeDevSubtitle = 'home.dev_subtitle';

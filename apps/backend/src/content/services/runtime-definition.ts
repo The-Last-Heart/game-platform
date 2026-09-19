@@ -16,7 +16,10 @@ export function toRuntimeChallengeDefinition(
     serverConfig: def.serverConfig,
   });
   const serverConfig: Record<string, unknown> = { ...filled.serverConfig };
-  if (def.engineId === 'precision.ring_lock' || def.engineId === 'laser.routing') {
+  if (
+    def.engineId === 'precision.ring_lock' ||
+    def.engineId === 'laser.routing'
+  ) {
     serverConfig['difficulty'] = def.difficulty;
   }
   let durationMs = filled.durationMs;
@@ -44,5 +47,7 @@ export function toRuntimeChallengeDefinition(
     choiceKeys: def.choiceKeys,
     clientConfig: filled.clientConfig,
     serverConfig,
+    minAppVersion: def.minAppVersion,
+    requiredCapabilities: [...(def.requiredCapabilities ?? [])],
   };
 }

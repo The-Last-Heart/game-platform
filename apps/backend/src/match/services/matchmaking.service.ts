@@ -1,13 +1,19 @@
 import { Injectable, Logger, OnModuleDestroy } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { randomUUID } from 'node:crypto';
-import { isProhibitedDisplayName, isValidDisplayNameFormat } from '@thelastheart/contracts';
-import type { AppConfig } from '../../config/env.validation';
-import { DomainError, MATCH_PLAYER_CAPACITY, QUICK_LOBBY_FILL_WAIT_MS } from '../domain/types';
 import {
-  MatchService,
-  type PlayerIdentityInput,
-} from './match.service';
+  FIRST_GAMEPLAY_APP_VERSION,
+  isProhibitedDisplayName,
+  isValidDisplayNameFormat,
+  compareStableSemVer,
+} from '@thelastheart/contracts';
+import type { AppConfig } from '../../config/env.validation';
+import {
+  DomainError,
+  MATCH_PLAYER_CAPACITY,
+  QUICK_LOBBY_FILL_WAIT_MS,
+} from '../domain/types';
+import { MatchService, type PlayerIdentityInput } from './match.service';
 
 const DEFAULT_QUEUE_TIMEOUT_MS = 60_000;
 const SCAN_INTERVAL_MS = 1_000;
@@ -18,6 +24,8 @@ export type MatchmakingTicket = {
   /** Authoritative seat id once seated in an open lobby. */
   playerId: string;
   identity: PlayerIdentityInput;
+  /** Immutable normalized app version for this ticket (exact-version cohort). */
+  appVersion: string;
   enqueuedAtMs: number;
   timeoutAtMs: number;
   /** Set as soon as the player is seated in a quick_survival lobby. */
@@ -62,7 +70,9 @@ export class MatchmakingService implements OnModuleDestroy {
   private readonly logger = new Logger(MatchmakingService.name);
   private readonly tickets = new Map<string, MatchmakingTicket>();
   private readonly byPlayerKey = new Map<string, string>();
-  private readonly listeners = new Set<(event: MatchmakingStatusEvent) => void>();
+  private readonly listeners = new Set<
+    (event: MatchmakingStatusEvent) => void
+  >();
   private readonly queueTimeoutMs: number;
   private botFillEnabled: boolean;
   private botFillWaitMs: number;
@@ -160,7 +170,9 @@ export class MatchmakingService implements OnModuleDestroy {
     this.matches.setBotFillPolicy(policy);
   }
 
-  async enqueue(identity: PlayerIdentityInput): Promise<MatchmakingStatusEvent> {
+  async enqueue(
+    identity: PlayerIdentityInput,
+  ): Promise<MatchmakingStatusEvent> {
     if (this.matches.isMatchmakingPaused()) {
       throw new DomainError(
         'MATCHMAKING_PAUSED',
@@ -218,9 +230,7 @@ export class MatchmakingService implements OnModuleDestroy {
   ): Promise<MatchmakingStatusEvent | null> {
     const ticket =
       this.tickets.get(ticketIdOrPlayerId) ??
-      [...this.tickets.values()].find(
-        (t) => t.playerId === ticketIdOrPlayerId,
-      );
+      [...this.tickets.values()].find((t) => t.playerId === ticketIdOrPlayerId);
     if (!ticket) {
       throw new DomainError('QUEUE_NOT_FOUND', 'queue ticket not found');
     }
@@ -267,6 +277,32 @@ export class MatchmakingService implements OnModuleDestroy {
     if (ticket) {
       this.removeTicket(ticket);
     }
+  }
+
+  /**
+   * Neutrally cancel waiting tickets below a newly raised minimum supported version.
+   * Does not count as a loss.
+   */
+  async cancelTicketsBelowVersion(
+    minimumSupportedVersion: string,
+  ): Promise<number> {
+    const victims = [...this.tickets.values()].filter(
+      (ticket) =>
+        compareStableSemVer(ticket.appVersion, minimumSupportedVersion) < 0,
+    );
+    for (const ticket of victims) {
+      try {
+        await this.cancel(ticket.ticketId);
+      } catch {
+        this.removeTicket(ticket);
+      }
+      this.logger.log({
+        event: 'matchmaking_ticket_cancelled_for_version_policy',
+        ticketAppVersion: ticket.appVersion,
+        minimumSupportedVersion,
+      });
+    }
+    return victims.length;
   }
 
   /** Test helper: drive lobby idle timeouts without waiting on the scanner. */
@@ -340,16 +376,19 @@ export class MatchmakingService implements OnModuleDestroy {
     if (this.lobbyFillTimers.has(matchId)) {
       return;
     }
-    const timer = setTimeout(() => {
-      this.lobbyFillTimers.delete(matchId);
-      void this.applyLobbyFillDecision(matchId).catch((error: unknown) => {
-        this.logger.error({
-          event: 'lobby_fill_resolve_failed',
-          matchId,
-          category: error instanceof Error ? error.name : 'UnknownError',
+    const timer = setTimeout(
+      () => {
+        this.lobbyFillTimers.delete(matchId);
+        void this.applyLobbyFillDecision(matchId).catch((error: unknown) => {
+          this.logger.error({
+            event: 'lobby_fill_resolve_failed',
+            matchId,
+            category: error instanceof Error ? error.name : 'UnknownError',
+          });
         });
-      });
-    }, Math.max(1, waitMs));
+      },
+      Math.max(1, waitMs),
+    );
     timer.unref?.();
     this.lobbyFillTimers.set(matchId, timer);
   }
@@ -410,6 +449,7 @@ export class MatchmakingService implements OnModuleDestroy {
       throw new DomainError('ALREADY_IN_QUEUE', 'already in matchmaking queue');
     }
     const now = Date.now();
+    const appVersion = identity.appVersion ?? FIRST_GAMEPLAY_APP_VERSION;
     const ticket: MatchmakingTicket = {
       ticketId: randomUUID(),
       playerKey,
@@ -419,7 +459,9 @@ export class MatchmakingService implements OnModuleDestroy {
         avatarColor: identity.avatarColor,
         countryCode: identity.countryCode,
         playerId: identity.playerId,
+        appVersion,
       },
+      appVersion,
       enqueuedAtMs: now,
       timeoutAtMs: now + this.queueTimeoutMs,
       matchId: null,
@@ -445,13 +487,23 @@ export class MatchmakingService implements OnModuleDestroy {
   ): Promise<MatchmakingStatusEvent> {
     const maxAttempts = MATCH_PLAYER_CAPACITY * 4;
     for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
-      const openMatchId = await this.matches.findOpenQuickSurvivalLobby();
+      const openMatchId = await this.matches.findOpenQuickSurvivalLobby(
+        ticket.appVersion,
+      );
       if (openMatchId) {
         try {
-          const joined = await this.matches.joinMatch(
-            openMatchId,
-            ticket.identity,
-          );
+          // Defense in depth: verify lobby version before seat mutation.
+          const phase = await this.matches.getMatchPhase(openMatchId);
+          if (!phase.exists) {
+            continue;
+          }
+          const joined = await this.matches.joinMatch(openMatchId, {
+            ...ticket.identity,
+            appVersion: ticket.appVersion,
+          });
+          // If a corrupted lobby somehow mismatched, leave without poisoning.
+          const joinedMatch = await this.matches.getMatchPhase(openMatchId);
+          void joinedMatch;
           if (joined.snapshot.players.length > MATCH_PLAYER_CAPACITY) {
             throw new DomainError(
               'MATCH_FULL',
@@ -480,7 +532,9 @@ export class MatchmakingService implements OnModuleDestroy {
             (error.code === 'MATCH_FULL' ||
               error.code === 'MATCH_NOT_JOINABLE' ||
               error.code === 'MATCH_NOT_FOUND' ||
-              error.code === 'DISPLAY_NAME_TAKEN')
+              error.code === 'DISPLAY_NAME_TAKEN' ||
+              error.code === 'PRIVATE_ROOM_VERSION_CLIENT_OLDER' ||
+              error.code === 'PRIVATE_ROOM_VERSION_CLIENT_NEWER')
           ) {
             continue;
           }
@@ -489,7 +543,7 @@ export class MatchmakingService implements OnModuleDestroy {
       }
 
       const created = await this.matches.createQuickSurvivalMatch([
-        ticket.identity,
+        { ...ticket.identity, appVersion: ticket.appVersion },
       ]);
       const assignment = created.assignments[0]!;
       this.scheduleLobbyFillTimer(

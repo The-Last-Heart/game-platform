@@ -12,17 +12,37 @@ type AudioVisualizationPreviewProps = {
 
 const blobUrlCache = new Map<string, Promise<string>>();
 
+/** Drop a cached Studio audio blob (call after replace/upload). */
+export function invalidateStudioAudioObjectUrl(assetId: string): void {
+  const id = assetId.trim();
+  if (!id) return;
+  const pending = blobUrlCache.get(id);
+  blobUrlCache.delete(id);
+  if (!pending) return;
+  void pending
+    .then((url) => {
+      URL.revokeObjectURL(url);
+    })
+    .catch(() => {
+      /* ignore */
+    });
+}
+
 function studioAudioObjectUrl(assetId: string): Promise<string> {
   const cached = blobUrlCache.get(assetId);
   if (cached) return cached;
   const pending = fetch(
     `/api/admin/v1/content/pack/assets/${encodeURIComponent(assetId)}`,
-    { credentials: 'same-origin', cache: 'force-cache' },
+    // Never force-cache: a prior 404 (missing pack file) must not stick after
+    // replace/re-upload of the same content-hash asset id.
+    { credentials: 'same-origin', cache: 'no-store' },
   ).then(async (res) => {
     if (!res.ok) {
       throw new Error(`audio asset ${res.status}`);
     }
-    const blob = await res.blob();
+    const contentType = res.headers.get('content-type') ?? 'application/octet-stream';
+    const buffer = await res.arrayBuffer();
+    const blob = new Blob([buffer], { type: contentType.split(';')[0]!.trim() });
     return URL.createObjectURL(blob);
   });
   blobUrlCache.set(assetId, pending);
@@ -311,6 +331,9 @@ export function StudioAudioClipPreview({
         onEnded={() => {
           playingRef.current = false;
           setPlaying(false);
+        }}
+        onError={() => {
+          setLoadError(true);
         }}
       />
       {loadError ? (

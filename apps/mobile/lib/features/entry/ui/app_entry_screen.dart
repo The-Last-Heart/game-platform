@@ -12,6 +12,9 @@ import '../../../theme/lh_tokens.dart';
 import '../../content/content_asset_cache.dart';
 import '../../identity/data/identity_store.dart';
 import '../../identity/data/player_claim_client.dart';
+import '../../identity/data/app_package_info.dart';
+import '../../identity/data/mobile_version_policy_client.dart';
+import 'app_update_required_screen.dart';
 import '../../leaderboard/ui/leaderboard_screen.dart';
 import '../../match/protocol/realtime_messages.dart';
 import '../../match/session/match_session_controller.dart';
@@ -27,6 +30,7 @@ import 'onboarding_identity_screens.dart';
 
 enum _EntryPhase {
   loading,
+  updateRequired,
   onboarding,
   identity,
   home,
@@ -94,6 +98,8 @@ class _AppEntryScreenState extends State<AppEntryScreen>
   String? _assetStatusKey;
   bool _packSyncFailed = false;
   bool _packSyncing = false;
+  String? _updateMinimumVersion;
+  String? _updateStoreUrl;
   final TextEditingController _roomCodeController = TextEditingController();
   late final AnimationController _splashPulse;
   late final Animation<double> _splashScale;
@@ -227,6 +233,7 @@ class _AppEntryScreenState extends State<AppEntryScreen>
         return;
       case _EntryPhase.home:
       case _EntryPhase.loading:
+      case _EntryPhase.updateRequired:
       case _EntryPhase.onboarding:
       case _EntryPhase.identity:
         final DateTime now = DateTime.now();
@@ -334,7 +341,14 @@ class _AppEntryScreenState extends State<AppEntryScreen>
     if (_packSyncing) return;
     _packSyncing = true;
 
-    final String versionLabel = widget.appVersionLabel ?? '0.0.1';
+    String versionLabel = widget.appVersionLabel ?? '0.0.1';
+    try {
+      final ClientRuntimeMetadata meta =
+          await PackageInfoAppPackageInfo().readRuntimeMetadata();
+      versionLabel = meta.appVersion;
+    } catch (_) {
+      // Keep override / default when package info is unavailable (tests).
+    }
     if (mounted) {
       setState(() {
         _versionLabel = versionLabel;
@@ -347,6 +361,25 @@ class _AppEntryScreenState extends State<AppEntryScreen>
     try {
       final String? backendUrl = widget.backendBaseUrl;
       if (backendUrl != null && backendUrl.isNotEmpty) {
+        try {
+          final MobileVersionPolicy policy = await MobileVersionPolicyClient(
+            backendBaseUrl: backendUrl,
+            packageInfo: PackageInfoAppPackageInfo(),
+          ).fetchPolicy();
+          if (policy.updateRequired) {
+            if (mounted) {
+              setState(() {
+                _updateMinimumVersion = policy.minimumSupportedVersion;
+                _updateStoreUrl = policy.storeUrl;
+                _phase = _EntryPhase.updateRequired;
+              });
+            }
+            return;
+          }
+        } catch (_) {
+          // Unreachable policy must not be mislabeled as mandatory update.
+        }
+
         bool packReady = false;
         final ContentPackSyncFn sync =
             widget.contentPackSync ?? ContentAssetCache.instance.sync;
@@ -663,6 +696,15 @@ class _AppEntryScreenState extends State<AppEntryScreen>
               onRetry: _packSyncFailed
                   ? () => unawaited(_bootstrapEntry())
                   : null,
+            ),
+            _EntryPhase.updateRequired => AppUpdateRequiredScreen(
+              resolver: AppLocalization.of(context),
+              minimumVersion: _updateMinimumVersion ?? '0.0.1',
+              storeUrl: _updateStoreUrl ?? '',
+              onRetry: () async {
+                setState(() => _phase = _EntryPhase.loading);
+                await _bootstrapEntry();
+              },
             ),
             _EntryPhase.onboarding ||
             _EntryPhase.onboardingReplay => OnboardingScreen(

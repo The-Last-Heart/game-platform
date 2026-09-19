@@ -22,6 +22,8 @@ dependencies:
   path_provider: ^2.1.6
   crypto: ^3.0.7
   rive: ^0.14.11
+  package_info_plus: ^9.0.1
+  url_launcher: ^6.3.2
 
 dev_dependencies:
   flutter_test:
@@ -39,7 +41,7 @@ flutter:
     - family: NotoSansArabic
       fonts:
         - asset: assets/fonts/NotoSansArabic-Regular.ttf
-          weight: 400
+          weight: 400 
         - asset: assets/fonts/NotoSansArabic-Medium.ttf
           weight: 500
         - asset: assets/fonts/NotoSansArabic-SemiBold.ttf

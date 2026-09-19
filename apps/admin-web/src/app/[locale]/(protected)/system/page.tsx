@@ -1,4 +1,5 @@
 import { notFound } from 'next/navigation';
+import { AppVersionPolicyPanel } from '@/components/system/app-version-policy-panel';
 import { BotFillPolicyPanel } from '@/components/system/bot-fill-policy-panel';
 import { EmergencyControlsPanel } from '@/components/system/emergency-controls-panel';
 import { SystemStatusPanel } from '@/components/system/system-status-panel';
@@ -17,6 +18,7 @@ export default async function SystemPage({ params }: PageProps) {
   return (
     <>
       <SystemStatusPanel locale={rawLocale} />
+      <AppVersionPolicyPanel locale={rawLocale} />
       <EmergencyControlsPanel locale={rawLocale} />
       <BotFillPolicyPanel locale={rawLocale} />
     </>

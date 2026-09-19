@@ -198,6 +198,22 @@ const en = {
   'system.check.postgres': 'PostgreSQL',
   'system.check.redis': 'Redis',
 
+  'system.versionPolicyTitle': 'Mobile Application Version Policy',
+  'system.versionPolicySubtitle':
+    'Set the oldest app version allowed for online play. Raising the minimum blocks waiting rooms and new matches for older clients; running matches finish.',
+  'system.versionPolicyMinimum': 'Minimum supported version',
+  'system.versionPolicyAndroidUrl': 'Android store URL',
+  'system.versionPolicyIosUrl': 'iOS App Store URL',
+  'system.versionPolicySave': 'Save version policy',
+  'system.versionPolicySaved': 'Version policy updated',
+  'system.versionPolicyRevision': 'Policy revision',
+  'system.versionPolicyUpdatedAt': 'Last updated',
+  'system.versionPolicySessionsBelow':
+    'Connected sessions below current minimum',
+  'system.versionPolicyRaiseWarning':
+    'Raising the minimum cancels waiting Quick Survival tickets and waiting private rooms for older clients. Active running matches are not ejected.',
+  'system.versionPolicyConfirm': 'I confirm this version policy change',
+
   'liveOps.botFillTitle': 'Matchmaking bot-fill',
   'liveOps.botFillSubtitle':
     'When enabled, Quick Survival queues fill remaining seats with bots after the wait.',
@@ -501,10 +517,9 @@ const en = {
 
   'studio.capability.touch': 'Touch',
   'studio.capability.multitouch': 'Multi-touch',
-  'studio.capability.accelerometer': 'Accelerometer',
-  'studio.capability.gyroscope': 'Gyroscope',
-  'studio.capability.audio_output': 'Audio',
-  'studio.capability.haptics': 'Haptics',
+  'studio.capability.motion': 'Motion',
+  'studio.capability.microphone': 'Microphone',
+  'studio.capability.audio_playback': 'Audio playback',
 
   'studio.asset.sfxSuccess': 'Success sound',
   'studio.asset.sfxFail': 'Fail sound',
@@ -527,6 +542,7 @@ const en = {
   'studio.asset.laserLoopSfx': 'Laser beam loop',
   'studio.asset.laserReflectionSfx': 'Laser reflection',
   'studio.asset.laserHeartSfx': 'Laser heart power-on',
+  'studio.asset.commonWordBackgroundSfx': 'Common Word background bed',
 
   'studio.asset.hapticLight': 'Light haptic',
   'studio.asset.hapticMedium': 'Medium haptic',
@@ -567,7 +583,8 @@ const en = {
   'studio.preset.hold.standard': '3s',
   'studio.preset.hold.long': '4.5s',
   'studio.preset.tilt.center': 'Balanced center',
-  'studio.preset.app.any': 'Any version (0.0.0)',
+  'studio.preset.app.any': 'Any version (engine floor)',
+  'studio.preset.app.v001': '0.0.1+',
   'studio.preset.app.v010': '0.1.0+',
   'studio.preset.app.v100': '1.0.0+',
 
@@ -662,6 +679,7 @@ const en = {
   'studio.engine.pair_sync': 'Pair Sync',
   'studio.engine.risk_choice': 'Risk Choice',
   'studio.engine.multiple_choice': 'Multiple Choice',
+  'studio.engine.common_word': 'Common Word',
   'studio.engine.audio_multiple_choice': 'Guess the Audio',
   'studio.engine.select_on_map': 'Select on Map',
   'studio.engine.odd_one_out': 'Odd One Out',
@@ -844,6 +862,30 @@ const en = {
   'studio.field.fp.triviaRemoveQuestion': 'Remove question',
   'studio.field.fp.triviaAddAnswer': 'Add answer',
   'studio.field.fp.triviaRemoveAnswer': 'Remove',
+  'studio.field.fp.commonWordLead':
+    'One Common Word challenge holds a bank of questions. The match picks one question per round from this bank.',
+  'studio.field.fp.commonWordTitleAr': 'Title (Arabic)',
+  'studio.field.fp.commonWordTitleEn': 'Title (English)',
+  'studio.field.fp.commonWordInstructionAr': 'Instruction (Arabic)',
+  'studio.field.fp.commonWordInstructionEn': 'Instruction (English)',
+  'studio.field.fp.commonWordClueN': 'Clue {n}',
+  'studio.field.fp.commonWordClueAr': 'Clue text (Arabic)',
+  'studio.field.fp.commonWordClueEn': 'Clue text (English)',
+  'studio.field.fp.commonWordRelationshipAr':
+    'Relationship explanation (Arabic, private)',
+  'studio.field.fp.commonWordRelationshipEn':
+    'Relationship explanation (English, private)',
+  'studio.field.fp.commonWordRelationshipHint':
+    'Relationship explanations are for editorial review only and are never sent to players.',
+  'studio.field.fp.commonWordVisualHint': 'Visual hint (optional)',
+  'studio.field.fp.commonWordHintNone': 'None (neutral card)',
+  'studio.field.fp.commonWordHint.needle': 'Needle',
+  'studio.field.fp.commonWordHint.storm': 'Storm',
+  'studio.field.fp.commonWordHint.water': 'Water',
+  'studio.field.fp.commonWordHint.thread': 'Thread',
+  'studio.field.fp.commonWordHint.cloud': 'Cloud',
+  'studio.field.fp.commonWordHint.drop': 'Drop',
+  'studio.field.fp.commonWordHint.neutral': 'Neutral',
   'studio.field.fp.audioMcLead':
     'Players hear a short clip and pick one answer. Choose whether they identify the singer or the song, set the allowed clip length, upload MP3 or WAV audio, and mark the correct option. Arabic is what players see first.',
   'studio.field.fp.audioMcMaxDuration': 'Max clip length',
@@ -1149,6 +1191,8 @@ const en = {
   'studio.validation.tooLong': 'Value is too long',
   'studio.validation.invalidRange': 'Invalid range',
   'studio.validation.missingArabic': 'Arabic content is required',
+  'studio.validation.commonWord':
+    'Common Word requires three distinct Arabic clues, relationship explanations, and exactly one correct option',
   'studio.validation.audioRequired':
     'Each question needs a valid MP3 or WAV clip no longer than the allowed clip length before publishing.',
   'studio.validation.stroopVariants':

@@ -35,12 +35,17 @@ import {
   defaultServerConfig,
   ensureLaserRoutingRequiredAssets,
   ensurePassThePulseRequiredAssets,
+  ensureCommonWordRequiredAssets,
   mergeFogWipeRequiredAssets,
 } from './FamilyParamsFields';
 import {
   parseTriviaQuestions,
   triviaQuestionBankIssues,
 } from './trivia-question-bank';
+import {
+  commonWordBankIssues,
+  parseCommonWordBank,
+} from './common-word-question';
 import {
   parseAudioQuestions,
   parseMaxAudioDurationMs,
@@ -264,7 +269,7 @@ function defaultDraft(): DraftDefinition {
     roundMax: '',
     selectionWeight: 100,
     repetitionCooldownRounds: 0,
-    minAppVersion: '0.0.0',
+    minAppVersion: '0.0.1',
     requiredCapabilities: ['touch'],
     accessibilityFallbackKey: 'reaction.wait_for_signal.v1',
     requiredAssetIds: [],
@@ -461,6 +466,17 @@ function validateDraft(
       });
     }
   }
+  if (draft.engineId === 'trivia.common_word') {
+    const cwIssues = commonWordBankIssues(
+      parseCommonWordBank(draft.serverConfig),
+    );
+    if (cwIssues.length > 0) {
+      errors.push({
+        path: 'serverConfig',
+        message: t(locale, 'studio.validation.commonWord'),
+      });
+    }
+  }
   if (draft.engineId === 'audio.multiple_choice') {
     const audioIssues = audioQuestionBankIssues(
       parseAudioQuestions(draft.serverConfig),
@@ -638,6 +654,15 @@ function definitionToDraft(def: ChallengeDefinitionContract): DraftDefinition {
   }
   if (def.engineId === 'social.pass_the_pulse') {
     requiredAssetIds = ensurePassThePulseRequiredAssets(requiredAssetIds);
+  }
+  if (def.engineId === 'trivia.common_word') {
+    requiredAssetIds = ensureCommonWordRequiredAssets(requiredAssetIds);
+    if (
+      typeof clientConfig.backgroundSfxAssetId !== 'string' ||
+      !(clientConfig.backgroundSfxAssetId as string).trim()
+    ) {
+      clientConfig.backgroundSfxAssetId = 'common_word.background';
+    }
   }
   if (def.engineId === 'laser.routing') {
     requiredAssetIds = ensureLaserRoutingRequiredAssets(requiredAssetIds);
@@ -878,6 +903,8 @@ export function StudioChallengeEditor({
               )
             : entry.engineId === 'social.pass_the_pulse'
               ? ensurePassThePulseRequiredAssets([])
+              : entry.engineId === 'trivia.common_word'
+                ? ensureCommonWordRequiredAssets([])
               : entry.engineId === 'laser.routing'
                 ? ensureLaserRoutingRequiredAssets([])
                 : entry.engineId === 'audio.multiple_choice'

@@ -10,3 +10,4 @@ export * from './audit';
 export * from './matchmaking';
 export * from './content';
 export * from './emergency-controls';
+export * from './app-version-policy';

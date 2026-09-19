@@ -59,6 +59,10 @@ class ChallengeSfx {
   static const String defaultLaserHeartAssetId =
       'laser_routing.heart_power_on';
 
+  /// Common Word — looping atmospheric bed.
+  static const String defaultCommonWordBackgroundAssetId =
+      'common_word.background';
+
   Future<void> pulse({String assetId = defaultPulseAssetId}) async {
     try {
       await HapticFeedback.mediumImpact();

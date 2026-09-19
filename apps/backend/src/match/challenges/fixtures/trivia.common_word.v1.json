@@ -1,0 +1,119 @@
+{
+  "definitionId": "trivia.common_word.dev",
+  "definitionVersion": 1,
+  "engineId": "trivia.common_word",
+  "durationMs": 10000,
+  "heartPenaltyOnFailure": 1,
+  "energyRewardOnSuccess": 1,
+  "promptKey": "challenge.common_word.intro",
+  "choiceKeys": [],
+  "clientConfig": {
+    "categoryKey": "challenge.category.trivia",
+    "promptKey": "challenge.common_word.prompt",
+    "titleKey": "challenge.common_word.title",
+    "titleText": "الكلمة المشتركة",
+    "instructionText": "اختر كلمة ترتبط بالعبارات الثلاث",
+    "questionKey": "common_word.q.eye",
+    "clues": [
+      { "id": "clue.needle", "text": "الإبرة", "visualHint": "needle" },
+      { "id": "clue.storm", "text": "العاصفة", "visualHint": "storm" },
+      { "id": "clue.water", "text": "الماء", "visualHint": "water" }
+    ],
+    "optionKeys": [
+      "common_word.opt.eye",
+      "common_word.opt.heart",
+      "common_word.opt.head",
+      "common_word.opt.door"
+    ],
+    "optionTexts": {
+      "common_word.opt.eye": "عين",
+      "common_word.opt.heart": "قلب",
+      "common_word.opt.head": "رأس",
+      "common_word.opt.door": "باب"
+    },
+    "backgroundSfxAssetId": "common_word.background"
+  },
+  "serverConfig": {
+    "titleCopy": { "ar": "الكلمة المشتركة", "en": "The Common Word" },
+    "instructionCopy": {
+      "ar": "اختر كلمة ترتبط بالعبارات الثلاث",
+      "en": "Choose a word related to the three phrases"
+    },
+    "questions": [
+      {
+        "questionKey": "common_word.q.eye",
+        "clues": [
+          {
+            "clueId": "clue.needle",
+            "textCopy": { "ar": "الإبرة", "en": "The needle" },
+            "relationshipCopy": { "ar": "عين الإبرة", "en": "Eye of the needle" },
+            "visualHint": "needle"
+          },
+          {
+            "clueId": "clue.storm",
+            "textCopy": { "ar": "العاصفة", "en": "The storm" },
+            "relationshipCopy": { "ar": "عين العاصفة", "en": "Eye of the storm" },
+            "visualHint": "storm"
+          },
+          {
+            "clueId": "clue.water",
+            "textCopy": { "ar": "الماء", "en": "The water" },
+            "relationshipCopy": { "ar": "عين الماء", "en": "Eye of the spring" },
+            "visualHint": "water"
+          }
+        ],
+        "optionKeys": [
+          "common_word.opt.eye",
+          "common_word.opt.heart",
+          "common_word.opt.head",
+          "common_word.opt.door"
+        ],
+        "correctOptionKey": "common_word.opt.eye",
+        "optionCopy": {
+          "common_word.opt.eye": { "ar": "عين", "en": "Eye" },
+          "common_word.opt.heart": { "ar": "قلب", "en": "Heart" },
+          "common_word.opt.head": { "ar": "رأس", "en": "Head" },
+          "common_word.opt.door": { "ar": "باب", "en": "Door" }
+        }
+      },
+      {
+        "questionKey": "common_word.q.head",
+        "clues": [
+          {
+            "clueId": "clue.year",
+            "textCopy": { "ar": "السنة", "en": "The year" },
+            "relationshipCopy": { "ar": "رأس السنة", "en": "New Year" },
+            "visualHint": "neutral"
+          },
+          {
+            "clueId": "clue.money",
+            "textCopy": { "ar": "المال", "en": "Money" },
+            "relationshipCopy": { "ar": "رأس المال", "en": "Capital" },
+            "visualHint": "neutral"
+          },
+          {
+            "clueId": "clue.page",
+            "textCopy": { "ar": "الصفحة", "en": "The page" },
+            "relationshipCopy": { "ar": "رأس الصفحة", "en": "Page header" },
+            "visualHint": "neutral"
+          }
+        ],
+        "optionKeys": [
+          "common_word.opt2.head",
+          "common_word.opt2.eye",
+          "common_word.opt2.hand",
+          "common_word.opt2.foot"
+        ],
+        "correctOptionKey": "common_word.opt2.head",
+        "optionCopy": {
+          "common_word.opt2.head": { "ar": "رأس", "en": "Head" },
+          "common_word.opt2.eye": { "ar": "عين", "en": "Eye" },
+          "common_word.opt2.hand": { "ar": "يد", "en": "Hand" },
+          "common_word.opt2.foot": { "ar": "قدم", "en": "Foot" }
+        }
+      }
+    ]
+  },
+  "difficulty": "easy",
+  "requiredAssetIds": ["common_word.background"]
+}

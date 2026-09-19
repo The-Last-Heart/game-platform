@@ -14,7 +14,7 @@ describe('ContentPackService', () => {
     const service = new ContentPackService();
     const manifest = service.getManifest();
     expect(manifest.packId).toBe('lh.local.content.v1');
-    expect(manifest.packVersion).toBe(16);
+    expect(manifest.packVersion).toBe(17);
     expect(manifest.assets.some((a) => a.assetId === 'sfx.pulse')).toBe(true);
     expect(
       manifest.assets.some((a) => a.assetId === 'fog_wipe.reveal_content'),
@@ -86,11 +86,17 @@ describe('ContentPackService', () => {
     expect(
       manifest.assets.some((a) => a.assetId === 'laser_routing.reflection'),
     ).toBe(true);
+    expect(
+      manifest.assets.some((a) => a.assetId === 'common_word.background'),
+    ).toBe(true);
     const laserLoop = service.getAsset('laser_routing.laser_loop');
     expect(laserLoop.meta.contentType).toBe('audio/mpeg');
     expect(laserLoop.body.byteLength).toBe(laserLoop.meta.bytes);
     const reflection = service.getAsset('laser_routing.reflection');
     expect(reflection.meta.contentType).toBe('audio/mpeg');
     expect(reflection.body.byteLength).toBe(reflection.meta.bytes);
+    const commonWordBed = service.getAsset('common_word.background');
+    expect(commonWordBed.meta.contentType).toBe('audio/mpeg');
+    expect(commonWordBed.body.byteLength).toBe(commonWordBed.meta.bytes);
   });
 });

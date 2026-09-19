@@ -198,6 +198,22 @@ const ar: Record<MessageKey, string> = {
   'system.check.postgres': 'PostgreSQL',
   'system.check.redis': 'Redis',
 
+  'system.versionPolicyTitle': 'سياسة إصدارات تطبيق الهاتف',
+  'system.versionPolicySubtitle':
+    'حدد أقدم إصدار مسموح للعب عبر الإنترنت. رفع الحد الأدنى يمنع الغرف المنتظرة والمباريات الجديدة للإصدارات الأقدم؛ المباريات الجارية تكتمل.',
+  'system.versionPolicyMinimum': 'أقدم إصدار مدعوم',
+  'system.versionPolicyAndroidUrl': 'رابط متجر Android',
+  'system.versionPolicyIosUrl': 'رابط App Store لنظام iOS',
+  'system.versionPolicySave': 'حفظ سياسة الإصدارات',
+  'system.versionPolicySaved': 'تم تحديث سياسة الإصدارات',
+  'system.versionPolicyRevision': 'مراجعة السياسة',
+  'system.versionPolicyUpdatedAt': 'آخر تحديث',
+  'system.versionPolicySessionsBelow':
+    'الجلسات المتصلة دون الحد الأدنى الحالي',
+  'system.versionPolicyRaiseWarning':
+    'رفع الحد الأدنى يلغي تذاكر النجاة السريعة وغرف الانتظار الخاصة للإصدارات الأقدم. لا تُطرد المباريات الجارية.',
+  'system.versionPolicyConfirm': 'أؤكد تغيير سياسة الإصدارات',
+
   'liveOps.botFillTitle': 'ملء المقاعد بالروبوتات',
   'liveOps.botFillSubtitle':
     'عند التفعيل، تُملأ مقاعد النجاة السريعة المتبقية بروبوتات بعد الانتظار.',
@@ -481,10 +497,9 @@ const ar: Record<MessageKey, string> = {
 
   'studio.capability.touch': 'لمس',
   'studio.capability.multitouch': 'لمس متعدد',
-  'studio.capability.accelerometer': 'مقياس التسارع',
-  'studio.capability.gyroscope': 'جيروسكوب',
-  'studio.capability.audio_output': 'صوت',
-  'studio.capability.haptics': 'اهتزاز',
+  'studio.capability.motion': 'حركة',
+  'studio.capability.microphone': 'ميكروفون',
+  'studio.capability.audio_playback': 'تشغيل الصوت',
 
   'studio.asset.sfxSuccess': 'صوت النجاح',
   'studio.asset.sfxFail': 'صوت الفشل',
@@ -507,6 +522,7 @@ const ar: Record<MessageKey, string> = {
   'studio.asset.laserLoopSfx': 'حلقة شعاع الليزر',
   'studio.asset.laserReflectionSfx': 'انعكاس الليزر',
   'studio.asset.laserHeartSfx': 'إضاءة قلب الليزر',
+  'studio.asset.commonWordBackgroundSfx': 'موسيقى خلفية الكلمة المشتركة',
 
   'studio.asset.fogRevealContent': 'كشف الضباب الافتراضي',
   'studio.asset.fogDensity': 'طبقة كثافة الضباب',
@@ -563,7 +579,8 @@ const ar: Record<MessageKey, string> = {
   'studio.preset.hold.standard': '٣ث',
   'studio.preset.hold.long': '٤.٥ث',
   'studio.preset.tilt.center': 'توازن في الوسط',
-  'studio.preset.app.any': 'أي إصدار (0.0.0)',
+  'studio.preset.app.any': 'أي إصدار (حد المحرك)',
+  'studio.preset.app.v001': '0.0.1+',
   'studio.preset.app.v010': '0.1.0+',
   'studio.preset.app.v100': '1.0.0+',
 
@@ -657,6 +674,7 @@ const ar: Record<MessageKey, string> = {
   'studio.engine.pair_sync': 'المزامنة الثنائية',
   'studio.engine.risk_choice': 'اختيار المخاطرة',
   'studio.engine.multiple_choice': 'اختيار متعدد',
+  'studio.engine.common_word': 'الكلمة المشتركة',
   'studio.engine.audio_multiple_choice': 'خَمّن الصوت',
   'studio.engine.select_on_map': 'اختيار على الخريطة',
   'studio.engine.odd_one_out': 'الشكل المختلف',
@@ -822,6 +840,30 @@ const ar: Record<MessageKey, string> = {
   'studio.field.fp.triviaRemoveQuestion': 'حذف السؤال',
   'studio.field.fp.triviaAddAnswer': 'إضافة إجابة',
   'studio.field.fp.triviaRemoveAnswer': 'حذف',
+  'studio.field.fp.commonWordLead':
+    'تحدٍ واحد من نوع الكلمة المشتركة يحتوي بنك أسئلة. يختار المطابقة سؤالاً واحداً في كل جولة من هذا البنك.',
+  'studio.field.fp.commonWordTitleAr': 'العنوان (العربية)',
+  'studio.field.fp.commonWordTitleEn': 'العنوان (الإنجليزية)',
+  'studio.field.fp.commonWordInstructionAr': 'التعليمات (العربية)',
+  'studio.field.fp.commonWordInstructionEn': 'التعليمات (الإنجليزية)',
+  'studio.field.fp.commonWordClueN': 'الدليل {n}',
+  'studio.field.fp.commonWordClueAr': 'نص الدليل (العربية)',
+  'studio.field.fp.commonWordClueEn': 'نص الدليل (الإنجليزية)',
+  'studio.field.fp.commonWordRelationshipAr':
+    'شرح العلاقة (العربية، خاص بالمحرر)',
+  'studio.field.fp.commonWordRelationshipEn':
+    'شرح العلاقة (الإنجليزية، خاص بالمحرر)',
+  'studio.field.fp.commonWordRelationshipHint':
+    'شروح العلاقات للمراجعة التحريرية فقط ولا تُرسل للاعبين أبداً.',
+  'studio.field.fp.commonWordVisualHint': 'تلميح بصري (اختياري)',
+  'studio.field.fp.commonWordHintNone': 'بدون (بطاقة محايدة)',
+  'studio.field.fp.commonWordHint.needle': 'إبرة',
+  'studio.field.fp.commonWordHint.storm': 'عاصفة',
+  'studio.field.fp.commonWordHint.water': 'ماء',
+  'studio.field.fp.commonWordHint.thread': 'خيط',
+  'studio.field.fp.commonWordHint.cloud': 'سحاب',
+  'studio.field.fp.commonWordHint.drop': 'قطرة',
+  'studio.field.fp.commonWordHint.neutral': 'محايد',
   'studio.field.fp.audioMcLead':
     'يسمع اللاعبون مقطعاً قصيراً ويختارون إجابة واحدة. حدد إن كان المطلوب اسم المغني أو اسم الأغنية، اضبط أقصى طول للمقطع، ارفع ملفاً MP3 أو WAV، وعيّن الإجابة الصحيحة. العربية هي ما يظهر أولاً.',
   'studio.field.fp.audioMcMaxDuration': 'أقصى طول للمقطع',
@@ -1101,6 +1143,8 @@ const ar: Record<MessageKey, string> = {
   'studio.validation.tooLong': 'القيمة طويلة جداً',
   'studio.validation.invalidRange': 'نطاق غير صالح',
   'studio.validation.missingArabic': 'المحتوى العربي مطلوب',
+  'studio.validation.commonWord':
+    'الكلمة المشتركة تتطلب ثلاثة أدلة عربية متمايزة وشروح علاقات وخياراً صحيحاً واحداً',
   'studio.validation.audioRequired':
     'كل سؤال يحتاج مقطعاً صالحاً بصيغة MP3 أو WAV لا يتجاوز الطول المسموح قبل النشر.',
   'studio.validation.stroopVariants':

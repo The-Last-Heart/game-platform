@@ -48,6 +48,13 @@ import {
   ZONE_PRESETS,
 } from './studio-catalog-options';
 import { AudioMultipleChoiceFields } from './AudioMultipleChoiceFields';
+import { CommonWordFields } from './CommonWordFields';
+import { McOptionListEditor } from './McOptionListEditor';
+import {
+  commonWordClientPreview,
+  defaultCommonWordBank,
+  serializeCommonWordBank,
+} from './common-word-question';
 import { StudioAudioClipPreview } from './AudioVisualizationPreview';
 import {
   audioClientPreview,
@@ -95,6 +102,16 @@ function defaultFogWipeAssetIds(revealContent: string): Record<string, string> {
 export function ensurePassThePulseRequiredAssets(current: string[]): string[] {
   if (current.includes('sfx.pulse')) return current;
   return ['sfx.pulse', ...current];
+}
+
+export const COMMON_WORD_REQUIRED_ASSETS = [
+  'common_word.background',
+] as const;
+
+export function ensureCommonWordRequiredAssets(current: string[]): string[] {
+  const next = new Set(current);
+  for (const id of COMMON_WORD_REQUIRED_ASSETS) next.add(id);
+  return [...next];
 }
 
 export const LASER_ROUTING_REQUIRED_ASSETS = [
@@ -336,6 +353,13 @@ export function defaultClientConfig(
         ],
         footerKey: 'challenge.trivia.footer',
       };
+    case 'trivia.common_word':
+      return commonWordClientPreview(defaultCommonWordBank(), {
+        categoryKey: 'challenge.category.trivia',
+        promptKey: 'challenge.common_word.prompt',
+        titleKey: 'challenge.common_word.title',
+        backgroundSfxAssetId: 'common_word.background',
+      });
     case 'audio.multiple_choice':
       return audioClientPreview(defaultAudioQuestions()[0], {
         categoryKey: 'challenge.category.audio',
@@ -622,6 +646,8 @@ export function defaultServerConfig(
       return {
         questions: serializeTriviaQuestions(defaultTriviaQuestions()),
       };
+    case 'trivia.common_word':
+      return serializeCommonWordBank(defaultCommonWordBank());
     case 'audio.multiple_choice':
       return {
         maxAudioDurationMs: AUDIO_CLIP_DEFAULT_MAX_DURATION_MS,
@@ -2230,95 +2256,28 @@ function TriviaMultipleChoiceFields(props: FamilyParamsFieldsProps) {
               }}
             />
           </FieldGroup>
-          <fieldset className="studio-trivia-answers">
-            <legend>{lbl(locale, 'fp.triviaAnswers')}</legend>
-            {question.options.map((option, optionIndex) => (
-              <div key={option.key} className="studio-trivia-option-row">
-                <label className="studio-trivia-correct">
-                  <input
-                    type="radio"
-                    name={`fp-trivia-correct-${index}`}
-                    checked={question.correctOptionKey === option.key}
-                    disabled={disabled}
-                    onChange={() => {
-                      const next = [...questions];
-                      next[index] = {
-                        ...question,
-                        correctOptionKey: option.key,
-                      };
-                      commit(next);
-                    }}
-                  />
-                  <span>{lbl(locale, 'fp.triviaCorrectAnswer')}</span>
-                </label>
-                <FieldInput
-                  id={`fp-trivia-opt-ar-${index}-${optionIndex}`}
-                  label={lbl(locale, 'fp.triviaAnswerAr')}
-                  value={option.ar}
-                  disabled={disabled}
-                  dir="rtl"
-                  onChange={(e) => {
-                    const value = readFieldInputValue(e);
-                    const nextOptions = question.options.map((o) =>
-                      o.key === option.key ? { ...o, ar: value } : o,
-                    );
-                    const next = [...questions];
-                    next[index] = { ...question, options: nextOptions };
-                    commit(next);
-                  }}
-                />
-                <FieldInput
-                  id={`fp-trivia-opt-en-${index}-${optionIndex}`}
-                  label={lbl(locale, 'fp.triviaAnswerEn')}
-                  value={option.en}
-                  disabled={disabled}
-                  onChange={(e) => {
-                    const value = readFieldInputValue(e);
-                    const nextOptions = question.options.map((o) =>
-                      o.key === option.key ? { ...o, en: value } : o,
-                    );
-                    const next = [...questions];
-                    next[index] = { ...question, options: nextOptions };
-                    commit(next);
-                  }}
-                />
-                <div className="field studio-geo-remove">
-                  <label
-                    htmlFor={`fp-trivia-opt-remove-${index}-${optionIndex}`}
-                  >
-                    &nbsp;
-                  </label>
-                  <button
-                    id={`fp-trivia-opt-remove-${index}-${optionIndex}`}
-                    type="button"
-                    className="btn btn-ghost"
-                    disabled={disabled || question.options.length <= 2}
-                    onClick={() => {
-                      const next = [...questions];
-                      next[index] = removeTriviaOption(question, option.key);
-                      commit(next);
-                    }}
-                  >
-                    {lbl(locale, 'fp.triviaRemoveAnswer')}
-                  </button>
-                </div>
-              </div>
-            ))}
-            {question.options.length < 6 ? (
-              <button
-                type="button"
-                className="btn btn-secondary"
-                disabled={disabled}
-                onClick={() => {
-                  const next = [...questions];
-                  next[index] = addTriviaOption(question);
-                  commit(next);
-                }}
-              >
-                {lbl(locale, 'fp.triviaAddAnswer')}
-              </button>
-            ) : null}
-          </fieldset>
+          <McOptionListEditor
+            locale={locale}
+            options={question.options}
+            correctOptionKey={question.correctOptionKey}
+            disabled={disabled}
+            radioGroupName={`fp-trivia-correct-${index}`}
+            onChange={({ options, correctOptionKey }) => {
+              const next = [...questions];
+              next[index] = { ...question, options, correctOptionKey };
+              commit(next);
+            }}
+            onAdd={() => {
+              const next = [...questions];
+              next[index] = addTriviaOption(question);
+              commit(next);
+            }}
+            onRemove={(optionKey) => {
+              const next = [...questions];
+              next[index] = removeTriviaOption(question, optionKey);
+              commit(next);
+            }}
+          />
         </section>
       ))}
       {questions.length < 64 ? (
@@ -3104,6 +3063,8 @@ export function FamilyParamsFields(props: FamilyParamsFieldsProps) {
         return <GestureFogWipeFields {...props} />;
       case 'trivia.multiple_choice':
         return <TriviaMultipleChoiceFields {...props} />;
+      case 'trivia.common_word':
+        return <CommonWordFields {...props} />;
       case 'audio.multiple_choice':
         return <AudioMultipleChoiceFields {...props} />;
       case 'focus.stroop':

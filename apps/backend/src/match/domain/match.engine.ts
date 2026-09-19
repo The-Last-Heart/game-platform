@@ -1,5 +1,8 @@
 import { randomInt, randomUUID } from 'node:crypto';
-import { isProhibitedDisplayName, isValidDisplayNameFormat } from '@thelastheart/contracts';
+import {
+  isProhibitedDisplayName,
+  isValidDisplayNameFormat,
+} from '@thelastheart/contracts';
 import type {
   ChallengeDefinition,
   ChallengeEvaluatorRegistry,
@@ -693,6 +696,7 @@ export class MatchEngine {
       updatedAtMs: now,
       commandAcks: new Map(),
       releasePins: options?.releasePins ?? null,
+      gameplayVersion: options?.gameplayVersion ?? null,
       pinnedPlaylist: options?.pinnedPlaylist
         ? [...options.pinnedPlaylist]
         : [],
@@ -718,6 +722,8 @@ export class MatchEngine {
       avatarColor?: string;
       countryCode?: string;
       persistentPlayerId?: string;
+      /** Immutable application version for this seat (exact-version rooms). */
+      joinAppVersion?: string;
       /** Optional seat vitals (training retry carry-over). Defaults to initial. */
       hearts?: number;
       energy?: number;
@@ -791,6 +797,7 @@ export class MatchEngine {
       avatarColor: input.avatarColor,
       countryCode: input.countryCode,
       persistentPlayerId: input.persistentPlayerId,
+      joinAppVersion: input.joinAppVersion,
       ready: autoReady,
       // Bots are server-controlled fills — accepted immediately. Humans require
       // gateway finalizeJoin after live lease + credentials.
@@ -1277,6 +1284,7 @@ export class MatchEngine {
     } else if (
       challenge.engineId === 'trivia.multiple_choice' ||
       challenge.engineId === 'audio.multiple_choice' ||
+      challenge.engineId === 'trivia.common_word' ||
       challenge.engineId === 'geography.select_on_map' ||
       challenge.engineId === 'focus.odd_one_out' ||
       challenge.engineId === 'order.sequence_sort' ||
@@ -1523,6 +1531,7 @@ export class MatchEngine {
     } else if (
       pinned.engineId === 'trivia.multiple_choice' ||
       pinned.engineId === 'audio.multiple_choice' ||
+      pinned.engineId === 'trivia.common_word' ||
       pinned.engineId === 'geography.select_on_map' ||
       pinned.engineId === 'focus.odd_one_out' ||
       pinned.engineId === 'order.sequence_sort' ||
@@ -2226,14 +2235,20 @@ export class MatchEngine {
         next.commandAcks.set(input.commandId, ack);
         next.updatedAtMs = this.clock.nowMs();
 
-        const allSubmitted = nextChallenge.participatingPlayerIds.every((id) => {
-          const seat = next.players.get(id);
-          if (!seat || seat.status === 'spectator' || seat.status === 'left') {
-            return true;
-          }
-          const sub = nextChallenge.submissions.get(id);
-          return sub != null && sub.final !== false;
-        });
+        const allSubmitted = nextChallenge.participatingPlayerIds.every(
+          (id) => {
+            const seat = next.players.get(id);
+            if (
+              !seat ||
+              seat.status === 'spectator' ||
+              seat.status === 'left'
+            ) {
+              return true;
+            }
+            const sub = nextChallenge.submissions.get(id);
+            return sub != null && sub.final !== false;
+          },
+        );
         if (allSubmitted) {
           const resolved = this.resolveChallenge(next);
           return {
@@ -2336,14 +2351,20 @@ export class MatchEngine {
         next.commandAcks.set(input.commandId, ack);
         next.updatedAtMs = this.clock.nowMs();
 
-        const allSubmitted = nextChallenge.participatingPlayerIds.every((id) => {
-          const seat = next.players.get(id);
-          if (!seat || seat.status === 'spectator' || seat.status === 'left') {
-            return true;
-          }
-          const sub = nextChallenge.submissions.get(id);
-          return sub != null && sub.final !== false;
-        });
+        const allSubmitted = nextChallenge.participatingPlayerIds.every(
+          (id) => {
+            const seat = next.players.get(id);
+            if (
+              !seat ||
+              seat.status === 'spectator' ||
+              seat.status === 'left'
+            ) {
+              return true;
+            }
+            const sub = nextChallenge.submissions.get(id);
+            return sub != null && sub.final !== false;
+          },
+        );
         if (allSubmitted) {
           if (nextChallenge.laserRoutingState) {
             nextChallenge.laserRoutingState.successResolveAtMonoMs ??=
@@ -2644,7 +2665,8 @@ export class MatchEngine {
     ) {
       return { match, events: [] };
     }
-    const dueAt = match.currentChallenge.laserRoutingState?.successResolveAtMonoMs;
+    const dueAt =
+      match.currentChallenge.laserRoutingState?.successResolveAtMonoMs;
     if (dueAt == null || this.clock.monoMs() < dueAt) {
       return { match, events: [] };
     }
@@ -2769,8 +2791,7 @@ export class MatchEngine {
             reasonKey = 'result.timeout';
           }
         } else if (challenge.engineId === PRECISION_RING_LOCK_ENGINE_ID) {
-          const ringResult =
-            challenge.ringLockState?.players[playerId]?.result;
+          const ringResult = challenge.ringLockState?.players[playerId]?.result;
           if (ringResult === 'success') {
             outcome = 'success';
             reasonKey = 'result.success';

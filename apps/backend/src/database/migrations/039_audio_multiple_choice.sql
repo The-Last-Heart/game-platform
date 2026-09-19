@@ -108,7 +108,7 @@ BEGIN
     'selectionWeight', 100,
     'repetitionCooldownRounds', 1,
     'minAppVersion', '0.0.0',
-    'requiredCapabilities', '["audio_output"]'::jsonb,
+    'requiredCapabilities', '["audio_playback"]'::jsonb,
     'accessibilityFallbackKey', 'challenge.audio_mc.a11y_fallback',
     'requiredAssetIds', '["ca_44384e12ad9a80f1","cv_44384e12ad9a80f1","ca_76fc12197f19bd1b","cv_76fc12197f19bd1b"]'::jsonb
   );

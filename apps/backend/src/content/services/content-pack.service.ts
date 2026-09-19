@@ -14,6 +14,7 @@ import {
 } from '@nestjs/common';
 import sharp from 'sharp';
 import { ingestChallengeAudio } from '../audio';
+import { resetContentPackAssetIdCache } from '../../match/domain/engines/pack-31-evaluators';
 
 export type ContentPackAssetMeta = {
   assetId: string;
@@ -205,7 +206,25 @@ export class ContentPackService {
     const existingViz = this.manifest.assets.find(
       (a) => a.assetId === ingested.visualizationAssetId,
     );
-    if (existingAudio && existingViz) {
+    const audioPath =
+      existingAudio != null
+        ? resolve(this.rootDir, existingAudio.relativePath)
+        : null;
+    const vizPath =
+      existingViz != null
+        ? resolve(this.rootDir, existingViz.relativePath)
+        : null;
+    const audioOnDisk =
+      audioPath != null &&
+      audioPath.startsWith(this.rootDir) &&
+      existsSync(audioPath);
+    const vizOnDisk =
+      vizPath != null &&
+      vizPath.startsWith(this.rootDir) &&
+      existsSync(vizPath);
+    // Same content-hash can be re-uploaded after a wiped pack volume; only
+    // short-circuit when both files are actually present on disk.
+    if (existingAudio && existingViz && audioOnDisk && vizOnDisk) {
       return {
         audio: { ...existingAudio },
         visualization: { ...existingViz },
@@ -302,6 +321,8 @@ export class ContentPackService {
     };
     this.persistManifestAtomic(nextManifest);
     this.manifest = this.loadManifestFromDisk();
+    // Match materialization caches pack ids — drop after Studio registers clips.
+    resetContentPackAssetIdCache();
     const registered = this.manifest.assets.find(
       (a) => a.assetId === input.assetId,
     );
