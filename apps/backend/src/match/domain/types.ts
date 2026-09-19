@@ -405,6 +405,7 @@ export type MatchState = {
    * presenting artist/track back-to-back when both exist in the bank.
    */
   lastAudioAnswerTarget?: 'artist' | 'track' | null;
+  usedThreeDoorsQuestionIds?: string[];
 };
 
 export type DomainEvent =

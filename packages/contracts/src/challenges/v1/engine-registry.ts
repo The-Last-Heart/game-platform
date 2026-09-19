@@ -179,6 +179,13 @@ export const STUDIO_ENGINE_REGISTRY: readonly StudioEngineRegistryEntry[] = [
     labelKey: 'engine.logic.complete_sum',
   },
   {
+    engineId: 'logic.three_doors',
+    familyId: 'logic',
+    categoryId: 'logic.three_doors',
+    runtimeReadiness: ENGINE_RUNTIME_READINESS['logic.three_doors'],
+    labelKey: 'engine.logic.three_doors',
+  },
+  {
     engineId: 'focus.stroop',
     familyId: 'focus',
     categoryId: 'focus.stroop',

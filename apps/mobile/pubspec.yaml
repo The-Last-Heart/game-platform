@@ -35,6 +35,7 @@ flutter:
   uses-material-design: true
   assets:
     - assets/backgrounds/app-background.png
+    - assets/backgrounds/three_doors_room.jpg
     - assets/sfx/ui_tap.mp3
   fonts:
     # Bundled Noto Sans Arabic (OFL) — matches design-tokens.json; offline-safe in release APK.

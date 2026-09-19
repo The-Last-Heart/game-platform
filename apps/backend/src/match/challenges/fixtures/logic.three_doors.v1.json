@@ -1,0 +1,49 @@
+{
+  "definitionId": "logic.three_doors.dev",
+  "definitionVersion": 1,
+  "engineId": "logic.three_doors",
+  "durationMs": 12000,
+  "heartPenaltyOnFailure": 1,
+  "energyRewardOnSuccess": 1,
+  "promptKey": "challenge.three_doors.intro",
+  "choiceKeys": [],
+  "clientConfig": {
+    "categoryKey": "challenge.category.logic",
+    "promptKey": "challenge.three_doors.prompt",
+    "titleKey": "challenge.three_doors.title",
+    "roomAssetId": "three_doors.room",
+    "backgroundSfxAssetId": "three_doors.background"
+  },
+  "serverConfig": {
+    "questions": [
+      {
+        "questionId": "three_doors.q.reference_exactly_one_true",
+        "internalName": "Reference — exactly one true",
+        "truthRule": "exactly_one_true",
+        "statements": [
+          { "doorId": "A", "predicate": { "kind": "is_not_here" } },
+          { "doorId": "B", "predicate": { "kind": "is", "doorId": "A" } },
+          { "doorId": "C", "predicate": { "kind": "is_not", "doorId": "B" } }
+        ],
+        "correctDoorId": "B",
+        "enabled": true,
+        "selectionWeight": 1
+      },
+      {
+        "questionId": "three_doors.q.exactly_one_false_sample",
+        "internalName": "Sample — exactly one false",
+        "truthRule": "exactly_one_false",
+        "statements": [
+          { "doorId": "A", "predicate": { "kind": "is_here" } },
+          { "doorId": "B", "predicate": { "kind": "is_not", "doorId": "A" } },
+          { "doorId": "C", "predicate": { "kind": "is_not", "doorId": "A" } }
+        ],
+        "correctDoorId": "A",
+        "enabled": true,
+        "selectionWeight": 1
+      }
+    ]
+  },
+  "difficulty": "medium",
+  "requiredAssetIds": ["three_doors.background"]
+}

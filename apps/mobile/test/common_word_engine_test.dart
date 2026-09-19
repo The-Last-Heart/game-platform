@@ -258,6 +258,36 @@ void main() {
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 300));
     expect(tester.takeException(), isNull);
+    expect(find.text('الكلمة المشتركة'), findsOneWidget);
+  });
+
+  testWidgets('narrow screen shows full challenge title without ellipsis', (
+    WidgetTester tester,
+  ) async {
+    await tester.pumpWidget(
+      wrapWithL10n(
+        Builder(
+          builder: (BuildContext context) {
+            return CommonWordEngine().build(
+              context,
+              ChallengeContext(
+                challenge: makeCommonWordChallenge(),
+                onSubmit: (_) {},
+                estimateServerNowMs: () => 1_002_000,
+                answerStatus: AnswerSubmissionStatus.idle,
+                inputEnabled: true,
+              ),
+            );
+          },
+        ),
+        surfaceSize: const Size(300, 640),
+      ),
+    );
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 500));
+    expect(find.text('الكلمة المشتركة'), findsOneWidget);
+    expect(find.textContaining('...'), findsNothing);
+    expect(tester.takeException(), isNull);
   });
 
   testWidgets('pending then authoritative failure still shows options', (

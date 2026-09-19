@@ -14,6 +14,8 @@ import {
 } from './audio-question-bank';
 import { StudioAudioClipPreview } from './AudioVisualizationPreview';
 import { parseCommonWordBank } from './common-word-question';
+import { parseThreeDoorsBank, statementPreview } from './three-doors-question';
+import { THREE_DOORS_TITLE_COPY, threeDoorsInstructionText } from '@thelastheart/contracts';
 
 export type PreviewState = 'intro' | 'active' | 'success' | 'failure' | 'timeout' | 'unsupported';
 
@@ -455,6 +457,129 @@ function CommonWordDevicePreview({
   );
 }
 
+function ThreeDoorsDevicePreview({
+  locale,
+  durationMs,
+  serverConfig,
+  activeState,
+}: {
+  locale: Locale;
+  durationMs?: number;
+  serverConfig?: Record<string, unknown>;
+  activeState: PreviewState;
+}) {
+  const bank = parseThreeDoorsBank(serverConfig ?? {});
+  const question = bank.questions[0]!;
+  const seconds = durationMs ? (durationMs / 1000).toFixed(0) : '—';
+  const copyLocale = locale === 'ar' ? 'ar' : 'en';
+  const selected =
+    activeState === 'success' || activeState === 'failure'
+      ? question.correctDoorId
+      : null;
+
+  return (
+    <div
+      dir="rtl"
+      style={{
+        width: '100%',
+        position: 'relative',
+        borderRadius: 12,
+        overflow: 'hidden',
+        border: '1px solid rgba(80, 227, 254, 0.25)',
+        background: '#050c18',
+      }}
+    >
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img
+        src="/studio/three_doors_room.jpg"
+        alt=""
+        style={{ width: '100%', display: 'block', opacity: activeState === 'timeout' ? 0.55 : 1 }}
+      />
+      <div
+        style={{
+          position: 'absolute',
+          inset: 0,
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
+          padding: '8px 6px 10px',
+          gap: 4,
+          pointerEvents: 'none',
+        }}
+      >
+        <span style={{ fontSize: '0.65rem', color: '#d4af37' }}>
+          {seconds}s
+        </span>
+        <span style={{ fontSize: '1rem', fontWeight: 700, color: '#d4af37' }}>
+          {THREE_DOORS_TITLE_COPY[copyLocale]}
+        </span>
+        <span style={{ fontSize: '0.68rem', color: '#f0e6c8', textAlign: 'center' }}>
+          {threeDoorsInstructionText(question.truthRule, copyLocale)}
+        </span>
+        <div
+          style={{
+            marginTop: 'auto',
+            display: 'grid',
+            gridTemplateColumns: '1fr 1fr 1fr',
+            gap: 4,
+            width: '92%',
+            marginBottom: '18%',
+          }}
+        >
+          {question.statements.map((statement) => (
+            <div
+              key={statement.doorId}
+              style={{
+                textAlign: 'center',
+                fontSize: '0.58rem',
+                color: '#f7fafc',
+                lineHeight: 1.25,
+                textShadow: '0 1px 2px rgba(0,0,0,0.85)',
+              }}
+            >
+              <div style={{ color: '#d4af37', fontWeight: 700, marginBottom: 2 }}>
+                {statement.doorId}
+              </div>
+              {statementPreview(statement.predicate, copyLocale)}
+            </div>
+          ))}
+        </div>
+        <div
+          style={{
+            display: 'grid',
+            gridTemplateColumns: '1fr 1fr 1fr',
+            gap: 6,
+            width: '90%',
+          }}
+        >
+          {(['A', 'B', 'C'] as const).map((id) => {
+            const isSelected = selected === id;
+            const ok = activeState === 'success' && isSelected;
+            const bad = activeState === 'failure' && isSelected;
+            return (
+              <div
+                key={id}
+                style={{
+                  textAlign: 'center',
+                  padding: '6px 0',
+                  borderRadius: 999,
+                  border: `1px solid ${ok ? '#50e3fe' : bad ? '#e85d4c' : '#d4af37'}`,
+                  color: ok ? '#50e3fe' : bad ? '#e85d4c' : '#d4af37',
+                  background: 'rgba(8,16,32,0.75)',
+                  fontWeight: 700,
+                  opacity: activeState === 'timeout' ? 0.45 : 1,
+                }}
+              >
+                {id}
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 const cwCardStyle: CSSProperties = {
   width: '100%',
   minHeight: 28,
@@ -489,7 +614,8 @@ export function DevicePreviewFrame({
       instructionAr ||
       imageIds.length > 0 ||
       engineId === 'laser.routing' ||
-      engineId === 'trivia.common_word',
+      engineId === 'trivia.common_word' ||
+      engineId === 'logic.three_doors',
   );
 
   return (
@@ -576,7 +702,17 @@ export function DevicePreviewFrame({
                 />
               ) : null}
 
+              {engineId === 'logic.three_doors' ? (
+                <ThreeDoorsDevicePreview
+                  locale={locale}
+                  durationMs={durationMs}
+                  serverConfig={serverConfig}
+                  activeState={activeState}
+                />
+              ) : null}
+
               {engineId !== 'trivia.common_word' &&
+                engineId !== 'logic.three_doors' &&
               (activeState === 'intro' || activeState === 'active') ? (
                 <>
                   <span style={{ fontSize: '1.05rem', fontWeight: 700, textAlign: 'center' }}>

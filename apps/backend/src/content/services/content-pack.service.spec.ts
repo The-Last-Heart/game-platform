@@ -89,6 +89,9 @@ describe('ContentPackService', () => {
     expect(
       manifest.assets.some((a) => a.assetId === 'common_word.background'),
     ).toBe(true);
+    expect(
+      manifest.assets.some((a) => a.assetId === 'three_doors.background'),
+    ).toBe(true);
     const laserLoop = service.getAsset('laser_routing.laser_loop');
     expect(laserLoop.meta.contentType).toBe('audio/mpeg');
     expect(laserLoop.body.byteLength).toBe(laserLoop.meta.bytes);

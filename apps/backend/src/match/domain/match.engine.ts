@@ -708,6 +708,7 @@ export class MatchEngine {
       lastPowerGrant: null,
       powerActionActorIds: [],
       lastAudioAnswerTarget: null,
+      usedThreeDoorsQuestionIds: [],
       lastStrikeOfferedRound: 0,
     };
   }
@@ -1294,16 +1295,27 @@ export class MatchEngine {
       challenge.engineId === 'precision.circuit_rotation' ||
       challenge.engineId === 'precision.cable_untangle' ||
       challenge.engineId === 'logic.balance_scale' ||
+      challenge.engineId === 'logic.three_doors' ||
       challenge.engineId === 'focus.stroop' ||
       challenge.engineId === 'search.select_occurrences'
     ) {
       materializePack31Round(challenge.definition, {
         lastAudioAnswerTarget: next.lastAudioAnswerTarget ?? null,
+        usedThreeDoorsQuestionIds: next.usedThreeDoorsQuestionIds ?? [],
       });
       if (challenge.engineId === 'audio.multiple_choice') {
         const target = challenge.definition.clientConfig['answerTarget'];
         if (target === 'artist' || target === 'track') {
           next.lastAudioAnswerTarget = target;
+        }
+      }
+      if (challenge.engineId === 'logic.three_doors') {
+        const qid = challenge.definition.clientConfig['questionId'];
+        if (typeof qid === 'string' && qid.length > 0) {
+          const used = next.usedThreeDoorsQuestionIds ?? [];
+          if (!used.includes(qid)) {
+            next.usedThreeDoorsQuestionIds = [...used, qid];
+          }
         }
       }
       challenge.roundPhase = 'answer';
@@ -1541,16 +1553,27 @@ export class MatchEngine {
       pinned.engineId === 'precision.circuit_rotation' ||
       pinned.engineId === 'precision.cable_untangle' ||
       pinned.engineId === 'logic.balance_scale' ||
+      pinned.engineId === 'logic.three_doors' ||
       pinned.engineId === 'focus.stroop' ||
       pinned.engineId === 'search.select_occurrences'
     ) {
       materializePack31Round(pinned, {
         lastAudioAnswerTarget: next.lastAudioAnswerTarget ?? null,
+        usedThreeDoorsQuestionIds: next.usedThreeDoorsQuestionIds ?? [],
       });
       if (pinned.engineId === 'audio.multiple_choice') {
         const target = pinned.clientConfig['answerTarget'];
         if (target === 'artist' || target === 'track') {
           next.lastAudioAnswerTarget = target;
+        }
+      }
+      if (pinned.engineId === 'logic.three_doors') {
+        const qid = pinned.clientConfig['questionId'];
+        if (typeof qid === 'string' && qid.length > 0) {
+          const used = next.usedThreeDoorsQuestionIds ?? [];
+          if (!used.includes(qid)) {
+            next.usedThreeDoorsQuestionIds = [...used, qid];
+          }
         }
       }
       round.roundPhase = 'answer';

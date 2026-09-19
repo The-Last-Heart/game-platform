@@ -2,10 +2,16 @@ import { randomInt } from 'node:crypto';
 import { readFileSync, existsSync } from 'node:fs';
 import { resolve } from 'node:path';
 import {
+  THREE_DOORS_INSTRUCTION_KEYS,
+  THREE_DOORS_TITLE_COPY,
+  buildThreeDoorsPublicDoors,
   precisionCableUntangleAnswerSchema,
   precisionCableUntangleServerConfigSchema,
   precisionCircuitRotationAnswerSchema,
   precisionCircuitRotationServerConfigSchema,
+  threeDoorsInstructionText,
+  type DoorPredicate,
+  type DoorStatementDefinition,
 } from '@thelastheart/contracts';
 import type {
   ChallengeDefinition,
@@ -80,6 +86,7 @@ export const PRECISION_CIRCUIT_ROTATION_ENGINE_ID =
   'precision.circuit_rotation';
 export const PRECISION_CABLE_UNTANGLE_ENGINE_ID = 'precision.cable_untangle';
 export const LOGIC_BALANCE_SCALE_ENGINE_ID = 'logic.balance_scale';
+export const LOGIC_THREE_DOORS_ENGINE_ID = 'logic.three_doors';
 export const FOCUS_STROOP_ENGINE_ID = 'focus.stroop';
 export const SEARCH_SELECT_OCCURRENCES_ENGINE_ID = 'search.select_occurrences';
 
@@ -429,6 +436,37 @@ export class LogicBalanceScaleEvaluator implements ChallengeEvaluator {
   }
 }
 
+export class LogicThreeDoorsEvaluator implements ChallengeEvaluator {
+  readonly engineId = LOGIC_THREE_DOORS_ENGINE_ID;
+
+  evaluate(input: {
+    definition: ChallengeDefinition;
+    answer: Record<string, unknown>;
+    receivedMonoMs: number;
+    deadlineMonoMs: number;
+  }): ChallengeEvaluation {
+    if (input.receivedMonoMs > input.deadlineMonoMs) {
+      return { success: false, reasonKey: 'result.timeout' };
+    }
+    const correct = str(input.definition.serverConfig['correctDoorId']);
+    const selected = str(input.answer['selectedDoorId']);
+    if (
+      !selected ||
+      (selected !== 'A' && selected !== 'B' && selected !== 'C')
+    ) {
+      return { success: false, reasonKey: 'result.three_doors.invalid' };
+    }
+    if (!correct || selected !== correct) {
+      return { success: false, reasonKey: 'result.three_doors.wrong' };
+    }
+    return {
+      success: true,
+      reasonKey: 'result.success',
+      measureMs: Math.max(0, Math.floor(input.receivedMonoMs)),
+    };
+  }
+}
+
 export class FocusStroopEvaluator implements ChallengeEvaluator {
   readonly engineId = FOCUS_STROOP_ENGINE_ID;
 
@@ -511,6 +549,7 @@ export function createPack31Evaluators(): ChallengeEvaluator[] {
     new CircuitRotationEvaluator(),
     new CableUntangleEvaluator(),
     new LogicBalanceScaleEvaluator(),
+    new LogicThreeDoorsEvaluator(),
     new FocusStroopEvaluator(),
     new SearchSelectOccurrencesEvaluator(),
     new LogicCompleteSumEvaluator(),
@@ -885,6 +924,121 @@ function pickCommonWordQuestion(
   };
 }
 
+function pickThreeDoorsQuestion(
+  server: Record<string, unknown>,
+  usedQuestionIds: readonly string[],
+): Record<string, unknown> {
+  const questions = readQuestionBank(server).filter(
+    (q) => q['enabled'] !== false,
+  );
+  const unused =
+    usedQuestionIds.length > 0
+      ? questions.filter((q) => {
+          const id = typeof q['questionId'] === 'string' ? q['questionId'] : '';
+          return id.length > 0 && !usedQuestionIds.includes(id);
+        })
+      : [];
+  const pool = unused.length > 0 ? unused : questions;
+  if (pool.length > 0) {
+    // Weighted random when selectionWeight is present.
+    const weights = pool.map((q) => {
+      const w = q['selectionWeight'];
+      return typeof w === 'number' && Number.isFinite(w) && w > 0 ? w : 1;
+    });
+    const total = weights.reduce((sum, w) => sum + w, 0);
+    let cursor = Math.random() * total;
+    for (let i = 0; i < pool.length; i += 1) {
+      cursor -= weights[i]!;
+      if (cursor <= 0) return pool[i]!;
+    }
+    return pool[pool.length - 1]!;
+  }
+  return {
+    questionId: server['questionId'],
+    truthRule: server['truthRule'],
+    statements: server['statements'],
+    correctDoorId: server['correctDoorId'],
+  };
+}
+
+function pinThreeDoorsQuestion(
+  definition: ChallengeDefinition,
+  q: Record<string, unknown>,
+): void {
+  const server = definition.serverConfig;
+  const client = definition.clientConfig;
+  const questionId =
+    typeof q['questionId'] === 'string' ? q['questionId'] : 'three_doors.q';
+  const truthRule =
+    q['truthRule'] === 'exactly_one_false'
+      ? 'exactly_one_false'
+      : 'exactly_one_true';
+  const statements = Array.isArray(q['statements'])
+    ? (q['statements'] as DoorStatementDefinition[])
+    : [];
+  const correctDoorId =
+    q['correctDoorId'] === 'A' ||
+    q['correctDoorId'] === 'B' ||
+    q['correctDoorId'] === 'C'
+      ? q['correctDoorId']
+      : null;
+
+  server['questionId'] = questionId;
+  server['truthRule'] = truthRule;
+  server['statements'] = statements;
+  if (correctDoorId) {
+    server['correctDoorId'] = correctDoorId;
+  }
+
+  const typedStatements: [
+    DoorStatementDefinition,
+    DoorStatementDefinition,
+    DoorStatementDefinition,
+  ] = [
+    statements[0] ?? {
+      doorId: 'A',
+      predicate: { kind: 'is_not_here' } satisfies DoorPredicate,
+    },
+    statements[1] ?? {
+      doorId: 'B',
+      predicate: { kind: 'is_not_here' } satisfies DoorPredicate,
+    },
+    statements[2] ?? {
+      doorId: 'C',
+      predicate: { kind: 'is_not_here' } satisfies DoorPredicate,
+    },
+  ];
+
+  client['categoryKey'] =
+    (typeof client['categoryKey'] === 'string' && client['categoryKey']) ||
+    'challenge.category.logic';
+  client['promptKey'] =
+    (typeof client['promptKey'] === 'string' && client['promptKey']) ||
+    'challenge.three_doors.prompt';
+  client['titleKey'] = 'challenge.three_doors.title';
+  client['titleText'] = THREE_DOORS_TITLE_COPY.ar;
+  client['instructionKey'] = THREE_DOORS_INSTRUCTION_KEYS[truthRule];
+  client['instructionText'] = threeDoorsInstructionText(truthRule, 'ar');
+  client['truthRule'] = truthRule;
+  client['questionId'] = questionId;
+  client['doors'] = buildThreeDoorsPublicDoors(typedStatements, 'ar');
+  client['roomAssetId'] = 'three_doors.room';
+  if (
+    typeof client['backgroundSfxAssetId'] !== 'string' ||
+    (client['backgroundSfxAssetId'] as string).length === 0
+  ) {
+    client['backgroundSfxAssetId'] = 'three_doors.background';
+  }
+
+  // Never leak private solution metadata into the public payload.
+  delete client['correctDoorId'];
+  delete client['statements'];
+  delete client['questions'];
+  delete client['truthTable'];
+  delete client['derivedDoorId'];
+  delete client['isCorrect'];
+}
+
 const AUDIO_TARGET_BADGE: Record<string, string> = {
   artist: 'challenge.audio_mc.badge_artist',
   track: 'challenge.audio_mc.badge_track',
@@ -984,7 +1138,10 @@ function pinAudioMultipleChoiceQuestion(
 
 export function materializePack31Round(
   definition: ChallengeDefinition,
-  context?: { lastAudioAnswerTarget?: 'artist' | 'track' | null },
+  context?: {
+    lastAudioAnswerTarget?: 'artist' | 'track' | null;
+    usedThreeDoorsQuestionIds?: readonly string[];
+  },
 ): void {
   const server = definition.serverConfig;
   const client = definition.clientConfig;
@@ -996,6 +1153,14 @@ export function materializePack31Round(
 
   if (definition.engineId === TRIVIA_COMMON_WORD_ENGINE_ID) {
     pinCommonWordQuestion(definition, pickCommonWordQuestion(server));
+    return;
+  }
+
+  if (definition.engineId === LOGIC_THREE_DOORS_ENGINE_ID) {
+    pinThreeDoorsQuestion(
+      definition,
+      pickThreeDoorsQuestion(server, context?.usedThreeDoorsQuestionIds ?? []),
+    );
     return;
   }
 

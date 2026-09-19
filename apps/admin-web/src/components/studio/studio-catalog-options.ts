@@ -63,6 +63,10 @@ export const KNOWN_ASSET_OPTIONS: CatalogOption[] = [
     value: 'common_word.background',
     labelKey: 'studio.asset.commonWordBackgroundSfx',
   },
+  {
+    value: 'three_doors.background',
+    labelKey: 'studio.asset.threeDoorsBackgroundSfx',
+  },
 
   {
     value: 'fog_wipe.reveal_content',

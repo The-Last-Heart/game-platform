@@ -63,6 +63,10 @@ class ChallengeSfx {
   static const String defaultCommonWordBackgroundAssetId =
       'common_word.background';
 
+  /// Door of Truth — looping atmospheric bed.
+  static const String defaultThreeDoorsBackgroundAssetId =
+      'three_doors.background';
+
   Future<void> pulse({String assetId = defaultPulseAssetId}) async {
     try {
       await HapticFeedback.mediumImpact();

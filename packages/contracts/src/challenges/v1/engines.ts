@@ -29,6 +29,7 @@ export const LAUNCH_ENGINE_IDS = [
   "precision.cable_untangle",
   "logic.balance_scale",
   "logic.complete_sum",
+  "logic.three_doors",
   "focus.stroop",
   "search.select_occurrences",
   "social.pass_the_pulse",
@@ -1126,6 +1127,69 @@ export type CommonWordServerConfig = z.infer<
 /** Same command body as trivia — reused, not a parallel answer system. */
 export const commonWordAnswerSchema = triviaMultipleChoiceAnswerSchema;
 export type CommonWordAnswer = TriviaMultipleChoiceAnswer;
+
+// ---------------------------------------------------------------------------
+// 12d. logic.three_doors (Door of Truth — باب الحقيقة)
+// Structured predicate bank; solver validates unique solution at publish time.
+// Correct door stays server-only until the existing result flow reveals it.
+// ---------------------------------------------------------------------------
+
+export {
+  THREE_DOORS_ENGINE_ID,
+  THREE_DOORS_CHALLENGE_TYPE,
+  DOOR_IDS,
+  DOOR_TRUTH_RULES,
+  THREE_DOORS_REFERENCE_QUESTION,
+  THREE_DOORS_STATEMENT_TEMPLATES,
+  THREE_DOORS_INSTRUCTION_KEYS,
+  THREE_DOORS_INSTRUCTION_COPY,
+  THREE_DOORS_TITLE_COPY,
+  THREE_DOORS_STATEMENT_SOFT_MAX_CHARS,
+  doorIdSchema,
+  doorTruthRuleSchema,
+  doorPredicateSchema,
+  doorStatementDefinitionSchema,
+  threeDoorsQuestionSchema,
+  threeDoorsPublicDoorSchema,
+  threeDoorsClientConfigSchema,
+  threeDoorsServerConfigSchema,
+  threeDoorsAnswerSchema,
+  parseThreeDoorsClientConfig,
+  parseThreeDoorsServerConfig,
+  parseThreeDoorsAnswer,
+  assertThreeDoorsBankUnique,
+  assertThreeDoorsQuestionUnique,
+  evaluateDoorPredicate,
+  satisfiesTruthRule,
+  solveThreeDoorsQuestion,
+  renderDoorPredicateStatement,
+  buildThreeDoorsPublicDoors,
+  threeDoorsInstructionText,
+  threeDoorsStatementMayOverflow,
+} from "./three-doors-logic";
+export type {
+  DoorId,
+  DoorTruthRule,
+  DoorPredicate,
+  DoorStatementDefinition,
+  ThreeDoorsQuestion,
+  ThreeDoorsPublicDoor,
+  ThreeDoorsClientConfig,
+  ThreeDoorsServerConfig,
+  ThreeDoorsAnswer,
+  ThreeDoorsTruthRow,
+  ThreeDoorsSolveReport,
+  ThreeDoorsLocale,
+} from "./three-doors-logic";
+
+import {
+  threeDoorsAnswerSchema,
+  threeDoorsClientConfigSchema,
+  threeDoorsServerConfigSchema,
+  type ThreeDoorsAnswer,
+  type ThreeDoorsClientConfig,
+  type ThreeDoorsServerConfig,
+} from "./three-doors-logic";
 
 // ---------------------------------------------------------------------------
 // 13. geography.select_on_map
@@ -3021,6 +3085,7 @@ export const ENGINE_RUNTIME_READINESS: Record<
   "precision.cable_untangle": "live",
   "logic.balance_scale": "live",
   "logic.complete_sum": "live",
+  "logic.three_doors": "live",
   "focus.stroop": "live",
   "search.select_occurrences": "live",
   "social.pass_the_pulse": "live",
@@ -3154,6 +3219,11 @@ const ENGINE_SCHEMAS: Record<LaunchEngineId, EngineSchemaPair> = {
     client: logicCompleteSumClientConfigSchema,
     server: logicCompleteSumServerConfigSchema,
     answer: logicCompleteSumAnswerSchema,
+  },
+  "logic.three_doors": {
+    client: threeDoorsClientConfigSchema,
+    server: threeDoorsServerConfigSchema,
+    answer: threeDoorsAnswerSchema,
   },
   "focus.stroop": {
     client: focusStroopClientConfigSchema,
@@ -3304,6 +3374,11 @@ export type ValidatedEngineConfigs =
       serverConfig: LogicCompleteSumServerConfig;
     }
   | {
+      engineId: "logic.three_doors";
+      clientConfig: ThreeDoorsClientConfig;
+      serverConfig: ThreeDoorsServerConfig;
+    }
+  | {
       engineId: "focus.stroop";
       clientConfig: FocusStroopClientConfig;
       serverConfig: FocusStroopServerConfig;
@@ -3366,6 +3441,7 @@ export type ValidatedEngineAnswer =
     }
   | { engineId: "logic.balance_scale"; answer: LogicBalanceScaleAnswer }
   | { engineId: "logic.complete_sum"; answer: LogicCompleteSumAnswer }
+  | { engineId: "logic.three_doors"; answer: ThreeDoorsAnswer }
   | { engineId: "focus.stroop"; answer: FocusStroopAnswer }
   | {
       engineId: "search.select_occurrences";

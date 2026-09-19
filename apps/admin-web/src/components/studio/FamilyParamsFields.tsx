@@ -49,12 +49,18 @@ import {
 } from './studio-catalog-options';
 import { AudioMultipleChoiceFields } from './AudioMultipleChoiceFields';
 import { CommonWordFields } from './CommonWordFields';
+import { ThreeDoorsFields } from './ThreeDoorsFields';
 import { McOptionListEditor } from './McOptionListEditor';
 import {
   commonWordClientPreview,
   defaultCommonWordBank,
   serializeCommonWordBank,
 } from './common-word-question';
+import {
+  defaultThreeDoorsBank,
+  serializeThreeDoorsBank,
+  threeDoorsClientPreview,
+} from './three-doors-question';
 import { StudioAudioClipPreview } from './AudioVisualizationPreview';
 import {
   audioClientPreview,
@@ -111,6 +117,16 @@ export const COMMON_WORD_REQUIRED_ASSETS = [
 export function ensureCommonWordRequiredAssets(current: string[]): string[] {
   const next = new Set(current);
   for (const id of COMMON_WORD_REQUIRED_ASSETS) next.add(id);
+  return [...next];
+}
+
+export const THREE_DOORS_REQUIRED_ASSETS = [
+  'three_doors.background',
+] as const;
+
+export function ensureThreeDoorsRequiredAssets(current: string[]): string[] {
+  const next = new Set(current);
+  for (const id of THREE_DOORS_REQUIRED_ASSETS) next.add(id);
   return [...next];
 }
 
@@ -359,6 +375,14 @@ export function defaultClientConfig(
         promptKey: 'challenge.common_word.prompt',
         titleKey: 'challenge.common_word.title',
         backgroundSfxAssetId: 'common_word.background',
+      });
+    case 'logic.three_doors':
+      return threeDoorsClientPreview(defaultThreeDoorsBank(), {
+        categoryKey: 'challenge.category.logic',
+        promptKey: 'challenge.three_doors.prompt',
+        titleKey: 'challenge.three_doors.title',
+        roomAssetId: 'three_doors.room',
+        backgroundSfxAssetId: 'three_doors.background',
       });
     case 'audio.multiple_choice':
       return audioClientPreview(defaultAudioQuestions()[0], {
@@ -648,6 +672,8 @@ export function defaultServerConfig(
       };
     case 'trivia.common_word':
       return serializeCommonWordBank(defaultCommonWordBank());
+    case 'logic.three_doors':
+      return serializeThreeDoorsBank(defaultThreeDoorsBank());
     case 'audio.multiple_choice':
       return {
         maxAudioDurationMs: AUDIO_CLIP_DEFAULT_MAX_DURATION_MS,
@@ -3065,6 +3091,8 @@ export function FamilyParamsFields(props: FamilyParamsFieldsProps) {
         return <TriviaMultipleChoiceFields {...props} />;
       case 'trivia.common_word':
         return <CommonWordFields {...props} />;
+      case 'logic.three_doors':
+        return <ThreeDoorsFields {...props} />;
       case 'audio.multiple_choice':
         return <AudioMultipleChoiceFields {...props} />;
       case 'focus.stroop':

@@ -244,6 +244,7 @@ export function difficultyPlayPatch(
     case 'order.sequence_sort':
     case 'precision.maze_path':
     case 'logic.balance_scale':
+    case 'logic.three_doors':
     case 'search.select_occurrences':
       return {
         easy: { durationMs: 10000, clientConfig: {}, serverConfig: {} },

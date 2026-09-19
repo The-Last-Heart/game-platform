@@ -28,6 +28,7 @@ import 'tactical_risk_choice_engine.dart';
 import 'trap_no_touch_engine.dart';
 import 'trivia_multiple_choice_engine.dart';
 import 'common_word_engine.dart';
+import 'three_doors_engine.dart';
 import 'unknown_engine.dart';
 
 /// Registry mapping engineId → [ChallengeEngine].
@@ -62,6 +63,7 @@ class ChallengeEngineRegistry {
     register(LaserRoutingEngine());
     register(LogicBalanceScaleEngine());
     register(LogicCompleteSumEngine());
+    register(ThreeDoorsLogicEngine());
     register(FocusStroopEngine());
     register(SearchSelectOccurrencesEngine());
   }

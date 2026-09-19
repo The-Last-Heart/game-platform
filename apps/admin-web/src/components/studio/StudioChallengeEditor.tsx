@@ -36,6 +36,7 @@ import {
   ensureLaserRoutingRequiredAssets,
   ensurePassThePulseRequiredAssets,
   ensureCommonWordRequiredAssets,
+  ensureThreeDoorsRequiredAssets,
   mergeFogWipeRequiredAssets,
 } from './FamilyParamsFields';
 import {
@@ -46,6 +47,10 @@ import {
   commonWordBankIssues,
   parseCommonWordBank,
 } from './common-word-question';
+import {
+  parseThreeDoorsBank,
+  threeDoorsPublishIssues,
+} from './three-doors-question';
 import {
   parseAudioQuestions,
   parseMaxAudioDurationMs,
@@ -563,6 +568,24 @@ function validateDraft(
       });
     }
   }
+  if (draft.engineId === 'logic.three_doors') {
+    const issues = threeDoorsPublishIssues(
+      parseThreeDoorsBank(draft.serverConfig),
+    );
+    for (const issue of issues) {
+      if (issue.includes('overflow')) {
+        errors.push({
+          path: 'serverConfig.questions',
+          message: t(locale, 'studio.validation.threeDoorsOverflow'),
+        });
+      } else {
+        errors.push({
+          path: 'serverConfig.questions',
+          message: t(locale, 'studio.validation.threeDoorsSolver'),
+        });
+      }
+    }
+  }
   if (!draft.promptKey.trim())
     errors.push({
       path: 'promptKey',
@@ -662,6 +685,15 @@ function definitionToDraft(def: ChallengeDefinitionContract): DraftDefinition {
       !(clientConfig.backgroundSfxAssetId as string).trim()
     ) {
       clientConfig.backgroundSfxAssetId = 'common_word.background';
+    }
+  }
+  if (def.engineId === 'logic.three_doors') {
+    requiredAssetIds = ensureThreeDoorsRequiredAssets(requiredAssetIds);
+    if (
+      typeof clientConfig.backgroundSfxAssetId !== 'string' ||
+      !(clientConfig.backgroundSfxAssetId as string).trim()
+    ) {
+      clientConfig.backgroundSfxAssetId = 'three_doors.background';
     }
   }
   if (def.engineId === 'laser.routing') {
@@ -905,6 +937,8 @@ export function StudioChallengeEditor({
               ? ensurePassThePulseRequiredAssets([])
               : entry.engineId === 'trivia.common_word'
                 ? ensureCommonWordRequiredAssets([])
+              : entry.engineId === 'logic.three_doors'
+                ? ensureThreeDoorsRequiredAssets([])
               : entry.engineId === 'laser.routing'
                 ? ensureLaserRoutingRequiredAssets([])
                 : entry.engineId === 'audio.multiple_choice'

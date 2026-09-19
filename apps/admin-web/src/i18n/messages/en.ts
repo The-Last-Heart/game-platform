@@ -543,6 +543,7 @@ const en = {
   'studio.asset.laserReflectionSfx': 'Laser reflection',
   'studio.asset.laserHeartSfx': 'Laser heart power-on',
   'studio.asset.commonWordBackgroundSfx': 'Common Word background bed',
+  'studio.asset.threeDoorsBackgroundSfx': 'Door of Truth background bed',
 
   'studio.asset.hapticLight': 'Light haptic',
   'studio.asset.hapticMedium': 'Medium haptic',
@@ -696,6 +697,7 @@ const en = {
   'studio.engine.pass_the_pulse': 'Pass the Pulse',
   'studio.engine.ring_lock': 'Ring Lock',
   'studio.engine.routing': 'Laser routing',
+  'studio.engine.three_doors': 'Door of Truth',
   'studio.catalog.prompt.audioMcIntro': 'Guess the Audio title',
   'studio.catalog.prompt.audioMcArtist': 'Who owns this voice?',
   'studio.catalog.prompt.audioMcTrack': 'What is the song name?',
@@ -886,6 +888,39 @@ const en = {
   'studio.field.fp.commonWordHint.cloud': 'Cloud',
   'studio.field.fp.commonWordHint.drop': 'Drop',
   'studio.field.fp.commonWordHint.neutral': 'Neutral',
+  'studio.field.fp.threeDoorsLead':
+    'Build structured door statements. The solver derives the only valid key location before publish.',
+  'studio.field.fp.threeDoorsQuestion': 'Question',
+  'studio.field.fp.threeDoorsAdd': 'Add question',
+  'studio.field.fp.threeDoorsDuplicate': 'Duplicate',
+  'studio.field.fp.threeDoorsRemove': 'Remove',
+  'studio.field.fp.threeDoorsInternalName': 'Internal name',
+  'studio.field.fp.threeDoorsQuestionId': 'Question id',
+  'studio.field.fp.threeDoorsTruthRule': 'Truth rule',
+  'studio.field.fp.threeDoorsExactlyOneTrue': 'Exactly one statement is true',
+  'studio.field.fp.threeDoorsExactlyOneFalse': 'Exactly one statement is false',
+  'studio.field.fp.threeDoorsDoor': 'Door',
+  'studio.field.fp.threeDoorsPredicate': 'Predicate',
+  'studio.field.fp.threeDoorsRefDoor': 'Referenced door',
+  'studio.field.fp.threeDoorsRefDoor1': 'First door',
+  'studio.field.fp.threeDoorsRefDoor2': 'Second door',
+  'studio.field.fp.threeDoorsPreview': 'Preview',
+  'studio.field.fp.threeDoorsCorrectDoor': 'Intended correct door',
+  'studio.field.fp.threeDoorsDerivedDoor': 'Solver door',
+  'studio.field.fp.threeDoorsUniqueYes': '(unique)',
+  'studio.field.fp.threeDoorsUniqueNo': '(not unique)',
+  'studio.field.fp.threeDoorsTruthTable': 'Truth table',
+  'studio.field.fp.threeDoorsKeyAt': 'Key at',
+  'studio.field.fp.threeDoorsValid': 'Valid',
+  'studio.field.fp.threeDoorsEnabled': 'Enabled in pool',
+  'studio.field.fp.threeDoorsWeight': 'Selection weight',
+  'studio.field.fp.threeDoorsPred.is_here': 'The key is behind this door',
+  'studio.field.fp.threeDoorsPred.is_not_here': 'The key is not behind this door',
+  'studio.field.fp.threeDoorsPred.is': 'The key is behind a specific door',
+  'studio.field.fp.threeDoorsPred.is_not': 'The key is not behind a specific door',
+  'studio.field.fp.threeDoorsPred.is_one_of': 'The key is behind one of two doors',
+  'studio.field.fp.threeDoorsPred.is_not_one_of':
+    'The key is not behind either of two doors',
   'studio.field.fp.audioMcLead':
     'Players hear a short clip and pick one answer. Choose whether they identify the singer or the song, set the allowed clip length, upload MP3 or WAV audio, and mark the correct option. Arabic is what players see first.',
   'studio.field.fp.audioMcMaxDuration': 'Max clip length',
@@ -1207,6 +1242,10 @@ const en = {
   'studio.validation.laserTiming':
     'Duration is too short for the required move count.',
   'studio.validation.laserGenerate': 'Puzzle generation failed. Check the laser parameters.',
+  'studio.validation.threeDoorsSolver':
+    'Each enabled Door of Truth question needs a unique solver-derived correct door.',
+  'studio.validation.threeDoorsOverflow':
+    'A generated statement may be too long for the door plaque on compact phones.',
 
   // Permissions
   'studio.permissions.cannotDraft':

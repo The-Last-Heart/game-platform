@@ -337,7 +337,7 @@ class _CommonWordWidgetState extends State<_CommonWordWidget>
                     ),
                     const SizedBox(height: 2),
                     Expanded(
-                      flex: 5,
+                      flex: 4,
                       child: _ConstellationStage(
                         clues: clues,
                         entrance: t,
@@ -356,7 +356,7 @@ class _CommonWordWidgetState extends State<_CommonWordWidget>
                         cream: _cream,
                       ),
                     ),
-                    const SizedBox(height: 6),
+                    const SizedBox(height: 8),
                     Flexible(
                       flex: 3,
                       child: _AnswerGrid(
@@ -622,48 +622,74 @@ class _TitleBlock extends StatelessWidget {
         offset: Offset(0, (1 - progress) * 12),
         child: Column(
           children: <Widget>[
-            SizedBox(
-              height: 44,
-              child: Stack(
-                alignment: Alignment.center,
-                children: <Widget>[
-                  CustomPaint(
-                    size: const Size(320, 44),
-                    painter: _TitleFlourishPainter(gold: gold, cyan: cyan),
-                  ),
-                  Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 48),
-                    child: Text(
-                      title,
-                      textAlign: TextAlign.center,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: Theme.of(context).textTheme.headlineLarge?.copyWith(
-                        color: goldBright,
-                        fontWeight: FontWeight.w900,
-                        fontSize: 32,
-                        height: 1.1,
-                        shadows: <Shadow>[
-                          Shadow(
-                            color: gold.withValues(alpha: 0.7),
-                            blurRadius: 18,
+            LayoutBuilder(
+              builder: (BuildContext context, BoxConstraints constraints) {
+                final double width = constraints.maxWidth;
+                // Narrow phones: shrink type and side ornaments so the full
+                // Arabic title stays readable (no ellipsis).
+                final double sidePad = width < 340
+                    ? 28.0
+                    : (width < 380 ? 36.0 : 48.0);
+                final double fontSize = width < 340
+                    ? 24.0
+                    : (width < 380 ? 28.0 : 32.0);
+                final bool showFlourishes = width >= 300;
+                return SizedBox(
+                  height: fontSize + 14,
+                  width: width,
+                  child: Stack(
+                    alignment: Alignment.center,
+                    children: <Widget>[
+                      if (showFlourishes)
+                        Positioned.fill(
+                          child: CustomPaint(
+                            painter: _TitleFlourishPainter(
+                              gold: gold,
+                              cyan: cyan,
+                            ),
                           ),
-                          Shadow(
-                            color: gold.withValues(alpha: 0.35),
-                            blurRadius: 36,
-                            offset: const Offset(0, 3),
+                        ),
+                      Padding(
+                        padding: EdgeInsets.symmetric(horizontal: sidePad),
+                        child: FittedBox(
+                          fit: BoxFit.scaleDown,
+                          child: Text(
+                            title,
+                            textAlign: TextAlign.center,
+                            softWrap: false,
+                            maxLines: 1,
+                            style: Theme.of(context)
+                                .textTheme
+                                .headlineLarge
+                                ?.copyWith(
+                              color: goldBright,
+                              fontWeight: FontWeight.w900,
+                              fontSize: fontSize,
+                              height: 1.1,
+                              shadows: <Shadow>[
+                                Shadow(
+                                  color: gold.withValues(alpha: 0.7),
+                                  blurRadius: 18,
+                                ),
+                                Shadow(
+                                  color: gold.withValues(alpha: 0.35),
+                                  blurRadius: 36,
+                                  offset: const Offset(0, 3),
+                                ),
+                                Shadow(
+                                  color: Colors.black.withValues(alpha: 0.55),
+                                  blurRadius: 4,
+                                  offset: const Offset(0, 1),
+                                ),
+                              ],
+                            ),
                           ),
-                          Shadow(
-                            color: Colors.black.withValues(alpha: 0.55),
-                            blurRadius: 4,
-                            offset: const Offset(0, 1),
-                          ),
-                        ],
+                        ),
                       ),
-                    ),
+                    ],
                   ),
-                ],
-              ),
+                );
+              },
             ),
             const SizedBox(height: 4),
             Text(
@@ -703,6 +729,8 @@ class _TitleFlourishPainter extends CustomPainter {
   void paint(Canvas canvas, Size size) {
     final double midY = size.height / 2;
     final double cx = size.width / 2;
+    // Scale ornaments to the available width so they stay in the side gutters.
+    final double unit = (size.width / 2).clamp(90.0, 160.0) / 148.0;
     final Paint stroke = Paint()
       ..style = PaintingStyle.stroke
       ..strokeWidth = 1.35
@@ -716,35 +744,35 @@ class _TitleFlourishPainter extends CustomPainter {
 
     void wing(double dir) {
       final Path p = Path()
-        ..moveTo(cx + dir * 52, midY)
+        ..moveTo(cx + dir * 52 * unit, midY)
         ..cubicTo(
-          cx + dir * 78,
+          cx + dir * 78 * unit,
           midY - 14,
-          cx + dir * 108,
+          cx + dir * 108 * unit,
           midY + 10,
-          cx + dir * 138,
+          cx + dir * 138 * unit,
           midY - 2,
         )
-        ..moveTo(cx + dir * 52, midY)
+        ..moveTo(cx + dir * 52 * unit, midY)
         ..cubicTo(
-          cx + dir * 72,
+          cx + dir * 72 * unit,
           midY + 12,
-          cx + dir * 100,
+          cx + dir * 100 * unit,
           midY - 8,
-          cx + dir * 128,
+          cx + dir * 128 * unit,
           midY + 6,
         )
-        ..moveTo(cx + dir * 128, midY + 6)
+        ..moveTo(cx + dir * 128 * unit, midY + 6)
         ..quadraticBezierTo(
-          cx + dir * 142,
+          cx + dir * 142 * unit,
           midY + 2,
-          cx + dir * 148,
+          cx + dir * 148 * unit,
           midY - 8,
         );
       canvas.drawPath(p, glow);
       canvas.drawPath(p, stroke);
       canvas.drawCircle(
-        Offset(cx + dir * 148, midY - 8),
+        Offset(cx + dir * 148 * unit, midY - 8),
         2.2,
         Paint()..color = gold.withValues(alpha: 0.9),
       );
@@ -803,27 +831,44 @@ class _LayoutGeom {
 }
 
 _LayoutGeom _computeGeom(Size size) {
+  // Card size tracks width, not stage height — otherwise tall phones
+  // stretch the Y pyramid into long empty beams.
   final double cardW = (size.width * 0.38).clamp(108.0, 148.0);
-  final double cardH = (size.height * 0.24).clamp(64.0, 84.0);
-  const double nodeR = 42.0;
-  final Offset top = Offset(size.width / 2, cardH / 2 + 4);
-  final Offset left = Offset(cardW / 2 + 4, size.height - cardH / 2 - 6);
-  final Offset right = Offset(
-    size.width - cardW / 2 - 4,
-    size.height - cardH / 2 - 6,
-  );
+  final double cardH = (size.width * 0.175).clamp(56.0, 70.0);
+  final double nodeR = (size.width * 0.095).clamp(34.0, 40.0);
+
+  // Ideal compact stack: top card → short beam → node → short beams → bottom.
+  const double gapAboveNode = 14.0;
+  const double gapBelowNode = 16.0;
+  final double idealH =
+      cardH + gapAboveNode + nodeR * 2 + gapBelowNode + cardH;
+  final double usedH = math.min(idealH, size.height);
+  final double scale = usedH / idealH;
+  final double topCardH = cardH * scale;
+  final double bottomCardH = cardH * scale;
+  final double r = nodeR * scale;
+  final double gapTop = gapAboveNode * scale;
+  final double gapBot = gapBelowNode * scale;
+
+  final double originY = (size.height - usedH) / 2;
+  final Offset top = Offset(size.width / 2, originY + topCardH / 2);
   final Offset center = Offset(
     size.width / 2,
-    (top.dy + left.dy) / 2 + cardH * 0.06,
+    top.dy + topCardH / 2 + gapTop + r,
   );
+  final double bottomY =
+      center.dy + r + gapBot + bottomCardH / 2;
+  final Offset left = Offset(cardW / 2 + 4, bottomY);
+  final Offset right = Offset(size.width - cardW / 2 - 4, bottomY);
+
   return _LayoutGeom(
     top: top,
     left: left,
     right: right,
     center: center,
     cardW: cardW,
-    cardH: cardH,
-    nodeR: nodeR,
+    cardH: topCardH,
+    nodeR: r,
   );
 }
 
