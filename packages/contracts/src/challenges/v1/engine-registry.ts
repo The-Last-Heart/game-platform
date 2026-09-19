@@ -109,6 +109,13 @@ export const STUDIO_ENGINE_REGISTRY: readonly StudioEngineRegistryEntry[] = [
     labelKey: 'engine.trivia.common_word',
   },
   {
+    engineId: 'trivia.symbol_cipher_word',
+    familyId: 'trivia',
+    categoryId: 'trivia.symbol_cipher_word',
+    runtimeReadiness: ENGINE_RUNTIME_READINESS['trivia.symbol_cipher_word'],
+    labelKey: 'engine.trivia.symbol_cipher_word',
+  },
+  {
     engineId: 'geography.select_on_map',
     familyId: 'geography',
     categoryId: 'geography.select_on_map',

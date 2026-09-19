@@ -25,6 +25,7 @@ export const DIFFICULTY_ENGINE_PRIORITY: Record<
     'trap.no_touch',
     'trivia.multiple_choice',
     'trivia.common_word',
+    'trivia.symbol_cipher_word',
     'focus.odd_one_out',
     'precision.neon_cable',
   ],

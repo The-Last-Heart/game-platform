@@ -543,6 +543,7 @@ const en = {
   'studio.asset.laserReflectionSfx': 'Laser reflection',
   'studio.asset.laserHeartSfx': 'Laser heart power-on',
   'studio.asset.commonWordBackgroundSfx': 'Common Word background bed',
+  'studio.asset.symbolCipherBackground': 'Decode the Cipher library background',
   'studio.asset.threeDoorsBackgroundSfx': 'Door of Truth background bed',
 
   'studio.asset.hapticLight': 'Light haptic',
@@ -681,6 +682,7 @@ const en = {
   'studio.engine.risk_choice': 'Risk Choice',
   'studio.engine.multiple_choice': 'Multiple Choice',
   'studio.engine.common_word': 'Common Word',
+  'studio.engine.symbol_cipher_word': 'Decode the Cipher',
   'studio.engine.audio_multiple_choice': 'Guess the Audio',
   'studio.engine.select_on_map': 'Select on Map',
   'studio.engine.odd_one_out': 'Odd One Out',
@@ -888,6 +890,26 @@ const en = {
   'studio.field.fp.commonWordHint.cloud': 'Cloud',
   'studio.field.fp.commonWordHint.drop': 'Drop',
   'studio.field.fp.commonWordHint.neutral': 'Neutral',
+  'studio.field.fp.symbolCipherLead':
+    'Decode the Cipher holds a bank of five-letter Arabic word questions. The server derives the encoded symbol sequence from the answer and key.',
+  'studio.field.fp.symbolCipherTitleAr': 'Title (Arabic)',
+  'studio.field.fp.symbolCipherTitleEn': 'Title (English)',
+  'studio.field.fp.symbolCipherInstructionAr': 'Instruction (Arabic)',
+  'studio.field.fp.symbolCipherInstructionEn': 'Instruction (English)',
+  'studio.field.fp.symbolCipherQuestion': 'Question',
+  'studio.field.fp.symbolCipherAddQuestion': 'Add question',
+  'studio.field.fp.symbolCipherRemoveQuestion': 'Remove question',
+  'studio.field.fp.symbolCipherQuestionId': 'Question id',
+  'studio.field.fp.symbolCipherInternalName': 'Internal name',
+  'studio.field.fp.symbolCipherAnswer': 'Correct word (Arabic, 5 letters)',
+  'studio.field.fp.symbolCipherWeight': 'Selection weight',
+  'studio.field.fp.symbolCipherKeyLead':
+    'Symbol → letter key (five unique symbols and letters)',
+  'studio.field.fp.symbolCipherAutoSymbols': 'Auto-assign unique symbols + decoys',
+  'studio.field.fp.symbolCipherSymbol': 'Symbol',
+  'studio.field.fp.symbolCipherLetter': 'Letter',
+  'studio.field.fp.symbolCipherDecoy': 'Decoy',
+  'studio.field.fp.symbolCipherValid': 'Cipher bank is valid for publish',
   'studio.field.fp.threeDoorsLead':
     'Build structured door statements. The solver derives the only valid key location before publish.',
   'studio.field.fp.threeDoorsQuestion': 'Question',
@@ -1228,6 +1250,8 @@ const en = {
   'studio.validation.missingArabic': 'Arabic content is required',
   'studio.validation.commonWord':
     'Common Word requires three distinct Arabic clues, relationship explanations, and exactly one correct option',
+  'studio.validation.symbolCipher':
+    'Decode the Cipher bank is incomplete or invalid',
   'studio.validation.audioRequired':
     'Each question needs a valid MP3 or WAV clip no longer than the allowed clip length before publishing.',
   'studio.validation.stroopVariants':

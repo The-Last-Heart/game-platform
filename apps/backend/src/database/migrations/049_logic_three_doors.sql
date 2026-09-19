@@ -83,8 +83,18 @@ BEGIN
     'choiceKeys', '[]'::jsonb,
     'clientConfig', v_client,
     'serverConfig', v_server,
+    'internalTitle', 'Door of Truth — باب الحقيقة',
+    'familyId', 'logic',
+    'categoryId', 'logic.three_doors',
     'difficulty', 'medium',
+    'instructionAr', 'اقرأ العبارات على الأبواب واختر الباب الذي يخفي القلب',
+    'eligibleModes', '["quick_survival", "private", "training", "dev"]'::jsonb,
+    'selectionWeight', 100,
+    'repetitionCooldownRounds', 1,
+    'introDurationMs', 1200,
+    'resultHoldMs', 1600,
     'requiredCapabilities', '["touch", "challenge.engine.logic.three_doors.v1"]'::jsonb,
+    'accessibilityFallbackKey', 'challenge.three_doors.a11y_fallback',
     'requiredAssetIds', '["three_doors.background"]'::jsonb,
     'minAppVersion', '0.0.1'
   );

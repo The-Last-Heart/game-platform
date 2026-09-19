@@ -228,6 +228,7 @@ export function difficultyPlayPatch(
     case 'trivia.multiple_choice':
     case 'audio.multiple_choice':
     case 'trivia.common_word':
+    case 'trivia.symbol_cipher_word':
     case 'geography.select_on_map':
     case 'focus.stroop':
       return {

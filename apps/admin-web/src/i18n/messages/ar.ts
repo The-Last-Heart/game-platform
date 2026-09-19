@@ -523,6 +523,7 @@ const ar: Record<MessageKey, string> = {
   'studio.asset.laserReflectionSfx': 'انعكاس الليزر',
   'studio.asset.laserHeartSfx': 'إضاءة قلب الليزر',
   'studio.asset.commonWordBackgroundSfx': 'موسيقى خلفية الكلمة المشتركة',
+  'studio.asset.symbolCipherBackground': 'خلفية مكتبة فكّ الشفرة',
   'studio.asset.threeDoorsBackgroundSfx': 'موسيقى خلفية باب الحقيقة',
 
   'studio.asset.fogRevealContent': 'كشف الضباب الافتراضي',
@@ -676,6 +677,7 @@ const ar: Record<MessageKey, string> = {
   'studio.engine.risk_choice': 'اختيار المخاطرة',
   'studio.engine.multiple_choice': 'اختيار متعدد',
   'studio.engine.common_word': 'الكلمة المشتركة',
+  'studio.engine.symbol_cipher_word': 'فكّ الشفرة',
   'studio.engine.audio_multiple_choice': 'خَمّن الصوت',
   'studio.engine.select_on_map': 'اختيار على الخريطة',
   'studio.engine.odd_one_out': 'الشكل المختلف',
@@ -866,6 +868,26 @@ const ar: Record<MessageKey, string> = {
   'studio.field.fp.commonWordHint.cloud': 'سحاب',
   'studio.field.fp.commonWordHint.drop': 'قطرة',
   'studio.field.fp.commonWordHint.neutral': 'محايد',
+  'studio.field.fp.symbolCipherLead':
+    'فكّ الشفرة يحتوي بنكاً من كلمات عربية من خمسة أحرف. يشتق الخادم تسلسل الرموز من الإجابة والمفتاح.',
+  'studio.field.fp.symbolCipherTitleAr': 'العنوان (عربي)',
+  'studio.field.fp.symbolCipherTitleEn': 'العنوان (إنجليزي)',
+  'studio.field.fp.symbolCipherInstructionAr': 'التعليمات (عربي)',
+  'studio.field.fp.symbolCipherInstructionEn': 'التعليمات (إنجليزي)',
+  'studio.field.fp.symbolCipherQuestion': 'السؤال',
+  'studio.field.fp.symbolCipherAddQuestion': 'إضافة سؤال',
+  'studio.field.fp.symbolCipherRemoveQuestion': 'حذف السؤال',
+  'studio.field.fp.symbolCipherQuestionId': 'معرّف السؤال',
+  'studio.field.fp.symbolCipherInternalName': 'الاسم الداخلي',
+  'studio.field.fp.symbolCipherAnswer': 'الكلمة الصحيحة (عربي، 5 أحرف)',
+  'studio.field.fp.symbolCipherWeight': 'وزن الاختيار',
+  'studio.field.fp.symbolCipherKeyLead':
+    'مفتاح الرمز ← الحرف (خمسة رموز وأحرف فريدة)',
+  'studio.field.fp.symbolCipherAutoSymbols': 'تعيين رموز فريدة وخدع تلقائياً',
+  'studio.field.fp.symbolCipherSymbol': 'الرمز',
+  'studio.field.fp.symbolCipherLetter': 'الحرف',
+  'studio.field.fp.symbolCipherDecoy': 'خداع',
+  'studio.field.fp.symbolCipherValid': 'بنك الشفرة صالح للنشر',
   'studio.field.fp.threeDoorsLead':
     'ابنِ عبارات الأبواب بشكل منظم. يشتق المحلل موقع المفتاح الوحيد قبل النشر.',
   'studio.field.fp.threeDoorsQuestion': 'السؤال',
@@ -1179,6 +1201,8 @@ const ar: Record<MessageKey, string> = {
   'studio.validation.missingArabic': 'المحتوى العربي مطلوب',
   'studio.validation.commonWord':
     'الكلمة المشتركة تتطلب ثلاثة أدلة عربية متمايزة وشروح علاقات وخياراً صحيحاً واحداً',
+  'studio.validation.symbolCipher':
+    'بنك فكّ الشفرة غير مكتمل أو غير صالح',
   'studio.validation.audioRequired':
     'كل سؤال يحتاج مقطعاً صالحاً بصيغة MP3 أو WAV لا يتجاوز الطول المسموح قبل النشر.',
   'studio.validation.stroopVariants':

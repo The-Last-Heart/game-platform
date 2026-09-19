@@ -1,6 +1,6 @@
 {
   "packId": "lh.local.content.v1",
-  "packVersion": 17,
+  "packVersion": 18,
   "assets": [
     {
       "assetId": "sfx.pulse",
@@ -358,6 +358,14 @@
       "contentType": "audio/mpeg",
       "bytes": 1072355,
       "sha256": "d48004a8e1a0768698b9a16f08d2a23165f3968bfd61d1d879fa66184be163ea"
+    },
+    {
+      "assetId": "symbol_cipher_word.background",
+      "relativePath": "assets/symbol_cipher_word.background.jpg",
+      "contentType": "image/jpeg",
+      "bytes": 129569,
+      "sha256": "70de2e195e9a57d8d5993e383689a2fdf09970441e8c222c0b146ecb1b69ed32",
+      "kind": "image"
     }
   ]
 }

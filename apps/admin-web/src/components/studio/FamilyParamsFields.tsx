@@ -49,6 +49,7 @@ import {
 } from './studio-catalog-options';
 import { AudioMultipleChoiceFields } from './AudioMultipleChoiceFields';
 import { CommonWordFields } from './CommonWordFields';
+import { SymbolCipherWordFields } from './SymbolCipherWordFields';
 import { ThreeDoorsFields } from './ThreeDoorsFields';
 import { McOptionListEditor } from './McOptionListEditor';
 import {
@@ -56,6 +57,11 @@ import {
   defaultCommonWordBank,
   serializeCommonWordBank,
 } from './common-word-question';
+import {
+  defaultSymbolCipherBank,
+  serializeSymbolCipherBank,
+  symbolCipherClientPreview,
+} from './symbol-cipher-question';
 import {
   defaultThreeDoorsBank,
   serializeThreeDoorsBank,
@@ -117,6 +123,18 @@ export const COMMON_WORD_REQUIRED_ASSETS = [
 export function ensureCommonWordRequiredAssets(current: string[]): string[] {
   const next = new Set(current);
   for (const id of COMMON_WORD_REQUIRED_ASSETS) next.add(id);
+  return [...next];
+}
+
+export const SYMBOL_CIPHER_WORD_REQUIRED_ASSETS = [
+  'symbol_cipher_word.background',
+] as const;
+
+export function ensureSymbolCipherWordRequiredAssets(
+  current: string[],
+): string[] {
+  const next = new Set(current);
+  for (const id of SYMBOL_CIPHER_WORD_REQUIRED_ASSETS) next.add(id);
   return [...next];
 }
 
@@ -375,6 +393,13 @@ export function defaultClientConfig(
         promptKey: 'challenge.common_word.prompt',
         titleKey: 'challenge.common_word.title',
         backgroundSfxAssetId: 'common_word.background',
+      });
+    case 'trivia.symbol_cipher_word':
+      return symbolCipherClientPreview(defaultSymbolCipherBank(), {
+        categoryKey: 'challenge.category.trivia',
+        promptKey: 'challenge.symbol_cipher.prompt',
+        titleKey: 'challenge.symbol_cipher.title',
+        backgroundAssetId: 'symbol_cipher_word.background',
       });
     case 'logic.three_doors':
       return threeDoorsClientPreview(defaultThreeDoorsBank(), {
@@ -672,6 +697,8 @@ export function defaultServerConfig(
       };
     case 'trivia.common_word':
       return serializeCommonWordBank(defaultCommonWordBank());
+    case 'trivia.symbol_cipher_word':
+      return serializeSymbolCipherBank(defaultSymbolCipherBank());
     case 'logic.three_doors':
       return serializeThreeDoorsBank(defaultThreeDoorsBank());
     case 'audio.multiple_choice':
@@ -3091,6 +3118,8 @@ export function FamilyParamsFields(props: FamilyParamsFieldsProps) {
         return <TriviaMultipleChoiceFields {...props} />;
       case 'trivia.common_word':
         return <CommonWordFields {...props} />;
+      case 'trivia.symbol_cipher_word':
+        return <SymbolCipherWordFields {...props} />;
       case 'logic.three_doors':
         return <ThreeDoorsFields {...props} />;
       case 'audio.multiple_choice':

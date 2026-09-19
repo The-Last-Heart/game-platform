@@ -217,6 +217,59 @@ void main() {
     expect(find.text('المطلوب: اسم الأغنية'), findsOneWidget);
   });
 
+  testWidgets('seat overlay swaps question and options without remounting', (
+    WidgetTester tester,
+  ) async {
+    await tester.binding.setSurfaceSize(const Size(400, 860));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    await tester.pumpWidget(
+      wrapWithL10n(
+        Builder(
+          builder: (BuildContext context) {
+            return AudioMultipleChoiceEngine().build(
+              context,
+              makeContext(
+                challenge: makeAudioChallenge(
+                  extraConfig: <String, dynamic>{
+                    'audioAssetId': 'ca_shared_room_clip',
+                  },
+                ),
+              ),
+            );
+          },
+        ),
+      ),
+    );
+    await tester.pump();
+    expect(find.text('من صاحب هذا الصوت؟'), findsOneWidget);
+    expect(find.text('رامي'), findsOneWidget);
+
+    await tester.pumpWidget(
+      wrapWithL10n(
+        Builder(
+          builder: (BuildContext context) {
+            return AudioMultipleChoiceEngine().build(
+              context,
+              makeContext(
+                challenge: makeAudioChallenge(
+                  answerTarget: 'track',
+                  extraConfig: <String, dynamic>{
+                    'audioAssetId': 'ca_seat_private_clip',
+                  },
+                ),
+              ),
+            );
+          },
+        ),
+      ),
+    );
+    await tester.pump();
+    expect(find.text('ما اسم الأغنية؟'), findsOneWidget);
+    expect(find.text('نبض أخير'), findsOneWidget);
+    expect(find.text('من صاحب هذا الصوت؟'), findsNothing);
+    expect(find.text('رامي'), findsNothing);
+  });
+
   testWidgets('song question wins over a stale singer badge', (
     WidgetTester tester,
   ) async {

@@ -19,6 +19,8 @@ export const LAUNCH_ENGINE_IDS = [
   "audio.multiple_choice",
   /** Common Word — الكلمة المشتركة (engine id is dotted; product type is common_word). */
   "trivia.common_word",
+  /** Decode the Word — فكّ الشفرة (engine id dotted; product type symbol_cipher_word). */
+  "trivia.symbol_cipher_word",
   "geography.select_on_map",
   "focus.odd_one_out",
   "order.sequence_sort",
@@ -1190,6 +1192,63 @@ import {
   type ThreeDoorsClientConfig,
   type ThreeDoorsServerConfig,
 } from "./three-doors-logic";
+
+// ---------------------------------------------------------------------------
+// 12e. trivia.symbol_cipher_word (Decode the Word — فكّ الشفرة)
+// Symbol→letter key + encoded sequence; server derives encoding at publish.
+// ---------------------------------------------------------------------------
+
+export {
+  SYMBOL_CIPHER_WORD_ENGINE_ID,
+  SYMBOL_CIPHER_WORD_CHALLENGE_TYPE,
+  SYMBOL_CIPHER_WORD_BACKGROUND_ASSET_ID,
+  SYMBOL_CIPHER_WORD_TITLE_COPY,
+  SYMBOL_CIPHER_WORD_INSTRUCTION_COPY,
+  SYMBOL_CIPHER_WORD_REFERENCE_QUESTION,
+  CIPHER_SYMBOL_IDS,
+  CIPHER_SYMBOL_STYLES,
+  CIPHER_KEY_SLOT_STYLES,
+  SYMBOL_CIPHER_ANSWER_GRAPHEME_COUNT,
+  SYMBOL_CIPHER_KEY_SLOT_COUNT,
+  SYMBOL_CIPHER_OPTION_COUNT,
+  cipherSymbolIdSchema,
+  cipherSymbolStyleSchema,
+  cipherKeyMappingSchema,
+  symbolCipherWordQuestionSchema,
+  symbolCipherPublicKeyMappingSchema,
+  symbolCipherWordClientConfigSchema,
+  symbolCipherWordServerConfigSchema,
+  symbolCipherWordAnswerSchema,
+  normalizeArabicCipherText,
+  arabicGraphemes,
+  isSupportedArabicCipherLetter,
+  buildCipherLookup,
+  encodeSymbolCipherAnswer,
+  decodeSymbolCipherSequence,
+  logicalIndexToVisualLtrIndex,
+  visualLtrIndexToLogicalIndex,
+  completeCipherKeyMappings,
+  shuffleCipherArray,
+  buildSymbolCipherQuestion,
+} from "./symbol-cipher-logic";
+export type {
+  CipherSymbolId,
+  CipherSymbolStyle,
+  CipherKeyMapping,
+  SymbolCipherWordQuestion,
+  SymbolCipherWordClientConfig,
+  SymbolCipherWordServerConfig,
+  SymbolCipherWordAnswer,
+} from "./symbol-cipher-logic";
+
+import {
+  symbolCipherWordAnswerSchema,
+  symbolCipherWordClientConfigSchema,
+  symbolCipherWordServerConfigSchema,
+  type SymbolCipherWordAnswer,
+  type SymbolCipherWordClientConfig,
+  type SymbolCipherWordServerConfig,
+} from "./symbol-cipher-logic";
 
 // ---------------------------------------------------------------------------
 // 13. geography.select_on_map
@@ -3075,6 +3134,7 @@ export const ENGINE_RUNTIME_READINESS: Record<
   "trivia.multiple_choice": "live",
   "audio.multiple_choice": "live",
   "trivia.common_word": "live",
+  "trivia.symbol_cipher_word": "live",
   "geography.select_on_map": "live",
   "focus.odd_one_out": "live",
   "order.sequence_sort": "live",
@@ -3169,6 +3229,11 @@ const ENGINE_SCHEMAS: Record<LaunchEngineId, EngineSchemaPair> = {
     client: commonWordClientConfigSchema,
     server: commonWordServerConfigSchema,
     answer: commonWordAnswerSchema,
+  },
+  "trivia.symbol_cipher_word": {
+    client: symbolCipherWordClientConfigSchema,
+    server: symbolCipherWordServerConfigSchema,
+    answer: symbolCipherWordAnswerSchema,
   },
   "geography.select_on_map": {
     client: geographySelectOnMapClientConfigSchema,
@@ -3324,6 +3389,11 @@ export type ValidatedEngineConfigs =
       serverConfig: CommonWordServerConfig;
     }
   | {
+      engineId: "trivia.symbol_cipher_word";
+      clientConfig: SymbolCipherWordClientConfig;
+      serverConfig: SymbolCipherWordServerConfig;
+    }
+  | {
       engineId: "geography.select_on_map";
       clientConfig: GeographySelectOnMapClientConfig;
       serverConfig: GeographySelectOnMapServerConfig;
@@ -3425,6 +3495,7 @@ export type ValidatedEngineAnswer =
   | { engineId: "trivia.multiple_choice"; answer: TriviaMultipleChoiceAnswer }
   | { engineId: "audio.multiple_choice"; answer: AudioMultipleChoiceAnswer }
   | { engineId: "trivia.common_word"; answer: CommonWordAnswer }
+  | { engineId: "trivia.symbol_cipher_word"; answer: SymbolCipherWordAnswer }
   | { engineId: "geography.select_on_map"; answer: GeographySelectOnMapAnswer }
   | { engineId: "focus.odd_one_out"; answer: FocusOddOneOutAnswer }
   | { engineId: "order.sequence_sort"; answer: OrderSequenceSortAnswer }

@@ -36,6 +36,7 @@ import {
   ensureLaserRoutingRequiredAssets,
   ensurePassThePulseRequiredAssets,
   ensureCommonWordRequiredAssets,
+  ensureSymbolCipherWordRequiredAssets,
   ensureThreeDoorsRequiredAssets,
   mergeFogWipeRequiredAssets,
 } from './FamilyParamsFields';
@@ -47,6 +48,10 @@ import {
   commonWordBankIssues,
   parseCommonWordBank,
 } from './common-word-question';
+import {
+  parseSymbolCipherBank,
+  symbolCipherBankIssues,
+} from './symbol-cipher-question';
 import {
   parseThreeDoorsBank,
   threeDoorsPublishIssues,
@@ -482,6 +487,17 @@ function validateDraft(
       });
     }
   }
+  if (draft.engineId === 'trivia.symbol_cipher_word') {
+    const scIssues = symbolCipherBankIssues(
+      parseSymbolCipherBank(draft.serverConfig),
+    );
+    if (scIssues.length > 0) {
+      errors.push({
+        path: 'serverConfig',
+        message: t(locale, 'studio.validation.symbolCipher'),
+      });
+    }
+  }
   if (draft.engineId === 'audio.multiple_choice') {
     const audioIssues = audioQuestionBankIssues(
       parseAudioQuestions(draft.serverConfig),
@@ -686,6 +702,18 @@ function definitionToDraft(def: ChallengeDefinitionContract): DraftDefinition {
     ) {
       clientConfig.backgroundSfxAssetId = 'common_word.background';
     }
+  }
+  if (def.engineId === 'trivia.symbol_cipher_word') {
+    requiredAssetIds = ensureSymbolCipherWordRequiredAssets(requiredAssetIds);
+    if (
+      typeof clientConfig.backgroundAssetId !== 'string' ||
+      !(clientConfig.backgroundAssetId as string).trim()
+    ) {
+      clientConfig.backgroundAssetId = 'symbol_cipher_word.background';
+    }
+    delete clientConfig._studioCorrectOptionKey;
+    delete clientConfig.correctOptionKey;
+    delete clientConfig.normalizedAnswer;
   }
   if (def.engineId === 'logic.three_doors') {
     requiredAssetIds = ensureThreeDoorsRequiredAssets(requiredAssetIds);
@@ -937,6 +965,8 @@ export function StudioChallengeEditor({
               ? ensurePassThePulseRequiredAssets([])
               : entry.engineId === 'trivia.common_word'
                 ? ensureCommonWordRequiredAssets([])
+              : entry.engineId === 'trivia.symbol_cipher_word'
+                ? ensureSymbolCipherWordRequiredAssets([])
               : entry.engineId === 'logic.three_doors'
                 ? ensureThreeDoorsRequiredAssets([])
               : entry.engineId === 'laser.routing'

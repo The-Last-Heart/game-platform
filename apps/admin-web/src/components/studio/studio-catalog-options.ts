@@ -64,6 +64,10 @@ export const KNOWN_ASSET_OPTIONS: CatalogOption[] = [
     labelKey: 'studio.asset.commonWordBackgroundSfx',
   },
   {
+    value: 'symbol_cipher_word.background',
+    labelKey: 'studio.asset.symbolCipherBackground',
+  },
+  {
     value: 'three_doors.background',
     labelKey: 'studio.asset.threeDoorsBackgroundSfx',
   },

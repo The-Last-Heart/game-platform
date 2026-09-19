@@ -48,12 +48,11 @@ describe('audio.multiple_choice match behavior', () => {
       let match = fill(eng, n);
       match = eng.startChallenge(match, definition).match;
       const challenge = match.currentChallenge!;
-      const optionKeys = challenge.definition.clientConfig[
-        'optionKeys'
-      ] as string[];
-      const correct = challenge.definition.serverConfig[
-        'correctOptionKey'
-      ] as string;
+      const seat0 = challenge.seatVariants?.get('p0');
+      const optionKeys = (seat0?.clientOverlay['optionKeys'] ??
+        challenge.definition.clientConfig['optionKeys']) as string[];
+      const correct = (seat0?.serverOverlay['correctOptionKey'] ??
+        challenge.definition.serverConfig['correctOptionKey']) as string;
       const wrong = optionKeys.find((k) => k !== correct)!;
 
       match = eng.submitAnswer(match, {
@@ -105,9 +104,9 @@ describe('audio.multiple_choice match behavior', () => {
     let match = fill(eng, 3);
     match = eng.startChallenge(match, definition).match;
     const cid = match.currentChallenge!.challengeInstanceId;
-    const optionKeys = match.currentChallenge!.definition.clientConfig[
-      'optionKeys'
-    ] as string[];
+    const optionKeys = (match.currentChallenge!.seatVariants?.get('p0')
+      ?.clientOverlay['optionKeys'] ??
+      match.currentChallenge!.definition.clientConfig['optionKeys']) as string[];
     const first = eng.submitAnswer(match, {
       playerId: 'p0',
       challengeInstanceId: cid,
@@ -138,9 +137,9 @@ describe('audio.multiple_choice match behavior', () => {
     let match = fill(eng, 2);
     match = eng.startChallenge(match, definition).match;
     const cid = match.currentChallenge!.challengeInstanceId;
-    const optionKeys = match.currentChallenge!.definition.clientConfig[
-      'optionKeys'
-    ] as string[];
+    const optionKeys = (match.currentChallenge!.seatVariants?.get('p0')
+      ?.clientOverlay['optionKeys'] ??
+      match.currentChallenge!.definition.clientConfig['optionKeys']) as string[];
     clock.advance(definition.durationMs + 1);
     const late = eng.submitAnswer(match, {
       playerId: 'p0',
@@ -157,9 +156,12 @@ describe('audio.multiple_choice match behavior', () => {
     let match = fill(eng, 2);
     match = eng.startChallenge(match, definition).match;
     const before = [
-      ...(match.currentChallenge!.definition.clientConfig[
+      ...((match.currentChallenge!.seatVariants?.get('p0')?.clientOverlay[
         'optionKeys'
-      ] as string[]),
+      ] ??
+        match.currentChallenge!.definition.clientConfig[
+          'optionKeys'
+        ]) as string[]),
     ];
     const view = toPublicChallengeView(
       match.currentChallenge!,

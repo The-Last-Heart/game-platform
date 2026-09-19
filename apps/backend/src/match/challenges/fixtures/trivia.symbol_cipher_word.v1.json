@@ -1,0 +1,108 @@
+{
+  "definitionId": "trivia.symbol_cipher_word.dev",
+  "definitionVersion": 1,
+  "engineId": "trivia.symbol_cipher_word",
+  "durationMs": 12000,
+  "heartPenaltyOnFailure": 1,
+  "energyRewardOnSuccess": 1,
+  "promptKey": "challenge.symbol_cipher.intro",
+  "choiceKeys": [],
+  "clientConfig": {
+    "categoryKey": "challenge.category.trivia",
+    "promptKey": "challenge.symbol_cipher.prompt",
+    "titleKey": "challenge.symbol_cipher.title",
+    "titleText": "فكّ الشفرة",
+    "instructionText": "استخدم المفتاح لاكتشاف الكلمة",
+    "questionId": "symbol_cipher.q.miftah",
+    "keyMappings": [
+      { "symbolId": "hexagon", "letter": "م" },
+      { "symbolId": "circle", "letter": "ف" },
+      { "symbolId": "triangle", "letter": "ت" },
+      { "symbolId": "diamond", "letter": "ا" },
+      { "symbolId": "square", "letter": "ح" }
+    ],
+    "encodedSymbols": ["hexagon", "circle", "triangle", "diamond", "square"],
+    "optionKeys": [
+      "symbol_cipher.opt.miftah",
+      "symbol_cipher.opt.misbah",
+      "symbol_cipher.opt.tuffaha",
+      "symbol_cipher.opt.minshar"
+    ],
+    "optionTexts": {
+      "symbol_cipher.opt.miftah": "مفتاح",
+      "symbol_cipher.opt.misbah": "مصباح",
+      "symbol_cipher.opt.tuffaha": "تفاحة",
+      "symbol_cipher.opt.minshar": "منشار"
+    },
+    "backgroundAssetId": "symbol_cipher_word.background"
+  },
+  "serverConfig": {
+    "titleCopy": { "ar": "فكّ الشفرة", "en": "Decode the Cipher" },
+    "instructionCopy": {
+      "ar": "استخدم المفتاح لاكتشاف الكلمة",
+      "en": "Use the key to discover the word"
+    },
+    "questions": [
+      {
+        "questionId": "symbol_cipher.q.miftah",
+        "internalName": "مفتاح",
+        "answerDisplayText": "مفتاح",
+        "normalizedAnswer": "مفتاح",
+        "keyMappings": [
+          { "symbolId": "hexagon", "letter": "م", "isDecoy": false },
+          { "symbolId": "circle", "letter": "ف", "isDecoy": false },
+          { "symbolId": "triangle", "letter": "ت", "isDecoy": false },
+          { "symbolId": "diamond", "letter": "ا", "isDecoy": false },
+          { "symbolId": "square", "letter": "ح", "isDecoy": false }
+        ],
+        "encodedSymbols": ["hexagon", "circle", "triangle", "diamond", "square"],
+        "optionKeys": [
+          "symbol_cipher.opt.miftah",
+          "symbol_cipher.opt.misbah",
+          "symbol_cipher.opt.tuffaha",
+          "symbol_cipher.opt.minshar"
+        ],
+        "correctOptionKey": "symbol_cipher.opt.miftah",
+        "optionCopy": {
+          "symbol_cipher.opt.miftah": { "ar": "مفتاح", "en": "Key" },
+          "symbol_cipher.opt.misbah": { "ar": "مصباح", "en": "Lamp" },
+          "symbol_cipher.opt.tuffaha": { "ar": "تفاحة", "en": "Apple" },
+          "symbol_cipher.opt.minshar": { "ar": "منشار", "en": "Saw" }
+        },
+        "selectionWeight": 100,
+        "enabled": true
+      },
+      {
+        "questionId": "symbol_cipher.q.kitabuk",
+        "internalName": "كتابك",
+        "answerDisplayText": "كتابك",
+        "normalizedAnswer": "كتابك",
+        "keyMappings": [
+          { "symbolId": "star", "letter": "ك", "isDecoy": false },
+          { "symbolId": "crescent", "letter": "ت", "isDecoy": false },
+          { "symbolId": "octagon", "letter": "ا", "isDecoy": false },
+          { "symbolId": "circle", "letter": "ب", "isDecoy": false },
+          { "symbolId": "triangle", "letter": "ن", "isDecoy": true }
+        ],
+        "encodedSymbols": ["star", "crescent", "octagon", "circle", "star"],
+        "optionKeys": [
+          "symbol_cipher.opt2.kitabuk",
+          "symbol_cipher.opt2.safina",
+          "symbol_cipher.opt2.maktab",
+          "symbol_cipher.opt2.hadiqa"
+        ],
+        "correctOptionKey": "symbol_cipher.opt2.kitabuk",
+        "optionCopy": {
+          "symbol_cipher.opt2.kitabuk": { "ar": "كتابك", "en": "Your book" },
+          "symbol_cipher.opt2.safina": { "ar": "سفينة", "en": "Ship" },
+          "symbol_cipher.opt2.maktab": { "ar": "مكتب", "en": "Office" },
+          "symbol_cipher.opt2.hadiqa": { "ar": "حديقة", "en": "Garden" }
+        },
+        "selectionWeight": 80,
+        "enabled": true
+      }
+    ]
+  },
+  "difficulty": "easy",
+  "requiredAssetIds": ["symbol_cipher_word.background"]
+}

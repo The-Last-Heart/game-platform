@@ -28,6 +28,7 @@ import 'tactical_risk_choice_engine.dart';
 import 'trap_no_touch_engine.dart';
 import 'trivia_multiple_choice_engine.dart';
 import 'common_word_engine.dart';
+import 'symbol_cipher_word_engine.dart';
 import 'three_doors_engine.dart';
 import 'unknown_engine.dart';
 
@@ -51,6 +52,7 @@ class ChallengeEngineRegistry {
     register(TacticalRiskChoiceEngine());
     register(TriviaMultipleChoiceEngine());
     register(CommonWordEngine());
+    register(SymbolCipherWordEngine());
     register(GeographySelectOnMapEngine());
     register(FocusOddOneOutEngine());
     register(OrderSequenceSortEngine());

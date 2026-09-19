@@ -14,6 +14,7 @@ import {
 } from './audio-question-bank';
 import { StudioAudioClipPreview } from './AudioVisualizationPreview';
 import { parseCommonWordBank } from './common-word-question';
+import { parseSymbolCipherBank } from './symbol-cipher-question';
 import { parseThreeDoorsBank, statementPreview } from './three-doors-question';
 import { THREE_DOORS_TITLE_COPY, threeDoorsInstructionText } from '@thelastheart/contracts';
 
@@ -457,6 +458,157 @@ function CommonWordDevicePreview({
   );
 }
 
+function SymbolCipherDevicePreview({
+  locale,
+  durationMs,
+  serverConfig,
+  activeState,
+}: {
+  locale: Locale;
+  durationMs?: number;
+  serverConfig?: Record<string, unknown>;
+  activeState: PreviewState;
+}) {
+  const bank = parseSymbolCipherBank(serverConfig ?? {});
+  const question = bank.questions[0]!;
+  const correctLabel =
+    question.options.find((o) => o.key === question.correctOptionKey)?.ar ??
+    question.answerDisplayText;
+  const seconds = durationMs ? (durationMs / 1000).toFixed(0) : '—';
+  const encoded = question.mappings
+    .filter((m) => !m.isDecoy)
+    .map((m) => m.symbolId || '?')
+    .join(' · ');
+
+  return (
+    <div
+      dir="rtl"
+      style={{
+        width: '100%',
+        display: 'flex',
+        flexDirection: 'column',
+        gap: 10,
+        alignItems: 'center',
+        background:
+          'radial-gradient(ellipse at 50% 30%, #0a1a2e 0%, #050c18 75%)',
+        borderRadius: 12,
+        padding: '12px 10px',
+        border: '1px solid rgba(224, 193, 90, 0.35)',
+      }}
+    >
+      <span style={{ fontSize: '0.7rem', color: '#50e3fe' }}>
+        {seconds}s · {t(locale, 'studio.preview.active')}
+      </span>
+      <span
+        style={{
+          fontSize: '1.15rem',
+          fontWeight: 700,
+          color: '#d4af37',
+          textAlign: 'center',
+        }}
+      >
+        {bank.titleAr}
+      </span>
+      <span style={{ fontSize: '0.78rem', color: '#f5f0e6', textAlign: 'center' }}>
+        {bank.instructionAr}
+      </span>
+      <div
+        style={{
+          display: 'flex',
+          gap: 4,
+          width: '100%',
+          justifyContent: 'space-between',
+        }}
+      >
+        {question.mappings.map((m, i) => (
+          <div
+            key={`${m.symbolId}-${i}`}
+            style={{
+              flex: 1,
+              textAlign: 'center',
+              fontSize: '0.65rem',
+              padding: 4,
+              borderRadius: 6,
+              border: '1px solid rgba(80,227,254,0.4)',
+              color: '#f7fafc',
+              background: 'rgba(7,16,28,0.85)',
+            }}
+          >
+            <div>{m.symbolId || '—'}</div>
+            <div style={{ fontWeight: 700 }}>{m.letter || '—'}</div>
+          </div>
+        ))}
+      </div>
+      <div
+        style={{
+          width: '100%',
+          textAlign: 'center',
+          fontSize: '0.75rem',
+          color: '#9af6ff',
+          padding: 8,
+          borderRadius: 8,
+          border: '1px solid rgba(212,175,55,0.45)',
+          background: 'rgba(7,16,28,0.9)',
+        }}
+      >
+        {encoded || '·····'}
+      </div>
+      <div
+        style={{
+          display: 'grid',
+          gridTemplateColumns: '1fr 1fr',
+          gap: 6,
+          width: '100%',
+        }}
+      >
+        {question.options.map((opt) => {
+          const isCorrect = opt.key === question.correctOptionKey;
+          const showCorrect =
+            (activeState === 'success' || activeState === 'failure') &&
+            isCorrect;
+          return (
+            <div
+              key={opt.key}
+              style={{
+                textAlign: 'center',
+                padding: '8px 4px',
+                borderRadius: 8,
+                border: `1px solid ${
+                  showCorrect ? '#22e7f2' : 'rgba(224,193,90,0.55)'
+                }`,
+                color: '#f7fafc',
+                background: 'linear-gradient(#0c1a2e, #060e1a)',
+                fontWeight: 700,
+              }}
+            >
+              {opt.ar || '—'}
+              {showCorrect ? (
+                <span style={{ fontSize: '0.65rem', color: '#22e7f2' }}> ✓</span>
+              ) : null}
+            </div>
+          );
+        })}
+      </div>
+      <div
+        style={{
+          width: '100%',
+          marginTop: 2,
+          padding: 8,
+          borderRadius: 8,
+          background: 'rgba(0,0,0,0.35)',
+          border: '1px dashed rgba(212,175,55,0.4)',
+          fontSize: '0.7rem',
+          color: '#d4af37',
+          textAlign: 'center',
+        }}
+      >
+        {/* Admin-only correct answer marker — never in player payloads */}
+        ✓ {correctLabel}
+      </div>
+    </div>
+  );
+}
+
 function ThreeDoorsDevicePreview({
   locale,
   durationMs,
@@ -615,6 +767,7 @@ export function DevicePreviewFrame({
       imageIds.length > 0 ||
       engineId === 'laser.routing' ||
       engineId === 'trivia.common_word' ||
+      engineId === 'trivia.symbol_cipher_word' ||
       engineId === 'logic.three_doors',
   );
 
@@ -702,6 +855,15 @@ export function DevicePreviewFrame({
                 />
               ) : null}
 
+              {engineId === 'trivia.symbol_cipher_word' ? (
+                <SymbolCipherDevicePreview
+                  locale={locale}
+                  durationMs={durationMs}
+                  serverConfig={serverConfig}
+                  activeState={activeState}
+                />
+              ) : null}
+
               {engineId === 'logic.three_doors' ? (
                 <ThreeDoorsDevicePreview
                   locale={locale}
@@ -712,6 +874,7 @@ export function DevicePreviewFrame({
               ) : null}
 
               {engineId !== 'trivia.common_word' &&
+                engineId !== 'trivia.symbol_cipher_word' &&
                 engineId !== 'logic.three_doors' &&
               (activeState === 'intro' || activeState === 'active') ? (
                 <>

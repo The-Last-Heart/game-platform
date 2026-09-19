@@ -1,6 +1,9 @@
 import { randomBytes, randomInt } from 'node:crypto';
 
-import { readGeographyQuestionBank } from './engines/pack-31-evaluators';
+import {
+  assignAudioMultipleChoiceSeatVariants,
+  readGeographyQuestionBank,
+} from './engines/pack-31-evaluators';
 import type { ChallengeDefinition, ChallengeRound } from './types';
 
 export type TiltTargetShape = 'circle' | 'square' | 'diamond' | 'heart';
@@ -437,6 +440,13 @@ export function assignSeatVariants(
       });
     });
     return seats;
+  }
+
+  if (challenge.engineId === 'audio.multiple_choice') {
+    return assignAudioMultipleChoiceSeatVariants(
+      challenge.definition.serverConfig,
+      ids,
+    );
   }
 
   if (challenge.engineId === 'audio.cue') {

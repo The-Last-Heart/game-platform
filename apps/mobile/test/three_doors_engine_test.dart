@@ -98,9 +98,14 @@ void main() {
     expect(find.text('باب الحقيقة'), findsOneWidget);
     expect(find.text('عبارة واحدة فقط صحيحة — أين المفتاح؟'), findsOneWidget);
     expect(find.text('المفتاح ليس هنا'), findsOneWidget);
+    expect(find.text('المفتاح خلف الباب A'), findsOneWidget);
+    expect(find.text('المفتاح ليس خلف الباب B'), findsOneWidget);
     expect(find.textContaining('is_not_here'), findsNothing);
 
-    await tester.tap(find.text('B').last);
+    // Answer buttons are LTR A → B → C (reference order), not RTL-reversed.
+    final Finder answerB = find.text('B');
+    expect(answerB, findsWidgets);
+    await tester.tap(answerB.last);
     await tester.pump();
     expect(submitted, isNotEmpty);
     expect(submitted.first['selectedDoorId'], 'B');
@@ -121,5 +126,31 @@ void main() {
     );
     expect(a.width, closeTo(c.width, 0.01));
     expect(a.center.dx < c.center.dx, isTrue);
+  });
+
+  test('doorFocusFit fills width and keeps door plaques on-screen', () {
+    const Size viewport = Size(320, 700);
+    final ({Size size, Offset origin}) fit = ThreeDoorsAssetLayout.doorFocusFit(
+      viewport: viewport,
+      topGuard: 120,
+      bottomGuard: 60,
+      zoom: 1.14,
+    );
+    // Light zoom may overhang left/right; door plaques must stay inside.
+    expect(fit.size.width, greaterThan(viewport.width));
+
+    final Rect doorA = ThreeDoorsAssetLayout.mapRect(
+      design: ThreeDoorsAssetLayout.doorAStatement,
+      displayedSize: fit.size,
+      displayedOrigin: fit.origin,
+    );
+    final Rect doorC = ThreeDoorsAssetLayout.mapRect(
+      design: ThreeDoorsAssetLayout.doorCStatement,
+      displayedSize: fit.size,
+      displayedOrigin: fit.origin,
+    );
+    expect(doorA.left, greaterThanOrEqualTo(-0.5));
+    expect(doorC.right, lessThanOrEqualTo(viewport.width + 0.5));
+    expect(doorA.height, greaterThan(40));
   });
 }

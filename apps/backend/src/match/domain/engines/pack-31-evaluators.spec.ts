@@ -935,6 +935,51 @@ describe('pack-31 materialize + geography seats', () => {
       expect(seen.has('artist')).toBe(false);
     });
 
+    it('assigns distinct playable clips per seat without leaking answers', () => {
+      const definition = def(
+        'audio.multiple_choice',
+        { questions: [artistQuestion, trackQuestion] },
+        {
+          categoryKey: 'challenge.category.audio',
+          promptKey: 'challenge.audio_mc.prompt_artist',
+          questionKey: 'audio_mc.q.artist_1',
+          optionKeys: ['a', 'b', 'c', 'd'],
+        },
+      );
+      materializePack31Round(definition);
+      const challenge = {
+        challengeInstanceId: 'c-audio-seats',
+        definitionId: definition.definitionId,
+        definitionVersion: 1,
+        engineId: 'audio.multiple_choice',
+        definition,
+        participatingPlayerIds: ['p0', 'p1'],
+        startsAtMs: 0,
+        deadlineAtMs: 8000,
+        startsAtMonoMs: 0,
+        deadlineMonoMs: 8000,
+        submissions: new Map(),
+        roundPhase: 'answer' as const,
+      } as ChallengeRound;
+      const seats = assignSeatVariants(challenge, 0);
+      expect(seats.size).toBe(2);
+      const assets = [...seats.values()].map(
+        (s) => s.clientOverlay['audioAssetId'] as string,
+      );
+      expect(new Set(assets).size).toBe(2);
+      for (const seat of seats.values()) {
+        expect(seat.clientOverlay['correctOptionKey']).toBeUndefined();
+        expect(JSON.stringify(seat.clientOverlay)).not.toMatch(/correctOption/);
+        expect(seat.serverOverlay['correctOptionKey']).toBeTruthy();
+        expect(seat.clientOverlay['optionKeys']).toEqual(
+          seat.serverOverlay['optionKeys'],
+        );
+        expect(seat.clientOverlay['audioAssetId']).toBe(
+          seat.serverOverlay['audioAssetId'],
+        );
+      }
+    });
+
     it('reuses the shared multiple-choice evaluator', () => {
       const evaluator = new AudioMultipleChoiceEvaluator();
       const definition = def('audio.multiple_choice', {

@@ -138,6 +138,9 @@ class _AudioMultipleChoiceWidgetState extends State<_AudioMultipleChoiceWidget>
   bool _userPaused = false;
   bool _userControlsClock = false;
   int _playbackEpoch = 0;
+  int _loadGeneration = 0;
+  String _loadedAudioAssetId = '';
+  String _loadedVizAssetId = '';
   List<double> _smoothed = const <double>[];
   Duration _position = Duration.zero;
   Duration _stablePosition = Duration.zero;
@@ -226,6 +229,10 @@ class _AudioMultipleChoiceWidgetState extends State<_AudioMultipleChoiceWidget>
       _playOutcomeFeedback();
     }
     _restoreSubmission();
+    if (_audioAssetId != _loadedAudioAssetId ||
+        _visualizationAssetId != _loadedVizAssetId) {
+      unawaited(_reloadClip());
+    }
   }
 
   @override
@@ -250,47 +257,90 @@ class _AudioMultipleChoiceWidgetState extends State<_AudioMultipleChoiceWidget>
     }
   }
 
-  Future<void> _bootstrap() async {
-    _visualization = _parseInlineVisualization();
-    if (_visualization == null && _visualizationAssetId.isNotEmpty) {
+  Future<void> _reloadClip() async {
+    _loadGeneration++;
+    _playbackEpoch++;
+    _playTimer?.cancel();
+    _reanchorTimer?.cancel();
+    _playTimer = null;
+    _reanchorTimer = null;
+    await _positionSub?.cancel();
+    await _stateSub?.cancel();
+    _positionSub = null;
+    _stateSub = null;
+    final AudioPlayer? player = _player;
+    _player = null;
+    if (player != null) {
       try {
-        final File? file = await ContentAssetCache.instance.ensureAsset(
-          _visualizationAssetId,
-        );
+        await player.stop();
+      } catch (_) {}
+      try {
+        await player.dispose();
+      } catch (_) {}
+    }
+    _visualization = null;
+    _assetFailed = false;
+    _completed = false;
+    _userPaused = false;
+    _userControlsClock = false;
+    _position = Duration.zero;
+    _stablePosition = Duration.zero;
+    if (!mounted) return;
+    await _bootstrap();
+  }
+
+  Future<void> _bootstrap() async {
+    final int gen = ++_loadGeneration;
+    final String audioId = _audioAssetId;
+    final String vizId = _visualizationAssetId;
+    _visualization = _parseInlineVisualization();
+    if (_visualization == null && vizId.isNotEmpty) {
+      try {
+        final File? file = await ContentAssetCache.instance.ensureAsset(vizId);
         if (file != null) {
           final Map<String, dynamic> json =
               jsonDecode(await file.readAsString()) as Map<String, dynamic>;
+          if (!mounted || gen != _loadGeneration) return;
           _visualization = AudioVisualizationData.fromJson(json);
         }
       } catch (_) {
-        _assetFailed = true;
+        if (gen == _loadGeneration) {
+          _assetFailed = true;
+        }
       }
     }
 
     File? audioFile;
-    if (_audioAssetId.isNotEmpty) {
+    if (audioId.isNotEmpty) {
       try {
-        audioFile = await ContentAssetCache.instance.ensureAsset(_audioAssetId);
+        audioFile = await ContentAssetCache.instance.ensureAsset(audioId);
       } catch (_) {
         audioFile = null;
       }
     }
-    if (!mounted) return;
+    if (!mounted || gen != _loadGeneration) return;
+    _loadedAudioAssetId = audioId;
+    _loadedVizAssetId = vizId;
     if (audioFile == null) {
-      _assetFailed = _audioAssetId.isNotEmpty;
+      _assetFailed = audioId.isNotEmpty;
       _pushViz(playing: false, buffering: _assetFailed);
       _scheduleAuthoritativeStart(null);
       return;
     }
     try {
       final AudioPlayer player = AudioPlayer();
-      _player = player;
       await player.setSource(DeviceFileSource(audioFile.path));
       await player.setReleaseMode(ReleaseMode.stop);
+      if (!mounted || gen != _loadGeneration) {
+        await player.dispose();
+        return;
+      }
+      _player = player;
       _positionSub = player.onPositionChanged.listen(_onPlayerPosition);
       _stateSub = player.onPlayerStateChanged.listen(_onPlayerState);
       _scheduleAuthoritativeStart(player);
     } catch (_) {
+      if (!mounted || gen != _loadGeneration) return;
       _assetFailed = true;
       _pushViz(playing: false, buffering: true);
     }
@@ -310,9 +360,9 @@ class _AudioMultipleChoiceWidgetState extends State<_AudioMultipleChoiceWidget>
   void _scheduleAuthoritativeStart(AudioPlayer? player) {
     final int now = _ctx.estimateServerNowMs();
     final int delay = _playAtMs - now;
+    final int epoch = _playbackEpoch;
     Future<void> start() async {
-      if (!mounted || _userPaused) return;
-      final int epoch = _playbackEpoch;
+      if (!mounted || _userPaused || epoch != _playbackEpoch) return;
       final Duration seekTo = authoritativePlaybackPosition(
         serverNowMs: _ctx.estimateServerNowMs(),
         playAtMs: _playAtMs,

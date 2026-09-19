@@ -1286,6 +1286,7 @@ export class MatchEngine {
       challenge.engineId === 'trivia.multiple_choice' ||
       challenge.engineId === 'audio.multiple_choice' ||
       challenge.engineId === 'trivia.common_word' ||
+      challenge.engineId === 'trivia.symbol_cipher_word' ||
       challenge.engineId === 'geography.select_on_map' ||
       challenge.engineId === 'focus.odd_one_out' ||
       challenge.engineId === 'order.sequence_sort' ||
@@ -1544,6 +1545,7 @@ export class MatchEngine {
       pinned.engineId === 'trivia.multiple_choice' ||
       pinned.engineId === 'audio.multiple_choice' ||
       pinned.engineId === 'trivia.common_word' ||
+      pinned.engineId === 'trivia.symbol_cipher_word' ||
       pinned.engineId === 'geography.select_on_map' ||
       pinned.engineId === 'focus.odd_one_out' ||
       pinned.engineId === 'order.sequence_sort' ||

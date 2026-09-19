@@ -797,6 +797,133 @@ describe('per-seat challenge variants', () => {
     expect(match.players.get(idB)!.hearts).toBe(3);
   });
 
+  it('assigns distinct Guess the Audio clips per seat and scores each independently', () => {
+    const clock = new FakeClock(1_000_000);
+    const eng = engine(clock);
+    let match = fillTwo(eng);
+    const def = {
+      definitionId: 'audio.multiple_choice.dev',
+      definitionVersion: 1,
+      engineId: 'audio.multiple_choice',
+      durationMs: 8000,
+      heartPenaltyOnFailure: 1,
+      energyRewardOnSuccess: 1,
+      promptKey: 'challenge.audio_mc.intro',
+      choiceKeys: [] as string[],
+      clientConfig: {
+        categoryKey: 'challenge.category.audio',
+        promptKey: 'challenge.audio_mc.prompt_artist',
+        questionKey: 'audio_mc.q.artist_1',
+        optionKeys: [
+          'audio_mc.opt.artist_1_a',
+          'audio_mc.opt.artist_1_b',
+          'audio_mc.opt.artist_1_c',
+          'audio_mc.opt.artist_1_d',
+        ],
+        answerTarget: 'artist',
+        audioAssetId: 'ca_44384e12ad9a80f1',
+      },
+      serverConfig: {
+        questions: [
+          {
+            questionKey: 'audio_mc.q.artist_1',
+            optionKeys: [
+              'audio_mc.opt.artist_1_a',
+              'audio_mc.opt.artist_1_b',
+              'audio_mc.opt.artist_1_c',
+              'audio_mc.opt.artist_1_d',
+            ],
+            correctOptionKey: 'audio_mc.opt.artist_1_b',
+            answerTarget: 'artist',
+            audioAssetId: 'ca_44384e12ad9a80f1',
+            visualizationAssetId: 'cv_44384e12ad9a80f1',
+            audioDurationMs: 2000,
+            questionCopy: {
+              ar: 'من صاحب هذا الصوت؟',
+              en: 'Who is the owner of this voice?',
+            },
+            optionCopy: {
+              'audio_mc.opt.artist_1_a': { ar: 'رامي', en: 'Rami' },
+              'audio_mc.opt.artist_1_b': { ar: 'نور', en: 'Nour' },
+              'audio_mc.opt.artist_1_c': { ar: 'ليان', en: 'Lyan' },
+              'audio_mc.opt.artist_1_d': { ar: 'سليم', en: 'Salim' },
+            },
+          },
+          {
+            questionKey: 'audio_mc.q.track_1',
+            optionKeys: [
+              'audio_mc.opt.track_1_a',
+              'audio_mc.opt.track_1_b',
+              'audio_mc.opt.track_1_c',
+              'audio_mc.opt.track_1_d',
+            ],
+            correctOptionKey: 'audio_mc.opt.track_1_a',
+            answerTarget: 'track',
+            audioAssetId: 'ca_76fc12197f19bd1b',
+            visualizationAssetId: 'cv_76fc12197f19bd1b',
+            audioDurationMs: 2000,
+            questionCopy: {
+              ar: 'ما اسم الأغنية؟',
+              en: 'What is the name of the song?',
+            },
+            optionCopy: {
+              'audio_mc.opt.track_1_a': { ar: 'نبض أخير', en: 'Last Pulse' },
+              'audio_mc.opt.track_1_b': { ar: 'ليل بعيد', en: 'Distant Night' },
+              'audio_mc.opt.track_1_c': {
+                ar: 'صوت القلب',
+                en: 'Voice of the Heart',
+              },
+              'audio_mc.opt.track_1_d': {
+                ar: 'بعد الغياب',
+                en: 'After Absence',
+              },
+            },
+          },
+        ],
+      },
+    };
+    match = eng.startChallenge(match, def).match;
+    const challenge = match.currentChallenge!;
+    expect(challenge.seatVariants?.size).toBe(2);
+    const [idA, seatA] = [...challenge.seatVariants!.entries()][0]!;
+    const [idB, seatB] = [...challenge.seatVariants!.entries()][1]!;
+    expect(seatA.clientOverlay['audioAssetId']).not.toBe(
+      seatB.clientOverlay['audioAssetId'],
+    );
+    expect(JSON.stringify(seatA.clientOverlay)).not.toMatch(/correctOption/);
+
+    const viewA = toPublicChallengeView(challenge, clock.nowMs(), idA);
+    const viewB = toPublicChallengeView(challenge, clock.nowMs(), idB);
+    expect(viewA.clientConfig['audioAssetId']).toBe(
+      seatA.clientOverlay['audioAssetId'],
+    );
+    expect(viewB.clientConfig['audioAssetId']).toBe(
+      seatB.clientOverlay['audioAssetId'],
+    );
+    expect(viewA.clientConfig['audioAssetId']).not.toBe(
+      viewB.clientConfig['audioAssetId'],
+    );
+    expect(JSON.stringify(viewA)).not.toMatch(/correctOption/);
+    expect(JSON.stringify(viewA)).not.toContain(
+      String(seatB.clientOverlay['audioAssetId']),
+    );
+
+    match = eng.submitAnswer(match, {
+      playerId: idA,
+      challengeInstanceId: challenge.challengeInstanceId,
+      commandId: 'audio-mc-a',
+      answer: { chosenOptionKey: seatA.serverOverlay['correctOptionKey'] },
+    }).match;
+    match = eng.submitAnswer(match, {
+      playerId: idB,
+      challengeInstanceId: challenge.challengeInstanceId,
+      commandId: 'audio-mc-b',
+      answer: { chosenOptionKey: seatA.serverOverlay['correctOptionKey'] },
+    }).match;
+    expect(match.players.get(idA)!.hearts).toBe(3);
+    expect(match.players.get(idB)!.hearts).toBe(2);
+  });
+
   it('assigns distinct fog wipe reveal images per seat', () => {
     const clock = new FakeClock(1_000_000);
     const eng = engine(clock);
