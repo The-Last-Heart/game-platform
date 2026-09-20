@@ -1,6 +1,6 @@
 {
   "packId": "lh.local.content.v1",
-  "packVersion": 18,
+  "packVersion": 27,
   "assets": [
     {
       "assetId": "sfx.pulse",
@@ -346,11 +346,179 @@
       "sha256": "fef602732d5d5feb2401d3c94edb8d1a07b8d88d672c76d28f9cb571303af5f8"
     },
     {
+      "assetId": "ca_14e20df4cd7c9b0f",
+      "relativePath": "assets/ca_14e20df4cd7c9b0f.mp3",
+      "contentType": "audio/mpeg",
+      "bytes": 208978,
+      "sha256": "14e20df4cd7c9b0f39473f91f28a96a4351d902bdc84a7c441805a78d423c0f2",
+      "durationMs": 13000,
+      "analysisSchemaVersion": 1,
+      "visualizationAssetId": "cv_14e20df4cd7c9b0f",
+      "kind": "audio"
+    },
+    {
+      "assetId": "cv_14e20df4cd7c9b0f",
+      "relativePath": "assets/cv_14e20df4cd7c9b0f.json",
+      "contentType": "application/json",
+      "bytes": 212944,
+      "sha256": "ed8a380b55470bc76f09e97329a91aed10cc0fa97053c04bb765b52a69cd4c7b",
+      "durationMs": 13000,
+      "analysisSchemaVersion": 1,
+      "kind": "visualization"
+    },
+    {
+      "assetId": "ca_98c2d4b9d249d724",
+      "relativePath": "assets/ca_98c2d4b9d249d724.mp3",
+      "contentType": "audio/mpeg",
+      "bytes": 241161,
+      "sha256": "98c2d4b9d249d72441ad2f13fef23e59bf634ca39076ab497c2848b877997247",
+      "durationMs": 15000,
+      "analysisSchemaVersion": 1,
+      "visualizationAssetId": "cv_98c2d4b9d249d724",
+      "kind": "audio"
+    },
+    {
+      "assetId": "cv_98c2d4b9d249d724",
+      "relativePath": "assets/cv_98c2d4b9d249d724.json",
+      "contentType": "application/json",
+      "bytes": 246817,
+      "sha256": "15df8bc9f4832f3d6220665903ff01545c3542590b12329302a0ff6cd492751a",
+      "durationMs": 15000,
+      "analysisSchemaVersion": 1,
+      "kind": "visualization"
+    },
+    {
+      "assetId": "ca_465787c4654d7516",
+      "relativePath": "assets/ca_465787c4654d7516.mp3",
+      "contentType": "audio/mpeg",
+      "bytes": 241161,
+      "sha256": "465787c4654d75167fa0830f04e7c22eb4612689ba7ccebdb751498dad0077db",
+      "durationMs": 15000,
+      "analysisSchemaVersion": 1,
+      "visualizationAssetId": "cv_465787c4654d7516",
+      "kind": "audio"
+    },
+    {
+      "assetId": "cv_465787c4654d7516",
+      "relativePath": "assets/cv_465787c4654d7516.json",
+      "contentType": "application/json",
+      "bytes": 236439,
+      "sha256": "6c553ed8d2506205bcfd10b2aab781deb3f72116739e18f2c5f48e6cefa28e39",
+      "durationMs": 15000,
+      "analysisSchemaVersion": 1,
+      "kind": "visualization"
+    },
+    {
+      "assetId": "ca_7a22233581356e39",
+      "relativePath": "assets/ca_7a22233581356e39.mp3",
+      "contentType": "audio/mpeg",
+      "bytes": 224861,
+      "sha256": "7a22233581356e39ce0c4184febbe71d9ca72151f00c3510e99c2d5404fc8b09",
+      "durationMs": 14000,
+      "analysisSchemaVersion": 1,
+      "visualizationAssetId": "cv_7a22233581356e39",
+      "kind": "audio"
+    },
+    {
+      "assetId": "cv_7a22233581356e39",
+      "relativePath": "assets/cv_7a22233581356e39.json",
+      "contentType": "application/json",
+      "bytes": 222608,
+      "sha256": "f47251813f35079661d3747e824f1cda59e52e70ce84fa5084bba8cb90ff6738",
+      "durationMs": 14000,
+      "analysisSchemaVersion": 1,
+      "kind": "visualization"
+    },
+    {
       "assetId": "common_word.background",
       "relativePath": "assets/common_word.background.mp3",
       "contentType": "audio/mpeg",
       "bytes": 599040,
       "sha256": "9b9b9fdef5eedc3adca31211307b5fef0a00eebe84dafab729f705b05a0becaa"
+    },
+    {
+      "assetId": "ca_bd9d1c41268b4729",
+      "relativePath": "assets/ca_bd9d1c41268b4729.mp3",
+      "contentType": "audio/mpeg",
+      "bytes": 129148,
+      "sha256": "bd9d1c41268b4729daecf2d4747c16b2e3470dcfb360d999d15807eb3650ff16",
+      "durationMs": 8000,
+      "analysisSchemaVersion": 1,
+      "visualizationAssetId": "cv_bd9d1c41268b4729",
+      "kind": "audio"
+    },
+    {
+      "assetId": "cv_bd9d1c41268b4729",
+      "relativePath": "assets/cv_bd9d1c41268b4729.json",
+      "contentType": "application/json",
+      "bytes": 131301,
+      "sha256": "df698ec2e9ac150e26260db291afa24eadf6253b8ddf544af859137b955b6341",
+      "durationMs": 8000,
+      "analysisSchemaVersion": 1,
+      "kind": "visualization"
+    },
+    {
+      "assetId": "ca_64648f060f3aaa34",
+      "relativePath": "assets/ca_64648f060f3aaa34.mp3",
+      "contentType": "audio/mpeg",
+      "bytes": 208978,
+      "sha256": "64648f060f3aaa34cb0d98bf51ff0e113cb923480cf9897912254e269b8a8b10",
+      "durationMs": 13000,
+      "analysisSchemaVersion": 1,
+      "visualizationAssetId": "cv_64648f060f3aaa34",
+      "kind": "audio"
+    },
+    {
+      "assetId": "cv_64648f060f3aaa34",
+      "relativePath": "assets/cv_64648f060f3aaa34.json",
+      "contentType": "application/json",
+      "bytes": 210120,
+      "sha256": "72f63719dca9ecb513e4080ff55716bec94ea7d4662f23f97c440cdf52ea1d89",
+      "durationMs": 13000,
+      "analysisSchemaVersion": 1,
+      "kind": "visualization"
+    },
+    {
+      "assetId": "ca_5e97db80400ecffd",
+      "relativePath": "assets/ca_5e97db80400ecffd.mp3",
+      "contentType": "audio/mpeg",
+      "bytes": 208978,
+      "sha256": "5e97db80400ecffda270dccbcb3344ab3fa61c2b502be3541896325cf1b9aec9",
+      "durationMs": 13000,
+      "analysisSchemaVersion": 1,
+      "visualizationAssetId": "cv_5e97db80400ecffd",
+      "kind": "audio"
+    },
+    {
+      "assetId": "cv_5e97db80400ecffd",
+      "relativePath": "assets/cv_5e97db80400ecffd.json",
+      "contentType": "application/json",
+      "bytes": 205590,
+      "sha256": "e6fa6a73d7d97d931456b39563b2d25c1be34484ae848ed2485a12abad3999b1",
+      "durationMs": 13000,
+      "analysisSchemaVersion": 1,
+      "kind": "visualization"
+    },
+    {
+      "assetId": "ca_ce43307e00fc499f",
+      "relativePath": "assets/ca_ce43307e00fc499f.mp3",
+      "contentType": "audio/mpeg",
+      "bytes": 241161,
+      "sha256": "ce43307e00fc499f85c27a0ead20df25b074fbc8c0eec75ca70e7c0af63bca45",
+      "durationMs": 15000,
+      "analysisSchemaVersion": 1,
+      "visualizationAssetId": "cv_ce43307e00fc499f",
+      "kind": "audio"
+    },
+    {
+      "assetId": "cv_ce43307e00fc499f",
+      "relativePath": "assets/cv_ce43307e00fc499f.json",
+      "contentType": "application/json",
+      "bytes": 233558,
+      "sha256": "7f05f58b4bc0b704bb5a08f377114b00357e6055f2ea5e377f45c65844c7c30f",
+      "durationMs": 15000,
+      "analysisSchemaVersion": 1,
+      "kind": "visualization"
     },
     {
       "assetId": "three_doors.background",

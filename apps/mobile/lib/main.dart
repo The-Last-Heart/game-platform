@@ -1,5 +1,6 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 
 import 'features/entry/ui/app_entry_screen.dart';
@@ -25,7 +26,11 @@ const String _backendUrl = String.fromEnvironment(
 ///
 /// Android application ID / iOS bundle identifier: `com.thelastheart.game`
 /// Must be verified before store registration.
-void main() {
+Future<void> main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  await SystemChrome.setPreferredOrientations(const <DeviceOrientation>[
+    DeviceOrientation.portraitUp,
+  ]);
   runApp(const TheLastHeartApp());
 }
 

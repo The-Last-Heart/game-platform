@@ -12,10 +12,10 @@
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
-      href="https://fonts.googleapis.com/css2?family=Baloo+Bhaijaan+2:wght@500;600;700;800&family=Cairo:wght@400;500;600;700;800&display=swap"https://fonts.googleapis.com/css2?family=Cairo:wght@400;500;600;700;800&family=Changa:wght@500;600;700;800&display=swap"family=Cairo:wght@400;500;600;700;800href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;500;600;700;800&family=Changa:wght@500;600;700;800&display=swap"display=swap"
+      href="https://fonts.googleapis.com/css2?family=Baloo+Bhaijaan+2:wght@500;600;700;800&family=Cairo:wght@400;500;600;700;800&display=swap"
       rel="stylesheet"
     />
-    <link rel="stylesheet" href="/assets/css/styles.css?v=5" />
+    <link rel="stylesheet" href="/assets/css/styles.css?v=6" />
   </head>
   <body>
     <div class="atmosphere" aria-hidden="true">
@@ -55,7 +55,29 @@
 
     <main>
       <section class="hero">
-        <div class="hero__plane" aria-hidden="true"></div>
+        <div class="hero__media" aria-hidden="true">
+          <img
+            class="hero__poster"
+            src="/assets/media/poster.jpg"
+            alt=""
+            width="1024"
+            height="576"
+            decoding="async"
+            fetchpriority="high"
+          />
+          <video
+            class="hero__video"
+            data-hero-video
+            muted
+            playsinline
+            loop
+            preload="metadata"
+            poster="/assets/media/poster.jpg"
+          >
+            <source src="/assets/media/video-hero-720.mp4" type="video/mp4" />
+          </video>
+          <div class="hero__plane"></div>
+        </div>
         <div class="hero__content">
           <div class="hero__brand">
             <svg class="hero__brand-mark heart" viewBox="0 0 24 24" aria-hidden="true">
@@ -144,6 +166,6 @@
     <script>
       document.querySelector("[data-year]").textContent = new Date().getFullYear();
     </script>
-    <script src="/assets/js/main.js" defer></script>
+    <script src="/assets/js/main.js?v=6" defer></script>
   </body>
 </html>
