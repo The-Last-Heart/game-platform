@@ -12,8 +12,9 @@
   --border: #1d3a50;
   --radius: 18px;
   --nav-h: 4.25rem;
-  --font-display: "Syne", "Noto Sans Arabic", system-ui, sans-serif;
-  --font-body: "Noto Sans Arabic", "Segoe UI", system-ui, sans-serif;
+  /* Changa = bold game display; Cairo = readable Arabic UI */
+  --font-display: "Changa", "Cairo", system-ui, sans-serif;
+  --font-body: "Cairo", "Segoe UI", system-ui, sans-serif;
 }
 
 *,
@@ -32,10 +33,14 @@ body {
   color: var(--text);
   background: var(--bg);
   font-family: var(--font-body);
-  font-size: 1rem;
-  line-height: 1.65;
+  font-size: 1.05rem;
+  line-height: 1.75;
   -webkit-font-smoothing: antialiased;
   overflow-x: hidden;
+}
+
+html[dir="rtl"] body {
+  letter-spacing: 0;
 }
 
 a {
@@ -167,14 +172,17 @@ img {
   line-height: 1.15;
 }
 
-.brand__en {
-  font-size: 0.95rem;
+.brand__ar {
+  font-family: var(--font-display);
+  font-size: 1.05rem;
+  font-weight: 700;
 }
 
-.brand__ar {
-  font-size: 0.78rem;
+.brand__en {
+  font-size: 0.72rem;
   color: var(--text-muted);
   font-weight: 500;
+  letter-spacing: 0.04em;
 }
 
 .nav-links {
@@ -293,12 +301,18 @@ img {
   }
 }
 
-/* Heart SVG */
+/* Heart SVG — clean Material-style path; scale from center */
 .heart {
   fill: var(--primary);
+  overflow: visible;
+  transform-box: fill-box;
   transform-origin: center;
   animation: heartbeat 1.6s ease-in-out infinite;
   filter: drop-shadow(0 0 10px rgba(255, 48, 69, 0.55));
+}
+
+.heart path {
+  fill: inherit;
 }
 
 @keyframes heartbeat {
@@ -382,18 +396,19 @@ img {
   margin: 0;
   font-family: var(--font-display);
   font-weight: 800;
-  font-size: clamp(2.6rem, 8vw, 4.75rem);
-  line-height: 0.95;
-  letter-spacing: -0.03em;
+  font-size: clamp(2.75rem, 9vw, 4.85rem);
+  line-height: 1.05;
+  letter-spacing: 0;
 }
 
 .hero__title span {
   display: block;
-  font-size: 0.42em;
+  font-family: var(--font-body);
+  font-size: 0.38em;
   font-weight: 600;
-  letter-spacing: 0;
+  letter-spacing: 0.06em;
   color: var(--cyan);
-  margin-top: 0.35em;
+  margin-top: 0.4em;
   animation: cyan-glow 3.5s ease-in-out infinite alternate;
 }
 
@@ -476,10 +491,9 @@ img {
   margin: 0 0 0.65rem;
   color: var(--cyan);
   font-family: var(--font-display);
-  font-size: 0.85rem;
+  font-size: 0.95rem;
   font-weight: 700;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
+  letter-spacing: 0.04em;
 }
 
 .section__title {
@@ -592,7 +606,7 @@ img {
 }
 
 .legal ul {
-  padding-left: 1.2rem;
+  padding-inline-start: 1.2rem;
 }
 
 .legal a {
