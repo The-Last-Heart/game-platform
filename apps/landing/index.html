@@ -1,0 +1,151 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>The Last Heart — آخر قلب</title>
+    <meta
+      name="description"
+      content="The Last Heart (آخر قلب) — an Arabic-first real-time party game. Keep your hearts. Be the last one standing."
+    />
+    <meta name="theme-color" content="#030914" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Noto+Sans+Arabic:wght@400;500;600;700&family=Syne:wght@600;700;800&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="/assets/css/styles.css" />
+  </head>
+  <body>
+    <div class="atmosphere" aria-hidden="true">
+      <div class="atmosphere__orb atmosphere__orb--a"></div>
+      <div class="atmosphere__orb atmosphere__orb--b"></div>
+      <div class="atmosphere__orb atmosphere__orb--c"></div>
+    </div>
+
+    <header class="top-nav">
+      <a class="brand" href="/">
+        <svg class="brand__mark heart" viewBox="0 0 32 32" aria-hidden="true">
+          <path
+            d="M16 28s-10.5-6.8-13.2-12.2C.7 11.7 2.2 7.2 6.2 5.8c2.6-.9 5.3.1 6.8 2.2C14.5 5.9 17.2 4.9 19.8 5.8c4 1.4 5.5 5.9 3.4 10C26.5 21.2 16 28 16 28z"
+          />
+        </svg>
+        <span class="brand__text">
+          <span class="brand__en">The Last Heart</span>
+          <span class="brand__ar" lang="ar" dir="rtl">آخر قلب</span>
+        </span>
+      </a>
+      <button
+        class="nav-toggle"
+        type="button"
+        data-nav-toggle
+        aria-expanded="false"
+        aria-controls="primary-nav"
+        aria-label="Open menu"
+      >
+        <span></span>
+      </button>
+      <ul class="nav-links" id="primary-nav">
+        <li><a href="/" aria-current="page">Home</a></li>
+        <li><a href="/privacy">Privacy</a></li>
+        <li><a href="/terms">Terms of use</a></li>
+      </ul>
+    </header>
+
+    <main>
+      <section class="hero">
+        <div class="hero__plane" aria-hidden="true"></div>
+        <div class="hero__content">
+          <div class="hero__brand">
+            <svg class="hero__brand-mark heart" viewBox="0 0 32 32" aria-hidden="true">
+              <path
+                d="M16 28s-10.5-6.8-13.2-12.2C.7 11.7 2.2 7.2 6.2 5.8c2.6-.9 5.3.1 6.8 2.2C14.5 5.9 17.2 4.9 19.8 5.8c4 1.4 5.5 5.9 3.4 10C26.5 21.2 16 28 16 28z"
+              />
+            </svg>
+          </div>
+          <h1 class="hero__title">
+            The Last Heart
+            <span lang="ar" dir="rtl">آخر قلب</span>
+          </h1>
+          <p class="hero__lead">
+            An Arabic-first real-time party game. Survive lightning challenges,
+            guard your hearts, and be the last player standing.
+          </p>
+          <div class="hero__actions">
+            <a class="btn btn--primary" href="#how-it-feels">Feel the pulse</a>
+            <a class="btn btn--ghost" href="/privacy">Privacy</a>
+          </div>
+        </div>
+      </section>
+
+      <section class="section" id="how-it-feels">
+        <div class="section__inner">
+          <p class="section__eyebrow">Live matches</p>
+          <h2 class="section__title">Six players. Three hearts. One survivor.</h2>
+          <p class="section__copy">
+            Server-driven challenges keep every round fair and fast. Energy
+            builds into powers. Miss a beat — lose a heart. Zero hearts, and you
+            watch from the sidelines.
+          </p>
+
+          <div class="feature-strip">
+            <article class="feature">
+              <svg class="feature__icon" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                <path
+                  d="M12 21s-7-4.5-9-8.2C1.4 9.5 2.5 6 5.5 5c1.9-.6 3.8.2 4.8 1.8C11.3 5.2 13.2 4.4 15.1 5c3 .9 4.1 4.5 2.5 7.8C19 16.5 12 21 12 21z"
+                  stroke="currentColor"
+                  stroke-width="1.6"
+                />
+              </svg>
+              <h3>Hearts on the line</h3>
+              <p>Every challenge is a pulse check. Fail late and the room gets quieter.</p>
+            </article>
+            <article class="feature">
+              <svg class="feature__icon" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                <path
+                  d="M4 12h3l2-5 3 10 2-5h6"
+                  stroke="currentColor"
+                  stroke-width="1.6"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                />
+              </svg>
+              <h3>Seconds that matter</h3>
+              <p>Short, sharp rounds. React, sync, swipe, solve — then breathe.</p>
+            </article>
+            <article class="feature">
+              <svg class="feature__icon" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                <circle cx="12" cy="12" r="8" stroke="currentColor" stroke-width="1.6" />
+                <path
+                  d="M12 8v4l2.5 2.5"
+                  stroke="currentColor"
+                  stroke-width="1.6"
+                  stroke-linecap="round"
+                />
+              </svg>
+              <h3>Real-time together</h3>
+              <p>Online parties stay in sync. The server is the heartbeat of every match.</p>
+            </article>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <footer class="site-footer">
+      <div class="site-footer__inner">
+        <p>© <span data-year></span> The Last Heart — آخر قلب</p>
+        <nav aria-label="Footer">
+          <a href="/">Home</a>
+          <a href="/privacy">Privacy</a>
+          <a href="/terms">Terms of use</a>
+        </nav>
+      </div>
+    </footer>
+
+    <script>
+      document.querySelector("[data-year]").textContent = new Date().getFullYear();
+    </script>
+    <script src="/assets/js/main.js" defer></script>
+  </body>
+</html>

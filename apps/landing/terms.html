@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Terms of use — The Last Heart</title>
+    <meta name="description" content="Terms of use for The Last Heart (آخر قلب)." />
+    <meta name="theme-color" content="#030914" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Noto+Sans+Arabic:wght@400;500;600;700&family=Syne:wght@600;700;800&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="/assets/css/styles.css" />
+  </head>
+  <body>
+    <div class="atmosphere" aria-hidden="true">
+      <div class="atmosphere__orb atmosphere__orb--a"></div>
+      <div class="atmosphere__orb atmosphere__orb--c"></div>
+    </div>
+
+    <header class="top-nav">
+      <a class="brand" href="/">
+        <svg class="brand__mark heart" viewBox="0 0 32 32" aria-hidden="true">
+          <path
+            d="M16 28s-10.5-6.8-13.2-12.2C.7 11.7 2.2 7.2 6.2 5.8c2.6-.9 5.3.1 6.8 2.2C14.5 5.9 17.2 4.9 19.8 5.8c4 1.4 5.5 5.9 3.4 10C26.5 21.2 16 28 16 28z"
+          />
+        </svg>
+        <span class="brand__text">
+          <span class="brand__en">The Last Heart</span>
+          <span class="brand__ar" lang="ar" dir="rtl">آخر قلب</span>
+        </span>
+      </a>
+      <button
+        class="nav-toggle"
+        type="button"
+        data-nav-toggle
+        aria-expanded="false"
+        aria-controls="primary-nav"
+        aria-label="Open menu"
+      >
+        <span></span>
+      </button>
+      <ul class="nav-links" id="primary-nav">
+        <li><a href="/">Home</a></li>
+        <li><a href="/privacy">Privacy</a></li>
+        <li><a href="/terms" aria-current="page">Terms of use</a></li>
+      </ul>
+    </header>
+
+    <main class="legal">
+      <div class="legal__inner">
+        <h1>Terms of use</h1>
+        <p class="meta">Last updated: 20 September 2026</p>
+
+        <p>
+          These Terms govern your use of <strong>The Last Heart</strong>
+          (“the Game”), related websites, and online services operated by us.
+          By accessing or playing the Game, you agree to these Terms.
+        </p>
+
+        <h2>The service</h2>
+        <p>
+          The Last Heart is a real-time multiplayer party game. Features may
+          change as we update content, match rules, and infrastructure. We may
+          suspend or modify the service for maintenance, security, or product
+          reasons.
+        </p>
+
+        <h2>Eligibility &amp; accounts</h2>
+        <ul>
+          <li>You must meet the minimum age required in your country to play.</li>
+          <li>You are responsible for activity under your player identity.</li>
+          <li>Do not impersonate others or attempt to access other players’ data.</li>
+        </ul>
+
+        <h2>Fair play</h2>
+        <ul>
+          <li>No cheating, bots, exploits, or reverse engineering of the Game.</li>
+          <li>No harassment, hate, or abusive behavior toward other players.</li>
+          <li>No disruption of servers, matches, or network infrastructure.</li>
+        </ul>
+
+        <h2>Intellectual property</h2>
+        <p>
+          The Game, branding (including “The Last Heart” / “آخر قلب”), artwork,
+          audio, software, and content packs remain our property or that of our
+          licensors. You receive a personal, non-exclusive, non-transferable
+          license to play the Game as provided — nothing more.
+        </p>
+
+        <h2>User content</h2>
+        <p>
+          If you submit display names or other content, you grant us a license
+          to host and display it as needed to operate matches and related
+          features. Do not submit unlawful or infringing material.
+        </p>
+
+        <h2>Disclaimers</h2>
+        <p>
+          The Game is provided “as is”. To the fullest extent permitted by law,
+          we disclaim warranties of uninterrupted availability, perfect
+          matchmaking, or fitness for a particular purpose. Online play depends
+          on your device and network.
+        </p>
+
+        <h2>Limitation of liability</h2>
+        <p>
+          To the fullest extent permitted by law, we are not liable for indirect,
+          incidental, or consequential damages arising from use of the Game.
+          Some jurisdictions do not allow certain limitations; in those cases,
+          our liability is limited to the maximum permitted by law.
+        </p>
+
+        <h2>Changes</h2>
+        <p>
+          We may update these Terms. Continued use after an update means you
+          accept the revised Terms. Material changes will be reflected by the
+          “Last updated” date on this page.
+        </p>
+
+        <h2>Contact</h2>
+        <p>
+          Questions about these Terms:
+          <a href="mailto:legal@wdigitallabs.com">legal@wdigitallabs.com</a>
+        </p>
+      </div>
+    </main>
+
+    <footer class="site-footer">
+      <div class="site-footer__inner">
+        <p>© <span data-year></span> The Last Heart — آخر قلب</p>
+        <nav aria-label="Footer">
+          <a href="/">Home</a>
+          <a href="/privacy">Privacy</a>
+          <a href="/terms">Terms of use</a>
+        </nav>
+      </div>
+    </footer>
+
+    <script>
+      document.querySelector("[data-year]").textContent = new Date().getFullYear();
+    </script>
+    <script src="/assets/js/main.js" defer></script>
+  </body>
+</html>
