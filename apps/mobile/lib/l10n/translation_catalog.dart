@@ -216,6 +216,10 @@ abstract final class TranslationKeys {
   static const String errorsQueueTimeout = 'errors.queue_timeout';
   static const String errorsQueueFailed = 'errors.queue_failed';
   static const String errorsIdentityNameTaken = 'errors.identity.name_taken';
+  static const String errorsIdentityNameProhibited =
+      'errors.identity.name_prohibited';
+  static const String errorsIdentityNameInvalid =
+      'errors.identity.name_invalid';
   static const String errorsProtocolUnauthorized =
       'errors.protocol.unauthorized';
   static const String splashTagline = 'splash.tagline';

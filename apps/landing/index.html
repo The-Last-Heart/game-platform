@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="ar" dir="rtl">
   <head>
     <meta charset="utf-8" />
@@ -15,7 +15,7 @@
       href="https://fonts.googleapis.com/css2?family=Baloo+Bhaijaan+2:wght@500;600;700;800&family=Cairo:wght@400;500;600;700;800&display=swap"
       rel="stylesheet"
     />
-    <link rel="stylesheet" href="/assets/css/styles.css?v=6" />
+    <link rel="stylesheet" href="/assets/css/styles.css?v=8" />
   </head>
   <body>
     <div class="atmosphere" aria-hidden="true">
@@ -74,13 +74,20 @@
             preload="metadata"
             poster="/assets/media/poster.jpg"
           >
-            <source src="/assets/media/video-hero-720.mp4" type="video/mp4" />
+            <source
+              src="/assets/media/video-hero-720.mp4?v=7"
+              type="video/mp4"
+            />
           </video>
           <div class="hero__plane"></div>
         </div>
         <div class="hero__content">
           <div class="hero__brand">
-            <svg class="hero__brand-mark heart" viewBox="0 0 24 24" aria-hidden="true">
+            <svg
+              class="hero__brand-mark heart"
+              viewBox="0 0 24 24"
+              aria-hidden="true"
+            >
               <path
                 d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"
               />
@@ -104,10 +111,10 @@
       <section class="section" id="how-it-feels">
         <div class="section__inner">
           <p class="section__eyebrow">مباريات مباشرة</p>
-          <h2 class="section__title">ستة لاعبين. ثلاثة قلوب. ناجٍ واحد.</h2>
+          <h2 class="section__title">ستة لاعبين. ثلاثة قلوب. فائز واحد.</h2>
           <p class="section__copy">
-            التحديات تُدار من السيرفر بعدل وسرعة. طاقتك تتحول إلى قوى. أفلت
-            الإيقاع… تفقد قلباً. بلا قلوب؟ تشاهد من المدرّج.
+            واجه أصدقاءك في تحديات سريعة ومتنوعة. أخطأت أو تأخرت؟ تخسر قلبًا.
+            حافظ على قلوبك حتى النهاية لتصبح آخر قلب.
           </p>
 
           <div class="feature-strip">
@@ -118,11 +125,19 @@
                   d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"
                 />
               </svg>
-              <h3>قلوب على المحك</h3>
-              <p>كل تحدٍّ فحصٌ لنَبضك. تتأخر؟ الغرفة تصير أهدأ.</p>
+              <h3>ثلاثة قلوب</h3>
+              <p>
+                تبدأ المباراة بثلاثة قلوب. كل خطأ قد يكلّفك قلبًا، فحافظ عليها
+                حتى النهاية.
+              </p>
             </article>
             <article class="feature">
-              <svg class="feature__icon" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+              <svg
+                class="feature__icon"
+                viewBox="0 0 24 24"
+                fill="none"
+                aria-hidden="true"
+              >
                 <path
                   d="M4 12h3l2-5 3 10 2-5h6"
                   stroke="currentColor"
@@ -131,12 +146,23 @@
                   stroke-linejoin="round"
                 />
               </svg>
-              <h3>الثواني تفرق</h3>
-              <p>جولات قصيرة وحادّة: تفاعل، تزامن، اسحب، حلّ… ثم خذ نفساً.</p>
+              <h3>تحديات سريعة ومتنوعة</h3>
+              <p>اختبر سرعتك وتركيزك وذاكرتك في جولات قصيرة لا تشبه بعضها.</p>
             </article>
             <article class="feature">
-              <svg class="feature__icon" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-                <circle cx="12" cy="12" r="8" stroke="currentColor" stroke-width="1.6" />
+              <svg
+                class="feature__icon"
+                viewBox="0 0 24 24"
+                fill="none"
+                aria-hidden="true"
+              >
+                <circle
+                  cx="12"
+                  cy="12"
+                  r="8"
+                  stroke="currentColor"
+                  stroke-width="1.6"
+                />
                 <path
                   d="M12 8v4l2.5 2.5"
                   stroke="currentColor"
@@ -144,8 +170,10 @@
                   stroke-linecap="round"
                 />
               </svg>
-              <h3>لعب لحظي معاً</h3>
-              <p>الحفلة أونلاين ومتزامنة. السيرفر هو نبض كل مباراة.</p>
+              <h3>الكل يلعب في الوقت نفسه</h3>
+              <p>
+                يبدأ التحدي لجميع اللاعبين معًا، وكل ثانية قد تغيّر النتيجة.
+              </p>
             </article>
           </div>
         </div>
@@ -164,7 +192,8 @@
     </footer>
 
     <script>
-      document.querySelector("[data-year]").textContent = new Date().getFullYear();
+      document.querySelector("[data-year]").textContent =
+        new Date().getFullYear();
     </script>
     <script src="/assets/js/main.js?v=6" defer></script>
   </body>

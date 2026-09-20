@@ -304,6 +304,17 @@ class _IdentityScreenState extends State<IdentityScreen> {
         if (saveError == TranslationKeys.errorsIdentityNameTaken ||
             saveError == 'errors.identity.name_taken') {
           _nameError = resolver.resolve(TranslationKeys.errorsIdentityNameTaken);
+        } else if (saveError ==
+                TranslationKeys.errorsIdentityNameProhibited ||
+            saveError == 'errors.identity.name_prohibited') {
+          _nameError = resolver.resolve(
+            TranslationKeys.errorsIdentityNameProhibited,
+          );
+        } else if (saveError == TranslationKeys.errorsIdentityNameInvalid ||
+            saveError == 'errors.identity.name_invalid') {
+          _nameError = resolver.resolve(
+            TranslationKeys.errorsIdentityNameInvalid,
+          );
         } else {
           _nameError = resolver.resolve(saveError);
         }

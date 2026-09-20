@@ -49,23 +49,9 @@ class PlayerClaimClient {
       if (response.statusCode == 409) {
         return 'errors.identity.name_taken';
       }
-      try {
-        final Object? decoded = jsonDecode(body);
-        if (decoded is Map<String, dynamic>) {
-          final Object? message = decoded['message'];
-          if (message is Map<String, dynamic>) {
-            final Object? key = message['key'];
-            if (key is String && key.isNotEmpty) {
-              return key;
-            }
-            final Object? code = message['code'];
-            if (code == 'DISPLAY_NAME_TAKEN') {
-              return 'errors.identity.name_taken';
-            }
-          }
-        }
-      } catch (_) {
-        // Fall through to generic error.
+      final String? fromBody = claimErrorKeyFromBody(body);
+      if (fromBody != null) {
+        return fromBody;
       }
       return 'errors.service_unavailable';
     } on SocketException {
@@ -77,5 +63,42 @@ class PlayerClaimClient {
     } finally {
       client.close(force: true);
     }
+  }
+}
+
+/// Maps Nest claim-error JSON to a catalog key.
+///
+/// Accepts both top-level `{ code, key }` (current API) and nested
+/// `{ message: { code, key } }` shapes.
+String? claimErrorKeyFromBody(String body) {
+  try {
+    final Object? decoded = jsonDecode(body);
+    if (decoded is! Map) {
+      return null;
+    }
+    final Map<Object?, Object?> root = decoded;
+    final Object? nested = root['message'];
+    final Map<Object?, Object?> payload = nested is Map
+        ? nested
+        : root;
+
+    final Object? key = payload['key'] ?? root['key'];
+    if (key is String && key.isNotEmpty) {
+      return key;
+    }
+
+    final Object? code = payload['code'] ?? root['code'];
+    switch (code) {
+      case 'DISPLAY_NAME_TAKEN':
+        return 'errors.identity.name_taken';
+      case 'DISPLAY_NAME_PROHIBITED':
+        return 'errors.identity.name_prohibited';
+      case 'DISPLAY_NAME_INVALID':
+        return 'errors.identity.name_invalid';
+      default:
+        return null;
+    }
+  } catch (_) {
+    return null;
   }
 }
