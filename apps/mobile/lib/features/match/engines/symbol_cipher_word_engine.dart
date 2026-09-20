@@ -24,7 +24,10 @@ class SymbolCipherWordEngine implements ChallengeEngine {
 
   @override
   Widget build(BuildContext context, ChallengeContext challengeContext) {
-    return _SymbolCipherWordWidget(challengeContext: challengeContext);
+    return _SymbolCipherWordWidget(
+      key: ValueKey<String>(challengeContext.challenge.challengeInstanceId),
+      challengeContext: challengeContext,
+    );
   }
 }
 
@@ -35,7 +38,10 @@ class _KeyMapping {
 }
 
 class _SymbolCipherWordWidget extends StatefulWidget {
-  const _SymbolCipherWordWidget({required this.challengeContext});
+  const _SymbolCipherWordWidget({
+    super.key,
+    required this.challengeContext,
+  });
 
   final ChallengeContext challengeContext;
 
@@ -1160,43 +1166,59 @@ class _AnswerButton extends StatelessWidget {
     double glow = 0.18;
 
     if (highlighted) {
-      // Clear player-choice feedback while awaiting / after confirm.
-      border = const Color(0xFF9AF6FF);
-      fillTop = const Color(0xFF1A4A5C);
-      fillBottom = const Color(0xFF0E2A38);
-      motif = const Color(0xFF3DE8FF).withValues(alpha: 0.55);
-      glow = pending ? 0.42 : 0.32;
+      // Solid cyan fill — same language as common-word / audio MC so the
+      // player's choice is obvious on the dark library background.
+      border = const Color(0xFFB8FBFF);
+      fillTop = const Color(0xFF4DF0FF);
+      fillBottom = const Color(0xFF22E7F2);
+      motif = const Color(0xFF03141C).withValues(alpha: 0.35);
+      textColor = const Color(0xFF03141C);
+      glow = pending ? 0.7 : 0.55;
     }
     if (correct) {
       border = Color.lerp(
         const Color(0xFFFFFFFF),
-        const Color(0xFF3DE8FF),
+        const Color(0xFF7DFFC4),
         resultT,
       )!;
       fillTop = Color.lerp(
         fillTop,
-        const Color(0xFF1E5A6A),
+        const Color(0xFF7DFFC4),
         resultT,
       )!;
       fillBottom = Color.lerp(
         fillBottom,
-        const Color(0xFF0F3544),
+        const Color(0xFF22E7F2),
         resultT,
       )!;
-      motif = const Color(0xFF3DE8FF).withValues(alpha: 0.65);
-      glow = 0.5;
+      motif = const Color(0xFF03141C).withValues(alpha: 0.35);
+      textColor = const Color(0xFF03141C);
+      glow = 0.7;
     }
     if (incorrect) {
-      border = Color.lerp(border, const Color(0xFFE07A4A), resultT)!;
-      fillTop = Color.lerp(fillTop, const Color(0xFF2A140C), resultT)!;
-      fillBottom = Color.lerp(fillBottom, const Color(0xFF1A0C08), resultT)!;
-      motif = Color.lerp(
-        motif,
-        const Color(0xFFE07A4A).withValues(alpha: 0.45),
+      border = Color.lerp(
+        const Color(0xFFE0C15A),
+        const Color(0xFFE07A4A),
         resultT,
       )!;
+      fillTop = Color.lerp(
+        const Color(0xFF0C1A2E),
+        const Color(0xFF2A140C),
+        resultT,
+      )!;
+      fillBottom = Color.lerp(
+        const Color(0xFF060E1A),
+        const Color(0xFF1A0C08),
+        resultT,
+      )!;
+      motif = Color.lerp(
+        const Color(0xFF3DE8FF).withValues(alpha: 0.25),
+        const Color(0xFFE07A4A).withValues(alpha: 0.55),
+        resultT,
+      )!;
+      textColor = const Color(0xFFF5F0E6);
       shake = math.sin(resultT * math.pi * 6) * 3 * (1 - resultT);
-      glow = 0.22;
+      glow = 0.35;
     }
     if (timedOut && selected) {
       border = border.withValues(alpha: 0.45);
@@ -1246,13 +1268,13 @@ class _AnswerButton extends StatelessWidget {
                 ),
                 border: Border.all(
                   color: border,
-                  width: highlighted || correct ? 2.0 : 1.4,
+                  width: highlighted || correct ? 2.2 : 1.4,
                 ),
                 boxShadow: <BoxShadow>[
                   BoxShadow(
                     color: border.withValues(alpha: glow),
-                    blurRadius: highlighted || correct ? 14 : 8,
-                    spreadRadius: highlighted ? 0.4 : 0,
+                    blurRadius: highlighted || correct ? 18 : 8,
+                    spreadRadius: highlighted ? 0.6 : 0,
                   ),
                 ],
               ),
@@ -1275,7 +1297,7 @@ class _AnswerButton extends StatelessWidget {
                         style: TextStyle(
                           color: textColor,
                           fontSize: 18 * scale,
-                          fontWeight: FontWeight.w700,
+                          fontWeight: FontWeight.w800,
                         ),
                       ),
                     ),

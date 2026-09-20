@@ -51,6 +51,7 @@ import { AudioMultipleChoiceFields } from './AudioMultipleChoiceFields';
 import { CommonWordFields } from './CommonWordFields';
 import { SymbolCipherWordFields } from './SymbolCipherWordFields';
 import { ThreeDoorsFields } from './ThreeDoorsFields';
+import { VerticalReflectionFields } from './VerticalReflectionFields';
 import { McOptionListEditor } from './McOptionListEditor';
 import {
   commonWordClientPreview,
@@ -67,6 +68,11 @@ import {
   serializeThreeDoorsBank,
   threeDoorsClientPreview,
 } from './three-doors-question';
+import {
+  defaultVerticalReflectionBank,
+  serializeVerticalReflectionBank,
+  verticalReflectionClientPreview,
+} from './vertical-reflection-question';
 import { StudioAudioClipPreview } from './AudioVisualizationPreview';
 import {
   audioClientPreview,
@@ -409,6 +415,12 @@ export function defaultClientConfig(
         roomAssetId: 'three_doors.room',
         backgroundSfxAssetId: 'three_doors.background',
       });
+    case 'focus.vertical_reflection':
+      return verticalReflectionClientPreview(defaultVerticalReflectionBank(), {
+        categoryKey: 'challenge.category.focus',
+        promptKey: 'challenge.vertical_reflection.prompt',
+        titleKey: 'challenge.vertical_reflection.title',
+      });
     case 'audio.multiple_choice':
       return audioClientPreview(defaultAudioQuestions()[0], {
         categoryKey: 'challenge.category.audio',
@@ -549,6 +561,7 @@ export function defaultClientConfig(
         leftWeights: [1, 2],
         rightKnownWeights: [1],
         optionWeights: [1, 2, 3],
+        placementSide: 'right',
       };
     case 'focus.stroop':
       return {
@@ -701,6 +714,8 @@ export function defaultServerConfig(
       return serializeSymbolCipherBank(defaultSymbolCipherBank());
     case 'logic.three_doors':
       return serializeThreeDoorsBank(defaultThreeDoorsBank());
+    case 'focus.vertical_reflection':
+      return serializeVerticalReflectionBank(defaultVerticalReflectionBank());
     case 'audio.multiple_choice':
       return {
         maxAudioDurationMs: AUDIO_CLIP_DEFAULT_MAX_DURATION_MS,
@@ -826,6 +841,44 @@ export function defaultServerConfig(
         rightKnownWeights: [1],
         optionWeights: [1, 2, 3],
         correctWeight: 2,
+        placementSide: 'right',
+        variants: [
+          {
+            leftWeights: [1, 2],
+            rightKnownWeights: [1],
+            optionWeights: [1, 2, 3],
+            correctWeight: 2,
+            placementSide: 'right',
+          },
+          {
+            leftWeights: [3],
+            rightKnownWeights: [],
+            optionWeights: [1, 2, 3],
+            correctWeight: 3,
+            placementSide: 'right',
+          },
+          {
+            leftWeights: [1],
+            rightKnownWeights: [4],
+            optionWeights: [1, 3, 5],
+            correctWeight: 3,
+            placementSide: 'left',
+          },
+          {
+            leftWeights: [],
+            rightKnownWeights: [2, 2],
+            optionWeights: [1, 3, 4],
+            correctWeight: 4,
+            placementSide: 'left',
+          },
+          {
+            leftWeights: [5],
+            rightKnownWeights: [2, 1],
+            optionWeights: [1, 2, 4],
+            correctWeight: 2,
+            placementSide: 'right',
+          },
+        ],
       };
     case 'focus.stroop':
       return {
@@ -3122,6 +3175,8 @@ export function FamilyParamsFields(props: FamilyParamsFieldsProps) {
         return <SymbolCipherWordFields {...props} />;
       case 'logic.three_doors':
         return <ThreeDoorsFields {...props} />;
+      case 'focus.vertical_reflection':
+        return <VerticalReflectionFields {...props} />;
       case 'audio.multiple_choice':
         return <AudioMultipleChoiceFields {...props} />;
       case 'focus.stroop':

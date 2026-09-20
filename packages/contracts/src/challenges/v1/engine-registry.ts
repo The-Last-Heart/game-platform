@@ -130,6 +130,13 @@ export const STUDIO_ENGINE_REGISTRY: readonly StudioEngineRegistryEntry[] = [
     labelKey: 'engine.focus.odd_one_out',
   },
   {
+    engineId: 'focus.vertical_reflection',
+    familyId: 'focus',
+    categoryId: 'focus.vertical_reflection',
+    runtimeReadiness: ENGINE_RUNTIME_READINESS['focus.vertical_reflection'],
+    labelKey: 'engine.focus.vertical_reflection',
+  },
+  {
     engineId: 'order.sequence_sort',
     familyId: 'order',
     categoryId: 'order.sequence_sort',

@@ -30,6 +30,7 @@ import 'trivia_multiple_choice_engine.dart';
 import 'common_word_engine.dart';
 import 'symbol_cipher_word_engine.dart';
 import 'three_doors_engine.dart';
+import 'vertical_reflection_engine.dart';
 import 'unknown_engine.dart';
 
 /// Registry mapping engineId → [ChallengeEngine].
@@ -55,6 +56,7 @@ class ChallengeEngineRegistry {
     register(SymbolCipherWordEngine());
     register(GeographySelectOnMapEngine());
     register(FocusOddOneOutEngine());
+    register(VerticalReflectionEngine());
     register(OrderSequenceSortEngine());
     register(PrecisionMazePathEngine());
     register(PrecisionNeonCableEngine());

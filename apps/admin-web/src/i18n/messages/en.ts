@@ -700,6 +700,7 @@ const en = {
   'studio.engine.ring_lock': 'Ring Lock',
   'studio.engine.routing': 'Laser routing',
   'studio.engine.three_doors': 'Door of Truth',
+  'studio.engine.vertical_reflection': 'Mirror of Deception',
   'studio.catalog.prompt.audioMcIntro': 'Guess the Audio title',
   'studio.catalog.prompt.audioMcArtist': 'Who owns this voice?',
   'studio.catalog.prompt.audioMcTrack': 'What is the song name?',
@@ -929,13 +930,25 @@ const en = {
   'studio.field.fp.threeDoorsPreview': 'Preview',
   'studio.field.fp.threeDoorsCorrectDoor': 'Intended correct door',
   'studio.field.fp.threeDoorsDerivedDoor': 'Solver door',
-  'studio.field.fp.threeDoorsUniqueYes': '(unique)',
-  'studio.field.fp.threeDoorsUniqueNo': '(not unique)',
+  'studio.field.fp.threeDoorsUniqueYes': 'unique',
+  'studio.field.fp.threeDoorsUniqueNo': 'not unique',
   'studio.field.fp.threeDoorsTruthTable': 'Truth table',
   'studio.field.fp.threeDoorsKeyAt': 'Key at',
   'studio.field.fp.threeDoorsValid': 'Valid',
+  'studio.field.fp.threeDoorsTrue': 'true',
+  'studio.field.fp.threeDoorsFalse': 'false',
+  'studio.field.fp.threeDoorsYes': 'yes',
+  'studio.field.fp.threeDoorsNo': 'no',
   'studio.field.fp.threeDoorsEnabled': 'Enabled in pool',
   'studio.field.fp.threeDoorsWeight': 'Selection weight',
+  'studio.field.fp.threeDoorsApplySolver': 'Use solver door',
+  'studio.field.fp.threeDoorsSolverHintOk':
+    'Unique solution — ready to publish this question.',
+  'studio.field.fp.threeDoorsSolverHintBad':
+    'No unique solution yet. Adjust predicates until one row is valid.',
+  'studio.field.fp.threeDoorsSolverHintMismatch':
+    'Solver disagrees with the intended door. Apply the solver door or edit statements.',
+  'studio.field.fp.threeDoorsBankOk': 'All enabled questions have a unique solver door.',
   'studio.field.fp.threeDoorsPred.is_here': 'The key is behind this door',
   'studio.field.fp.threeDoorsPred.is_not_here': 'The key is not behind this door',
   'studio.field.fp.threeDoorsPred.is': 'The key is behind a specific door',
@@ -943,6 +956,27 @@ const en = {
   'studio.field.fp.threeDoorsPred.is_one_of': 'The key is behind one of two doors',
   'studio.field.fp.threeDoorsPred.is_not_one_of':
     'The key is not behind either of two doors',
+  'studio.field.fp.verticalReflectionLead':
+    'Choose a shape family and seed. Preview updates immediately: source on one half, empty player half, and four answer candidates with the correct reflection marked.',
+  'studio.field.fp.verticalReflectionQuestion': 'Question',
+  'studio.field.fp.verticalReflectionAdd': 'Add question',
+  'studio.field.fp.verticalReflectionDuplicate': 'Duplicate',
+  'studio.field.fp.verticalReflectionRemove': 'Remove',
+  'studio.field.fp.verticalReflectionInternalName': 'Internal name',
+  'studio.field.fp.verticalReflectionTemplate': 'Shape family',
+  'studio.field.fp.verticalReflectionSeed': 'Generation seed',
+  'studio.field.fp.verticalReflectionRegenerate': 'Regenerate distractors',
+  'studio.field.fp.verticalReflectionTitle': 'Title (Arabic)',
+  'studio.field.fp.verticalReflectionInstruction': 'Instruction (Arabic)',
+  'studio.field.fp.verticalReflectionDifficulty': 'Difficulty',
+  'studio.field.fp.verticalReflectionWeight': 'Selection weight',
+  'studio.field.fp.verticalReflectionEnabled': 'Enabled in pool',
+  'studio.field.fp.verticalReflectionPreview': 'Live mechanic preview',
+  'studio.field.fp.verticalReflectionBoard': 'Board (source + empty half)',
+  'studio.field.fp.verticalReflectionEmptyHalf':
+    'Opposite half stays empty — players never see a ghost answer on the board.',
+  'studio.field.fp.verticalReflectionCorrect': 'Correct',
+  'studio.field.fp.verticalReflectionTemplateCount': 'Shape families available',
   'studio.field.fp.audioMcLead':
     'Players hear a short clip and pick one answer. Choose whether they identify the singer or the song, set the allowed clip length, upload MP3 or WAV audio, and mark the correct option. Arabic is what players see first.',
   'studio.field.fp.audioMcMaxDuration': 'Max clip length',
@@ -1268,8 +1302,12 @@ const en = {
   'studio.validation.laserGenerate': 'Puzzle generation failed. Check the laser parameters.',
   'studio.validation.threeDoorsSolver':
     'Each enabled Door of Truth question needs a unique solver-derived correct door.',
+  'studio.validation.threeDoorsSolverQuestion':
+    'Door of Truth question "{questionId}" needs a unique solver-derived correct door (check the truth table).',
   'studio.validation.threeDoorsOverflow':
     'A generated statement may be too long for the door plaque on compact phones.',
+  'studio.validation.verticalReflection':
+    'Each enabled Mirror of Deception question needs a unique vertical reflection and four distinct candidates.',
 
   // Permissions
   'studio.permissions.cannotDraft':

@@ -43,8 +43,8 @@ function threeDoorsDefinition(
           truthRule: 'exactly_one_false',
           statements: [
             { doorId: 'A', predicate: { kind: 'is_here' } },
-            { doorId: 'B', predicate: { kind: 'is_not', doorId: 'A' } },
-            { doorId: 'C', predicate: { kind: 'is_not', doorId: 'A' } },
+            { doorId: 'B', predicate: { kind: 'is_not_here' } },
+            { doorId: 'C', predicate: { kind: 'is', doorId: 'B' } },
           ],
           correctDoorId: 'A',
           enabled: true,

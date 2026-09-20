@@ -242,6 +242,12 @@ export function difficultyPlayPatch(
         medium: { durationMs: 6000, clientConfig: {}, serverConfig: {} },
         hard: { durationMs: 4000, clientConfig: {}, serverConfig: {} },
       }[difficulty];
+    case 'focus.vertical_reflection':
+      return {
+        easy: { durationMs: 12000, clientConfig: {}, serverConfig: {} },
+        medium: { durationMs: 10000, clientConfig: {}, serverConfig: {} },
+        hard: { durationMs: 7000, clientConfig: {}, serverConfig: {} },
+      }[difficulty];
     case 'order.sequence_sort':
     case 'precision.maze_path':
     case 'logic.balance_scale':

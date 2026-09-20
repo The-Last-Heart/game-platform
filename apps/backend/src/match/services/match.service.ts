@@ -1350,8 +1350,9 @@ export class MatchService implements OnModuleDestroy, OnModuleInit {
           next.phase !== 'draw' &&
           next.phase !== 'halted'
         ) {
-          // Dropping below the live minimum (e.g. 2→1) ends the match even if
-          // a challenge was still open — do not leave the survivor playing alone.
+          // Live playlist keeps going while ≥2 active seats still have hearts
+          // (e.g. 6→5 or 3→2). Only dropping below that minimum (2→1) ends the
+          // match mid-challenge — do not leave a sole survivor playing alone.
           this.clearTimer(matchId);
           const finished = this.engine.completeByStandings(next);
           if (finished.events.length > 0) {

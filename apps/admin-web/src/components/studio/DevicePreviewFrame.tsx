@@ -16,7 +16,13 @@ import { StudioAudioClipPreview } from './AudioVisualizationPreview';
 import { parseCommonWordBank } from './common-word-question';
 import { parseSymbolCipherBank } from './symbol-cipher-question';
 import { parseThreeDoorsBank, statementPreview } from './three-doors-question';
-import { THREE_DOORS_TITLE_COPY, threeDoorsInstructionText } from '@thelastheart/contracts';
+import { parseVerticalReflectionBank } from './vertical-reflection-question';
+import {
+  THREE_DOORS_TITLE_COPY,
+  VERTICAL_REFLECTION_INSTRUCTION_COPY,
+  VERTICAL_REFLECTION_TITLE_COPY,
+  threeDoorsInstructionText,
+} from '@thelastheart/contracts';
 
 export type PreviewState = 'intro' | 'active' | 'success' | 'failure' | 'timeout' | 'unsupported';
 
@@ -744,6 +750,240 @@ const cwCardStyle: CSSProperties = {
   color: '#f7fafc',
 };
 
+function VerticalReflectionDevicePreview({
+  locale,
+  durationMs,
+  serverConfig,
+  clientConfig,
+  activeState,
+}: {
+  locale: Locale;
+  durationMs?: number;
+  serverConfig?: Record<string, unknown>;
+  clientConfig?: Record<string, unknown>;
+  activeState: PreviewState;
+}) {
+  const bank = parseVerticalReflectionBank(serverConfig ?? {});
+  const wantedId =
+    typeof clientConfig?.questionId === 'string'
+      ? clientConfig.questionId
+      : null;
+  const question =
+    (wantedId
+      ? bank.questions.find((q) => q.questionId === wantedId)
+      : null) ?? bank.questions[0];
+  if (!question) return null;
+  const seconds = durationMs ? (durationMs / 1000).toFixed(0) : '—';
+  const copyLocale = locale === 'ar' ? 'ar' : 'en';
+  const dimmed = activeState === 'timeout';
+  const title =
+    typeof clientConfig?.titleText === 'string' && clientConfig.titleText
+      ? clientConfig.titleText
+      : question.titleAr || VERTICAL_REFLECTION_TITLE_COPY[copyLocale];
+  const instruction =
+    typeof clientConfig?.instructionText === 'string' &&
+    clientConfig.instructionText
+      ? clientConfig.instructionText
+      : question.instructionAr ||
+        VERTICAL_REFLECTION_INSTRUCTION_COPY[copyLocale];
+
+  function map(
+    x: number,
+    y: number,
+    frame: { x0: number; y0: number; w: number; h: number },
+  ) {
+    return {
+      x: frame.x0 + x * frame.w,
+      y: frame.y0 + y * frame.h,
+    };
+  }
+
+  function markerFill(role: string): string {
+    if (role === 'primary') return '#FF5365';
+    if (role === 'secondary') return '#22E7F2';
+    return '#FFC247';
+  }
+
+  function renderShape(
+    shape: (typeof question)['sourceShape'],
+    frame: { x0: number; y0: number; w: number; h: number },
+    keyPrefix: string,
+  ) {
+    return (
+      <g opacity={dimmed ? 0.45 : 1}>
+        {shape.polygons.map((poly, i) => (
+          <polygon
+            key={`${keyPrefix}-p-${i}`}
+            points={poly.points
+              .map((p) => {
+                const m = map(p.x, p.y, frame);
+                return `${m.x},${m.y}`;
+              })
+              .join(' ')}
+            fill="rgba(34,231,242,0.16)"
+            stroke="#22E7F2"
+            strokeWidth={1.6}
+            strokeLinejoin="round"
+          />
+        ))}
+        {shape.markers.map((m) => {
+          const c = map(m.center.x, m.center.y, frame);
+          const r = Math.max(2, m.size * Math.min(frame.w, frame.h));
+          const fill = markerFill(m.colorRole);
+          if (m.type === 'ring') {
+            return (
+              <circle
+                key={`${keyPrefix}-${m.id}`}
+                cx={c.x}
+                cy={c.y}
+                r={r}
+                fill="none"
+                stroke={fill}
+                strokeWidth={1.6}
+              />
+            );
+          }
+          if (m.type === 'short_line') {
+            return (
+              <line
+                key={`${keyPrefix}-${m.id}`}
+                x1={c.x - r}
+                y1={c.y}
+                x2={c.x + r}
+                y2={c.y}
+                stroke={fill}
+                strokeWidth={2}
+                strokeLinecap="round"
+              />
+            );
+          }
+          if (m.type === 'small_triangle') {
+            return (
+              <polygon
+                key={`${keyPrefix}-${m.id}`}
+                points={`${c.x},${c.y - r} ${c.x + r * 0.9},${c.y + r * 0.7} ${c.x - r * 0.9},${c.y + r * 0.7}`}
+                fill={fill}
+              />
+            );
+          }
+          return (
+            <circle
+              key={`${keyPrefix}-${m.id}`}
+              cx={c.x}
+              cy={c.y}
+              r={r}
+              fill={fill}
+            />
+          );
+        })}
+      </g>
+    );
+  }
+
+  const mid = 50;
+  const sourceSide = question.sourceSide === 'right' ? 'right' : 'left';
+  const halfBounds =
+    sourceSide === 'right'
+      ? { x0: mid + 4, y0: 8, w: mid - 10, h: 56 }
+      : { x0: 4, y0: 8, w: mid - 10, h: 56 };
+  const side = Math.min(halfBounds.w, halfBounds.h);
+  const sourceFrame = {
+    x0: halfBounds.x0 + (halfBounds.w - side) / 2,
+    y0: halfBounds.y0 + (halfBounds.h - side) / 2,
+    w: side,
+    h: side,
+  };
+
+  return (
+    <div
+      dir="rtl"
+      style={{
+        width: '100%',
+        display: 'flex',
+        flexDirection: 'column',
+        gap: 6,
+        alignItems: 'center',
+      }}
+    >
+      <span style={{ fontSize: '0.7rem', color: '#22E7F2' }}>{seconds}s</span>
+      <span style={{ fontSize: '0.95rem', fontWeight: 700, color: '#f7fafc' }}>
+        {title}
+      </span>
+      <span
+        style={{
+          fontSize: '0.68rem',
+          color: '#93a4b5',
+          textAlign: 'center',
+          lineHeight: 1.3,
+        }}
+      >
+        {instruction}
+      </span>
+      <svg
+        viewBox="0 0 100 72"
+        width="100%"
+        style={{
+          borderRadius: 10,
+          border: '1px solid rgba(34,231,242,0.28)',
+          background: 'linear-gradient(180deg, #0b1d2d 0%, #071522 100%)',
+        }}
+      >
+        <line
+          x1={mid}
+          y1="8"
+          x2={mid}
+          y2="64"
+          stroke="rgba(34,231,242,0.75)"
+          strokeWidth="1.5"
+          strokeLinecap="round"
+        />
+        <circle cx={mid} cy="8" r="1.8" fill="#22E7F2" />
+        <circle cx={mid} cy="64" r="1.8" fill="#22E7F2" />
+        {renderShape(question.sourceShape, sourceFrame, 'src')}
+      </svg>
+      <div
+        style={{
+          display: 'grid',
+          gridTemplateColumns: '1fr 1fr',
+          gap: 6,
+          width: '100%',
+        }}
+      >
+        {question.candidates.slice(0, 4).map((c) => {
+          const isCorrect = c.id === question.correctCandidateId;
+          const showMark =
+            activeState === 'success' && isCorrect
+              ? 'success'
+              : activeState === 'failure' && isCorrect
+                ? 'reveal'
+                : null;
+          return (
+            <div
+              key={c.id}
+              style={{
+                height: 56,
+                borderRadius: 8,
+                border:
+                  showMark === 'success'
+                    ? '1.5px solid #22E7F2'
+                    : showMark === 'reveal'
+                      ? '1.5px solid rgba(34,231,242,0.45)'
+                      : '1px solid rgba(29,58,80,0.95)',
+                background: '#071522',
+                overflow: 'hidden',
+              }}
+            >
+              <svg viewBox="0 0 100 100" width="100%" height="100%">
+                {renderShape(c.shape, { x0: 12, y0: 12, w: 76, h: 76 }, c.id)}
+              </svg>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 export function DevicePreviewFrame({
   locale,
   challengeTitle,
@@ -768,7 +1008,8 @@ export function DevicePreviewFrame({
       engineId === 'laser.routing' ||
       engineId === 'trivia.common_word' ||
       engineId === 'trivia.symbol_cipher_word' ||
-      engineId === 'logic.three_doors',
+      engineId === 'logic.three_doors' ||
+      engineId === 'focus.vertical_reflection',
   );
 
   return (
@@ -873,9 +1114,20 @@ export function DevicePreviewFrame({
                 />
               ) : null}
 
+              {engineId === 'focus.vertical_reflection' ? (
+                <VerticalReflectionDevicePreview
+                  locale={locale}
+                  durationMs={durationMs}
+                  serverConfig={serverConfig}
+                  clientConfig={clientConfig}
+                  activeState={activeState}
+                />
+              ) : null}
+
               {engineId !== 'trivia.common_word' &&
                 engineId !== 'trivia.symbol_cipher_word' &&
                 engineId !== 'logic.three_doors' &&
+                engineId !== 'focus.vertical_reflection' &&
               (activeState === 'intro' || activeState === 'active') ? (
                 <>
                   <span style={{ fontSize: '1.05rem', fontWeight: 700, textAlign: 'center' }}>

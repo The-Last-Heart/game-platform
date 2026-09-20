@@ -27,6 +27,7 @@ export const DIFFICULTY_ENGINE_PRIORITY: Record<
     'trivia.common_word',
     'trivia.symbol_cipher_word',
     'focus.odd_one_out',
+    'focus.vertical_reflection',
     'precision.neon_cable',
   ],
   medium: [

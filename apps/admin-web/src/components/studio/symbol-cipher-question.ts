@@ -380,12 +380,18 @@ export function symbolCipherClientPreview(
     titleText: bank.titleAr,
     instructionText: bank.instructionAr,
     questionId: q.questionId,
-    keyMappings,
-    encodedSymbols: encoded,
-    optionKeys: q.options.map((o) => o.key),
-    optionTexts: Object.fromEntries(
-      q.options.map((o) => [o.key, o.ar || o.key]),
-    ),
+    // Only pin round fields when complete — empty arrays fail .length(5) Zod checks.
+    ...(keyMappings.length === 5 && encoded.length === 5
+      ? { keyMappings, encodedSymbols: encoded }
+      : {}),
+    ...(q.options.length === 4
+      ? {
+          optionKeys: q.options.map((o) => o.key),
+          optionTexts: Object.fromEntries(
+            q.options.map((o) => [o.key, o.ar || o.key]),
+          ),
+        }
+      : {}),
     backgroundAssetId: 'symbol_cipher_word.background',
     /** Admin-only preview marker — stripped before publish/player payloads. */
     _studioCorrectOptionKey: q.correctOptionKey,

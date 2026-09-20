@@ -385,6 +385,62 @@ describe('pack-31 evaluators', () => {
         }).success,
       ).toBe(true);
     });
+
+    it('materializes only solvable variants and exposes placementSide', () => {
+      const round = def('logic.balance_scale', {
+        leftWeights: [1, 2],
+        rightKnownWeights: [1],
+        optionWeights: [1, 2, 3],
+        correctWeight: 2,
+        placementSide: 'right',
+        variants: [
+          {
+            leftWeights: [1, 2],
+            rightKnownWeights: [1],
+            optionWeights: [1, 2, 3],
+            correctWeight: 2,
+            placementSide: 'right',
+          },
+          {
+            // Dead-end: correct weight does not balance — must be skipped.
+            leftWeights: [9],
+            rightKnownWeights: [1],
+            optionWeights: [1, 2, 3],
+            correctWeight: 2,
+            placementSide: 'right',
+          },
+          {
+            leftWeights: [1],
+            rightKnownWeights: [4],
+            optionWeights: [1, 3, 5],
+            correctWeight: 3,
+            placementSide: 'left',
+          },
+        ],
+      });
+
+      for (let i = 0; i < 20; i += 1) {
+        const clone = structuredClone(round);
+        materializePack31Round(clone);
+        const left = (clone.serverConfig['leftWeights'] as number[]).reduce(
+          (a, b) => a + b,
+          0,
+        );
+        const right = (
+          clone.serverConfig['rightKnownWeights'] as number[]
+        ).reduce((a, b) => a + b, 0);
+        const correct = clone.serverConfig['correctWeight'] as number;
+        const side = clone.serverConfig['placementSide'];
+        const options = clone.clientConfig['optionWeights'] as number[];
+        expect(options).toContain(correct);
+        expect(clone.clientConfig['placementSide']).toBe(side);
+        if (side === 'left') {
+          expect(left + correct).toBe(right);
+        } else {
+          expect(left).toBe(right + correct);
+        }
+      }
+    });
   });
 
   describe('FocusStroopEvaluator', () => {

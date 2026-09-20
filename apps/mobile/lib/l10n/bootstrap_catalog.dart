@@ -200,6 +200,7 @@ TranslationCatalog createBootstrapCatalog() {
         TranslationKeys.introChallengeType: 'نوع التحدي',
         TranslationKeys.introReadInstructions: 'اقرأ التعليمات ونفّذ فورًا',
         TranslationKeys.introGetReady: 'استعد',
+        TranslationKeys.introHintLabel: 'تلميح',
 
         // ── LH-003 Result Chrome ──
         TranslationKeys.resultChallengeTitle: 'نتيجة التحدي',
@@ -398,6 +399,18 @@ TranslationCatalog createBootstrapCatalog() {
         'engine.logic.three_doors': 'باب الحقيقة',
         'result.three_doors.wrong': 'باب خاطئ',
         'result.three_doors.invalid': 'اختيار غير صالح',
+        'challenge.vertical_reflection.title': 'مرآة الخداع',
+        'challenge.vertical_reflection.intro': 'مرآة الخداع',
+        'challenge.vertical_reflection.prompt':
+            'اختر الانعكاس الصحيح حول المحور العمودي',
+        'challenge.vertical_reflection.instruction':
+            'اختر الانعكاس الصحيح حول المحور العمودي',
+        'challenge.vertical_reflection.footer': 'اختيار واحد فقط',
+        'challenge.vertical_reflection.a11y_board':
+            'لوحة الانعكاس: الشكل الأصلي والمحور العمودي',
+        'challenge.vertical_reflection.a11y_option': 'خيار الشكل {index}',
+        'engine.focus.vertical_reflection': 'مرآة الخداع',
+        'result.vertical_reflection.wrong': 'انعكاس خاطئ',
         'challenge.map.intro': 'اختر على الخريطة',
         'challenge.map.prompt': 'حدد دولة {country} على الخريطة',
         'challenge.map.footer': 'اضغط على موقع الدولة على الخريطة',
@@ -879,6 +892,7 @@ TranslationCatalog createBootstrapCatalog() {
         TranslationKeys.introReadInstructions:
             'Read instructions and act immediately',
         TranslationKeys.introGetReady: 'Get ready',
+        TranslationKeys.introHintLabel: 'Hint',
 
         // ── LH-003 Result Chrome ──
         TranslationKeys.resultChallengeTitle: 'Challenge Result',
@@ -1084,6 +1098,18 @@ TranslationCatalog createBootstrapCatalog() {
         'engine.logic.three_doors': 'Door of Truth',
         'result.three_doors.wrong': 'Wrong door',
         'result.three_doors.invalid': 'Invalid choice',
+        'challenge.vertical_reflection.title': 'Mirror of Deception',
+        'challenge.vertical_reflection.intro': 'Mirror of Deception',
+        'challenge.vertical_reflection.prompt':
+            'Choose the correct reflection across the vertical axis',
+        'challenge.vertical_reflection.instruction':
+            'Choose the correct reflection across the vertical axis',
+        'challenge.vertical_reflection.footer': 'One choice only',
+        'challenge.vertical_reflection.a11y_board':
+            'Reflection board: source shape and vertical axis',
+        'challenge.vertical_reflection.a11y_option': 'Shape option {index}',
+        'engine.focus.vertical_reflection': 'Mirror of Deception',
+        'result.vertical_reflection.wrong': 'Wrong reflection',
         'challenge.map.intro': 'Find on the map',
         'challenge.map.prompt': 'Select {country} on the map',
         'challenge.map.footer': 'Tap the country\'s location on the map',

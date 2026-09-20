@@ -2,7 +2,7 @@
   "definitionId": "logic.balance_scale.dev",
   "definitionVersion": 1,
   "engineId": "logic.balance_scale",
-  "durationMs": 8000,
+  "durationMs": 10000,
   "heartPenaltyOnFailure": 1,
   "energyRewardOnSuccess": 1,
   "promptKey": "challenge.balance.intro",
@@ -11,60 +11,101 @@
     "categoryKey": "challenge.category.logic",
     "promptKey": "challenge.balance.prompt",
     "footerKey": "challenge.balance.footer",
-    "leftWeights": [
-      1,
-      2
-    ],
-    "rightKnownWeights": [
-      1
-    ],
-    "optionWeights": [
-      1,
-      2,
-      3
-    ]
+    "leftWeights": [1, 2],
+    "rightKnownWeights": [1],
+    "optionWeights": [1, 2, 3],
+    "placementSide": "right"
   },
   "serverConfig": {
-    "leftWeights": [
-      1,
-      2
-    ],
-    "rightKnownWeights": [
-      1
-    ],
-    "optionWeights": [
-      1,
-      2,
-      3
-    ],
+    "leftWeights": [1, 2],
+    "rightKnownWeights": [1],
+    "optionWeights": [1, 2, 3],
     "correctWeight": 2,
+    "placementSide": "right",
     "variants": [
       {
-        "leftWeights": [
-          1,
-          2
-        ],
-        "rightKnownWeights": [
-          1
-        ],
-        "optionWeights": [
-          1,
-          2,
-          3
-        ],
-        "correctWeight": 2
+        "leftWeights": [1, 2],
+        "rightKnownWeights": [1],
+        "optionWeights": [1, 2, 3],
+        "correctWeight": 2,
+        "placementSide": "right"
       },
       {
-        "leftWeights": [
-          3
-        ],
+        "leftWeights": [3],
         "rightKnownWeights": [],
-        "optionWeights": [
-          1,
-          2,
-          3
-        ],
-        "correctWeight": 3
+        "optionWeights": [1, 2, 3],
+        "correctWeight": 3,
+        "placementSide": "right"
+      },
+      {
+        "leftWeights": [4],
+        "rightKnownWeights": [1],
+        "optionWeights": [1, 2, 3, 4],
+        "correctWeight": 3,
+        "placementSide": "right"
+      },
+      {
+        "leftWeights": [2, 3],
+        "rightKnownWeights": [2],
+        "optionWeights": [1, 3, 5],
+        "correctWeight": 3,
+        "placementSide": "right"
+      },
+      {
+        "leftWeights": [5],
+        "rightKnownWeights": [2, 1],
+        "optionWeights": [1, 2, 4],
+        "correctWeight": 2,
+        "placementSide": "right"
+      },
+      {
+        "leftWeights": [1],
+        "rightKnownWeights": [4],
+        "optionWeights": [1, 3, 5],
+        "correctWeight": 3,
+        "placementSide": "left"
+      },
+      {
+        "leftWeights": [],
+        "rightKnownWeights": [2, 2],
+        "optionWeights": [1, 3, 4],
+        "correctWeight": 4,
+        "placementSide": "left"
+      },
+      {
+        "leftWeights": [2],
+        "rightKnownWeights": [1, 4],
+        "optionWeights": [2, 3, 5],
+        "correctWeight": 3,
+        "placementSide": "left"
+      },
+      {
+        "leftWeights": [6],
+        "rightKnownWeights": [3],
+        "optionWeights": [1, 3, 6],
+        "correctWeight": 3,
+        "placementSide": "right"
+      },
+      {
+        "leftWeights": [1, 1, 2],
+        "rightKnownWeights": [2],
+        "optionWeights": [1, 2, 4],
+        "correctWeight": 2,
+        "placementSide": "right"
+      },
+      {
+        "leftWeights": [3, 1],
+        "rightKnownWeights": [7],
+        "optionWeights": [2, 3, 4],
+        "correctWeight": 3,
+        "placementSide": "left"
+      },
+      {
+        "leftWeights": [8],
+        "rightKnownWeights": [3, 2],
+        "optionWeights": [1, 3, 5],
+        "correctWeight": 3,
+        "placementSide": "right"
       }
     ]
   },

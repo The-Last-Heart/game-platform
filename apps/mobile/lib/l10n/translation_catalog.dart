@@ -126,6 +126,7 @@ abstract final class TranslationKeys {
   static const String introChallengeType = 'intro.challenge_type';
   static const String introReadInstructions = 'intro.read_instructions';
   static const String introGetReady = 'intro.get_ready';
+  static const String introHintLabel = 'intro.hint_label';
 
   // ── LH-003 Result Chrome ──
   static const String resultChallengeTitle = 'result.challenge_title';

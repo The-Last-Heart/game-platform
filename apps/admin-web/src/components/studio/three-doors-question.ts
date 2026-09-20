@@ -188,8 +188,33 @@ export function parseThreeDoorsBank(
   }
   const questions = raw
     .map(parseOneQuestion)
-    .filter((q): q is ThreeDoorsStudioQuestion => q != null);
-  return { questions: questions.length > 0 ? questions : defaultThreeDoorsBank().questions };
+    .filter((q): q is ThreeDoorsStudioQuestion => q != null)
+    .map(healAmbiguousExactlyOneFalseSample);
+  return {
+    questions:
+      questions.length > 0 ? questions : defaultThreeDoorsBank().questions,
+  };
+}
+
+/** Repair the known non-unique seed sample so Studio drafts can publish. */
+function healAmbiguousExactlyOneFalseSample(
+  question: ThreeDoorsStudioQuestion,
+): ThreeDoorsStudioQuestion {
+  if (question.questionId !== 'three_doors.q.exactly_one_false_sample') {
+    return question;
+  }
+  const report = solveThreeDoorsQuestion(question);
+  if (report.unique) return question;
+  return syncCorrectDoorFromSolver({
+    ...question,
+    truthRule: 'exactly_one_false',
+    statements: [
+      { doorId: 'A', predicate: { kind: 'is_here' } },
+      { doorId: 'B', predicate: { kind: 'is_not_here' } },
+      { doorId: 'C', predicate: { kind: 'is', doorId: 'B' } },
+    ],
+    correctDoorId: 'A',
+  });
 }
 
 export function serializeThreeDoorsBank(

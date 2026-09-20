@@ -33,6 +33,26 @@ export function toRuntimeChallengeDefinition(
       durationMs = Math.min(15_000, togetherMs + 3000);
     }
   }
+  // Studio instruction/hint copy powers the challenge_intro hold. Prefer
+  // engine-authored clientConfig overlays when already present.
+  const clientConfig: Record<string, unknown> = { ...filled.clientConfig };
+  const instructionAr = def.instructionAr?.trim();
+  if (
+    instructionAr &&
+    (typeof clientConfig['instructionText'] !== 'string' ||
+      !(clientConfig['instructionText'] as string).trim())
+  ) {
+    clientConfig['instructionText'] = instructionAr;
+  }
+  const hintAr = def.hintAr?.trim();
+  if (
+    hintAr &&
+    (typeof clientConfig['hintText'] !== 'string' ||
+      !(clientConfig['hintText'] as string).trim())
+  ) {
+    clientConfig['hintText'] = hintAr;
+  }
+
   return {
     definitionId: def.definitionId,
     definitionVersion: def.definitionVersion,
@@ -45,7 +65,7 @@ export function toRuntimeChallengeDefinition(
     promptKey: def.promptKey,
     difficulty: def.difficulty,
     choiceKeys: def.choiceKeys,
-    clientConfig: filled.clientConfig,
+    clientConfig,
     serverConfig,
     minAppVersion: def.minAppVersion,
     requiredCapabilities: [...(def.requiredCapabilities ?? [])],

@@ -695,6 +695,7 @@ const ar: Record<MessageKey, string> = {
   'studio.engine.ring_lock': 'قفل الحلقة',
   'studio.engine.routing': 'توجيه الليزر',
   'studio.engine.three_doors': 'باب الحقيقة',
+  'studio.engine.vertical_reflection': 'مرآة الخداع',
   'studio.catalog.prompt.audioMcIntro': 'عنوان خمّن الصوت',
   'studio.catalog.prompt.audioMcArtist': 'من صاحب هذا الصوت؟',
   'studio.catalog.prompt.audioMcTrack': 'ما اسم الأغنية؟',
@@ -907,19 +908,52 @@ const ar: Record<MessageKey, string> = {
   'studio.field.fp.threeDoorsPreview': 'المعاينة',
   'studio.field.fp.threeDoorsCorrectDoor': 'الباب الصحيح المقصود',
   'studio.field.fp.threeDoorsDerivedDoor': 'باب المحلل',
-  'studio.field.fp.threeDoorsUniqueYes': '(وحيد)',
-  'studio.field.fp.threeDoorsUniqueNo': '(غير وحيد)',
+  'studio.field.fp.threeDoorsUniqueYes': 'وحيد',
+  'studio.field.fp.threeDoorsUniqueNo': 'غير وحيد',
   'studio.field.fp.threeDoorsTruthTable': 'جدول الحقيقة',
   'studio.field.fp.threeDoorsKeyAt': 'المفتاح عند',
   'studio.field.fp.threeDoorsValid': 'صالح',
+  'studio.field.fp.threeDoorsTrue': 'صحيح',
+  'studio.field.fp.threeDoorsFalse': 'خاطئ',
+  'studio.field.fp.threeDoorsYes': 'نعم',
+  'studio.field.fp.threeDoorsNo': 'لا',
   'studio.field.fp.threeDoorsEnabled': 'مفعّل في المجموعة',
   'studio.field.fp.threeDoorsWeight': 'وزن الاختيار',
+  'studio.field.fp.threeDoorsApplySolver': 'استخدم باب المحلل',
+  'studio.field.fp.threeDoorsSolverHintOk':
+    'حل وحيد — هذا السؤال جاهز للنشر.',
+  'studio.field.fp.threeDoorsSolverHintBad':
+    'لا يوجد حل وحيد بعد. عدّل القواعد حتى يصبح صف واحد صالحاً.',
+  'studio.field.fp.threeDoorsSolverHintMismatch':
+    'المحلل لا يطابق الباب المقصود. طبّق باب المحلل أو عدّل العبارات.',
+  'studio.field.fp.threeDoorsBankOk': 'كل الأسئلة المفعّلة لها باب محلل وحيد.',
   'studio.field.fp.threeDoorsPred.is_here': 'المفتاح خلف هذا الباب',
   'studio.field.fp.threeDoorsPred.is_not_here': 'المفتاح ليس خلف هذا الباب',
   'studio.field.fp.threeDoorsPred.is': 'المفتاح خلف باب محدد',
   'studio.field.fp.threeDoorsPred.is_not': 'المفتاح ليس خلف باب محدد',
   'studio.field.fp.threeDoorsPred.is_one_of': 'المفتاح خلف أحد بابين',
   'studio.field.fp.threeDoorsPred.is_not_one_of': 'المفتاح ليس خلف أي من البابين',
+  'studio.field.fp.verticalReflectionLead':
+    'اختر عائلة شكل وبذرة توليد. تتحدّث المعاينة فوراً: المصدر في نصف، النصف الفارغ للاعب، وأربعة خيارات مع تمييز الانعكاس الصحيح.',
+  'studio.field.fp.verticalReflectionQuestion': 'السؤال',
+  'studio.field.fp.verticalReflectionAdd': 'إضافة سؤال',
+  'studio.field.fp.verticalReflectionDuplicate': 'تكرار',
+  'studio.field.fp.verticalReflectionRemove': 'حذف',
+  'studio.field.fp.verticalReflectionInternalName': 'الاسم الداخلي',
+  'studio.field.fp.verticalReflectionTemplate': 'عائلة الشكل',
+  'studio.field.fp.verticalReflectionSeed': 'بذرة التوليد',
+  'studio.field.fp.verticalReflectionRegenerate': 'إعادة توليد المشتتات',
+  'studio.field.fp.verticalReflectionTitle': 'العنوان (عربي)',
+  'studio.field.fp.verticalReflectionInstruction': 'التعليمات (عربي)',
+  'studio.field.fp.verticalReflectionDifficulty': 'الصعوبة',
+  'studio.field.fp.verticalReflectionWeight': 'وزن الاختيار',
+  'studio.field.fp.verticalReflectionEnabled': 'مفعّل في المجموعة',
+  'studio.field.fp.verticalReflectionPreview': 'معاينة الميكانيك المباشرة',
+  'studio.field.fp.verticalReflectionBoard': 'اللوحة (المصدر + نصف فارغ)',
+  'studio.field.fp.verticalReflectionEmptyHalf':
+    'النصف المقابل يبقى فارغاً — اللاعبون لا يرون إجابة شبحية على اللوحة.',
+  'studio.field.fp.verticalReflectionCorrect': 'الصحيح',
+  'studio.field.fp.verticalReflectionTemplateCount': 'عائلات الأشكال المتاحة',
   'studio.field.fp.audioMcLead':
     'يسمع اللاعبون مقطعاً قصيراً ويختارون إجابة واحدة. حدد إن كان المطلوب اسم المغني أو اسم الأغنية، اضبط أقصى طول للمقطع، ارفع ملفاً MP3 أو WAV، وعيّن الإجابة الصحيحة. العربية هي ما يظهر أولاً.',
   'studio.field.fp.audioMcMaxDuration': 'أقصى طول للمقطع',
@@ -1219,8 +1253,12 @@ const ar: Record<MessageKey, string> = {
   'studio.validation.laserGenerate': 'فشل توليد اللغز. راجع معلمات الليزر.',
   'studio.validation.threeDoorsSolver':
     'كل سؤال مفعّل في باب الحقيقة يحتاج باباً صحيحاً وحيداً من المحلل.',
+  'studio.validation.threeDoorsSolverQuestion':
+    'سؤال باب الحقيقة "{questionId}" يحتاج باباً صحيحاً وحيداً من المحلل (راجع جدول الحقيقة).',
   'studio.validation.threeDoorsOverflow':
     'عبارة مولَّدة قد تكون أطول من مساحة اللوحة على الشاشات الصغيرة.',
+  'studio.validation.verticalReflection':
+    'كل سؤال مفعّل في مرآة الخداع يحتاج انعكاساً عمودياً وحيداً وأربعة مرشحين متمايزين.',
 
   // Permissions
   'studio.permissions.cannotDraft': 'ليست لديك صلاحية لإنشاء المسودات',

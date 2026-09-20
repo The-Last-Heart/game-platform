@@ -1289,6 +1289,7 @@ export class MatchEngine {
       challenge.engineId === 'trivia.symbol_cipher_word' ||
       challenge.engineId === 'geography.select_on_map' ||
       challenge.engineId === 'focus.odd_one_out' ||
+      challenge.engineId === 'focus.vertical_reflection' ||
       challenge.engineId === 'order.sequence_sort' ||
       challenge.engineId === 'precision.maze_path' ||
       challenge.engineId === 'precision.neon_cable' ||
@@ -1548,6 +1549,7 @@ export class MatchEngine {
       pinned.engineId === 'trivia.symbol_cipher_word' ||
       pinned.engineId === 'geography.select_on_map' ||
       pinned.engineId === 'focus.odd_one_out' ||
+      pinned.engineId === 'focus.vertical_reflection' ||
       pinned.engineId === 'order.sequence_sort' ||
       pinned.engineId === 'precision.maze_path' ||
       pinned.engineId === 'precision.neon_cable' ||

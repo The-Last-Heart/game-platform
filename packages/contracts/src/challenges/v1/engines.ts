@@ -23,6 +23,8 @@ export const LAUNCH_ENGINE_IDS = [
   "trivia.symbol_cipher_word",
   "geography.select_on_map",
   "focus.odd_one_out",
+  /** Mirror of Deception — مرآة الخداع (product type vertical_reflection). */
+  "focus.vertical_reflection",
   "order.sequence_sort",
   "precision.maze_path",
   "precision.neon_cable",
@@ -1380,6 +1382,99 @@ export const focusOddOneOutAnswerSchema = z
 export type FocusOddOneOutAnswer = z.infer<typeof focusOddOneOutAnswerSchema>;
 
 // ---------------------------------------------------------------------------
+// 14b. focus.vertical_reflection (Mirror of Deception — مرآة الخداع)
+// Normalized vector shapes; correct answer derived from vertical reflection.
+// ---------------------------------------------------------------------------
+
+export {
+  VERTICAL_REFLECTION_ENGINE_ID,
+  VERTICAL_REFLECTION_CHALLENGE_TYPE,
+  VERTICAL_REFLECTION_GENERATOR_VERSION,
+  VERTICAL_REFLECTION_GEOMETRY_TOLERANCE,
+  VERTICAL_REFLECTION_MAX_POLYGONS,
+  VERTICAL_REFLECTION_MAX_VERTICES_PER_POLYGON,
+  VERTICAL_REFLECTION_MAX_MARKERS,
+  VERTICAL_REFLECTION_CANDIDATE_COUNT,
+  VERTICAL_REFLECTION_TITLE_COPY,
+  VERTICAL_REFLECTION_INSTRUCTION_COPY,
+  VERTICAL_REFLECTION_TEMPLATE_IDS,
+  VERTICAL_REFLECTION_REFERENCE_QUESTION,
+  DISTRACTOR_TRANSFORMS,
+  SHAPE_MARKER_TYPES,
+  SHAPE_MARKER_COLOR_ROLES,
+  normalizedPointSchema,
+  shapePolygonSchema,
+  shapeMarkerSchema,
+  reflectionShapeSchema,
+  distractorTransformSchema,
+  verticalReflectionTemplateIdSchema,
+  verticalReflectionQuestionSchema,
+  verticalReflectionPublicCandidateSchema,
+  verticalReflectionClientConfigSchema,
+  verticalReflectionServerConfigSchema,
+  verticalReflectionAnswerSchema,
+  parseVerticalReflectionClientConfig,
+  parseVerticalReflectionServerConfig,
+  parseVerticalReflectionAnswer,
+  reflectPointVertical,
+  reflectPointHorizontal,
+  rotatePoint180,
+  reflectShapeVertical,
+  reflectShapeHorizontal,
+  rotateShape180,
+  cloneShape,
+  canonicalizeShape,
+  shapesEqual,
+  polygonArea,
+  polygonSelfIntersects,
+  pointInPolygon,
+  markersLieInsideSilhouette,
+  validateReflectionShape,
+  isVerticallySymmetric,
+  buildVerticalReflectionTemplateCatalog,
+  getVerticalReflectionTemplate,
+  listVerticalReflectionTemplateIds,
+  createVerticalReflectionSeededRng,
+  hashSeedToUint32,
+  seededShuffleVerticalReflection,
+  generateVerticalReflectionCandidates,
+  assertVerticalReflectionSolvable,
+  materializeVerticalReflectionQuestion,
+  assertVerticalReflectionQuestionSolvable,
+  assertVerticalReflectionBankSolvable,
+  toPublicVerticalReflectionCandidates,
+  buildVerticalReflectionQuestion,
+  buildDefaultVerticalReflectionBank,
+} from "./vertical-reflection-logic";
+export type {
+  NormalizedPoint,
+  ShapePolygon,
+  ShapeMarker,
+  ShapeMarkerType,
+  ShapeMarkerColorRole,
+  ReflectionShape,
+  DistractorTransform,
+  VerticalReflectionTemplateId,
+  VerticalReflectionCandidate,
+  VerticalReflectionGenerationResult,
+  VerticalReflectionQuestion,
+  VerticalReflectionPublicCandidate,
+  VerticalReflectionClientConfig,
+  VerticalReflectionServerConfig,
+  VerticalReflectionAnswer,
+  ShapeValidationIssue,
+} from "./vertical-reflection-logic";
+
+import {
+  verticalReflectionAnswerSchema,
+  verticalReflectionClientConfigSchema,
+  verticalReflectionServerConfigSchema,
+  type VerticalReflectionAnswer,
+  type VerticalReflectionClientConfig,
+  type VerticalReflectionServerConfig,
+} from "./vertical-reflection-logic";
+
+// ---------------------------------------------------------------------------
 // 15. order.sequence_sort
 // ---------------------------------------------------------------------------
 
@@ -2245,14 +2340,63 @@ export type PrecisionCableUntangleAnswer = z.infer<
 // 17. logic.balance_scale
 // ---------------------------------------------------------------------------
 
+const balanceScalePlacementSideSchema = z.enum(["left", "right"]);
+
+const logicBalanceScaleVariantSchema = z
+  .object({
+    leftWeights: z.array(z.number().int().min(1).max(9)).max(4),
+    rightKnownWeights: z.array(z.number().int().min(1).max(9)).max(4),
+    optionWeights: z.array(z.number().int().min(1).max(9)).min(2).max(6),
+    correctWeight: z.number().int().min(1).max(9),
+    /** Pan that accepts the dragged option weight. Defaults to right. */
+    placementSide: balanceScalePlacementSideSchema.optional(),
+  })
+  .strict()
+  .superRefine((value, ctx) => {
+    const side = value.placementSide ?? "right";
+    const leftSum = value.leftWeights.reduce((a, b) => a + b, 0);
+    const rightSum = value.rightKnownWeights.reduce((a, b) => a + b, 0);
+    const balanced =
+      side === "right"
+        ? leftSum === rightSum + value.correctWeight
+        : leftSum + value.correctWeight === rightSum;
+    if (!balanced) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message:
+          "correctWeight must balance the scale for the chosen placementSide",
+      });
+    }
+    if (!value.optionWeights.includes(value.correctWeight)) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "correctWeight must appear in optionWeights",
+      });
+    }
+    if (side === "left" && value.leftWeights.length >= 4) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "leftWeights must leave room for placement when side is left",
+      });
+    }
+    if (side === "right" && value.rightKnownWeights.length >= 4) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message:
+          "rightKnownWeights must leave room for placement when side is right",
+      });
+    }
+  });
+
 export const logicBalanceScaleClientConfigSchema = z
   .object({
     categoryKey: translationKey,
     promptKey: translationKey,
     footerKey: translationKey.optional(),
-    leftWeights: z.array(z.number().int().min(1).max(9)).min(1).max(4),
+    leftWeights: z.array(z.number().int().min(1).max(9)).max(4),
     rightKnownWeights: z.array(z.number().int().min(1).max(9)).max(4),
     optionWeights: z.array(z.number().int().min(1).max(9)).min(2).max(6),
+    placementSide: balanceScalePlacementSideSchema.optional(),
   })
   .strict();
 export type LogicBalanceScaleClientConfig = z.infer<
@@ -2261,29 +2405,36 @@ export type LogicBalanceScaleClientConfig = z.infer<
 
 export const logicBalanceScaleServerConfigSchema = z
   .object({
-    leftWeights: z.array(z.number().int().min(1).max(9)).min(1).max(4),
+    leftWeights: z.array(z.number().int().min(1).max(9)).max(4),
     rightKnownWeights: z.array(z.number().int().min(1).max(9)).max(4),
     optionWeights: z.array(z.number().int().min(1).max(9)).min(2).max(6),
     correctWeight: z.number().int().min(1).max(9),
-    variants: z
-      .array(
-        z
-          .object({
-            leftWeights: z.array(z.number().int().min(1).max(9)).min(1).max(4),
-            rightKnownWeights: z.array(z.number().int().min(1).max(9)).max(4),
-            optionWeights: z
-              .array(z.number().int().min(1).max(9))
-              .min(2)
-              .max(6),
-            correctWeight: z.number().int().min(1).max(9),
-          })
-          .strict(),
-      )
-      .min(1)
-      .max(32)
-      .optional(),
+    placementSide: balanceScalePlacementSideSchema.optional(),
+    variants: z.array(logicBalanceScaleVariantSchema).min(1).max(32).optional(),
   })
-  .strict();
+  .strict()
+  .superRefine((value, ctx) => {
+    const side = value.placementSide ?? "right";
+    const leftSum = value.leftWeights.reduce((a, b) => a + b, 0);
+    const rightSum = value.rightKnownWeights.reduce((a, b) => a + b, 0);
+    const balanced =
+      side === "right"
+        ? leftSum === rightSum + value.correctWeight
+        : leftSum + value.correctWeight === rightSum;
+    if (!balanced) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message:
+          "correctWeight must balance the scale for the chosen placementSide",
+      });
+    }
+    if (!value.optionWeights.includes(value.correctWeight)) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "correctWeight must appear in optionWeights",
+      });
+    }
+  });
 export type LogicBalanceScaleServerConfig = z.infer<
   typeof logicBalanceScaleServerConfigSchema
 >;
@@ -3137,6 +3288,7 @@ export const ENGINE_RUNTIME_READINESS: Record<
   "trivia.symbol_cipher_word": "live",
   "geography.select_on_map": "live",
   "focus.odd_one_out": "live",
+  "focus.vertical_reflection": "live",
   "order.sequence_sort": "live",
   "precision.maze_path": "live",
   "precision.neon_cable": "live",
@@ -3244,6 +3396,11 @@ const ENGINE_SCHEMAS: Record<LaunchEngineId, EngineSchemaPair> = {
     client: focusOddOneOutClientConfigSchema,
     server: focusOddOneOutServerConfigSchema,
     answer: focusOddOneOutAnswerSchema,
+  },
+  "focus.vertical_reflection": {
+    client: verticalReflectionClientConfigSchema,
+    server: verticalReflectionServerConfigSchema,
+    answer: verticalReflectionAnswerSchema,
   },
   "order.sequence_sort": {
     client: orderSequenceSortClientConfigSchema,
@@ -3404,6 +3561,11 @@ export type ValidatedEngineConfigs =
       serverConfig: FocusOddOneOutServerConfig;
     }
   | {
+      engineId: "focus.vertical_reflection";
+      clientConfig: VerticalReflectionClientConfig;
+      serverConfig: VerticalReflectionServerConfig;
+    }
+  | {
       engineId: "order.sequence_sort";
       clientConfig: OrderSequenceSortClientConfig;
       serverConfig: OrderSequenceSortServerConfig;
@@ -3498,6 +3660,7 @@ export type ValidatedEngineAnswer =
   | { engineId: "trivia.symbol_cipher_word"; answer: SymbolCipherWordAnswer }
   | { engineId: "geography.select_on_map"; answer: GeographySelectOnMapAnswer }
   | { engineId: "focus.odd_one_out"; answer: FocusOddOneOutAnswer }
+  | { engineId: "focus.vertical_reflection"; answer: VerticalReflectionAnswer }
   | { engineId: "order.sequence_sort"; answer: OrderSequenceSortAnswer }
   | { engineId: "precision.maze_path"; answer: PrecisionMazePathAnswer }
   | { engineId: "precision.neon_cable"; answer: PrecisionNeonCableAnswer }

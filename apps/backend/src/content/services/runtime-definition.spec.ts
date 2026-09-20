@@ -20,6 +20,7 @@ describe('toRuntimeChallengeDefinition', () => {
       categoryId: 'precision.neon_cable',
       difficulty: 'easy',
       instructionAr: 'اسحب السلك',
+      hintAr: 'اسحب بلطف',
       eligibleModes: ['training'],
       accessibilityFallbackKey: 'challenge.neon_cable.a11y_fallback',
     } as ChallengeDefinitionContract;
@@ -30,7 +31,40 @@ describe('toRuntimeChallengeDefinition', () => {
       durationMs: 4000,
       introDurationMs: 1000,
       resultHoldMs: 1500,
+      clientConfig: {
+        instructionText: 'اسحب السلك',
+        hintText: 'اسحب بلطف',
+      },
     });
+  });
+
+  it('does not overwrite engine instructionText / hintText overlays', () => {
+    const def = {
+      definitionId: 'trivia.common_word.dev',
+      definitionVersion: 1,
+      engineId: 'trivia.common_word',
+      durationMs: 12000,
+      heartPenaltyOnFailure: 1,
+      energyRewardOnSuccess: 1,
+      promptKey: 'challenge.common_word.intro',
+      clientConfig: {
+        instructionText: 'من البنك',
+        hintText: 'تلميح البنك',
+      },
+      serverConfig: {},
+      internalTitle: 'Common word',
+      familyId: 'trivia',
+      categoryId: 'trivia.common_word',
+      difficulty: 'easy',
+      instructionAr: 'من الاستوديو',
+      hintAr: 'تلميح الاستوديو',
+      eligibleModes: ['training'],
+      accessibilityFallbackKey: 'challenge.common_word.a11y_fallback',
+    } as ChallengeDefinitionContract;
+
+    const runtime = toRuntimeChallengeDefinition(def);
+    expect(runtime.clientConfig['instructionText']).toBe('من البنك');
+    expect(runtime.clientConfig['hintText']).toBe('تلميح البنك');
   });
 
   it('copies Studio difficulty onto ring-lock serverConfig for generation', () => {

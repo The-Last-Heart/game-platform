@@ -1,0 +1,144 @@
+{
+  "definitionId": "focus.vertical_reflection.dev",
+  "definitionVersion": 1,
+  "engineId": "focus.vertical_reflection",
+  "durationMs": 12000,
+  "heartPenaltyOnFailure": 1,
+  "energyRewardOnSuccess": 1,
+  "promptKey": "challenge.vertical_reflection.intro",
+  "choiceKeys": [],
+  "clientConfig": {
+    "categoryKey": "challenge.category.focus",
+    "promptKey": "challenge.vertical_reflection.prompt",
+    "titleKey": "challenge.vertical_reflection.title",
+    "instructionKey": "challenge.vertical_reflection.instruction",
+    "footerKey": "challenge.vertical_reflection.footer"
+  },
+  "serverConfig": {
+    "questions": [
+      {
+        "questionId": "vertical_reflection.q.reference_arrow",
+        "internalName": "Reference — asymmetric arrow",
+        "templateId": "asymmetric_arrow_notch",
+        "generationSeed": "vr-reference-arrow-v1",
+        "sourceSide": "left",
+        "generatorVersion": 1,
+        "enabled": true,
+        "difficulty": "easy",
+        "selectionWeight": 1,
+        "titleCopy": {
+          "ar": "مرآة الخداع",
+          "en": "Mirror of Deception"
+        },
+        "instructionCopy": {
+          "ar": "اختر الانعكاس الصحيح حول المحور العمودي",
+          "en": "Choose the correct reflection across the vertical axis"
+        },
+        "sourceShape": {
+          "polygons": [
+            {
+              "closed": true,
+              "points": [
+                { "x": 0.12, "y": 0.28 },
+                { "x": 0.52, "y": 0.28 },
+                { "x": 0.52, "y": 0.16 },
+                { "x": 0.88, "y": 0.5 },
+                { "x": 0.52, "y": 0.84 },
+                { "x": 0.52, "y": 0.72 },
+                { "x": 0.28, "y": 0.72 },
+                { "x": 0.22, "y": 0.66 },
+                { "x": 0.28, "y": 0.6 },
+                { "x": 0.12, "y": 0.6 }
+              ]
+            }
+          ],
+          "markers": [
+            {
+              "id": "m1",
+              "type": "dot",
+              "center": { "x": 0.28, "y": 0.4 },
+              "size": 0.07,
+              "colorRole": "accent"
+            }
+          ]
+        }
+      },
+      {
+        "questionId": "vertical_reflection.q.stepped_polygon",
+        "internalName": "stepped_polygon",
+        "templateId": "stepped_polygon",
+        "generationSeed": "vr-default-stepped_polygon-v1",
+        "sourceSide": "left",
+        "generatorVersion": 1,
+        "enabled": true,
+        "difficulty": "easy",
+        "selectionWeight": 1,
+        "sourceShape": {
+          "polygons": [
+            {
+              "closed": true,
+              "points": [
+                { "x": 0.1, "y": 0.75 },
+                { "x": 0.1, "y": 0.55 },
+                { "x": 0.28, "y": 0.55 },
+                { "x": 0.28, "y": 0.35 },
+                { "x": 0.48, "y": 0.35 },
+                { "x": 0.48, "y": 0.18 },
+                { "x": 0.78, "y": 0.18 },
+                { "x": 0.78, "y": 0.42 },
+                { "x": 0.62, "y": 0.42 },
+                { "x": 0.62, "y": 0.75 }
+              ]
+            }
+          ],
+          "markers": [
+            {
+              "id": "m1",
+              "type": "ring",
+              "center": { "x": 0.36, "y": 0.48 },
+              "size": 0.05,
+              "colorRole": "primary"
+            }
+          ]
+        }
+      },
+      {
+        "questionId": "vertical_reflection.q.lightning_zigzag",
+        "internalName": "lightning_zigzag",
+        "templateId": "lightning_zigzag",
+        "generationSeed": "vr-default-lightning_zigzag-v1",
+        "sourceSide": "left",
+        "generatorVersion": 1,
+        "enabled": true,
+        "difficulty": "medium",
+        "selectionWeight": 1,
+        "sourceShape": {
+          "polygons": [
+            {
+              "closed": true,
+              "points": [
+                { "x": 0.42, "y": 0.08 },
+                { "x": 0.72, "y": 0.08 },
+                { "x": 0.48, "y": 0.38 },
+                { "x": 0.78, "y": 0.38 },
+                { "x": 0.28, "y": 0.92 },
+                { "x": 0.38, "y": 0.55 },
+                { "x": 0.18, "y": 0.55 }
+              ]
+            }
+          ],
+          "markers": [
+            {
+              "id": "m1",
+              "type": "dot",
+              "center": { "x": 0.52, "y": 0.22 },
+              "size": 0.05,
+              "colorRole": "primary"
+            }
+          ]
+        }
+      }
+    ]
+  },
+  "difficulty": "easy"
+}

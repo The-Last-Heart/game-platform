@@ -563,13 +563,19 @@ export const symbolCipherWordClientConfigSchema = z
     titleText: z.string().min(1).max(200).optional(),
     instructionText: z.string().min(1).max(500).optional(),
     questionId: opaqueQuestionId.optional(),
+    /** Pinned after materialize — omitted on Studio drafts / catalog chrome. */
     keyMappings: z
       .array(symbolCipherPublicKeyMappingSchema)
-      .length(SYMBOL_CIPHER_KEY_SLOT_COUNT),
+      .length(SYMBOL_CIPHER_KEY_SLOT_COUNT)
+      .optional(),
     encodedSymbols: z
       .array(cipherSymbolIdSchema)
-      .length(SYMBOL_CIPHER_ANSWER_GRAPHEME_COUNT),
-    optionKeys: z.array(optionKey).length(SYMBOL_CIPHER_OPTION_COUNT),
+      .length(SYMBOL_CIPHER_ANSWER_GRAPHEME_COUNT)
+      .optional(),
+    optionKeys: z
+      .array(optionKey)
+      .length(SYMBOL_CIPHER_OPTION_COUNT)
+      .optional(),
     optionTexts: z.record(z.string().min(1).max(500)).optional(),
     backgroundAssetId: z.string().min(1).max(128).optional(),
   })

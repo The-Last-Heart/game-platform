@@ -57,6 +57,10 @@ import {
   threeDoorsPublishIssues,
 } from './three-doors-question';
 import {
+  parseVerticalReflectionBank,
+  verticalReflectionPublishIssues,
+} from './vertical-reflection-question';
+import {
   parseAudioQuestions,
   parseMaxAudioDurationMs,
   audioQuestionBankIssues,
@@ -594,12 +598,32 @@ function validateDraft(
           path: 'serverConfig.questions',
           message: t(locale, 'studio.validation.threeDoorsOverflow'),
         });
-      } else {
+      } else if (issue === 'no_enabled_questions') {
         errors.push({
           path: 'serverConfig.questions',
           message: t(locale, 'studio.validation.threeDoorsSolver'),
         });
+      } else {
+        const questionId = issue.split(':')[0] ?? issue;
+        errors.push({
+          path: 'serverConfig.questions',
+          message: t(
+            locale,
+            'studio.validation.threeDoorsSolverQuestion',
+          ).replace('{questionId}', questionId),
+        });
       }
+    }
+  }
+  if (draft.engineId === 'focus.vertical_reflection') {
+    const issues = verticalReflectionPublishIssues(
+      parseVerticalReflectionBank(draft.serverConfig),
+    );
+    if (issues.length > 0) {
+      errors.push({
+        path: 'serverConfig.questions',
+        message: t(locale, 'studio.validation.verticalReflection'),
+      });
     }
   }
   if (!draft.promptKey.trim())

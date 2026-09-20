@@ -4,7 +4,10 @@ import { resolve } from 'node:path';
 import {
   THREE_DOORS_INSTRUCTION_KEYS,
   THREE_DOORS_TITLE_COPY,
+  VERTICAL_REFLECTION_INSTRUCTION_COPY,
+  VERTICAL_REFLECTION_TITLE_COPY,
   buildThreeDoorsPublicDoors,
+  materializeVerticalReflectionQuestion,
   precisionCableUntangleAnswerSchema,
   precisionCableUntangleServerConfigSchema,
   precisionCircuitRotationAnswerSchema,
@@ -12,6 +15,7 @@ import {
   threeDoorsInstructionText,
   type DoorPredicate,
   type DoorStatementDefinition,
+  type VerticalReflectionQuestion,
 } from '@thelastheart/contracts';
 import type {
   ChallengeDefinition,
@@ -79,6 +83,7 @@ export const TRIVIA_COMMON_WORD_ENGINE_ID = 'trivia.common_word';
 export const TRIVIA_SYMBOL_CIPHER_WORD_ENGINE_ID = 'trivia.symbol_cipher_word';
 export const GEOGRAPHY_SELECT_ON_MAP_ENGINE_ID = 'geography.select_on_map';
 export const FOCUS_ODD_ONE_OUT_ENGINE_ID = 'focus.odd_one_out';
+export const FOCUS_VERTICAL_REFLECTION_ENGINE_ID = 'focus.vertical_reflection';
 export const ORDER_SEQUENCE_SORT_ENGINE_ID = 'order.sequence_sort';
 export const PRECISION_MAZE_PATH_ENGINE_ID = 'precision.maze_path';
 export const PRECISION_NEON_CABLE_ENGINE_ID = 'precision.neon_cable';
@@ -221,6 +226,22 @@ export class FocusOddOneOutEvaluator implements ChallengeEvaluator {
       reasonKey: 'result.success',
       measureMs: Math.max(0, Math.floor(input.receivedMonoMs)),
     };
+  }
+}
+
+export class FocusVerticalReflectionEvaluator implements ChallengeEvaluator {
+  readonly engineId = FOCUS_VERTICAL_REFLECTION_ENGINE_ID;
+
+  evaluate(input: {
+    definition: ChallengeDefinition;
+    answer: Record<string, unknown>;
+    receivedMonoMs: number;
+    deadlineMonoMs: number;
+  }): ChallengeEvaluation {
+    return evaluateSharedMultipleChoice(
+      input,
+      'result.vertical_reflection.wrong',
+    );
   }
 }
 
@@ -557,6 +578,7 @@ export function createPack31Evaluators(): ChallengeEvaluator[] {
     new SymbolCipherWordEvaluator(),
     new GeographySelectOnMapEvaluator(),
     new FocusOddOneOutEvaluator(),
+    new FocusVerticalReflectionEvaluator(),
     new OrderSequenceSortEvaluator(),
     new PrecisionMazePathEvaluator(),
     new PrecisionNeonCableEvaluator(),
@@ -982,9 +1004,11 @@ function pinSymbolCipherWordQuestion(
   const shuffled = shuffleCopy(optionKeys);
   const questionId =
     typeof q['questionId'] === 'string' ? q['questionId'] : 'symbol_cipher.q';
-  const keyMappings = Array.isArray(q['keyMappings'])
-    ? (q['keyMappings'] as Array<Record<string, unknown>>)
-    : [];
+  const keyMappings = shuffleCopy(
+    Array.isArray(q['keyMappings'])
+      ? (q['keyMappings'] as Array<Record<string, unknown>>)
+      : [],
+  );
   const encodedSymbols = Array.isArray(q['encodedSymbols'])
     ? (q['encodedSymbols'] as string[])
     : [];
@@ -1171,6 +1195,84 @@ function pinThreeDoorsQuestion(
   delete client['truthTable'];
   delete client['derivedDoorId'];
   delete client['isCorrect'];
+}
+
+function pickVerticalReflectionQuestion(
+  server: Record<string, unknown>,
+): VerticalReflectionQuestion {
+  const raw = server['questions'];
+  if (Array.isArray(raw) && raw.length > 0) {
+    const enabled = raw.filter((q) => {
+      if (!q || typeof q !== 'object' || Array.isArray(q)) return false;
+      return (q as Record<string, unknown>)['enabled'] !== false;
+    }) as VerticalReflectionQuestion[];
+    const pool = enabled.length > 0 ? enabled : (raw as VerticalReflectionQuestion[]);
+    const weights = pool.map((q) => {
+      const w = q.selectionWeight;
+      return typeof w === 'number' && Number.isFinite(w) && w > 0 ? w : 1;
+    });
+    const total = weights.reduce((sum, w) => sum + w, 0);
+    let cursor = Math.random() * total;
+    for (let i = 0; i < pool.length; i += 1) {
+      cursor -= weights[i]!;
+      if (cursor <= 0) return pool[i]!;
+    }
+    return pool[pool.length - 1]!;
+  }
+  throw new Error('focus.vertical_reflection requires a questions bank');
+}
+
+function pinVerticalReflectionQuestion(
+  definition: ChallengeDefinition,
+  question: VerticalReflectionQuestion,
+): void {
+  const materialized = materializeVerticalReflectionQuestion(question);
+  const server = definition.serverConfig;
+  const client = definition.clientConfig;
+  const optionKeys = materialized.candidates.map((c) => c.id);
+  const sourceSide = materialized.sourceSide ?? 'left';
+
+  server['questionId'] = materialized.questionId;
+  server['sourceShape'] = materialized.sourceShape;
+  server['sourceSide'] = sourceSide;
+  server['generationSeed'] = materialized.generationSeed;
+  server['generatorVersion'] = materialized.generatorVersion;
+  server['candidates'] = materialized.candidates;
+  server['correctCandidateId'] = materialized.correctCandidateId;
+  server['correctOptionKey'] = materialized.correctCandidateId;
+  server['optionKeys'] = optionKeys;
+
+  client['categoryKey'] =
+    (typeof client['categoryKey'] === 'string' && client['categoryKey']) ||
+    'challenge.category.focus';
+  client['promptKey'] =
+    (typeof client['promptKey'] === 'string' && client['promptKey']) ||
+    'challenge.vertical_reflection.prompt';
+  client['titleKey'] = 'challenge.vertical_reflection.title';
+  client['instructionKey'] = 'challenge.vertical_reflection.instruction';
+  client['titleText'] =
+    triviaCopyText(materialized.titleCopy) ??
+    VERTICAL_REFLECTION_TITLE_COPY.ar;
+  client['instructionText'] =
+    triviaCopyText(materialized.instructionCopy) ??
+    VERTICAL_REFLECTION_INSTRUCTION_COPY.ar;
+  client['questionId'] = materialized.questionId;
+  client['sourceShape'] = materialized.sourceShape;
+  client['sourceSide'] = sourceSide;
+  client['candidates'] = materialized.candidates.map((c) => ({
+    id: c.id,
+    shape: c.shape,
+  }));
+  client['optionKeys'] = optionKeys;
+
+  delete client['correctCandidateId'];
+  delete client['correctOptionKey'];
+  delete client['generationSeed'];
+  delete client['generatorVersion'];
+  delete client['distractorTransforms'];
+  delete client['questions'];
+  delete client['isCorrect'];
+  delete client['transform'];
 }
 
 const AUDIO_TARGET_BADGE: Record<string, string> = {
@@ -1387,6 +1489,14 @@ export function materializePack31Round(
     return;
   }
 
+  if (definition.engineId === FOCUS_VERTICAL_REFLECTION_ENGINE_ID) {
+    pinVerticalReflectionQuestion(
+      definition,
+      pickVerticalReflectionQuestion(server),
+    );
+    return;
+  }
+
   if (definition.engineId === AUDIO_MULTIPLE_CHOICE_ENGINE_ID) {
     pinAudioMultipleChoiceQuestion(
       definition,
@@ -1544,20 +1654,18 @@ export function materializePack31Round(
   }
 
   if (definition.engineId === LOGIC_BALANCE_SCALE_ENGINE_ID) {
-    const variant = pickVariant(server, {
-      leftWeights: (server['leftWeights'] as number[]) ?? [],
-      rightKnownWeights: (server['rightKnownWeights'] as number[]) ?? [],
-      optionWeights: (server['optionWeights'] as number[]) ?? [],
-      correctWeight: num(server['correctWeight'], 1),
-    });
+    const variant = pickSolvableBalanceScaleVariant(server);
     const options = shuffleCopy(variant.optionWeights);
+    const placementSide = variant.placementSide;
     server['leftWeights'] = variant.leftWeights;
     server['rightKnownWeights'] = variant.rightKnownWeights;
     server['optionWeights'] = options;
     server['correctWeight'] = variant.correctWeight;
+    server['placementSide'] = placementSide;
     client['leftWeights'] = variant.leftWeights;
     client['rightKnownWeights'] = variant.rightKnownWeights;
     client['optionWeights'] = options;
+    client['placementSide'] = placementSide;
     return;
   }
 
@@ -1591,6 +1699,100 @@ export function materializePack31Round(
     client['cells'] = variant.cells;
     client['targetValue'] = variant.targetValue;
   }
+}
+
+type BalanceScaleVariant = {
+  leftWeights: number[];
+  rightKnownWeights: number[];
+  optionWeights: number[];
+  correctWeight: number;
+  placementSide: 'left' | 'right';
+};
+
+function sumWeights(weights: number[]): number {
+  return weights.reduce((a, b) => a + b, 0);
+}
+
+function isSolvableBalanceScaleVariant(variant: BalanceScaleVariant): boolean {
+  if (!variant.optionWeights.includes(variant.correctWeight)) {
+    return false;
+  }
+  const left = sumWeights(variant.leftWeights);
+  const right = sumWeights(variant.rightKnownWeights);
+  if (variant.placementSide === 'right') {
+    if (variant.rightKnownWeights.length >= 4) return false;
+    return left === right + variant.correctWeight;
+  }
+  if (variant.leftWeights.length >= 4) return false;
+  return left + variant.correctWeight === right;
+}
+
+function asBalanceScaleVariant(
+  raw: Record<string, unknown>,
+  fallbackPlacement: 'left' | 'right',
+): BalanceScaleVariant | null {
+  const leftWeights = Array.isArray(raw['leftWeights'])
+    ? (raw['leftWeights'] as number[]).map((n) => Number(n)).filter((n) => n > 0)
+    : [];
+  const rightKnownWeights = Array.isArray(raw['rightKnownWeights'])
+    ? (raw['rightKnownWeights'] as number[])
+        .map((n) => Number(n))
+        .filter((n) => n > 0)
+    : [];
+  const optionWeights = Array.isArray(raw['optionWeights'])
+    ? (raw['optionWeights'] as number[])
+        .map((n) => Number(n))
+        .filter((n) => n > 0)
+    : [];
+  const correctWeight = num(raw['correctWeight'], -1);
+  const sideRaw = raw['placementSide'];
+  const placementSide =
+    sideRaw === 'left' || sideRaw === 'right' ? sideRaw : fallbackPlacement;
+  if (correctWeight < 1 || optionWeights.length < 2) {
+    return null;
+  }
+  const variant: BalanceScaleVariant = {
+    leftWeights,
+    rightKnownWeights,
+    optionWeights,
+    correctWeight,
+    placementSide,
+  };
+  return isSolvableBalanceScaleVariant(variant) ? variant : null;
+}
+
+function pickSolvableBalanceScaleVariant(
+  server: Record<string, unknown>,
+): BalanceScaleVariant {
+  const fallbackPlacement =
+    server['placementSide'] === 'left' ? 'left' : 'right';
+  const fallback = asBalanceScaleVariant(server, fallbackPlacement);
+  const raw = server['variants'];
+  const candidates: BalanceScaleVariant[] = [];
+  if (Array.isArray(raw)) {
+    for (const entry of raw) {
+      if (!entry || typeof entry !== 'object' || Array.isArray(entry)) continue;
+      const parsed = asBalanceScaleVariant(
+        entry as Record<string, unknown>,
+        fallbackPlacement,
+      );
+      if (parsed) candidates.push(parsed);
+    }
+  }
+  if (candidates.length > 0) {
+    return candidates[randomInt(0, candidates.length)]!;
+  }
+  if (fallback) {
+    return fallback;
+  }
+  // Last-resort solvable puzzle if content is malformed.
+  return {
+    leftWeights: [1, 2],
+    rightKnownWeights: [1],
+    optionWeights: [1, 2, 3],
+    correctWeight: 2,
+    placementSide: 'right',
+  };
 }
 
 function pickNeonCableVariant(

@@ -10,6 +10,7 @@ import {
   logicalIndexToVisualLtrIndex,
   normalizeArabicCipherText,
   symbolCipherWordQuestionSchema,
+  validateEngineConfigs,
   visualLtrIndexToLogicalIndex,
   type ChallengeDefinition,
   type CipherKeyMapping,
@@ -153,6 +154,56 @@ describe('symbol cipher word runtime', () => {
     expect(decodeSymbolCipherSequence(encoded, mappings)).toBe(
       server['normalizedAnswer'],
     );
+  });
+
+  it('shuffles keyMappings order per round while preserving pairs', () => {
+    const fixture = loadFixture();
+    const bank = (
+      fixture.serverConfig['questions'] as Array<Record<string, unknown>>
+    ).find((q) => q['questionId'] === 'symbol_cipher.q.kitabuk');
+    expect(bank).toBeDefined();
+    const bankPairs = new Set(
+      (bank!['keyMappings'] as CipherKeyMapping[]).map(
+        (m) => `${m.symbolId}:${m.letter}`,
+      ),
+    );
+
+    const orders = new Set<string>();
+    for (let i = 0; i < 40; i += 1) {
+      const definition = structuredClone(fixture);
+      // Force the kitabuk question so order variance is not from question pick.
+      definition.serverConfig['questions'] = [bank!];
+      materializePack31Round(definition);
+      const mappings = definition.clientConfig['keyMappings'] as Array<{
+        symbolId: string;
+        letter: string;
+      }>;
+      expect(mappings).toHaveLength(5);
+      const pairs = new Set(mappings.map((m) => `${m.symbolId}:${m.letter}`));
+      expect(pairs).toEqual(bankPairs);
+      orders.add(mappings.map((m) => m.letter).join(''));
+    }
+    expect(orders.size).toBeGreaterThan(1);
+  });
+
+  it('accepts catalog chrome clientConfig without pinned round fields', () => {
+    const definition = loadFixture();
+    // Match migration / Studio draft shape: bank on server, chrome-only client.
+    definition.clientConfig = {
+      categoryKey: 'challenge.category.trivia',
+      promptKey: 'challenge.symbol_cipher.prompt',
+      titleKey: 'challenge.symbol_cipher.title',
+      titleText: 'فكّ الشفرة',
+      instructionText: 'استخدم المفتاح لاكتشاف الكلمة',
+      backgroundAssetId: 'symbol_cipher_word.background',
+    };
+    expect(() =>
+      validateEngineConfigs(
+        'trivia.symbol_cipher_word',
+        definition.clientConfig,
+        definition.serverConfig,
+      ),
+    ).not.toThrow();
   });
 
   it('evaluates chosenOptionKey authoritatively', () => {
