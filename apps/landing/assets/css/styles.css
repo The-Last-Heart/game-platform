@@ -12,8 +12,8 @@
   --border: #1d3a50;
   --radius: 18px;
   --nav-h: 4.25rem;
-  /* Changa = bold game display; Cairo = readable Arabic UI */
-  --font-display: "Changa", "Cairo", system-ui, sans-serif;
+  /* Baloo Bhaijaan 2 = rounded playful Arabic; Cairo = readable body */
+  --font-display: "Baloo Bhaijaan 2", "Cairo", system-ui, sans-serif;
   --font-body: "Cairo", "Segoe UI", system-ui, sans-serif;
 }
 
@@ -174,7 +174,7 @@ img {
 
 .brand__ar {
   font-family: var(--font-display);
-  font-size: 1.05rem;
+  font-size: 1.15rem;
   font-weight: 700;
 }
 
@@ -397,18 +397,26 @@ img {
   font-family: var(--font-display);
   font-weight: 800;
   font-size: clamp(2.75rem, 9vw, 4.85rem);
-  line-height: 1.05;
+  line-height: 1.12;
   letter-spacing: 0;
+  text-align: start;
 }
 
-.hero__title span {
+.hero__title-en {
   display: block;
-  font-family: var(--font-body);
-  font-size: 0.38em;
-  font-weight: 600;
-  letter-spacing: 0.06em;
+  width: fit-content;
+  max-width: 100%;
+  margin-block-start: 0.45em;
+  margin-inline-start: 0;
+  margin-inline-end: auto;
+  font-family: var(--font-display);
+  font-size: clamp(1.05rem, 2.8vw, 1.45rem);
+  font-weight: 700;
+  letter-spacing: 0.04em;
   color: var(--cyan);
-  margin-top: 0.4em;
+  direction: ltr;
+  unicode-bidi: isolate;
+  text-align: start;
   animation: cyan-glow 3.5s ease-in-out infinite alternate;
 }
 
