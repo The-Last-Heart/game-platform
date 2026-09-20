@@ -43,13 +43,16 @@ cd apps/mobile
 flutter run --dart-define=LH_BACKEND_URL=http://<lan-ip>:3000
 ```
 
-### Release APK for a real device (LAN backend)
+### Release APK for a real device
 
-From the repo root on WSL, build a release APK that embeds this machine's
-reachable address (prefers the Windows Wi-Fi/LAN IP under WSL):
+From the repo root on WSL, build a release APK that embeds a backend URL:
 
 ```bash
-./scripts/build-android-lan-apk.sh
+# Local LAN backend (this machine) — default when REMOTE is omitted
+REMOTE=local ./scripts/build-android-lan-apk.sh
+
+# Production (https://tlh.wdigitallabs.com — API + WebSocket)
+REMOTE=prod ./scripts/build-android-lan-apk.sh
 ```
 
 Overrides:
@@ -57,14 +60,16 @@ Overrides:
 ```bash
 LH_BACKEND_URL=http://192.168.1.10:3000 ./scripts/build-android-lan-apk.sh
 LH_LAN_HOST=192.168.1.10 LH_BACKEND_PORT=3000 ./scripts/build-android-lan-apk.sh
+LH_PROD_BACKEND_URL=https://tlh.wdigitallabs.com REMOTE=prod ./scripts/build-android-lan-apk.sh
 ```
 
-Output: `apps/mobile/build/app/outputs/flutter-apk/app-release.apk`
+`LH_BACKEND_URL` always wins when set. Output: `apps/mobile/build/app/outputs/flutter-apk/app-release.apk`
 
-The phone must reach that URL on the same LAN. Nest must not bind loopback-only.
-On WSL2, forward the backend port from Windows to the WSL guest (the script prints
-the `netsh` commands). Docker `apps` profile defaults to `BIND_HOST=127.0.0.1` —
-set `BIND_HOST=0.0.0.0` in `infra/local/.env` only for intentional LAN access.
+For `REMOTE=local`, the phone must reach that URL on the same LAN. Nest must not
+bind loopback-only. On WSL2, forward the backend port from Windows to the WSL
+guest (the script prints the `netsh` commands). Docker `apps` profile defaults
+to `BIND_HOST=127.0.0.1` — set `BIND_HOST=0.0.0.0` in `infra/local/.env` only for
+intentional LAN access.
 
 ### Debug APK Build
 

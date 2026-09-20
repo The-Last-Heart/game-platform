@@ -1,15 +1,26 @@
 #!/usr/bin/env bash
-# Build a Flutter release APK that talks to this machine from a real Android device.
+# Build a Flutter release APK that talks to a chosen backend from a real Android device.
 #
 # Usage (from repo root, on WSL):
-#   ./scripts/build-android-lan-apk.sh
+#   REMOTE=local ./scripts/build-android-lan-apk.sh
+#   REMOTE=prod ./scripts/build-android-lan-apk.sh
+#   ./scripts/build-android-lan-apk.sh                    # same as REMOTE=local
 #   LH_BACKEND_URL=http://192.168.1.10:3000 ./scripts/build-android-lan-apk.sh
 #   LH_LAN_HOST=192.168.1.10 LH_BACKEND_PORT=3000 ./scripts/build-android-lan-apk.sh
+#
+# REMOTE:
+#   local — this machine's LAN IP (auto-detect or LH_LAN_HOST / LH_BACKEND_URL)
+#   prod  — production HTTPS origin (WebSocket + HTTP on tlh.wdigitallabs.com)
+#
+# LH_BACKEND_URL always wins when set (any REMOTE).
+# Override the prod default with LH_PROD_BACKEND_URL if needed.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 MOBILE="${ROOT}/apps/mobile"
 DEFAULT_PORT=3000
+DEFAULT_PROD_BACKEND_URL="https://tlh.wdigitallabs.com"
+REMOTE="${REMOTE:-local}"
 
 fail() {
   echo "mobile:apk:lan: $*" >&2
@@ -147,10 +158,30 @@ wsl_guest_ip() {
   done | pick_best_host
 }
 
+normalize_remote() {
+  local value
+  value="$(echo "${1:-}" | tr '[:upper:]' '[:lower:]')"
+  case "$value" in
+    local|prod) echo "$value" ;;
+    *) fail "REMOTE must be 'local' or 'prod' (got: ${1:-})" ;;
+  esac
+}
+
 resolve_backend_url() {
+  REMOTE="$(normalize_remote "$REMOTE")"
+
   if [[ -n "${LH_BACKEND_URL:-}" ]]; then
     BACKEND_URL="${LH_BACKEND_URL%/}"
-    DETECT_SOURCE="LH_BACKEND_URL"
+    DETECT_SOURCE="LH_BACKEND_URL (REMOTE=${REMOTE})"
+    DETECT_HOST=""
+    DETECT_PORT=""
+    return 0
+  fi
+
+  if [[ "$REMOTE" == "prod" ]]; then
+    BACKEND_URL="${LH_PROD_BACKEND_URL:-$DEFAULT_PROD_BACKEND_URL}"
+    BACKEND_URL="${BACKEND_URL%/}"
+    DETECT_SOURCE="REMOTE=prod"
     DETECT_HOST=""
     DETECT_PORT=""
     return 0
@@ -186,7 +217,7 @@ resolve_backend_url() {
   fi
 
   BACKEND_URL="http://${host}:${port}"
-  DETECT_SOURCE="$source"
+  DETECT_SOURCE="REMOTE=local (${source})"
   DETECT_HOST="$host"
   DETECT_PORT="$port"
 }
@@ -196,6 +227,14 @@ print_notes() {
   echo "Device backend URL baked into APK:"
   echo "  ${BACKEND_URL}  (${DETECT_SOURCE})"
   echo
+
+  if [[ "$REMOTE" == "prod" ]] && [[ -z "${LH_BACKEND_URL:-}" ]]; then
+    echo "Production target:"
+    echo "  HTTPS API + WebSocket on ${BACKEND_URL}"
+    echo "  (override with LH_PROD_BACKEND_URL or LH_BACKEND_URL)"
+    return 0
+  fi
+
   echo "REQUIRED before the phone can connect (otherwise: service unavailable):"
   echo "  1. Phone and this PC on the same Wi-Fi/LAN."
   echo "  2. Backend listening on 0.0.0.0 (Nest default), not loopback-only."
